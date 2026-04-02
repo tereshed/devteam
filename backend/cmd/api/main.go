@@ -1,0 +1,334 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/pressly/goose/v3"
+	"github.com/wibe-flutter-gin-template/backend/docs"
+	"github.com/wibe-flutter-gin-template/backend/internal/config"
+	"github.com/wibe-flutter-gin-template/backend/internal/handler"
+	mcpserver "github.com/wibe-flutter-gin-template/backend/internal/mcp"
+	"github.com/wibe-flutter-gin-template/backend/internal/models"
+	"github.com/wibe-flutter-gin-template/backend/internal/repository"
+	"github.com/wibe-flutter-gin-template/backend/internal/server"
+	"github.com/wibe-flutter-gin-template/backend/internal/service"
+	"github.com/wibe-flutter-gin-template/backend/pkg/jwt"
+	"github.com/wibe-flutter-gin-template/backend/pkg/llm/factory"
+	"github.com/wibe-flutter-gin-template/backend/pkg/password"
+	"github.com/wibe-flutter-gin-template/backend/pkg/promptsloader"
+	"github.com/wibe-flutter-gin-template/backend/pkg/workflowloader"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+// Инициализируем документацию (для swagger)
+func init() {
+	docs.SwaggerInfo.Schemes = []string{"http", "https"}
+}
+
+// @title           Backend API
+// @version         1.0
+// @description     Backend API с авторизацией на JWT токенах
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.email  support@example.com
+
+// @license.name  Apache 2.0
+// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host      localhost:8080
+// @BasePath  /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
+
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name X-API-Key
+// @description Long-lived API key for programmatic access. Format: wibe_<key>
+
+// @securityDefinitions.oauth2.password OAuth2Password
+// @tokenUrl http://localhost:8080/api/v1/auth/login
+
+func main() {
+	// Загружаем конфигурацию
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Подключаемся к базе данных
+	db, err := initDatabase(cfg.Database)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	// Запускаем миграции
+	if err := runMigrations(db); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Создаем админа если нужно
+	userRepo := repository.NewUserRepository(db)
+	if err := ensureAdmin(context.Background(), userRepo, cfg.Admin); err != nil {
+		log.Printf("Failed to ensure admin user: %v", err)
+	}
+
+	// Инициализация зависимостей
+	// Repositories
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
+	apiKeyRepo := repository.NewApiKeyRepository(db)
+	promptRepo := repository.NewPromptRepository(db)
+	workflowRepo := repository.NewWorkflowRepository(db)
+	llmRepo := repository.NewLLMRepository(db)
+	llmModelRepo := repository.NewLLMModelRepository(db)
+
+	// Загрузка промптов из файлов
+	log.Println("Loading prompts from backend/prompts...")
+	promptsLoader := promptsloader.New(promptRepo)
+	if err := promptsLoader.LoadFromDir(context.Background(), "prompts"); err != nil {
+		// Не падаем, если не смогли загрузить промпты (например, нет папки), но логируем ошибку
+		log.Printf("Failed to load prompts: %v", err)
+	} else {
+		log.Println("Prompts loaded successfully")
+	}
+
+	// Загрузка workflows и агентов
+	log.Println("Loading workflows and agents...")
+	wfLoader := workflowloader.New(workflowRepo, promptRepo, db)
+	if err := wfLoader.LoadAgents(context.Background(), "agents"); err != nil {
+		log.Printf("Failed to load agents: %v", err)
+	}
+	if err := wfLoader.LoadWorkflows(context.Background(), "workflows"); err != nil {
+		log.Printf("Failed to load workflows: %v", err)
+	}
+	if err := wfLoader.LoadSchedules(context.Background(), "schedules"); err != nil {
+		// Не падаем, если нет папки или ошибка, просто логируем
+		log.Printf("Failed to load schedules: %v", err)
+	}
+
+	// Services
+	modelCatalogService := service.NewModelCatalogService(llmModelRepo, cfg.LLM.OpenRouterAPIKey)
+
+	jwtManager := jwt.NewManager(cfg.JWT.SecretKey, cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
+	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager)
+	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
+	promptService := service.NewPromptService(promptRepo)
+
+	// Запускаем первичную синхронизацию моделей (в фоне)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		log.Println("Starting initial OpenRouter model sync...")
+		if err := modelCatalogService.SyncOpenRouterModels(ctx); err != nil {
+			log.Printf("Initial model sync failed: %v", err)
+		}
+	}()
+
+	// LLM
+	llmFactory := factory.New()
+	llmService := service.NewLLMService(llmFactory, cfg.LLM, llmRepo, llmModelRepo)
+	llmHandler := handler.NewLLMHandler(llmService)
+
+	// Workflow Engine
+	workflowEngine := service.NewWorkflowEngine(workflowRepo, llmService)
+	
+	// Запускаем Workflow Worker в фоне
+	ctxWorker, cancelWorker := context.WithCancel(context.Background())
+	go workflowEngine.RunWorker(ctxWorker)
+
+	// Scheduler (запускаем планировщик)
+	scheduler := service.NewScheduler(workflowRepo, workflowEngine, modelCatalogService)
+	// Используем тот же контекст, что и для worker, или отдельный?
+	// Лучше отдельный, так как scheduler внутри cron использует свои горутины.
+	// Но для gracefull shutdown нам нужно будет вызвать Stop().
+	if err := scheduler.Start(ctxWorker); err != nil {
+		log.Printf("Failed to start scheduler: %v", err)
+	}
+
+	// Handlers
+	authHandler := handler.NewAuthHandler(authService, jwtManager)
+	apiKeyHandler := handler.NewApiKeyHandler(apiKeyService, &cfg.MCP)
+	promptHandler := handler.NewPromptHandler(promptService)
+	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
+
+	// Создаем и запускаем сервер
+	srv := server.New(db, server.ServerConfig{
+		Host:         cfg.Server.Host,
+		Port:         cfg.Server.Port,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+	}, server.Dependencies{
+		AuthHandler:     authHandler,
+		ApiKeyHandler:   apiKeyHandler,
+		LLMHandler:      llmHandler,
+		PromptHandler:   promptHandler,
+		WorkflowHandler: workflowHandler,
+		JWTManager:      jwtManager,
+		ApiKeyService:   apiKeyService,
+	})
+
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatalf("Failed to run server: %v", err)
+		}
+	}()
+
+	// --- MCP-сервер (условный запуск) ---
+	var mcpHTTPServer *http.Server
+
+	if cfg.MCP.Enabled {
+		mcpSrv := mcpserver.NewMCPServer(mcpserver.Dependencies{
+			Config:         cfg.MCP,
+			LLMService:     llmService,
+			WorkflowEngine: workflowEngine,
+			PromptService:  promptService,
+			ApiKeyService:  apiKeyService,
+		})
+
+		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)
+
+		mcpAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.MCP.Port)
+
+		// Оборачиваем MCP handler в ServeMux с health-эндпоинтом (для Docker и мониторинга)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"healthy","service":"mcp"}`))
+		})
+		mux.Handle("/", mcpHandler) // всё остальное → MCP
+
+		mcpHTTPServer = &http.Server{
+			Addr:    mcpAddr,
+			Handler: mux,
+			// WriteTimeout=0: MCP StreamableHTTP использует SSE (long-lived connections).
+			// Go http.Server.WriteTimeout покрывает ВЕСЬ ответ, не отдельные записи,
+			// поэтому ограничение по времени сломает SSE-сессии.
+			// Таймауты управляются на уровне MCP SDK.
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 0,
+		}
+
+		go func() {
+			log.Printf("MCP server starting on %s (public URL: %s)", mcpAddr, cfg.MCP.PublicURL)
+			if err := mcpHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Failed to run MCP server: %v", err)
+			}
+		}()
+	} else {
+		log.Println("MCP server is disabled (set MCP_ENABLED=true to enable)")
+	}
+
+	// Ожидаем сигнал завершения
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down...")
+	// Общий таймаут на graceful shutdown всех серверов.
+	// MCP shutdown обычно мгновенный; основной запас — для Gin-сервера с активными соединениями.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Останавливаем планировщик и воркер
+	scheduler.Stop()
+	cancelWorker()
+
+	// Graceful shutdown MCP-сервера
+	if mcpHTTPServer != nil {
+		log.Println("Shutting down MCP server...")
+		if err := mcpHTTPServer.Shutdown(ctx); err != nil {
+			log.Printf("MCP server forced to shutdown: %v", err)
+		}
+	}
+
+	// Graceful shutdown основного сервера
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("All servers exited")
+}
+
+func runMigrations(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+
+	if err := goose.Up(sqlDB, "db/migrations"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ensureAdmin(ctx context.Context, userRepo repository.UserRepository, cfg config.AdminConfig) error {
+	if cfg.Email == "" || cfg.Password == "" {
+		log.Println("Admin credentials not configured, skipping admin creation")
+		return nil
+	}
+
+	_, err := userRepo.GetByEmail(ctx, cfg.Email)
+	if err == nil {
+		log.Println("Admin user already exists")
+		return nil
+	}
+
+	log.Println("Creating admin user...")
+	passwordHash, err := password.Hash(cfg.Password)
+	if err != nil {
+		return err
+	}
+
+	admin := &models.User{
+		Email:        cfg.Email,
+		PasswordHash: passwordHash,
+		Role:         models.RoleAdmin,
+	}
+
+	return userRepo.Create(ctx, admin)
+}
+
+// initDatabase инициализирует подключение к базе данных
+func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sql.DB: %w", err)
+	}
+
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+
+	// Проверяем подключение
+	if err := sqlDB.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	return db, nil
+}

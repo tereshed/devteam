@@ -1,0 +1,8 @@
+name: reviewer_agent
+role: supervisor
+prompt_name: reviewer_prompt
+model_config:
+  temperature: 0.1
+  model: "gpt-4o"
+is_active: true
+

@@ -1,0 +1,8 @@
+name: writer_agent
+role: worker
+prompt_name: writer_prompt
+model_config:
+  temperature: 0.7
+  model: "gpt-4o"
+is_active: true
+

@@ -1,0 +1,374 @@
+{
+  "@@locale": "ru",
+  "appTitle": "Wibe Flutter Gin Template",
+  "@appTitle": {
+    "description": "Название приложения"
+  },
+  
+  "welcome": "Добро пожаловать",
+  "@welcome": {
+    "description": "Приветствие на главной странице"
+  },
+  
+  "login": "Войти",
+  "@login": {
+    "description": "Кнопка входа"
+  },
+  
+  "logout": "Выйти",
+  "@logout": {
+    "description": "Кнопка выхода"
+  },
+  
+  "register": "Регистрация",
+  "@register": {
+    "description": "Кнопка регистрации"
+  },
+  
+  "email": "Email",
+  "@email": {
+    "description": "Поле email"
+  },
+  
+  "password": "Пароль",
+  "@password": {
+    "description": "Поле пароля"
+  },
+  
+  "confirmPassword": "Подтвердите пароль",
+  "@confirmPassword": {
+    "description": "Поле подтверждения пароля"
+  },
+  
+  "emailHint": "example@mail.com",
+  "@emailHint": {
+    "description": "Подсказка для поля email"
+  },
+  
+  "enterEmail": "Введите email",
+  "@enterEmail": {
+    "description": "Сообщение об ошибке валидации email"
+  },
+  
+  "enterValidEmail": "Введите корректный email",
+  "@enterValidEmail": {
+    "description": "Сообщение об ошибке валидации email формата"
+  },
+  
+  "enterPassword": "Введите пароль",
+  "@enterPassword": {
+    "description": "Сообщение об ошибке валидации пароля"
+  },
+  
+  "passwordTooShort": "Пароль должен содержать минимум {minLength} символов",
+  "@passwordTooShort": {
+    "description": "Сообщение об ошибке валидации длины пароля",
+    "placeholders": {
+      "minLength": {
+        "type": "int"
+      }
+    }
+  },
+  
+  "passwordsDoNotMatch": "Пароли не совпадают",
+  "@passwordsDoNotMatch": {
+    "description": "Сообщение об ошибке несовпадения паролей"
+  },
+  
+  "passwordMinLength": "Пароль должен быть не менее 8 символов",
+  "@passwordMinLength": {
+    "description": "Сообщение об ошибке минимальной длины пароля"
+  },
+  
+  "confirmPasswordPlaceholder": "Подтвердите пароль",
+  "@confirmPasswordPlaceholder": {
+    "description": "Подсказка для поля подтверждения пароля"
+  },
+  
+  "noAccountRegister": "Нет аккаунта? Зарегистрироваться",
+  "@noAccountRegister": {
+    "description": "Ссылка на регистрацию на экране входа"
+  },
+  
+  "haveAccountLogin": "Уже есть аккаунт? Войти",
+  "@haveAccountLogin": {
+    "description": "Ссылка на вход на экране регистрации"
+  },
+  
+  "welcomeBack": "Добро пожаловать",
+  "@welcomeBack": {
+    "description": "Приветствие на экране входа"
+  },
+  
+  "loginTitle": "Вход",
+  "@loginTitle": {
+    "description": "Заголовок экрана входа"
+  },
+  
+  "registerTitle": "Регистрация",
+  "@registerTitle": {
+    "description": "Заголовок экрана регистрации"
+  },
+  
+  "createAccount": "Создать аккаунт",
+  "@createAccount": {
+    "description": "Кнопка создания аккаунта"
+  },
+  
+  "alreadyHaveAccount": "Уже есть аккаунт?",
+  "@alreadyHaveAccount": {
+    "description": "Текст перед ссылкой на вход"
+  },
+  
+  "dontHaveAccount": "Нет аккаунта?",
+  "@dontHaveAccount": {
+    "description": "Текст перед ссылкой на регистрацию"
+  },
+  
+  "dashboard": "Dashboard",
+  "@dashboard": {
+    "description": "Заголовок экрана dashboard"
+  },
+  
+  "profile": "Профиль",
+  "@profile": {
+    "description": "Заголовок экрана профиля"
+  },
+  
+  "userInfo": "Информация о пользователе",
+  "@userInfo": {
+    "description": "Заголовок блока информации о пользователе"
+  },
+  
+  "role": "Роль",
+  "@role": {
+    "description": "Роль пользователя"
+  },
+  
+  "emailVerified": "Email подтвержден",
+  "@emailVerified": {
+    "description": "Статус подтверждения email"
+  },
+  
+  "yes": "Да",
+  "@yes": {
+    "description": "Подтверждение"
+  },
+  
+  "no": "Нет",
+  "@no": {
+    "description": "Отрицание"
+  },
+  
+  "goToProfile": "Перейти в профиль",
+  "@goToProfile": {
+    "description": "Кнопка перехода в профиль"
+  },
+  
+  "information": "Информация",
+  "@information": {
+    "description": "Заголовок блока информации"
+  },
+  
+  "refreshData": "Обновить данные",
+  "@refreshData": {
+    "description": "Кнопка обновления данных"
+  },
+  
+  "dataLoadError": "Ошибка загрузки данных",
+  "@dataLoadError": {
+    "description": "Сообщение об ошибке загрузки"
+  },
+  
+  "retry": "Повторить",
+  "@retry": {
+    "description": "Кнопка повтора"
+  },
+  
+  "userNotAuthorized": "Пользователь не авторизован",
+  "@userNotAuthorized": {
+    "description": "Сообщение о неавторизованном пользователе"
+  },
+  
+  "logoutConfirmTitle": "Выход",
+  "@logoutConfirmTitle": {
+    "description": "Заголовок диалога подтверждения выхода"
+  },
+  
+  "logoutConfirmMessage": "Вы уверены, что хотите выйти?",
+  "@logoutConfirmMessage": {
+    "description": "Сообщение в диалоге подтверждения выхода"
+  },
+  
+  "cancel": "Отмена",
+  "@cancel": {
+    "description": "Кнопка отмены"
+  },
+  
+  "logoutError": "Ошибка при выходе: {error}",
+  "@logoutError": {
+    "description": "Сообщение об ошибке при выходе",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "errorInvalidCredentials": "Неверный email или пароль",
+  "@errorInvalidCredentials": {
+    "description": "Ошибка: неверные учетные данные"
+  },
+  "errorUserNotFound": "Пользователь не найден",
+  "@errorUserNotFound": {
+    "description": "Ошибка: пользователь не найден"
+  },
+  "errorUserAlreadyExists": "Пользователь уже существует",
+  "@errorUserAlreadyExists": {
+    "description": "Ошибка: пользователь уже существует"
+  },
+  "errorAccessDenied": "Доступ запрещен",
+  "@errorAccessDenied": {
+    "description": "Ошибка: доступ запрещен"
+  },
+  "errorNetwork": "Ошибка сети. Проверьте подключение к интернету.",
+  "@errorNetwork": {
+    "description": "Ошибка: проблемы с сетью"
+  },
+  "errorServer": "Ошибка сервера. Попробуйте позже.",
+  "@errorServer": {
+    "description": "Ошибка: проблема на сервере"
+  },
+  "errorUnknown": "Произошла неизвестная ошибка.",
+  "@errorUnknown": {
+    "description": "Ошибка: неизвестная ошибка"
+  },
+  
+  "landingTitle": "Создавайте быстрее с Wibe",
+  "@landingTitle": { "description": "Заголовок лендинга" },
+  "landingSubtitle": "Идеальный шаблон Flutter + Gin для вашей следующей идеи.\nГотов к продакшену, масштабируемый и красивый.",
+  "@landingSubtitle": { "description": "Подзаголовок лендинга" },
+  "startForFree": "Начать бесплатно",
+  "@startForFree": { "description": "Кнопка призыва к действию" },
+  "learnMore": "Узнать больше",
+  "@learnMore": { "description": "Кнопка подробнее" },
+  "whyWibe": "Почему Wibe?",
+  "@whyWibe": { "description": "Заголовок секции преимуществ" },
+  "featurePerformanceTitle": "Высокая производительность",
+  "@featurePerformanceTitle": { "description": "Заголовок преимущества производительности" },
+  "featurePerformanceDesc": "Создан на Go (Gin) и Flutter для максимальной скорости.",
+  "@featurePerformanceDesc": { "description": "Описание преимущества производительности" },
+  "featureSecurityTitle": "Безопасность по умолчанию",
+  "@featureSecurityTitle": { "description": "Заголовок преимущества безопасности" },
+  "featureSecurityDesc": "JWT Auth, RBAC и лучшие практики безопасности включены.",
+  "@featureSecurityDesc": { "description": "Описание преимущества безопасности" },
+  "featureCrossPlatformTitle": "Кроссплатформенность",
+  "@featureCrossPlatformTitle": { "description": "Заголовок преимущества кроссплатформенности" },
+  "featureCrossPlatformDesc": "Отлично работает на Web, iOS, Android и Desktop.",
+  "@featureCrossPlatformDesc": { "description": "Описание преимущества кроссплатформенности" },
+  "getStarted": "Начать",
+  "@getStarted": { "description": "Кнопка начать" },
+  "goToDashboard": "Перейти в Dashboard",
+  "@goToDashboard": { "description": "Кнопка перехода в панель управления" },
+
+  "promptsTitle": "Управление промптами",
+  "promptsList": "Список промптов",
+  "createPrompt": "Создать промпт",
+  "editPrompt": "Редактировать промпт",
+  "deletePrompt": "Удалить промпт",
+  "deletePromptConfirmation": "Вы уверены, что хотите удалить этот промпт?",
+  "promptName": "Имя (Уникальный ID)",
+  "promptDescription": "Описание",
+  "promptTemplate": "Шаблон",
+  "promptJsonSchema": "JSON Схема (Опционально)",
+  "promptIsActive": "Активен",
+  "promptNameRequired": "Имя обязательно",
+  "promptTemplateRequired": "Шаблон обязателен",
+  "invalidJson": "Неверный формат JSON",
+  "save": "Сохранить",
+  "update": "Обновить",
+  "create": "Создать",
+  "delete": "Удалить",
+  "managePrompts": "Управление промптами (Админ)",
+  "templatePlaceholderHelper": "Используйте <.Variable> для переменных",
+
+  "apiKeysTitle": "API-ключи",
+  "@apiKeysTitle": { "description": "Заголовок экрана API-ключей" },
+  "apiKeyDescription": "API-ключи позволяют вашим приложениям обращаться к API без пароля. Каждый ключ действует от вашего имени.",
+  "@apiKeyDescription": { "description": "Описание API-ключей" },
+  "apiKeyCreate": "Создать ключ",
+  "@apiKeyCreate": { "description": "Кнопка создания ключа" },
+  "apiKeyName": "Название ключа",
+  "@apiKeyName": { "description": "Поле имени ключа" },
+  "apiKeyNameHint": "Например: Мой скрипт, CI/CD",
+  "@apiKeyNameHint": { "description": "Подсказка для имени" },
+  "apiKeyExpiry": "Срок действия",
+  "@apiKeyExpiry": { "description": "Поле срока действия" },
+  "apiKeyNoExpiry": "Бессрочный",
+  "@apiKeyNoExpiry": { "description": "Без срока" },
+  "apiKeyExpiry30Days": "30 дней",
+  "@apiKeyExpiry30Days": { "description": "30 дней" },
+  "apiKeyExpiry90Days": "90 дней",
+  "@apiKeyExpiry90Days": { "description": "90 дней" },
+  "apiKeyExpiry1Year": "1 год",
+  "@apiKeyExpiry1Year": { "description": "1 год" },
+  "apiKeyCreated": "Ключ создан",
+  "@apiKeyCreated": { "description": "Заголовок диалога после создания" },
+  "apiKeyCreatedWarning": "Скопируйте ключ сейчас! Он больше не будет показан.",
+  "@apiKeyCreatedWarning": { "description": "Предупреждение после создания" },
+  "apiKeyCopy": "Скопировать ключ",
+  "@apiKeyCopy": { "description": "Кнопка копирования" },
+  "apiKeyCopied": "Ключ скопирован в буфер обмена",
+  "@apiKeyCopied": { "description": "Уведомление о копировании" },
+  "apiKeyUnderstood": "Понятно, я сохранил ключ",
+  "@apiKeyUnderstood": { "description": "Кнопка подтверждения" },
+  "apiKeyRevoke": "Отозвать",
+  "@apiKeyRevoke": { "description": "Кнопка отзыва" },
+  "apiKeyRevokeTitle": "Отзыв ключа",
+  "@apiKeyRevokeTitle": { "description": "Заголовок диалога отзыва" },
+  "apiKeyRevokeConfirm": "Ключ перестанет работать. Это действие необратимо. Продолжить?",
+  "@apiKeyRevokeConfirm": { "description": "Подтверждение отзыва" },
+  "apiKeyDeleteTitle": "Удаление ключа",
+  "@apiKeyDeleteTitle": { "description": "Заголовок диалога удаления" },
+  "apiKeyDeleteConfirm": "Ключ будет полностью удалён. Продолжить?",
+  "@apiKeyDeleteConfirm": { "description": "Подтверждение удаления" },
+  "apiKeyExpired": "Истёк",
+  "@apiKeyExpired": { "description": "Чип: ключ истёк" },
+  "apiKeyCreatedAt": "Создан",
+  "@apiKeyCreatedAt": { "description": "Метка даты создания" },
+  "apiKeyExpiresAt": "Истекает",
+  "@apiKeyExpiresAt": { "description": "Метка даты истечения" },
+  "apiKeyLastUsed": "Использован",
+  "@apiKeyLastUsed": { "description": "Метка последнего использования" },
+  "apiKeyEmpty": "Нет API-ключей",
+  "@apiKeyEmpty": { "description": "Пустое состояние" },
+  "apiKeyEmptyHint": "Создайте ключ, чтобы использовать API из своих приложений",
+  "@apiKeyEmptyHint": { "description": "Подсказка пустого состояния" },
+  "apiKeysManage": "API-ключи",
+  "@apiKeysManage": { "description": "Кнопка перехода к управлению ключами" },
+
+  "mcpConfigTitle": "Конфигурация MCP",
+  "@mcpConfigTitle": { "description": "Заголовок секции MCP" },
+  "mcpConfigDescription": "Используйте эту конфигурацию для подключения вашего LLM-клиента (Cursor, Claude Desktop, VS Code Copilot) к этому серверу",
+  "@mcpConfigDescription": { "description": "Описание MCP-конфигурации" },
+  "mcpConfigCopy": "Скопировать конфиг",
+  "@mcpConfigCopy": { "description": "Кнопка копирования конфига" },
+  "mcpConfigCopied": "Конфигурация скопирована в буфер обмена",
+  "@mcpConfigCopied": { "description": "Уведомление о копировании" },
+  "mcpConfigInstructions": "Инструкция:",
+  "@mcpConfigInstructions": { "description": "Заголовок инструкции" },
+  "mcpConfigStep1": "1. Скопируйте конфигурацию ниже",
+  "@mcpConfigStep1": { "description": "Шаг 1" },
+  "mcpConfigStep2": "2. Откройте настройки вашего LLM-клиента",
+  "@mcpConfigStep2": { "description": "Шаг 2" },
+  "mcpConfigStep3Cursor": "   - Cursor: .cursor/config.json",
+  "@mcpConfigStep3Cursor": { "description": "Путь для Cursor" },
+  "mcpConfigStep3Claude": "   - Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json",
+  "@mcpConfigStep3Claude": { "description": "Путь для Claude" },
+  "mcpConfigStep4": "3. Вставьте конфигурацию и перезапустите клиент",
+  "@mcpConfigStep4": { "description": "Шаг 4" },
+  "mcpConfigLoadError": "Не удалось загрузить конфигурацию MCP",
+  "@mcpConfigLoadError": { "description": "Ошибка загрузки" },
+  "mcpConfigDisabled": "MCP-сервер выключен",
+  "@mcpConfigDisabled": { "description": "MCP недоступен" }
+}
+

@@ -1,0 +1,6 @@
+targets:
+  $default:
+    sources:
+      exclude:
+        - "lib/l10n/app_localizations*.dart"
+        - "lib/generated/**"

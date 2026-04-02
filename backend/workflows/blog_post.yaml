@@ -1,0 +1,12 @@
+name: blog_post_workflow
+description: "Create a blog post from a topic using Researcher and Writer agents"
+start_step: research
+max_steps: 5
+steps:
+  research:
+    agent_name: researcher_agent
+    next: write
+  write:
+    agent_name: writer_agent
+    next: null
+

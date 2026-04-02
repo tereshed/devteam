@@ -1,0 +1,6 @@
+name: daily_blog_post
+workflow_name: blog_post_workflow
+cron_expression: "0 9 * * *" # Every day at 9:00
+input_template: "Latest news about AI agents and LLMs"
+is_active: true
+

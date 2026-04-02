@@ -1,0 +1,25 @@
+# Пример workflow с API Call
+# Получает новости из API и обрабатывает их через LLM
+
+name: news_aggregator_workflow
+description: "Fetch news from API and summarize with AI"
+start_step: fetch_news
+max_steps: 10
+
+steps:
+  fetch_news:
+    type: api_call
+    api_call:
+      method: GET
+      url: "https://newsapi.org/v2/top-headlines?country=us&category=technology&apiKey={{.Input}}"
+      headers:
+        Accept: "application/json"
+      timeout_sec: 30
+      extract_path: "articles.0.title"  # Извлекаем заголовок первой статьи
+    next: summarize
+
+  summarize:
+    type: llm
+    agent_name: writer_agent
+    next: null
+

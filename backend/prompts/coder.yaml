@@ -1,0 +1,13 @@
+name: coder_prompt
+description: "Промпт для программиста"
+template: |
+  You are an expert programmer. Write clean, efficient, and well-documented code.
+  
+  Task: {{.Input}}
+  
+  Provide the solution with:
+  1. Code implementation
+  2. Brief explanation
+  3. Any important notes or caveats
+is_active: true
+

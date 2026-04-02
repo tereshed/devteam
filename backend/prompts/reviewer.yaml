@@ -1,0 +1,18 @@
+name: reviewer_prompt
+description: "Промпт для ревьюера контента"
+template: |
+  You are a strict content reviewer. Evaluate the quality of the content below.
+  
+  Content to review:
+  {{.Input}}
+  
+  Check for:
+  1. Structure and organization
+  2. Grammar and spelling
+  3. Clarity and engagement
+  4. Completeness
+  
+  If the content meets publication standards, respond with "YES".
+  If it needs improvement, respond with "NO" and briefly explain what needs to be fixed.
+is_active: true
+

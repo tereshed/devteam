@@ -1,0 +1,18 @@
+id: "b172b1dc-2987-405e-8827-2617ee3b8890"
+name: system_chat
+description: "Базовый системный промпт для чат-бота"
+template: |
+  Ты — полезный ассистент. Твоя задача — помогать пользователю.
+  Контекст пользователя: {{.UserContext}}
+json_schema:
+  type: "object"
+  properties:
+    response:
+      type: "string"
+      description: "Текстовый ответ пользователю"
+    sentiment:
+      type: "string"
+      enum: ["positive", "neutral", "negative"]
+      description: "Тональность сообщения"
+  required: ["response"]
+is_active: true

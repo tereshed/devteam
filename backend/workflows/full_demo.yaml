@@ -1,0 +1,166 @@
+# ============================================================================
+# ДЕМО WORKFLOW: Использует ВСЕ типы узлов
+# ============================================================================
+# 
+# Сценарий: "Умный генератор контента с публикацией"
+# 
+# 1. Классифицирует запрос пользователя (condition)
+# 2. В зависимости от типа — направляет к нужному агенту (llm)
+# 3. Итеративно улучшает контент до качества (loop)
+# 4. Получает метаданные из внешнего API (api_call)
+# 5. Публикует результат через webhook (api_call)
+#
+# Граф потока:
+#
+#                    ┌─────────────┐
+#                    │   START     │
+#                    │  classify   │
+#                    └──────┬──────┘
+#                           │
+#           ┌───────────────┼───────────────┐
+#           │               │               │
+#           ▼               ▼               ▼
+#    ┌────────────┐  ┌────────────┐  ┌────────────┐
+#    │   CODE     │  │  WRITING   │  │  RESEARCH  │
+#    │  generate  │  │  generate  │  │  generate  │
+#    └─────┬──────┘  └─────┬──────┘  └─────┬──────┘
+#           │               │               │
+#           └───────────────┼───────────────┘
+#                           │
+#                           ▼
+#                    ┌─────────────┐
+#                    │   LOOP      │◄────────┐
+#                    │  quality    │         │
+#                    └──────┬──────┘         │
+#                           │                │
+#                    Exit?  │  NO            │
+#                    YES    ├────────►┌──────┴─────┐
+#                           │         │  improve   │
+#                           ▼         │  content   │
+#                    ┌─────────────┐  └────────────┘
+#                    │  API CALL   │
+#                    │  get meta   │
+#                    └──────┬──────┘
+#                           │
+#                           ▼
+#                    ┌─────────────┐
+#                    │    LLM      │
+#                    │  finalize   │
+#                    └──────┬──────┘
+#                           │
+#                           ▼
+#                    ┌─────────────┐
+#                    │  API CALL   │
+#                    │   publish   │
+#                    └──────┬──────┘
+#                           │
+#                           ▼
+#                        [ END ]
+#
+# ============================================================================
+
+name: full_demo_workflow
+description: "Демонстрация всех типов узлов: condition, llm, loop, api_call"
+start_step: classify
+max_steps: 30
+
+steps:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STEP 1: CONDITION — Классификация запроса
+  # ═══════════════════════════════════════════════════════════════════════════
+  classify:
+    type: condition
+    condition_prompt: |
+      Analyze the user request and classify it into ONE category:
+      - CODE: Programming, algorithms, technical implementation
+      - WRITING: Articles, blog posts, creative content
+      - RESEARCH: Facts, analysis, data gathering
+    routes:
+      CODE: generate_code
+      WRITING: generate_writing
+      RESEARCH: generate_research
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STEP 2: LLM — Генерация контента (3 варианта по типу)
+  # ═══════════════════════════════════════════════════════════════════════════
+  generate_code:
+    type: llm
+    agent_name: coder_agent
+    next: quality_loop
+
+  generate_writing:
+    type: llm
+    agent_name: writer_agent
+    next: quality_loop
+
+  generate_research:
+    type: llm
+    agent_name: researcher_agent
+    next: quality_loop
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STEP 3: LOOP — Итеративное улучшение до качества
+  # ═══════════════════════════════════════════════════════════════════════════
+  quality_loop:
+    type: loop
+    loop:
+      body_step_id: improve_content
+      max_iterations: 3
+      exit_condition: |
+        Evaluate the content quality on a scale of 1-10.
+        If the score is 8 or higher, respond YES.
+        If lower, respond NO.
+      exit_agent_name: reviewer_agent
+      exit_on_response: "YES"
+    next: fetch_metadata
+
+  improve_content:
+    type: llm
+    agent_name: writer_agent
+    next: quality_loop  # Возврат к проверке
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STEP 4: API CALL — Получение метаданных
+  # ═══════════════════════════════════════════════════════════════════════════
+  fetch_metadata:
+    type: api_call
+    api_call:
+      method: GET
+      # Пример: получаем текущую дату/время из публичного API
+      url: "https://worldtimeapi.org/api/timezone/Europe/Moscow"
+      headers:
+        Accept: "application/json"
+      timeout_sec: 10
+      extract_path: "datetime"  # Извлекаем только дату
+    next: finalize
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STEP 5: LLM — Финальная сборка с метаданными
+  # ═══════════════════════════════════════════════════════════════════════════
+  finalize:
+    type: llm
+    agent_name: finalizer_agent
+    next: publish
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STEP 6: API CALL — Публикация результата
+  # ═══════════════════════════════════════════════════════════════════════════
+  publish:
+    type: api_call
+    api_call:
+      method: POST
+      # Webhook для тестирования (замените на реальный)
+      url: "https://webhook.site/your-unique-id"
+      headers:
+        Content-Type: "application/json"
+        X-Source: "ai-workflow-demo"
+      body_template: |
+        {
+          "title": "AI Generated Content",
+          "content": "{{.Input}}",
+          "workflow": "full_demo_workflow",
+          "generated_at": "{{.Input}}"
+        }
+      timeout_sec: 15
+    next: null  # Конец потока
+

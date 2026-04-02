@@ -1,0 +1,8 @@
+name: finalizer_agent
+role: worker
+prompt_name: finalizer_prompt
+model_config:
+  temperature: 0.5
+  model: "gpt-4o"
+is_active: true
+

@@ -1,0 +1,64 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Error rules
+    avoid_relative_lib_imports: true
+    always_use_package_imports: true
+    avoid_empty_else: true
+    avoid_print: true
+    cancel_subscriptions: true
+    close_sinks: true
+    
+    # Style rules
+    always_declare_return_types: true
+    always_put_control_body_on_new_line: true
+    avoid_init_to_null: true
+    avoid_multiple_declarations_per_line: true
+    avoid_unused_constructor_parameters: true
+    camel_case_types: true
+    constant_identifier_names: true
+    curly_braces_in_flow_control_structures: true
+    directives_ordering: true
+    empty_catches: true
+    empty_constructor_bodies: true
+    library_names: true
+    library_prefixes: true
+    no_duplicate_case_values: true
+    null_closures: true
+    omit_local_variable_types: true
+    prefer_adjacent_string_concatenation: true
+    prefer_collection_literals: true
+    prefer_conditional_assignment: true
+    prefer_const_constructors: true
+    prefer_const_constructors_in_immutables: true
+    prefer_const_declarations: true
+    prefer_contains: true
+    prefer_equal_for_default_values: true
+    prefer_final_fields: true
+    prefer_final_locals: true
+    prefer_for_elements_to_map_fromIterable: true
+    prefer_generic_function_type_aliases: true
+    prefer_if_null_operators: true
+    prefer_is_empty: true
+    prefer_is_not_empty: true
+    prefer_iterable_whereType: true
+    prefer_single_quotes: true
+    prefer_spread_collections: true
+    recursive_getters: true
+    slash_for_doc_comments: true
+    type_init_formals: true
+    unnecessary_const: true
+    unnecessary_new: true
+    unnecessary_null_in_if_null_operators: true
+    unnecessary_this: true
+    use_function_type_syntax_for_parameters: true
+    use_rethrow_when_possible: true
+    valid_regexps: true
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+  errors:
+    invalid_annotation_target: ignore

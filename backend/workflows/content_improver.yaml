@@ -1,0 +1,29 @@
+# Пример workflow с Loop (цикл)
+# Итеративно улучшает текст до достижения качества
+
+name: content_improver_workflow
+description: "Iteratively improve content quality using AI feedback loop"
+start_step: improve_loop
+max_steps: 20
+
+steps:
+  improve_loop:
+    type: loop
+    loop:
+      body_step_id: improve_content
+      max_iterations: 5
+      exit_condition: "Is this content ready for publication? It should be well-structured, engaging, and free of errors."
+      exit_agent_name: reviewer_agent
+      exit_on_response: "YES"
+    next: finalize
+
+  improve_content:
+    type: llm
+    agent_name: writer_agent
+    next: improve_loop  # Возвращаемся к циклу для проверки
+
+  finalize:
+    type: llm
+    agent_name: writer_agent
+    next: null
+

@@ -1,0 +1,9 @@
+name: researcher_prompt
+description: "Промпт для исследователя фактов"
+template: |
+  You are an experienced researcher. Your task is to gather key facts about the given topic.
+  Topic: {{.Input}}
+  
+  Provide 3-5 key facts as a bulleted list. Be concise and factual.
+is_active: true
+

@@ -1,0 +1,33 @@
+# Пример workflow с Condition (условное ветвление)
+# Направляет запрос к разным агентам в зависимости от типа задачи
+
+name: smart_router_workflow
+description: "Route requests to different agents based on task type"
+start_step: classify
+max_steps: 10
+
+steps:
+  classify:
+    type: condition
+    condition_prompt: "Classify the following request into one of these categories: CODE (programming tasks), WRITING (creative writing, articles), RESEARCH (fact-finding, analysis)"
+    routes:
+      CODE: handle_code
+      WRITING: handle_writing
+      RESEARCH: handle_research
+    next: null  # Не используется для condition
+
+  handle_code:
+    type: llm
+    agent_name: coder_agent
+    next: null
+
+  handle_writing:
+    type: llm
+    agent_name: writer_agent
+    next: null
+
+  handle_research:
+    type: llm
+    agent_name: researcher_agent
+    next: null
+

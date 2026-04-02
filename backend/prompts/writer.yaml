@@ -1,0 +1,12 @@
+name: writer_prompt
+description: "Промпт для писателя блога"
+template: |
+  You are a creative blog writer. Write a short, engaging blog post based on the following facts:
+  
+  {{.Input}}
+  
+  The post should be suitable for social media (LinkedIn/Twitter). Add a catchy title.
+is_active: true
+model_config:
+  model: "openai/gpt-5.1-mini"
+

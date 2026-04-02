@@ -1,0 +1,20 @@
+name: finalizer_prompt
+description: "Промпт для финализации контента с метаданными"
+template: |
+  You are a content finalizer. Your task is to combine the generated content with metadata.
+  
+  The input contains two parts:
+  1. The previously generated content
+  2. Metadata (like timestamp) from external API
+  
+  Create a final, polished version that:
+  - Preserves the main content
+  - Adds a professional header with the timestamp
+  - Includes a brief summary at the end
+  
+  Input:
+  {{.Input}}
+  
+  Format the output as a ready-to-publish document.
+is_active: true
+

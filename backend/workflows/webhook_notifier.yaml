@@ -1,0 +1,31 @@
+# Пример workflow с API Call для отправки данных
+# Генерирует контент и отправляет результат через webhook
+
+name: webhook_notifier_workflow
+description: "Generate content and send to webhook"
+start_step: generate
+max_steps: 10
+
+steps:
+  generate:
+    type: llm
+    agent_name: writer_agent
+    next: notify
+
+  notify:
+    type: api_call
+    api_call:
+      method: POST
+      url: "https://webhook.site/your-webhook-id"
+      headers:
+        Content-Type: "application/json"
+        X-Custom-Header: "workflow-result"
+      body_template: |
+        {
+          "content": "{{.Input}}",
+          "timestamp": "{{now}}",
+          "source": "ai-workflow"
+        }
+      timeout_sec: 10
+    next: null
+
