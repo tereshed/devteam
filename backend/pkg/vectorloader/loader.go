@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/pkg/vectordb"
-	"github.com/wibe-flutter-gin-template/backend/pkg/vectordb/strategy"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/vectordb"
+	"github.com/devteam/backend/pkg/vectordb/strategy"
 )
 
 // VectorRepository определяет интерфейс для работы с векторной БД

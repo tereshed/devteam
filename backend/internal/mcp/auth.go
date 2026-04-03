@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/internal/service"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/service"
 )
 
 // --- Context keys ---

@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/internal/repository"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"gopkg.in/yaml.v3"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -125,7 +125,7 @@ func (l *Loader) loadAgent(ctx context.Context, path string) error {
 
 	agent := &models.Agent{
 		Name:        cfg.Name,
-		Role:        cfg.Role,
+		Role:        models.AgentRole(cfg.Role),
 		PromptID:    &prompt.ID,
 		ModelConfig: datatypes.JSON(modelConfigJSON),
 		IsActive:    cfg.IsActive,

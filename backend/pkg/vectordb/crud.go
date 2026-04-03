@@ -9,7 +9,7 @@ import (
 	"github.com/weaviate/weaviate-go-client/v4/weaviate/filters"
 	"github.com/weaviate/weaviate-go-client/v4/weaviate/graphql"
 	weaviateModels "github.com/weaviate/weaviate/entities/models"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
+	"github.com/devteam/backend/internal/models"
 )
 
 // Create создает документ в векторной базе

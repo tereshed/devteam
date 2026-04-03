@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/pkg/password"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/password"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )

@@ -3,8 +3,8 @@ package llm_test
 import (
 	"testing"
 
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm/factory"
+	"github.com/devteam/backend/pkg/llm"
+	"github.com/devteam/backend/pkg/llm/factory"
 )
 
 func TestFactory(t *testing.T) {

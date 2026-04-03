@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wibe-flutter-gin-template/backend/internal/config"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/internal/repository"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm/factory"
+	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/llm"
+	"github.com/devteam/backend/pkg/llm/factory"
 )
 
 // LLMService defines the interface for LLM operations

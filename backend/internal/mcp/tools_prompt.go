@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/internal/service"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/service"
 )
 
 // maxPromptNameLength — разумный лимит длины имени промпта для валидации входных параметров.

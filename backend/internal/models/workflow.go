@@ -7,17 +7,71 @@ import (
 	"gorm.io/datatypes"
 )
 
+// AgentRole роль AI-агента в команде
+type AgentRole string
+
+const (
+	AgentRoleWorker       AgentRole = "worker"
+	AgentRoleSupervisor   AgentRole = "supervisor"
+	AgentRoleOrchestrator AgentRole = "orchestrator"
+	AgentRolePlanner      AgentRole = "planner"
+	AgentRoleDeveloper    AgentRole = "developer"
+	AgentRoleReviewer     AgentRole = "reviewer"
+	AgentRoleTester       AgentRole = "tester"
+	AgentRoleDevOps       AgentRole = "devops"
+)
+
+// IsValid проверяет валидность роли агента
+func (r AgentRole) IsValid() bool {
+	switch r {
+	case AgentRoleWorker, AgentRoleSupervisor, AgentRoleOrchestrator,
+		AgentRolePlanner, AgentRoleDeveloper, AgentRoleReviewer,
+		AgentRoleTester, AgentRoleDevOps:
+		return true
+	default:
+		return false
+	}
+}
+
+// CodeBackend тип бэкенда для написания кода
+type CodeBackend string
+
+const (
+	CodeBackendClaudeCode CodeBackend = "claude-code"
+	CodeBackendAider      CodeBackend = "aider"
+	CodeBackendCustom     CodeBackend = "custom"
+)
+
+// IsValid проверяет валидность code backend
+func (cb CodeBackend) IsValid() bool {
+	switch cb {
+	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendCustom:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent представляет AI-агента
 type Agent struct {
-	ID          uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	Name        string         `gorm:"not null"`
-	Role        string         `gorm:"not null"` // 'worker', 'supervisor'
-	PromptID    *uuid.UUID     `gorm:"type:uuid"`
-	Prompt      *Prompt        `gorm:"foreignKey:PromptID"`
-	ModelConfig datatypes.JSON `gorm:"type:jsonb"` // { "temperature": 0.7, "model": "gpt-4" }
-	IsActive    bool           `gorm:"default:true"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name        string         `gorm:"type:varchar(255);not null" json:"name"`
+	Role        AgentRole      `gorm:"type:varchar(50);not null" json:"role"`
+	TeamID      *uuid.UUID     `gorm:"type:uuid" json:"team_id"`
+	Team        *Team          `gorm:"foreignKey:TeamID" json:"team,omitempty"`
+	Model       *string        `gorm:"type:varchar(255)" json:"model"`
+	PromptID    *uuid.UUID     `gorm:"type:uuid" json:"prompt_id"`
+	Prompt      *Prompt        `gorm:"foreignKey:PromptID" json:"prompt,omitempty"`
+	Skills      datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"skills"`
+	CodeBackend *CodeBackend   `gorm:"type:varchar(50)" json:"code_backend"`
+	Settings    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
+	ModelConfig datatypes.JSON `gorm:"type:jsonb" json:"model_config"`
+	IsActive    bool           `gorm:"default:true" json:"is_active"`
+	CreatedAt   time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
+	UpdatedAt   time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
+
+	ToolBindings []AgentToolBinding `gorm:"foreignKey:AgentID" json:"tool_bindings,omitempty"`
+	MCPBindings  []AgentMCPBinding  `gorm:"foreignKey:AgentID" json:"mcp_bindings,omitempty"`
 }
 
 // Workflow представляет шаблон процесса

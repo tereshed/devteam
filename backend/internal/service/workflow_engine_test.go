@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/llm"
 	"gorm.io/datatypes"
 )
 

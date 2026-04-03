@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/internal/repository"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 )
 
 type Scheduler interface {

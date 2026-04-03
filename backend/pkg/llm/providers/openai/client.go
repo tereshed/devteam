@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
+	"github.com/devteam/backend/pkg/llm"
 )
 
 type Client struct {

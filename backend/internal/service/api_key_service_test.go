@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/internal/repository"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 )
 
 // MockApiKeyRepository мок для ApiKeyRepository

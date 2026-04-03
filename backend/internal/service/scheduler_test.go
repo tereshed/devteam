@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
+	"github.com/devteam/backend/internal/models"
 )
 
 // MockWorkflowEngine for scheduler tests

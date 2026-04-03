@@ -7,9 +7,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wibe-flutter-gin-template/backend/internal/config"
-	"github.com/wibe-flutter-gin-template/backend/internal/service"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
+	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/pkg/llm"
 )
 
 // --- Провайдеры ---

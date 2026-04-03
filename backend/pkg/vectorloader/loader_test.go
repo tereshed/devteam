@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/pkg/vectordb"
-	"github.com/wibe-flutter-gin-template/backend/pkg/vectordb/strategy"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/vectordb"
+	"github.com/devteam/backend/pkg/vectordb/strategy"
 )
 
 // ========================================

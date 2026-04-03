@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/pkg/vectordb"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/vectordb"
 )
 
 var (

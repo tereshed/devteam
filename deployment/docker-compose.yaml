@@ -12,7 +12,7 @@ services:
     ports:
       - "5433:5433"   # YSQL (PostgreSQL-compatible)
       - "15000:7000"  # YugabyteDB Admin UI
-      - "9000:9000"   # YCQL (Cassandra-compatible, optional)
+      - "9042:9042"   # YCQL (Cassandra-compatible, optional)
     volumes:
       - yugabyte_data:/home/yugabyte/yb_data
     healthcheck:

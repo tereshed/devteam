@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/wibe-flutter-gin-template/backend/internal/handler/dto"
-	"github.com/wibe-flutter-gin-template/backend/internal/service"
-	"github.com/wibe-flutter-gin-template/backend/pkg/apierror"
+	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/pkg/apierror"
 )
 
 // AuthHandler обрабатывает HTTP запросы для авторизации

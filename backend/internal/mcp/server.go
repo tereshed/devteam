@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wibe-flutter-gin-template/backend/internal/config"
-	"github.com/wibe-flutter-gin-template/backend/internal/service"
+	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/service"
 )
 
 // Dependencies содержит зависимости MCP-сервера

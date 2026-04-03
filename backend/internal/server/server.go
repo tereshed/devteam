@@ -10,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"github.com/wibe-flutter-gin-template/backend/internal/handler"
-	"github.com/wibe-flutter-gin-template/backend/internal/middleware"
-	"github.com/wibe-flutter-gin-template/backend/internal/service"
-	"github.com/wibe-flutter-gin-template/backend/pkg/jwt"
+	"github.com/devteam/backend/internal/handler"
+	"github.com/devteam/backend/internal/middleware"
+	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/pkg/jwt"
 	"gorm.io/gorm"
 )
 

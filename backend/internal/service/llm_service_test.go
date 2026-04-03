@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/llm"
 )
 
 // MockProvider is a mock implementation of llm.Provider

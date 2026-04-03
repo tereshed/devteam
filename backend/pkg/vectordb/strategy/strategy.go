@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
+	"github.com/devteam/backend/internal/models"
 )
 
 // PreparationStrategy определяет интерфейс для подготовки контента к векторизации

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
+	"github.com/devteam/backend/internal/models"
 	"gorm.io/gorm"
 )
 

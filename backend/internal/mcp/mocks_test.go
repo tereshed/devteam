@@ -5,10 +5,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
-	"github.com/wibe-flutter-gin-template/backend/internal/config"
-	"github.com/wibe-flutter-gin-template/backend/internal/handler/dto"
-	"github.com/wibe-flutter-gin-template/backend/internal/models"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
+	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/llm"
 )
 
 // --- Shared test helpers ---

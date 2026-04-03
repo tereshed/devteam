@@ -3,12 +3,12 @@ package factory
 import (
 	"fmt"
 
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm/providers/anthropic"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm/providers/deepseek"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm/providers/gemini"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm/providers/openai"
-	"github.com/wibe-flutter-gin-template/backend/pkg/llm/providers/qwen"
+	"github.com/devteam/backend/pkg/llm"
+	"github.com/devteam/backend/pkg/llm/providers/anthropic"
+	"github.com/devteam/backend/pkg/llm/providers/deepseek"
+	"github.com/devteam/backend/pkg/llm/providers/gemini"
+	"github.com/devteam/backend/pkg/llm/providers/openai"
+	"github.com/devteam/backend/pkg/llm/providers/qwen"
 )
 
 // Factory creates LLM providers

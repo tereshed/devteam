@@ -1,4 +1,4 @@
-module github.com/wibe-flutter-gin-template/backend
+module github.com/devteam/backend
 
 go 1.25
 

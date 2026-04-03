@@ -1,6 +1,6 @@
 package vectordb
 
-import "github.com/wibe-flutter-gin-template/backend/internal/models"
+import "github.com/devteam/backend/internal/models"
 
 // Config содержит конфигурацию для подключения к Weaviate
 type Config struct {

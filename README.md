@@ -1,293 +1,450 @@
-# Wibe Flutter + Gin Template
+# DevTeam — AI Agent Orchestrator
 
-Шаблон full-stack приложения: **Flutter** (Web/Android/iOS) + **Gin** (Go) + **YugabyteDB** + **Weaviate**.
+Платформа-оркестратор AI-агентов для автоматизации полного цикла разработки ПО. Пользователь описывает идею в чате — команда AI-агентов реализует: планирует, пишет код, ревьюит, тестирует.
 
-Включает систему аутентификации, RBAC-авторизацию, движок воркфлоу с LLM-интеграцией, вебхуки и планировщик задач.
+**Стек:** Go (Gin) · Flutter · YugabyteDB · Weaviate · Docker · Claude Code CLI / Aider
 
 ---
 
-## Стек технологий
+## Архитектура
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Flutter UI (Chat)                        │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ WebSocket + REST
+┌──────────────────────────────▼──────────────────────────────────┐
+│                      Go Backend (Gin)                           │
+│                                                                 │
+│  ┌─────────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐  │
+│  │ Orchestrator│  │ Planner  │  │ Reviewer  │  │   Tester    │  │
+│  │   Agent     │  │  Agent   │  │  Agent    │  │   Agent     │  │
+│  └──────┬──────┘  └────┬─────┘  └─────┬────┘  └──────┬──────┘  │
+│         │              │              │               │         │
+│         └──────────────┴──────┬───────┴───────────────┘         │
+│                               │                                 │
+│                    ┌──────────▼──────────┐                      │
+│                    │   Sandbox Runner    │                      │
+│                    │  (Docker API)       │                      │
+│                    └──────────┬──────────┘                      │
+│                               │                                 │
+│  ┌──────────┐  ┌──────────┐  │  ┌──────────┐  ┌─────────────┐  │
+│  │YugabyteDB│  │ Weaviate │  │  │ Git      │  │ MCP Server  │  │
+│  │  (SQL)   │  │ (Vector) │  │  │ Provider │  │ (port 8081) │  │
+│  └──────────┘  └──────────┘  │  └──────────┘  └─────────────┘  │
+└──────────────────────────────┼──────────────────────────────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+        ┌──────────┐    ┌──────────┐    ┌──────────┐
+        │ Sandbox  │    │ Sandbox  │    │ Sandbox  │
+        │ Claude   │    │ Aider    │    │ Claude   │
+        │ Code CLI │    │          │    │ Code CLI │
+        └──────────┘    └──────────┘    └──────────┘
+        Изолированные Docker-контейнеры (1 задача = 1 контейнер)
+```
+
+---
+
+## Детальный план реализации
+
+### Sprint 1 — Новые модели данных и миграции (Backend)
+
+**Цель:** Создать схему БД для всех новых сущностей.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 1.1 | Миграция: таблицы `git_credentials` + `projects` (одна миграция, FK связь) | `014_create_projects.sql` | ✅ | [детали](docs/tasks/1.1-migration-projects.md) |
+| 1.2 | Миграция: таблица `teams` | `015_create_teams.sql` | ✅ | [детали](docs/tasks/1.2-migration-teams.md) |
+| 1.3 | Миграция: обновление таблицы `agents` + таблицы `tool_definitions`, `agent_tool_bindings`, `mcp_server_configs`, `agent_mcp_bindings` | `016_alter_agents.sql` | ✅ | [детали](docs/tasks/1.3-migration-alter-agents.md) |
+| 1.4 | Миграция: таблица `tasks` (со всеми статусами, связями, артефактами) | `017_create_tasks.sql` | ⬜ |
+| 1.5 | Миграция: таблица `task_messages` | `018_create_task_messages.sql` | ⬜ |
+| 1.6 | Миграция: таблица `conversations` + `conversation_messages` | `019_create_conversations.sql` | ⬜ |
+| 1.7 | Go-модели для всех новых сущностей | `models/project.go`, `team.go`, `task.go`, `conversation.go`, `git_credential.go` | ⬜ |
+| 1.8 | Тест: UP → DOWN → UP для всех миграций | `make migrate-up && make migrate-down && make migrate-up` | ⬜ |
+
+**Зависимости:** Нет (можно начинать сразу)
+
+---
+
+### Sprint 2 — CRUD API для Project и Team (Backend)
+
+**Цель:** API для управления проектами и командами.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 2.1 | Repository: `ProjectRepository` (CRUD + список с пагинацией) | `backend/internal/repository/project_repository.go` | ⬜ |
+| 2.2 | Repository: `TeamRepository` | `backend/internal/repository/team_repository.go` | ⬜ |
+| 2.3 | Repository: `GitCredentialRepository` | `backend/internal/repository/git_credential_repository.go` | ⬜ |
+| 2.4 | Service: `ProjectService` (создание проекта + автоматическое создание команды + шифрование credentials) | `backend/internal/service/project_service.go` | ⬜ |
+| 2.5 | DTO: request/response структуры для проектов | `backend/internal/handler/dto/project_dto.go` | ⬜ |
+| 2.6 | Handler: `ProjectHandler` (POST/GET/PUT/DELETE /projects) | `backend/internal/handler/project_handler.go` | ⬜ |
+| 2.7 | Handler: настройка команды (`GET/PUT /projects/:id/team`) | `backend/internal/handler/team_handler.go` | ⬜ |
+| 2.8 | Роуты: регистрация в `server.go` | `backend/internal/server/server.go` | ⬜ |
+| 2.9 | Swagger-аннотации для всех новых эндпоинтов | В каждом handler | ⬜ |
+| 2.10 | Unit-тесты: ProjectService | `backend/internal/service/project_service_test.go` | ⬜ |
+| 2.11 | MCP-инструменты: `project_list`, `project_get`, `project_create` | `backend/internal/mcp/tools_project.go` | ⬜ |
+
+**API эндпоинты:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/api/v1/projects` | Создать проект |
+| GET | `/api/v1/projects` | Список проектов |
+| GET | `/api/v1/projects/:id` | Получить проект |
+| PUT | `/api/v1/projects/:id` | Обновить проект |
+| DELETE | `/api/v1/projects/:id` | Удалить проект |
+| GET | `/api/v1/projects/:id/team` | Получить команду проекта |
+| PUT | `/api/v1/projects/:id/team` | Обновить команду (агенты, роли) |
+
+**Зависимости:** Sprint 1
+
+---
+
+### Sprint 3 — CRUD API для Tasks (Backend)
+
+**Цель:** API для управления задачами и их жизненным циклом.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 3.1 | Repository: `TaskRepository` (CRUD + фильтрация по project/status/agent + пагинация) | `backend/internal/repository/task_repository.go` | ⬜ |
+| 3.2 | Repository: `TaskMessageRepository` | `backend/internal/repository/task_message_repository.go` | ⬜ |
+| 3.3 | Service: `TaskService` (создание, смена статуса, назначение агента, валидация переходов) | `backend/internal/service/task_service.go` | ⬜ |
+| 3.4 | DTO: request/response для задач | `backend/internal/handler/dto/task_dto.go` | ⬜ |
+| 3.5 | Handler: `TaskHandler` | `backend/internal/handler/task_handler.go` | ⬜ |
+| 3.6 | Валидация: state machine для статусов задач (допустимые переходы) | В `TaskService` | ⬜ |
+| 3.7 | Swagger-аннотации | В handler | ⬜ |
+| 3.8 | Unit-тесты: TaskService (особенно переходы статусов) | `backend/internal/service/task_service_test.go` | ⬜ |
+| 3.9 | MCP-инструменты: `task_list`, `task_get`, `task_create`, `task_update` | `backend/internal/mcp/tools_task.go` | ⬜ |
+
+**API эндпоинты:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/api/v1/projects/:id/tasks` | Создать задачу |
+| GET | `/api/v1/projects/:id/tasks` | Список задач (фильтры: status, agent, priority) |
+| GET | `/api/v1/tasks/:id` | Получить задачу |
+| PUT | `/api/v1/tasks/:id` | Обновить задачу |
+| POST | `/api/v1/tasks/:id/pause` | Приостановить задачу |
+| POST | `/api/v1/tasks/:id/cancel` | Отменить задачу |
+| POST | `/api/v1/tasks/:id/resume` | Возобновить задачу |
+| GET | `/api/v1/tasks/:id/messages` | Сообщения задачи |
+| POST | `/api/v1/tasks/:id/messages` | Добавить сообщение (пользовательская коррекция) |
+
+**Зависимости:** Sprint 1
+
+---
+
+### Sprint 4 — Git Provider Integration (Backend)
+
+**Цель:** Абстракция для работы с GitHub/GitLab/Bitbucket, клонирование репозиториев.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 4.1 | Интерфейс `GitProvider` | `backend/pkg/gitprovider/provider.go` | ⬜ |
+| 4.2 | Типы: `CloneOptions`, `PROptions`, `PullRequest`, `Issue` и т.д. | `backend/pkg/gitprovider/types.go` | ⬜ |
+| 4.3 | Реализация: `GitHubProvider` (REST API v3 + go-github) | `backend/pkg/gitprovider/github.go` | ⬜ |
+| 4.4 | Реализация: `LocalGitProvider` (git CLI через exec) | `backend/pkg/gitprovider/local.go` | ⬜ |
+| 4.5 | Фабрика: `NewGitProvider(providerType, credentials)` | `backend/pkg/gitprovider/factory.go` | ⬜ |
+| 4.6 | Service: интеграция GitProvider в `ProjectService` (clone при создании проекта) | `backend/internal/service/project_service.go` | ⬜ |
+| 4.7 | Шифрование credentials (AES-256-GCM) | `backend/pkg/crypto/encrypt.go` | ⬜ |
+| 4.8 | Unit-тесты: GitHubProvider (с моками HTTP) | `backend/pkg/gitprovider/github_test.go` | ⬜ |
+| 4.9 | Unit-тесты: LocalGitProvider | `backend/pkg/gitprovider/local_test.go` | ⬜ |
+
+**Зависимости:** Sprint 2
+
+---
+
+### Sprint 5 — Sandbox Runner (Backend, Docker)
+
+**Цель:** Запуск задач в изолированных Docker-контейнерах.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 5.1 | Dockerfile: `devteam/sandbox-claude` (Node.js + Claude Code CLI + git) | `deployment/sandbox/claude/Dockerfile` | ⬜ |
+| 5.2 | Entrypoint-скрипт sandbox (clone → branch → agent → diff → result) | `deployment/sandbox/claude/entrypoint.sh` | ⬜ |
+| 5.3 | Интерфейс `SandboxRunner` | `backend/internal/sandbox/runner.go` | ⬜ |
+| 5.4 | Типы: `SandboxOptions`, `SandboxStatus`, `CodeResult`, `ResourceLimit` | `backend/internal/sandbox/types.go` | ⬜ |
+| 5.5 | Реализация: `DockerSandboxRunner` (Docker SDK для Go) | `backend/internal/sandbox/docker_runner.go` | ⬜ |
+| 5.6 | Стрим логов из контейнера (`docker.ContainerLogs` → channel) | В `docker_runner.go` | ⬜ |
+| 5.7 | Сбор результата (`docker.CopyFromContainer` → parse result.json + diff) | В `docker_runner.go` | ⬜ |
+| 5.8 | Таймаут и принудительная остановка | В `docker_runner.go` | ⬜ |
+| 5.9 | Resource limits (CPU, Memory) при создании контейнера | В `docker_runner.go` | ⬜ |
+| 5.10 | Конфигурация: `SandboxConfig` в `config.go` | `backend/internal/config/config.go` | ⬜ |
+| 5.11 | docker-compose: монтирование `/var/run/docker.sock` | `deployment/docker-compose.yaml` | ⬜ |
+| 5.12 | Makefile: `sandbox-build` (сборка sandbox-образов) | `Makefile` | ⬜ |
+| 5.13 | Unit-тесты: DockerSandboxRunner (с мок Docker Client) | `backend/internal/sandbox/docker_runner_test.go` | ⬜ |
+| 5.14 | Интеграционный тест: запуск реального контейнера с простой задачей | `backend/internal/sandbox/integration_test.go` | ⬜ |
+
+**Зависимости:** Sprint 1
+
+---
+
+### Sprint 6 — Orchestrator Agent (Backend)
+
+**Цель:** Базовый оркестратор — принимает запрос от пользователя, создаёт задачи, управляет pipeline.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 6.1 | Интерфейс `AgentExecutor` (запуск агента с задачей) | `backend/internal/agent/executor.go` | ⬜ |
+| 6.2 | Реализация: `LLMAgentExecutor` (вызов LLM с промптом + tools) | `backend/internal/agent/llm_executor.go` | ⬜ |
+| 6.3 | Реализация: `SandboxAgentExecutor` (запуск sandbox-контейнера для Developer) | `backend/internal/agent/sandbox_executor.go` | ⬜ |
+| 6.4 | Orchestrator: `OrchestratorService` — основной цикл управления | `backend/internal/service/orchestrator_service.go` | ⬜ |
+| 6.5 | Pipeline: линейный поток `Plan → Develop → Review → Test` | В `OrchestratorService` | ⬜ |
+| 6.6 | Обработка результатов: `completed` → следующий шаг, `changes_requested` → назад к Developer | В `OrchestratorService` | ⬜ |
+| 6.7 | Обработка пользовательских команд: `pause`, `cancel`, `resume`, `correct` | В `OrchestratorService` | ⬜ |
+| 6.8 | Промпты агентов: Orchestrator, Planner, Developer, Reviewer, Tester | `backend/prompts/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ |
+| 6.9 | Агенты по умолчанию (YAML-конфиг) | `backend/agents/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ |
+| 6.10 | Unit-тесты: OrchestratorService (полный pipeline, ретраи, отмена) | `backend/internal/service/orchestrator_service_test.go` | ⬜ |
+
+**Pipeline (линейный MVP):**
+```
+User Message
+    → Orchestrator (LLM: анализ запроса)
+        → Planner (LLM: декомпозиция задачи)
+            → Developer (Sandbox: Claude Code CLI)
+                → Reviewer (LLM: ревью diff)
+                    → [если changes_requested → Developer]
+                    → Tester (Sandbox: запуск тестов)
+                        → [если failed → Developer]
+                        → Completed
+```
+
+**Зависимости:** Sprint 3, Sprint 5
+
+---
+
+### Sprint 7 — WebSocket и Реалтайм (Backend)
+
+**Цель:** Стриминг статусов задач и логов агентов в реальном времени.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 7.1 | WebSocket Hub: менеджер подключений (по project_id) | `backend/internal/ws/hub.go` | ⬜ |
+| 7.2 | WebSocket Handler: upgrade HTTP → WS, аутентификация через JWT | `backend/internal/ws/handler.go` | ⬜ |
+| 7.3 | Типы сообщений: `task_status`, `task_message`, `agent_log`, `error` | `backend/internal/ws/types.go` | ⬜ |
+| 7.4 | Event Bus: внутренний pub/sub для уведомлений между сервисами | `backend/internal/ws/eventbus.go` | ⬜ |
+| 7.5 | Интеграция: TaskService → EventBus при изменении статуса | `backend/internal/service/task_service.go` | ⬜ |
+| 7.6 | Интеграция: SandboxRunner → EventBus для стриминга логов | `backend/internal/sandbox/docker_runner.go` | ⬜ |
+| 7.7 | Роут: `GET /api/v1/projects/:id/ws` (WebSocket) | `backend/internal/server/server.go` | ⬜ |
+| 7.8 | Unit-тесты: WebSocket Hub | `backend/internal/ws/hub_test.go` | ⬜ |
+
+**Зависимости:** Sprint 3, Sprint 6
+
+---
+
+### Sprint 8 — Conversation API (Backend)
+
+**Цель:** API для чатов пользователя с оркестратором.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 8.1 | Repository: `ConversationRepository` | `backend/internal/repository/conversation_repository.go` | ⬜ |
+| 8.2 | Repository: `ConversationMessageRepository` | `backend/internal/repository/conversation_message_repository.go` | ⬜ |
+| 8.3 | Service: `ConversationService` (создание, отправка сообщения → Orchestrator, получение истории) | `backend/internal/service/conversation_service.go` | ⬜ |
+| 8.4 | Handler: `ConversationHandler` | `backend/internal/handler/conversation_handler.go` | ⬜ |
+| 8.5 | Связка: `ConversationService` → `OrchestratorService` (новое сообщение запускает обработку) | Интеграция | ⬜ |
+| 8.6 | Swagger-аннотации | В handler | ⬜ |
+| 8.7 | Unit-тесты | `backend/internal/service/conversation_service_test.go` | ⬜ |
+
+**API эндпоинты:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/api/v1/projects/:id/conversations` | Создать разговор |
+| GET | `/api/v1/projects/:id/conversations` | Список разговоров |
+| GET | `/api/v1/conversations/:id` | Получить разговор с сообщениями |
+| POST | `/api/v1/conversations/:id/messages` | Отправить сообщение (триггерит Orchestrator) |
+| DELETE | `/api/v1/conversations/:id` | Удалить разговор |
+
+**Зависимости:** Sprint 6, Sprint 7
+
+---
+
+### Sprint 9 — Векторная индексация проекта (Backend)
+
+**Цель:** Индексация кода, задач и чатов проекта в Weaviate для контекстного поиска.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 9.1 | Коллекция Weaviate per project: `DevTeam_Project_{id}` | Конфигурация в `vectordb` | ⬜ |
+| 9.2 | Индексатор кода: чанкинг файлов (по файлам для малых, по функциям для больших) | `backend/internal/indexer/code_indexer.go` | ⬜ |
+| 9.3 | Индексатор задач: описание + результат + сообщения | `backend/internal/indexer/task_indexer.go` | ⬜ |
+| 9.4 | Индексатор чатов: сообщения пользователя и ассистента | `backend/internal/indexer/conversation_indexer.go` | ⬜ |
+| 9.5 | Service: `IndexerService` (полная индексация проекта, инкрементальное обновление) | `backend/internal/service/indexer_service.go` | ⬜ |
+| 9.6 | Хук: индексация кода при создании проекта (после clone) | В `ProjectService` | ⬜ |
+| 9.7 | Хук: индексация задачи при создании/обновлении | В `TaskService` | ⬜ |
+| 9.8 | Хук: индексация сообщения при создании | В `ConversationService` | ⬜ |
+| 9.9 | API: `POST /api/v1/projects/:id/reindex` (полная переиндексация) | Handler + Service | ⬜ |
+| 9.10 | Контекстный поиск: `SearchContext(projectID, query)` → релевантные чанки | В `IndexerService` | ⬜ |
+| 9.11 | Интеграция с Orchestrator: перед запуском агента — vector search для контекста | В `OrchestratorService` | ⬜ |
+| 9.12 | Unit-тесты | `backend/internal/service/indexer_service_test.go` | ⬜ |
+
+**Зависимости:** Sprint 2, Sprint 3, Sprint 8
+
+---
+
+### Sprint 10 — Frontend: Проекты и навигация (Flutter)
+
+**Цель:** Базовый UI — список проектов, создание проекта, навигация.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 10.1 | Модели (Freezed): `ProjectModel`, `TeamModel`, `AgentModel` | `frontend/lib/features/projects/domain/` | ⬜ |
+| 10.2 | Repository: `ProjectRepository` (Dio → backend API) | `frontend/lib/features/projects/data/project_repository.dart` | ⬜ |
+| 10.3 | Providers: `projectListProvider`, `projectProvider` | `frontend/lib/features/projects/data/project_providers.dart` | ⬜ |
+| 10.4 | Экран: Список проектов (карточки, статусы, поиск) | `frontend/lib/features/projects/presentation/screens/projects_list_screen.dart` | ⬜ |
+| 10.5 | Экран: Создание проекта (форма: имя, описание, git URL, провайдер) | `frontend/lib/features/projects/presentation/screens/create_project_screen.dart` | ⬜ |
+| 10.6 | Экран: Дашборд проекта (hub → чат, задачи, команда, настройки) | `frontend/lib/features/projects/presentation/screens/project_dashboard_screen.dart` | ⬜ |
+| 10.7 | Обновить GoRouter: новые роуты `/projects`, `/projects/:id`, `/projects/:id/*` | `frontend/lib/core/routing/app_router.dart` | ⬜ |
+| 10.8 | Локализация: новые строки (ru, en) | `frontend/lib/l10n/app_ru.arb`, `app_en.arb` | ⬜ |
+| 10.9 | Widget-тесты: ProjectCard, CreateProjectForm | `frontend/test/features/projects/` | ⬜ |
+
+**Зависимости:** Sprint 2
+
+---
+
+### Sprint 11 — Frontend: Чат (Flutter)
+
+**Цель:** Основной интерфейс — чат с оркестратором, live-обновления.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 11.1 | Модели (Freezed): `ConversationModel`, `ConversationMessageModel` | `frontend/lib/features/chat/domain/` | ⬜ |
+| 11.2 | WebSocket Service: подключение, реконнект, парсинг событий | `frontend/lib/core/api/websocket_service.dart` | ⬜ |
+| 11.3 | Repository: `ConversationRepository` | `frontend/lib/features/chat/data/conversation_repository.dart` | ⬜ |
+| 11.4 | Controller: `ChatController` (AsyncNotifier — загрузка, отправка, стрим) | `frontend/lib/features/chat/presentation/controllers/chat_controller.dart` | ⬜ |
+| 11.5 | Экран: Чат (список сообщений, поле ввода, отправка) | `frontend/lib/features/chat/presentation/screens/chat_screen.dart` | ⬜ |
+| 11.6 | Виджет: `ChatMessage` (user/assistant/system, markdown, код, стримящийся текст) | `frontend/lib/features/chat/presentation/widgets/chat_message.dart` | ⬜ |
+| 11.7 | Виджет: `TaskStatusCard` (встроенная карточка статуса задачи в чате) | `frontend/lib/features/chat/presentation/widgets/task_status_card.dart` | ⬜ |
+| 11.8 | Виджет: `ChatInput` (текстовое поле + кнопки: отправить, стоп, attach) | `frontend/lib/features/chat/presentation/widgets/chat_input.dart` | ⬜ |
+| 11.9 | Реалтайм: подписка на WebSocket → обновление UI при новых сообщениях/статусах | В `ChatController` | ⬜ |
+| 11.10 | Локализация | `.arb` файлы | ⬜ |
+| 11.11 | Widget-тесты | `frontend/test/features/chat/` | ⬜ |
+
+**Зависимости:** Sprint 7, Sprint 8, Sprint 10
+
+---
+
+### Sprint 12 — Frontend: Задачи (Flutter)
+
+**Цель:** UI для просмотра задач, их статусов, деталей и логов агентов.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 12.1 | Модели (Freezed): `TaskModel`, `TaskMessageModel` | `frontend/lib/features/tasks/domain/` | ⬜ |
+| 12.2 | Repository: `TaskRepository` | `frontend/lib/features/tasks/data/task_repository.dart` | ⬜ |
+| 12.3 | Controller: `TaskListController`, `TaskDetailController` | `frontend/lib/features/tasks/presentation/controllers/` | ⬜ |
+| 12.4 | Экран: Список задач (Kanban-доска по статусам или таблица) | `frontend/lib/features/tasks/presentation/screens/tasks_list_screen.dart` | ⬜ |
+| 12.5 | Экран: Детали задачи (статус, описание, лог агентов, diff, результат) | `frontend/lib/features/tasks/presentation/screens/task_detail_screen.dart` | ⬜ |
+| 12.6 | Виджет: `TaskCard` (статус, приоритет, агент, время) | `frontend/lib/features/tasks/presentation/widgets/task_card.dart` | ⬜ |
+| 12.7 | Виджет: `DiffViewer` (отображение git diff с подсветкой) | `frontend/lib/shared/widgets/diff_viewer.dart` | ⬜ |
+| 12.8 | Действия: кнопки Pause/Cancel/Resume на задаче | В `TaskDetailScreen` | ⬜ |
+| 12.9 | Реалтайм: обновление статусов задач через WebSocket | В controllers | ⬜ |
+| 12.10 | Widget-тесты | `frontend/test/features/tasks/` | ⬜ |
+
+**Зависимости:** Sprint 3, Sprint 10, Sprint 11
+
+---
+
+### Sprint 13 — Frontend: Настройки команды и проекта (Flutter)
+
+**Цель:** UI для управления агентами команды и настройками проекта.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 13.1 | Экран: Команда проекта (список агентов, их роли, модели, статус) | `frontend/lib/features/team/presentation/screens/team_screen.dart` | ⬜ |
+| 13.2 | Виджет: `AgentCard` (роль, модель, code_backend, on/off) | `frontend/lib/features/team/presentation/widgets/agent_card.dart` | ⬜ |
+| 13.3 | Диалог: редактирование агента (модель, промпт, tools) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` | ⬜ |
+| 13.4 | Экран: Настройки проекта (git credentials, tech stack, vector index) | `frontend/lib/features/projects/presentation/screens/project_settings_screen.dart` | ⬜ |
+| 13.5 | Экран: Глобальные настройки (API keys для LLM-провайдеров) | `frontend/lib/features/settings/presentation/screens/settings_screen.dart` | ⬜ |
+| 13.6 | Локализация | `.arb` файлы | ⬜ |
+| 13.7 | Widget-тесты | `frontend/test/features/team/` | ⬜ |
+
+**Зависимости:** Sprint 2, Sprint 10
+
+---
+
+### Sprint 14 — E2E интеграция и тестирование
+
+**Цель:** Полный сквозной тест: от сообщения в чате до кода в репозитории.
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 14.1 | E2E тест (backend): создать проект → отправить запрос → Orchestrator создаёт задачи → Developer выполняет → Reviewer одобряет → Completed | `backend/internal/service/orchestrator_integration_test.go` | ⬜ |
+| 14.2 | E2E тест (frontend): интеграционный тест полного flow в UI | `frontend/integration_test/full_flow_test.dart` | ⬜ |
+| 14.3 | Нагрузочное тестирование: 5 параллельных sandbox-контейнеров | Скрипт | ⬜ |
+| 14.4 | Тест безопасности: sandbox не может выйти за пределы `/workspace` | Тест | ⬜ |
+| 14.5 | Тест отмены: пользователь нажимает Cancel → контейнер убивается | Тест | ⬜ |
+| 14.6 | Документация: обновить README, API.md, env.example | Корень | ⬜ |
+
+**Зависимости:** Все предыдущие спринты
+
+---
+
+## Порядок выполнения
+
+```
+Sprint 1 (модели + миграции)
+    │
+    ├── Sprint 2 (Project CRUD)
+    │       ├── Sprint 4 (Git Provider)
+    │       ├── Sprint 10 (Frontend: проекты)
+    │       │       └── Sprint 13 (Frontend: настройки)
+    │       └── Sprint 9 (Векторная индексация)
+    │
+    ├── Sprint 3 (Task CRUD)
+    │       └── Sprint 12 (Frontend: задачи)
+    │
+    ├── Sprint 5 (Sandbox Runner)
+    │
+    └── Sprint 6 (Orchestrator) ← зависит от 3, 5
+            │
+            ├── Sprint 7 (WebSocket)
+            │       └── Sprint 8 (Conversation API)
+            │               └── Sprint 11 (Frontend: чат)
+            │
+            └── Sprint 14 (E2E тесты) ← зависит от всех
+```
+
+**Параллельные потоки:**
+- **Поток A (Backend Core):** 1 → 2 → 4 → 9
+- **Поток B (Backend Tasks):** 1 → 3 → 6 → 7 → 8
+- **Поток C (Sandbox):** 5 (параллельно, объединяется в Sprint 6)
+- **Поток D (Frontend):** 10 → 11 → 12 → 13
+- **Финал:** 14
+
+---
+
+## Текущий стек и инфраструктура
 
 | Слой | Технологии |
 |------|-----------|
 | **Backend** | Go 1.24, Gin, GORM, Goose, JWT (HS256), Swagger, MCP Server |
 | **Frontend** | Flutter 3.x, Riverpod 2.0, GoRouter, Dio, Freezed |
-| **БД** | YugabyteDB (PostgreSQL-совместимая распределённая SQL) |
+| **БД** | YugabyteDB (PostgreSQL-совместимая, порт 5433) |
 | **Векторная БД** | Weaviate + sentence-transformers |
-| **LLM** | OpenAI, Anthropic, Gemini, Deepseek, Qwen (через OpenRouter) |
+| **LLM** | OpenAI, Anthropic, Gemini, Deepseek, Qwen |
+| **Sandbox** | Docker containers (Claude Code CLI, Aider) |
 | **Инфраструктура** | Docker, Docker Compose, Makefile |
-
----
-
-## Возможности
-
-### Backend (Go + Gin)
-
-- **Clean Architecture** — слоистая структура: `handler` → `service` → `repository`
-- **JWT-аутентификация** — Access-токены (15 мин) + Refresh-токены (7 дней, хранятся в БД)
-- **RBAC-авторизация** — роли `guest`, `user`, `admin` с middleware-защитой
-- **Движок воркфлоу** — пошаговое выполнение цепочек (LLM-вызовы, API-запросы, условия, циклы)
-- **Мульти-LLM интеграция** — OpenAI, Anthropic (Claude), Gemini, Deepseek, Qwen
-- **Система промптов** — CRUD для шаблонов, загрузка из YAML-файлов при старте
-- **Вебхуки** — публичные эндпоинты, HMAC-верификация, IP-вайтлист, JSONPath
-- **Планировщик** — cron-задачи для запуска воркфлоу и синхронизации каталога моделей
-- **Каталог моделей** — синхронизация с OpenRouter, расчёт стоимости запросов
-- **Логирование LLM** — запись запросов/ответов, токены, стоимость, трейс
-- **MCP-сервер** — Model Context Protocol для подключения LLM-клиентов (Cursor, Claude Desktop, VS Code Copilot)
-- **API-ключи** — долгосрочные ключи доступа (`wibe_*`) для внешних интеграций и MCP
-- **Swagger** — автогенерация документации из аннотаций
-- **Миграции** — Goose (12 миграций), поддержка UP/DOWN
-
-### Frontend (Flutter + Riverpod)
-
-- **Feature-First архитектура** — модули: `auth`, `landing`, `admin/prompts`, `admin/workflows`
-- **Riverpod 2.0** — state management с кодогенерацией (`riverpod_generator`)
-- **Адаптивная вёрстка** — Mobile (< 600dp), Tablet (600–1200dp), Desktop (> 1200dp)
-- **Material 3** — светлая и тёмная тема, системный режим
-- **Мультиязычность** — русский и английский (ARB-файлы, `flutter gen-l10n`)
-- **Безопасное хранение токенов** — `flutter_secure_storage`
-- **Маршрутизация** — `go_router` с deep linking, route guards, URL-навигация
-- **Freezed-модели** — неизменяемые data-классы с JSON-сериализацией
-- **UI Kit** — `CustomButton`, `LoadingIndicator`, `AppErrorWidget`, адаптивные контейнеры
-
-### Инфраструктура
-
-- **Docker Compose** — 4 сервиса: YugabyteDB, Weaviate, Transformers, Backend
-- **Multi-stage Dockerfile** — сборка Go-бинарника, генерация Swagger, установка Goose
-- **Makefile** — единый интерфейс для всех операций (30+ команд)
-- **Healthcheck** — проверки готовности всех сервисов
-
----
-
-## API-эндпоинты
-
-### Аутентификация (`/api/v1/auth`)
-
-| Метод | Путь | Доступ | Описание |
-|-------|------|--------|----------|
-| POST | `/auth/register` | Публичный | Регистрация |
-| POST | `/auth/login` | Публичный | Вход (возвращает JWT) |
-| POST | `/auth/refresh` | Публичный | Обновление токенов |
-| GET | `/auth/me` | Авторизованный | Данные текущего пользователя |
-| POST | `/auth/logout` | Авторизованный | Выход (отзыв refresh-токенов) |
-
-### LLM (`/api/v1/llm`) — только Admin
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | `/llm/chat` | Чат с LLM-провайдером |
-| GET | `/llm/logs` | Список логов LLM-запросов |
-
-### Промпты (`/api/v1/prompts`) — только Admin
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | `/prompts` | Создать шаблон промпта |
-| GET | `/prompts` | Список промптов |
-| GET | `/prompts/:id` | Получить промпт |
-| PUT | `/prompts/:id` | Обновить промпт |
-| DELETE | `/prompts/:id` | Удалить промпт |
-
-### Воркфлоу (`/api/v1/workflows`) — только Admin
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/workflows` | Список воркфлоу |
-| POST | `/workflows/:name/start` | Запуск воркфлоу |
-
-### Выполнения (`/api/v1/executions`) — только Admin
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/executions` | Список выполнений (пагинация) |
-| GET | `/executions/:id` | Статус выполнения |
-| GET | `/executions/:id/steps` | Шаги выполнения |
-
-### Вебхуки (`/api/v1/webhooks`) — только Admin
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | `/webhooks` | Создать вебхук |
-| GET | `/webhooks` | Список вебхуков |
-| GET | `/webhooks/:id` | Детали вебхука |
-| PUT | `/webhooks/:id` | Обновить вебхук |
-| DELETE | `/webhooks/:id` | Удалить вебхук |
-| GET | `/webhooks/:id/logs` | Логи вебхука |
-
-### Публичные вебхуки (`/api/v1/hooks`) — без авторизации
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | `/hooks/:name` | Триггер вебхука |
-| GET | `/hooks/:name` | Триггер вебхука (GET) |
-
-### Служебные
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/health` | Проверка здоровья |
-| GET | `/swagger/*any` | Swagger UI |
-
----
-
-## MCP-сервер (Model Context Protocol)
-
-Приложение поддерживает **MCP** — открытый протокол для подключения LLM-клиентов к внешним инструментам. Это позволяет использовать возможности бэкенда напрямую из Cursor, Claude Desktop, VS Code Copilot и других LLM-клиентов.
-
-### Доступные MCP-инструменты
-
-| Инструмент | Описание |
-|------------|----------|
-| `llm_generate` | Генерация текста через LLM-провайдеры (OpenAI, Anthropic, Gemini, Deepseek, Qwen) |
-| `workflow_list` | Список активных воркфлоу |
-| `workflow_start` | Запуск воркфлоу по имени |
-| `workflow_status` | Статус выполнения воркфлоу |
-| `workflow_steps` | Шаги выполнения (с пагинацией) |
-| `prompt_list` | Список активных промптов |
-| `prompt_get` | Получение промпта по ID или имени |
-
-### Аутентификация
-
-MCP-сервер использует **API-ключи** (формат `wibe_*`). Ключ передаётся через:
-- Заголовок `X-API-Key: wibe_...`
-- Заголовок `Authorization: Bearer wibe_...`
-
-API-ключи создаются через REST API (`POST /api/v1/api-keys`).
-
-### Подключение к LLM-клиенту
-
-Пример конфигурации для **Cursor** / **Claude Desktop**:
-
-```json
-{
-  "mcpServers": {
-    "wibe": {
-      "url": "http://localhost:8081/mcp",
-      "headers": {
-        "X-API-Key": "wibe_ваш_ключ"
-      }
-    }
-  }
-}
-```
-
-### Транспорт
-
-- **Протокол:** HTTP Streamable (SSE)
-- **Порт:** `8081` (отдельный от основного API)
-- **Эндпоинт:** `/mcp`
-- **Health check:** `GET /health` на порту `8081`
-
-### Включение
-
-MCP-сервер выключен по умолчанию. Для включения задайте переменные:
-
-```bash
-MCP_ENABLED=true
-MCP_PORT=8081
-MCP_PUBLIC_URL=https://your-domain.com:8081  # обязательно для production
-```
-
----
-
-## Структура проекта
-
-```
-/
-├── backend/
-│   ├── cmd/api/main.go              # Точка входа, DI, миграции
-│   ├── internal/
-│   │   ├── config/                   # Конфигурация (env)
-│   │   ├── server/                   # Gin: роуты, middleware
-│   │   ├── handler/                  # HTTP-обработчики
-│   │   ├── service/                  # Бизнес-логика
-│   │   ├── repository/              # Работа с БД (GORM)
-│   │   ├── models/                   # Доменные модели
-│   │   ├── middleware/              # Auth, Admin middleware
-│   │   └── mcp/                     # MCP-сервер (tools, auth, result)
-│   ├── pkg/
-│   │   ├── jwt/                      # JWT-менеджмент
-│   │   ├── llm/                      # LLM-провайдеры (фабрика)
-│   │   ├── apierror/                 # Обработка ошибок
-│   │   ├── password/                 # Хеширование паролей
-│   │   ├── promptsloader/           # Загрузка промптов из YAML
-│   │   └── workflowloader/          # Загрузка воркфлоу из YAML
-│   ├── db/migrations/               # 12 SQL-миграций (Goose)
-│   ├── prompts/                      # YAML-шаблоны промптов
-│   ├── agents/                       # YAML-определения агентов
-│   ├── workflows/                    # YAML-определения воркфлоу
-│   └── schedules/                    # YAML-расписания
-│
-├── frontend/
-│   └── lib/
-│       ├── main.dart                 # Entrypoint, ProviderScope
-│       ├── core/
-│       │   ├── api/                  # Dio-клиент с токен-интерсептором
-│       │   ├── routing/              # GoRouter, route guards
-│       │   ├── storage/              # Secure token storage
-│       │   ├── theme/                # Material 3 тема
-│       │   ├── utils/                # Responsive-утилиты
-│       │   └── widgets/              # Адаптивные layout-виджеты
-│       ├── features/
-│       │   ├── auth/                 # Логин, регистрация, профиль
-│       │   ├── landing/              # Лендинг
-│       │   └── admin/
-│       │       ├── prompts/          # Управление промптами
-│       │       └── workflows/        # Воркфлоу и выполнения
-│       ├── shared/widgets/           # UI Kit (кнопки, ошибки, загрузка)
-│       └── l10n/                     # Локализация (ru, en)
-│
-└── deployment/
-    └── docker-compose.yaml           # YugabyteDB, Weaviate, Transformers, Backend
-```
-
----
-
-## Модели базы данных
-
-| Таблица | Назначение |
-|---------|-----------|
-| `users` | Пользователи (UUID, email, password hash, role) |
-| `refresh_tokens` | Refresh-токены (SHA256 hash, expiry, revocation) |
-| `prompts` | Шаблоны промптов (JSON schema, active flag) |
-| `agents` | AI-агенты (привязка к промптам, конфиг модели — JSONB) |
-| `workflows` | Определения воркфлоу (конфигурация — JSONB) |
-| `executions` | Состояние выполнения воркфлоу (статус, шаги, контекст) |
-| `execution_steps` | Пошаговая история (токены, длительность) |
-| `scheduled_workflows` | Cron-расписания для воркфлоу |
-| `llm_logs` | Логи LLM-запросов (токены, стоимость, трейс) |
-| `llm_models` | Каталог моделей (OpenRouter, цены) |
-| `webhook_triggers` | Конфигурация вебхуков (секрет, IP whitelist) |
-| `webhook_logs` | История вызовов вебхуков |
 
 ---
 
 ## Быстрый старт
 
-### Требования
-
-- Docker и Docker Compose
-- Go 1.24+
-- Flutter SDK 3.x
-- Make
-
-### Запуск
-
 ```bash
 # 1. Запуск инфраструктуры
 make build && make up
 
-# 2. Подождите ~30 сек пока YugabyteDB инициализируется
+# 2. Подождать ~30 сек (инициализация YugabyteDB)
 
-# 3. Применение миграций
+# 3. Миграции
 make migrate-up
 
-# 4. Frontend (первый запуск)
+# 4. Frontend
 make frontend-setup
 make frontend-run-web
 ```
-
-### Точки доступа
 
 | Сервис | URL |
 |--------|-----|
@@ -302,112 +459,24 @@ make frontend-run-web
 ## Основные команды
 
 ```bash
-# === Инфраструктура ===
-make build                    # Сборка Docker-образов
-make up / down / logs         # Управление контейнерами
-
-# === Миграции ===
-make migrate-up / down        # Применить / откатить миграции
-make migrate-status           # Статус миграций
-make migrate-create           # Создать новую миграцию
-
-# === Backend тесты ===
-make test                     # Все тесты
-make test-unit                # Unit-тесты
-make test-integration         # Интеграционные тесты
-
-# === Frontend ===
-make frontend-setup           # Первоначальная настройка
-make frontend-codegen         # Кодогенерация (Riverpod, Freezed, l10n)
-make frontend-run-web         # Запуск в Chrome
-make frontend-run-android     # Запуск на Android
-make frontend-run-ios         # Запуск на iOS
-make frontend-test            # Тесты
-make frontend-analyze         # Статический анализ
-make frontend-build-web       # Сборка Web (release)
-
-# === Документация ===
-make swagger                  # Генерация Swagger
-
-make help                     # Все команды
-```
-
----
-
-## Конфигурация
-
-Основные переменные окружения (см. `backend/env.example`):
-
-| Переменная | По умолчанию | Описание |
-|-----------|-------------|----------|
-| `SERVER_PORT` | `8080` | Порт API |
-| `DB_HOST` | `yugabytedb` | Хост БД |
-| `DB_PORT` | `5433` | Порт YugabyteDB (YSQL) |
-| `DB_USER` / `DB_PASSWORD` | `yugabyte` | Учётные данные БД |
-| `JWT_SECRET_KEY` | — | Секрет для JWT (мин. 32 символа) |
-| `JWT_ACCESS_TOKEN_EXPIRY` | `15m` | Время жизни access-токена |
-| `JWT_REFRESH_TOKEN_EXPIRY` | `168h` | Время жизни refresh-токена (7 дней) |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@example.com` | Начальный администратор |
-| `OPENAI_API_KEY` | — | Ключ OpenAI |
-| `ANTHROPIC_API_KEY` | — | Ключ Anthropic |
-| `GEMINI_API_KEY` | — | Ключ Gemini |
-| `OPENROUTER_API_KEY` | — | Ключ OpenRouter (каталог моделей) |
-| `MCP_ENABLED` | `false` | Включить MCP-сервер |
-| `MCP_PORT` | `8081` | Порт MCP-сервера |
-| `MCP_PUBLIC_URL` | — | Публичный URL MCP (обязателен в production) |
-| `MCP_MAX_PROMPT_RUNES` | `100000` | Макс. длина промпта (в рунах) |
-| `MCP_MAX_TOKENS_LIMIT` | `32768` | Макс. значение max_tokens |
-| `MCP_MAX_INPUT_RUNES` | `50000` | Макс. длина input для воркфлоу |
-
----
-
-## Экраны Frontend
-
-| Роут | Экран | Доступ |
-|------|-------|--------|
-| `/` | Landing | Публичный |
-| `/login` | Логин | Публичный |
-| `/register` | Регистрация | Публичный |
-| `/dashboard` | Дашборд | Авторизованный |
-| `/profile` | Профиль | Авторизованный |
-| `/admin/prompts` | Список промптов | Admin |
-| `/admin/prompts/:id` | Редактирование промпта | Admin |
-| `/admin/workflows` | Список воркфлоу | Admin |
-| `/admin/executions` | Список выполнений | Admin |
-| `/admin/executions/:id` | Детали выполнения | Admin |
-
----
-
-## Архитектурные принципы
-
-**Backend:**
-- Clean Architecture с Dependency Injection (сборка в `main.go`)
-- Явная обработка ошибок (`if err != nil`), без `panic`
-- Контекст передаётся через все слои (`c.Request.Context()`)
-- Интерфейсы для тестируемости (моки через `testify/mock`)
-
-**Frontend:**
-- Feature-First модульная структура
-- Riverpod для DI и state management
-- Freezed для иммутабельных моделей
-- Абсолютные импорты (`package:frontend/...`)
-- Весь текст — через локализацию (без хардкода строк)
-
----
-
-## Подключение к БД
-
-```bash
-docker exec -it wibe_yugabytedb /home/yugabyte/bin/ysqlsh -h localhost -U yugabyte
+make build / up / down / logs        # Инфраструктура
+make migrate-up / down / status      # Миграции
+make test / test-unit / test-integration  # Backend тесты
+make swagger                         # Генерация Swagger
+make sandbox-build                   # Сборка sandbox-образов
+make frontend-setup                  # Первоначальная настройка Flutter
+make frontend-codegen                # Кодогенерация (Riverpod, Freezed, l10n)
+make frontend-run-web                # Запуск Flutter в Chrome
+make frontend-test                   # Flutter тесты
+make help                            # Все команды
 ```
 
 ---
 
 ## Правила разработки
 
-Подробные правила для AI-ассистента и разработчиков находятся в `.cursor/rules/`:
-- `main.mdc` — общие правила
+Детальные правила в `.cursor/rules/`:
+- `main.mdc` — концепция DevTeam, domain model, архитектура агентов
 - `backend.mdc` — Go/Gin, Clean Architecture, миграции, JWT, тесты
 - `frontend.mdc` — Flutter, Riverpod, адаптивность, i18n, тесты
 - `deploy.mdc` — Docker, Makefile, окружение
-- `mcp.mdc` — MCP-сервер, инструменты, аутентификация, тесты
