@@ -8,10 +8,13 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
+	github.com/lib/pq v1.10.9
+	github.com/modelcontextprotocol/go-sdk v1.3.0
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
+	github.com/tidwall/gjson v1.18.0
 	github.com/weaviate/weaviate v1.24.8
 	github.com/weaviate/weaviate-go-client/v4 v4.12.0
 	golang.org/x/crypto v0.45.0
@@ -34,10 +37,8 @@ require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.3.0 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect

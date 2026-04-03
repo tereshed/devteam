@@ -57,9 +57,9 @@
 | 1.1 | Миграция: таблицы `git_credentials` + `projects` (одна миграция, FK связь) | `014_create_projects.sql` | ✅ | [детали](docs/tasks/1.1-migration-projects.md) |
 | 1.2 | Миграция: таблица `teams` | `015_create_teams.sql` | ✅ | [детали](docs/tasks/1.2-migration-teams.md) |
 | 1.3 | Миграция: обновление таблицы `agents` + таблицы `tool_definitions`, `agent_tool_bindings`, `mcp_server_configs`, `agent_mcp_bindings` | `016_alter_agents.sql` | ✅ | [детали](docs/tasks/1.3-migration-alter-agents.md) |
-| 1.4 | Миграция: таблица `tasks` (со всеми статусами, связями, артефактами) | `017_create_tasks.sql` | ⬜ |
-| 1.5 | Миграция: таблица `task_messages` | `018_create_task_messages.sql` | ⬜ |
-| 1.6 | Миграция: таблица `conversations` + `conversation_messages` | `019_create_conversations.sql` | ⬜ |
+| 1.4 | Миграция: таблица `tasks` (со всеми статусами, связями, артефактами) | `017_create_tasks.sql` | ⬜ | [детали](docs/tasks/1.4-migration-tasks.md) |
+| 1.5 | Миграция: таблица `task_messages` | `018_create_task_messages.sql` | ⬜ | [детали](docs/tasks/1.5-migration-task-messages.md) |
+| 1.6 | Миграция: таблица `conversations` + `conversation_messages` | `019_create_conversations.sql` | ⬜ | [детали](docs/tasks/1.6-migration-conversations.md) |
 | 1.7 | Go-модели для всех новых сущностей | `models/project.go`, `team.go`, `task.go`, `conversation.go`, `git_credential.go` | ⬜ |
 | 1.8 | Тест: UP → DOWN → UP для всех миграций | `make migrate-up && make migrate-down && make migrate-up` | ⬜ |
 
