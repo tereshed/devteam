@@ -9,12 +9,18 @@ import (
 
 // Config содержит всю конфигурацию приложения
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	LLM      LLMConfig
-	Admin    AdminConfig
-	MCP      MCPConfig
+	Server     ServerConfig
+	Database   DatabaseConfig
+	JWT        JWTConfig
+	LLM        LLMConfig
+	Admin      AdminConfig
+	MCP        MCPConfig
+	Encryption EncryptionConfig
+}
+
+// EncryptionConfig — ключи для шифрования чувствительных данных (AES и т.п.).
+type EncryptionConfig struct {
+	Key string // ENCRYPTION_KEY (например 32 байта в base64 или raw — по соглашению проекта)
 }
 
 // MCPConfig содержит конфигурацию MCP (Model Context Protocol) сервера
@@ -128,6 +134,9 @@ func Load() (*Config, error) {
 			MaxPromptRunes: getIntEnv("MCP_MAX_PROMPT_RUNES", 100_000),
 			MaxTokensLimit: getIntEnv("MCP_MAX_TOKENS_LIMIT", 32_768),
 			MaxInputRunes:  getIntEnv("MCP_MAX_INPUT_RUNES", 50_000),
+		},
+		Encryption: EncryptionConfig{
+			Key: getEnv("ENCRYPTION_KEY", ""),
 		},
 	}
 

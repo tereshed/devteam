@@ -197,6 +197,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // @Description Возвращает данные аутентифицированного пользователя
 // @Tags auth
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json

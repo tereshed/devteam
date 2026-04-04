@@ -49,6 +49,8 @@ func NewWebhookHandler(
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
 // @Param request body dto.CreateWebhookRequest true "Данные webhook"
 // @Success 201 {object} dto.WebhookResponse
 // @Failure 400 {object} apierror.ErrorResponse
@@ -101,6 +103,8 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
 // @Success 200 {array} dto.WebhookResponse
 // @Router /webhooks [get]
 func (h *WebhookHandler) List(c *gin.Context) {
@@ -125,6 +129,8 @@ func (h *WebhookHandler) List(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
 // @Param id path string true "Webhook ID"
 // @Success 200 {object} dto.WebhookResponse
 // @Failure 404 {object} apierror.ErrorResponse
@@ -152,6 +158,8 @@ func (h *WebhookHandler) GetByID(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
 // @Param id path string true "Webhook ID"
 // @Param request body dto.UpdateWebhookRequest true "Данные для обновления"
 // @Success 200 {object} dto.WebhookResponse
@@ -231,6 +239,8 @@ func (h *WebhookHandler) Update(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
 // @Param id path string true "Webhook ID"
 // @Success 204
 // @Failure 404 {object} apierror.ErrorResponse
@@ -350,6 +360,8 @@ func (h *WebhookHandler) Trigger(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
 // @Param id path string true "Webhook ID"
 // @Param limit query int false "Limit" default(20)
 // @Param offset query int false "Offset" default(0)

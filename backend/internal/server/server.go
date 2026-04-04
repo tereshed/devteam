@@ -34,14 +34,16 @@ type ServerConfig struct {
 
 // Dependencies содержит все зависимости для сервера
 type Dependencies struct {
-	AuthHandler     *handler.AuthHandler
-	ApiKeyHandler   *handler.ApiKeyHandler
-	LLMHandler      *handler.LLMHandler
-	PromptHandler   *handler.PromptHandler
-	WorkflowHandler *handler.WorkflowHandler
-	WebhookHandler  *handler.WebhookHandler
-	JWTManager      *jwt.Manager
-	ApiKeyService   service.ApiKeyService
+	AuthHandler      *handler.AuthHandler
+	ApiKeyHandler    *handler.ApiKeyHandler
+	LLMHandler       *handler.LLMHandler
+	PromptHandler    *handler.PromptHandler
+	ProjectHandler   *handler.ProjectHandler
+	TeamHandler      *handler.TeamHandler
+	WorkflowHandler  *handler.WorkflowHandler
+	WebhookHandler   *handler.WebhookHandler
+	JWTManager       *jwt.Manager
+	ApiKeyService    service.ApiKeyService
 }
 
 // New создает новый экземпляр сервера
@@ -104,12 +106,28 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				authProtected.POST("/logout", deps.AuthHandler.Logout)
 
 				// API Keys management (доступно любому авторизованному пользователю)
-			authProtected.POST("/api-keys", deps.ApiKeyHandler.Create)
-			authProtected.GET("/api-keys", deps.ApiKeyHandler.List)
-			authProtected.GET("/api-keys/mcp-config", deps.ApiKeyHandler.GetMCPConfig)
-			authProtected.POST("/api-keys/:id/revoke", deps.ApiKeyHandler.Revoke)
-			authProtected.DELETE("/api-keys/:id", deps.ApiKeyHandler.Delete)
+				authProtected.POST("/api-keys", deps.ApiKeyHandler.Create)
+				authProtected.GET("/api-keys", deps.ApiKeyHandler.List)
+				authProtected.GET("/api-keys/mcp-config", deps.ApiKeyHandler.GetMCPConfig)
+				authProtected.POST("/api-keys/:id/revoke", deps.ApiKeyHandler.Revoke)
+				authProtected.DELETE("/api-keys/:id", deps.ApiKeyHandler.Delete)
 			}
+		}
+
+		// Projects (авторизованный пользователь)
+		projects := api.Group("/projects")
+		projects.Use(authMW)
+		{
+			projects.POST("", deps.ProjectHandler.Create)
+			projects.GET("", deps.ProjectHandler.List)
+
+			// Вложенный ресурс team — до /:id, иначе Gin сопоставит "team" как :id
+			projects.GET("/:id/team", deps.TeamHandler.GetByProjectID)
+			projects.PUT("/:id/team", deps.TeamHandler.Update)
+
+			projects.GET("/:id", deps.ProjectHandler.GetByID)
+			projects.PUT("/:id", deps.ProjectHandler.Update)
+			projects.DELETE("/:id", deps.ProjectHandler.Delete)
 		}
 
 		// LLM routes (admin only)

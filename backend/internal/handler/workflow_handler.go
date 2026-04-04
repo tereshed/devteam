@@ -26,6 +26,7 @@ func NewWorkflowHandler(engine service.WorkflowEngine) *WorkflowHandler {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Param name path string true "Имя воркфлоу"
 // @Param request body dto.StartWorkflowRequest true "Входные данные"
@@ -56,6 +57,7 @@ func (h *WorkflowHandler) Start(c *gin.Context) {
 // @Description Возвращает все доступные воркфлоу
 // @Tags workflows
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -86,6 +88,7 @@ func (h *WorkflowHandler) List(c *gin.Context) {
 // @Description Возвращает историю запусков с пагинацией
 // @Tags workflows
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -120,6 +123,7 @@ func (h *WorkflowHandler) ListExecutions(c *gin.Context) {
 // @Description Возвращает детализацию шагов конкретного запуска
 // @Tags workflows
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -167,6 +171,7 @@ func (h *WorkflowHandler) GetExecutionSteps(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Param id path string true "ID выполнения (UUID)"
 // @Success 200 {object} dto.ExecutionResponse

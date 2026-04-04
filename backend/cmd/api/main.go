@@ -60,7 +60,7 @@ func init() {
 // @description Long-lived API key for programmatic access. Format: wibe_<key>
 
 // @securityDefinitions.oauth2.password OAuth2Password
-// @tokenUrl http://localhost:8080/api/v1/auth/login
+// @tokenUrl /api/v1/auth/login
 
 func main() {
 	// Загружаем конфигурацию
@@ -91,7 +91,12 @@ func main() {
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 	apiKeyRepo := repository.NewApiKeyRepository(db)
 	promptRepo := repository.NewPromptRepository(db)
+	projectRepo := repository.NewProjectRepository(db)
+	teamRepo := repository.NewTeamRepository(db)
+	gitCredRepo := repository.NewGitCredentialRepository(db)
+	txManager := repository.NewTransactionManager(db)
 	workflowRepo := repository.NewWorkflowRepository(db)
+	webhookRepo := repository.NewWebhookRepository(db)
 	llmRepo := repository.NewLLMRepository(db)
 	llmModelRepo := repository.NewLLMModelRepository(db)
 
@@ -126,6 +131,9 @@ func main() {
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager)
 	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
 	promptService := service.NewPromptService(promptRepo)
+	encryptionKey := []byte(cfg.Encryption.Key)
+	projectService := service.NewProjectService(projectRepo, teamRepo, gitCredRepo, txManager, encryptionKey)
+	teamService := service.NewTeamService(teamRepo)
 
 	// Запускаем первичную синхронизацию моделей (в фоне)
 	go func() {
@@ -162,6 +170,10 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService, jwtManager)
 	apiKeyHandler := handler.NewApiKeyHandler(apiKeyService, &cfg.MCP)
 	promptHandler := handler.NewPromptHandler(promptService)
+	projectHandler := handler.NewProjectHandler(projectService)
+	teamHandler := handler.NewTeamHandler(teamService, projectService)
+	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
+	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
 
 	// Создаем и запускаем сервер
@@ -175,7 +187,10 @@ func main() {
 		ApiKeyHandler:   apiKeyHandler,
 		LLMHandler:      llmHandler,
 		PromptHandler:   promptHandler,
+		ProjectHandler:  projectHandler,
+		TeamHandler:     teamHandler,
 		WorkflowHandler: workflowHandler,
+		WebhookHandler:  webhookHandler,
 		JWTManager:      jwtManager,
 		ApiKeyService:   apiKeyService,
 	})
@@ -191,11 +206,13 @@ func main() {
 
 	if cfg.MCP.Enabled {
 		mcpSrv := mcpserver.NewMCPServer(mcpserver.Dependencies{
-			Config:         cfg.MCP,
-			LLMService:     llmService,
-			WorkflowEngine: workflowEngine,
-			PromptService:  promptService,
-			ApiKeyService:  apiKeyService,
+			Config:          cfg.MCP,
+			LLMService:      llmService,
+			WorkflowEngine:  workflowEngine,
+			PromptService:   promptService,
+			ProjectService:  projectService,
+			TeamService:     teamService,
+			ApiKeyService:   apiKeyService,
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)

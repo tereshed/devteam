@@ -27,6 +27,7 @@ func NewLLMHandler(llmService service.LLMService) *LLMHandler {
 // @Description Generates a response from the LLM provider
 // @Tags llm
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -58,6 +59,7 @@ func (h *LLMHandler) Chat(c *gin.Context) {
 // @Description Возвращает историю запросов к LLM с пагинацией
 // @Tags llm
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json

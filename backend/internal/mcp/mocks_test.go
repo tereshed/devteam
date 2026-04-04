@@ -91,6 +91,76 @@ func (m *mockPromptService) Delete(ctx context.Context, id uuid.UUID) error {
 	return args.Error(0)
 }
 
+// --- ProjectService mock ---
+
+type mockProjectService struct {
+	mock.Mock
+}
+
+func (m *mockProjectService) Create(ctx context.Context, userID uuid.UUID, req dto.CreateProjectRequest) (*models.Project, error) {
+	args := m.Called(ctx, userID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Project), args.Error(1)
+}
+
+func (m *mockProjectService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.Project, error) {
+	args := m.Called(ctx, userID, userRole, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Project), args.Error(1)
+}
+
+func (m *mockProjectService) List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, req dto.ListProjectsRequest) ([]models.Project, int64, error) {
+	args := m.Called(ctx, userID, userRole, req)
+	var projects []models.Project
+	if args.Get(0) != nil {
+		projects = args.Get(0).([]models.Project)
+	}
+	total := int64(0)
+	if args.Get(1) != nil {
+		total = args.Get(1).(int64)
+	}
+	return projects, total, args.Error(2)
+}
+
+func (m *mockProjectService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.UpdateProjectRequest) (*models.Project, error) {
+	args := m.Called(ctx, userID, userRole, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Project), args.Error(1)
+}
+
+func (m *mockProjectService) Delete(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	args := m.Called(ctx, userID, userRole, projectID)
+	return args.Error(0)
+}
+
+// --- TeamService mock ---
+
+type mockTeamService struct {
+	mock.Mock
+}
+
+func (m *mockTeamService) GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error) {
+	args := m.Called(ctx, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
+func (m *mockTeamService) Update(ctx context.Context, projectID uuid.UUID, req dto.UpdateTeamRequest) (*models.Team, error) {
+	args := m.Called(ctx, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
 // --- WorkflowEngine mock ---
 
 type mockWorkflowEngine struct {

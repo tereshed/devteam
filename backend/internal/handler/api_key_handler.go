@@ -33,6 +33,7 @@ func NewApiKeyHandler(apiKeyService service.ApiKeyService, mcpConfig *config.MCP
 // @Description Создает новый долгосрочный API-ключ для текущего пользователя. Сырой ключ показывается только один раз!
 // @Tags api-keys
 // @Security BearerAuth
+// @Security OAuth2Password
 // @Accept json
 // @Produce json
 // @Param request body dto.CreateApiKeyRequest true "Данные для создания ключа"
@@ -84,6 +85,7 @@ func (h *ApiKeyHandler) Create(c *gin.Context) {
 // @Description Возвращает все активные API-ключи текущего пользователя
 // @Tags api-keys
 // @Security BearerAuth
+// @Security OAuth2Password
 // @Accept json
 // @Produce json
 // @Success 200 {array} dto.ApiKeyResponse
@@ -121,6 +123,7 @@ func (h *ApiKeyHandler) List(c *gin.Context) {
 // @Description Отзывает (деактивирует) API-ключ. Ключ перестает работать, но запись остается.
 // @Tags api-keys
 // @Security BearerAuth
+// @Security OAuth2Password
 // @Accept json
 // @Produce json
 // @Param id path string true "ID API-ключа"
@@ -166,6 +169,7 @@ func (h *ApiKeyHandler) Revoke(c *gin.Context) {
 // @Description Полностью удаляет API-ключ из системы
 // @Tags api-keys
 // @Security BearerAuth
+// @Security OAuth2Password
 // @Accept json
 // @Produce json
 // @Param id path string true "ID API-ключа"
@@ -211,6 +215,7 @@ func (h *ApiKeyHandler) Delete(c *gin.Context) {
 // @Description Возвращает готовую конфигурацию для подключения к MCP-серверу (для Cursor, Claude Desktop, VS Code Copilot)
 // @Tags api-keys
 // @Security BearerAuth
+// @Security OAuth2Password
 // @Accept json
 // @Produce json
 // @Param apiKey query string false "Конкретный API-ключ (по умолчанию используется первый активный)"

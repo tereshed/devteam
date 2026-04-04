@@ -73,17 +73,17 @@
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 2.1 | Repository: `ProjectRepository` (CRUD + список с пагинацией) | `backend/internal/repository/project_repository.go` | ⬜ |
-| 2.2 | Repository: `TeamRepository` | `backend/internal/repository/team_repository.go` | ⬜ |
-| 2.3 | Repository: `GitCredentialRepository` | `backend/internal/repository/git_credential_repository.go` | ⬜ |
-| 2.4 | Service: `ProjectService` (создание проекта + автоматическое создание команды + шифрование credentials) | `backend/internal/service/project_service.go` | ⬜ |
-| 2.5 | DTO: request/response структуры для проектов | `backend/internal/handler/dto/project_dto.go` | ⬜ |
-| 2.6 | Handler: `ProjectHandler` (POST/GET/PUT/DELETE /projects) | `backend/internal/handler/project_handler.go` | ⬜ |
-| 2.7 | Handler: настройка команды (`GET/PUT /projects/:id/team`) | `backend/internal/handler/team_handler.go` | ⬜ |
-| 2.8 | Роуты: регистрация в `server.go` | `backend/internal/server/server.go` | ⬜ |
-| 2.9 | Swagger-аннотации для всех новых эндпоинтов | В каждом handler | ⬜ |
+| 2.1 | Repository: `ProjectRepository` (CRUD + список с пагинацией) | `backend/internal/repository/project_repository.go` | ⬜ | [детали](docs/tasks/2.1-repository-project.md) |
+| 2.2 | Repository: `TeamRepository` | `backend/internal/repository/team_repository.go` | ⬜ | [детали](docs/tasks/2.2-repository-team.md) |
+| 2.3 | Repository: `GitCredentialRepository` | `backend/internal/repository/git_credential_repository.go` | ⬜ | [детали](docs/tasks/2.3-repository-git-credential.md) |
+| 2.4 | Service: `ProjectService` (создание проекта + автоматическое создание команды + шифрование credentials) | `backend/internal/service/project_service.go` | ⬜ | [детали](docs/tasks/2.4-service-project.md) |
+| 2.5 | DTO: request/response структуры для проектов | `backend/internal/handler/dto/project_dto.go` | ⬜ | [детали](docs/tasks/2.5-dto-project.md) |
+| 2.6 | Handler: `ProjectHandler` (POST/GET/PUT/DELETE /projects) | `backend/internal/handler/project_handler.go` | ⬜ | [детали](docs/tasks/2.6-handler-project.md) |
+| 2.7 | Handler: настройка команды (`GET/PUT /projects/:id/team`) | `backend/internal/handler/team_handler.go` | ⬜ | [детали](docs/tasks/2.7-handler-team.md) |
+| 2.8 | Роуты: регистрация в `server.go` | `backend/internal/server/server.go` | ⬜ | [детали](docs/tasks/2.8-routes-server.md) |
+| 2.9 | Swagger-аннотации для всех новых эндпоинтов | В каждом handler | ⬜ | [детали](docs/tasks/2.9-swagger-annotations.md) |
 | 2.10 | Unit-тесты: ProjectService | `backend/internal/service/project_service_test.go` | ⬜ |
-| 2.11 | MCP-инструменты: `project_list`, `project_get`, `project_create` | `backend/internal/mcp/tools_project.go` | ⬜ |
+| 2.11 | MCP-инструменты: `project_list`, `project_get`, `project_create` | `backend/internal/mcp/tools_project.go` | ⬜ | [детали](docs/tasks/2.11-mcp-tools-project.md) |
 
 **API эндпоинты:**
 
@@ -108,7 +108,7 @@
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
 | 3.1 | Repository: `TaskRepository` (CRUD + фильтрация по project/status/agent + пагинация) | `backend/internal/repository/task_repository.go` | ⬜ |
-| 3.2 | Repository: `TaskMessageRepository` | `backend/internal/repository/task_message_repository.go` | ⬜ |
+| 3.2 | Repository: `TaskMessageRepository` | `backend/internal/repository/task_message_repository.go` | ⬜ | [детали](docs/tasks/3.2-repository-task-message.md) |
 | 3.3 | Service: `TaskService` (создание, смена статуса, назначение агента, валидация переходов) | `backend/internal/service/task_service.go` | ⬜ |
 | 3.4 | DTO: request/response для задач | `backend/internal/handler/dto/task_dto.go` | ⬜ |
 | 3.5 | Handler: `TaskHandler` | `backend/internal/handler/task_handler.go` | ⬜ |

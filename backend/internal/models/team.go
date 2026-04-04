@@ -33,6 +33,7 @@ type Team struct {
 	Type      TeamType  `gorm:"type:varchar(50);not null;default:'development'" json:"type"`
 	CreatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
 	UpdatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
+	Agents    []Agent   `gorm:"foreignKey:TeamID" json:"agents,omitempty"`
 }
 
 // TableName возвращает имя таблицы

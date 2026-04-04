@@ -24,6 +24,7 @@ func NewPromptHandler(service service.PromptService) *PromptHandler {
 // @Description Создает новый шаблон промпта (только админ)
 // @Tags prompts
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -58,6 +59,7 @@ func (h *PromptHandler) Create(c *gin.Context) {
 // @Description Возвращает все промпты (только админ)
 // @Tags prompts
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -84,6 +86,7 @@ func (h *PromptHandler) List(c *gin.Context) {
 // @Description Возвращает промпт по ID (только админ)
 // @Tags prompts
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -117,6 +120,7 @@ func (h *PromptHandler) GetByID(c *gin.Context) {
 // @Description Обновляет данные промпта (только админ)
 // @Tags prompts
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json
@@ -158,6 +162,7 @@ func (h *PromptHandler) Update(c *gin.Context) {
 // @Description Удаляет промпт по ID (только админ)
 // @Tags prompts
 // @Security BearerAuth
+// @Security ApiKeyAuth
 // @Security OAuth2Password
 // @Accept json
 // @Produce json

@@ -10,11 +10,13 @@ import (
 
 // Dependencies содержит зависимости MCP-сервера
 type Dependencies struct {
-	Config         config.MCPConfig
-	LLMService     service.LLMService
-	WorkflowEngine service.WorkflowEngine
-	PromptService  service.PromptService
-	ApiKeyService  service.ApiKeyService
+	Config          config.MCPConfig
+	LLMService      service.LLMService
+	WorkflowEngine  service.WorkflowEngine
+	PromptService   service.PromptService
+	ProjectService  service.ProjectService
+	TeamService     service.TeamService
+	ApiKeyService   service.ApiKeyService
 }
 
 // NewMCPServer создает MCP-сервер с зарегистрированными инструментами
@@ -28,6 +30,8 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterLLMTools(server, deps.LLMService, deps.Config)
 	RegisterWorkflowTools(server, deps.WorkflowEngine, deps.Config)
 	RegisterPromptTools(server, deps.PromptService)
+	RegisterProjectTools(server, deps.ProjectService)
+	RegisterTeamTools(server, deps.ProjectService, deps.TeamService)
 
 	return server
 }
