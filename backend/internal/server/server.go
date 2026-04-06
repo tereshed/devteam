@@ -40,6 +40,7 @@ type Dependencies struct {
 	PromptHandler    *handler.PromptHandler
 	ProjectHandler   *handler.ProjectHandler
 	TeamHandler      *handler.TeamHandler
+	TaskHandler      *handler.TaskHandler
 	WorkflowHandler  *handler.WorkflowHandler
 	WebhookHandler   *handler.WebhookHandler
 	JWTManager       *jwt.Manager
@@ -125,9 +126,25 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			projects.GET("/:id/team", deps.TeamHandler.GetByProjectID)
 			projects.PUT("/:id/team", deps.TeamHandler.Update)
 
+			projects.POST("/:id/tasks", deps.TaskHandler.Create)
+			projects.GET("/:id/tasks", deps.TaskHandler.List)
+
 			projects.GET("/:id", deps.ProjectHandler.GetByID)
 			projects.PUT("/:id", deps.ProjectHandler.Update)
 			projects.DELETE("/:id", deps.ProjectHandler.Delete)
+		}
+
+		tasks := api.Group("/tasks")
+		tasks.Use(authMW)
+		{
+			tasks.GET("/:id", deps.TaskHandler.GetByID)
+			tasks.PUT("/:id", deps.TaskHandler.Update)
+			tasks.DELETE("/:id", deps.TaskHandler.Delete)
+			tasks.POST("/:id/pause", deps.TaskHandler.Pause)
+			tasks.POST("/:id/cancel", deps.TaskHandler.Cancel)
+			tasks.POST("/:id/resume", deps.TaskHandler.Resume)
+			tasks.GET("/:id/messages", deps.TaskHandler.ListMessages)
+			tasks.POST("/:id/messages", deps.TaskHandler.AddMessage)
 		}
 
 		// LLM routes (admin only)

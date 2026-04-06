@@ -8,6 +8,7 @@ import (
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/llm"
 )
 
@@ -159,6 +160,106 @@ func (m *mockTeamService) Update(ctx context.Context, projectID uuid.UUID, req d
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.Team), args.Error(1)
+}
+
+// --- TaskService mock ---
+
+type mockTaskService struct {
+	mock.Mock
+}
+
+func (m *mockTaskService) Create(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.CreateTaskRequest) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
+func (m *mockTaskService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, taskID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
+func (m *mockTaskService) List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.ListTasksRequest) ([]models.Task, int64, error) {
+	args := m.Called(ctx, userID, userRole, projectID, req)
+	var list []models.Task
+	if v := args.Get(0); v != nil {
+		list = v.([]models.Task)
+	}
+	var total int64
+	if v := args.Get(1); v != nil {
+		total = v.(int64)
+	}
+	return list, total, args.Error(2)
+}
+
+func (m *mockTaskService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.UpdateTaskRequest) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, taskID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
+func (m *mockTaskService) Delete(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) error {
+	return m.Called(ctx, userID, userRole, taskID).Error(0)
+}
+
+func (m *mockTaskService) Pause(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, taskID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
+func (m *mockTaskService) Cancel(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, taskID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
+func (m *mockTaskService) Resume(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, taskID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
+func (m *mockTaskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts service.TransitionOpts) (*models.Task, error) {
+	args := m.Called(ctx, taskID, newStatus, opts)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
+func (m *mockTaskService) AddMessage(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.CreateTaskMessageRequest) (*models.TaskMessage, error) {
+	args := m.Called(ctx, userID, userRole, taskID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.TaskMessage), args.Error(1)
+}
+
+func (m *mockTaskService) ListMessages(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.ListTaskMessagesRequest) ([]models.TaskMessage, int64, error) {
+	args := m.Called(ctx, userID, userRole, taskID, req)
+	var list []models.TaskMessage
+	if v := args.Get(0); v != nil {
+		list = v.([]models.TaskMessage)
+	}
+	var total int64
+	if v := args.Get(1); v != nil {
+		total = v.(int64)
+	}
+	return list, total, args.Error(2)
 }
 
 // --- WorkflowEngine mock ---

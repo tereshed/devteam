@@ -97,6 +97,8 @@ func main() {
 	txManager := repository.NewTransactionManager(db)
 	workflowRepo := repository.NewWorkflowRepository(db)
 	webhookRepo := repository.NewWebhookRepository(db)
+	taskRepo := repository.NewTaskRepository(db)
+	taskMsgRepo := repository.NewTaskMessageRepository(db)
 	llmRepo := repository.NewLLMRepository(db)
 	llmModelRepo := repository.NewLLMModelRepository(db)
 
@@ -134,6 +136,7 @@ func main() {
 	encryptionKey := []byte(cfg.Encryption.Key)
 	projectService := service.NewProjectService(projectRepo, teamRepo, gitCredRepo, txManager, encryptionKey)
 	teamService := service.NewTeamService(teamRepo)
+	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService)
 
 	// Запускаем первичную синхронизацию моделей (в фоне)
 	go func() {
@@ -172,6 +175,7 @@ func main() {
 	promptHandler := handler.NewPromptHandler(promptService)
 	projectHandler := handler.NewProjectHandler(projectService)
 	teamHandler := handler.NewTeamHandler(teamService, projectService)
+	taskHandler := handler.NewTaskHandler(taskService)
 	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
@@ -189,6 +193,7 @@ func main() {
 		PromptHandler:   promptHandler,
 		ProjectHandler:  projectHandler,
 		TeamHandler:     teamHandler,
+		TaskHandler:     taskHandler,
 		WorkflowHandler: workflowHandler,
 		WebhookHandler:  webhookHandler,
 		JWTManager:      jwtManager,
@@ -212,6 +217,7 @@ func main() {
 			PromptService:   promptService,
 			ProjectService:  projectService,
 			TeamService:     teamService,
+			TaskService:     taskService,
 			ApiKeyService:   apiKeyService,
 		})
 

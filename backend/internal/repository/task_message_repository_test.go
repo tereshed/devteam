@@ -52,7 +52,7 @@ func TestTaskMessageRepository_Create_Success(t *testing.T) {
 	repo := NewTaskMessageRepository(db)
 	ctx := context.Background()
 
-	meta := datatypes.JSON([]byte(`{"tokens":42,"model":"x"}`))
+	meta := datatypes.JSON([]byte(`{"tokens_used":42,"model":"claude","duration_ms":120}`))
 	msg := &models.TaskMessage{
 		TaskID:      task.ID,
 		SenderType:  models.SenderTypeUser,
@@ -71,7 +71,7 @@ func TestTaskMessageRepository_Create_Success(t *testing.T) {
 	assert.Equal(t, user.ID, got.SenderID)
 	assert.Equal(t, "hello", got.Content)
 	assert.Equal(t, models.MessageTypeInstruction, got.MessageType)
-	assert.JSONEq(t, `{"tokens":42,"model":"x"}`, string(got.Metadata))
+	assert.JSONEq(t, `{"tokens_used":42,"model":"claude","duration_ms":120}`, string(got.Metadata))
 }
 
 func TestTaskMessageRepository_Create_InvalidTaskID(t *testing.T) {
@@ -143,10 +143,11 @@ func TestTaskMessageRepository_GetByID_Success(t *testing.T) {
 	repo := NewTaskMessageRepository(db)
 	ctx := context.Background()
 
+	agentSender := uuid.New()
 	msg := &models.TaskMessage{
 		TaskID:      task.ID,
 		SenderType:  models.SenderTypeAgent,
-		SenderID:    uuid.New(),
+		SenderID:    agentSender,
 		Content:     "done",
 		MessageType: models.MessageTypeResult,
 		Metadata:    datatypes.JSON([]byte(`{"k":1}`)),
@@ -158,8 +159,10 @@ func TestTaskMessageRepository_GetByID_Success(t *testing.T) {
 	assert.Equal(t, msg.ID, got.ID)
 	assert.Equal(t, task.ID, got.TaskID)
 	assert.Equal(t, models.SenderTypeAgent, got.SenderType)
+	assert.Equal(t, agentSender, got.SenderID)
 	assert.Equal(t, "done", got.Content)
 	assert.Equal(t, models.MessageTypeResult, got.MessageType)
+	assert.JSONEq(t, `{"k":1}`, string(got.Metadata))
 }
 
 func TestTaskMessageRepository_GetByID_NotFound(t *testing.T) {
@@ -388,4 +391,78 @@ func TestTaskMessageRepository_Isolation_DifferentTasks(t *testing.T) {
 	assert.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 	assert.Equal(t, "t1", list[0].Content)
+}
+
+func TestTaskMessageRepository_ListByTaskID_LimitDefaults(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	_, task := createTaskMessageTestTask(t, db)
+	repo := NewTaskMessageRepository(db)
+	ctx := context.Background()
+
+	const totalWant = 55
+	for i := 0; i < totalWant; i++ {
+		require.NoError(t, repo.Create(ctx, &models.TaskMessage{
+			TaskID: task.ID, SenderType: models.SenderTypeUser, SenderID: uuid.New(),
+			Content: "x", MessageType: models.MessageTypeInstruction, Metadata: datatypes.JSON([]byte("{}")),
+		}))
+	}
+
+	list, total, err := repo.ListByTaskID(ctx, task.ID, TaskMessageFilter{Limit: 0})
+	require.NoError(t, err)
+	assert.Equal(t, int64(totalWant), total)
+	require.Len(t, list, 50)
+}
+
+func TestTaskMessageRepository_ListByTaskID_LimitCapped(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	_, task := createTaskMessageTestTask(t, db)
+	repo := NewTaskMessageRepository(db)
+	ctx := context.Background()
+
+	const totalWant = 205
+	for i := 0; i < totalWant; i++ {
+		require.NoError(t, repo.Create(ctx, &models.TaskMessage{
+			TaskID: task.ID, SenderType: models.SenderTypeUser, SenderID: uuid.New(),
+			Content: "x", MessageType: models.MessageTypeFeedback, Metadata: datatypes.JSON([]byte("{}")),
+		}))
+	}
+
+	list, total, err := repo.ListByTaskID(ctx, task.ID, TaskMessageFilter{Limit: 999})
+	require.NoError(t, err)
+	assert.Equal(t, int64(totalWant), total)
+	require.Len(t, list, 200)
+}
+
+func TestTaskMessageRepository_ListBySender_IgnoresFilterSenderType(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	user, task := createTaskMessageTestTask(t, db)
+	repo := NewTaskMessageRepository(db)
+	ctx := context.Background()
+
+	agentID := uuid.New()
+	require.NoError(t, repo.Create(ctx, &models.TaskMessage{
+		TaskID: task.ID, SenderType: models.SenderTypeAgent, SenderID: agentID,
+		Content: "from-agent", MessageType: models.MessageTypeResult, Metadata: datatypes.JSON([]byte("{}")),
+	}))
+	require.NoError(t, repo.Create(ctx, &models.TaskMessage{
+		TaskID: task.ID, SenderType: models.SenderTypeUser, SenderID: user.ID,
+		Content: "from-user", MessageType: models.MessageTypeInstruction, Metadata: datatypes.JSON([]byte("{}")),
+	}))
+
+	stUser := models.SenderTypeUser
+	list, total, err := repo.ListBySender(ctx, models.SenderTypeAgent, agentID, TaskMessageFilter{
+		SenderType: &stUser,
+		Limit:      20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, list, 1)
+	assert.Equal(t, "from-agent", list[0].Content)
+	assert.Equal(t, models.SenderTypeAgent, list[0].SenderType)
 }

@@ -26,6 +26,8 @@ const (
 	ErrForbidden           = "forbidden"
 	ErrNotFound            = "not_found"
 	ErrAlreadyExists       = "already_exists"
+	ErrConflict            = "conflict"
+	ErrUnprocessable       = "unprocessable"
 )
 
 // JSON sends a structured error response

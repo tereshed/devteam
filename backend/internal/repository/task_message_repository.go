@@ -13,10 +13,24 @@ import (
 
 var (
 	ErrTaskMessageNotFound = errors.New("task message not found")
-	// ErrTaskNotFound — несуществующий task_id при создании сообщения (FK).
-	// При добавлении TaskRepository перенести в task_repository.go при дублировании.
-	ErrTaskNotFound = errors.New("task not found")
 )
+
+const (
+	taskMessageListDefaultLimit = 50
+	taskMessageListMaxLimit     = 200
+	// taskMessagesTaskIDFKConstraint — имя по умолчанию для inline REFERENCES task_id → tasks(id) (миграция 018).
+	taskMessagesTaskIDFKConstraint = "task_messages_task_id_fkey"
+)
+
+func normalizeTaskMessageListLimit(limit int) int {
+	if limit <= 0 {
+		return taskMessageListDefaultLimit
+	}
+	if limit > taskMessageListMaxLimit {
+		return taskMessageListMaxLimit
+	}
+	return limit
+}
 
 // TaskMessageFilter фильтры и пагинация для списков сообщений задачи.
 // Лимит и смещение задаёт сервис/хендлер.
@@ -48,7 +62,8 @@ func NewTaskMessageRepository(db *gorm.DB) TaskMessageRepository {
 func (r *taskMessageRepository) Create(ctx context.Context, msg *models.TaskMessage) error {
 	if err := r.db.WithContext(ctx).Create(msg).Error; err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" &&
+			pgErr.ConstraintName == taskMessagesTaskIDFKConstraint {
 			return ErrTaskNotFound
 		}
 		return fmt.Errorf("failed to create task message: %w", err)
@@ -84,12 +99,13 @@ func (r *taskMessageRepository) ListByTaskID(ctx context.Context, taskID uuid.UU
 	if err := base.Count(&count).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count task messages: %w", err)
 	}
+	if count == 0 {
+		return []models.TaskMessage{}, 0, nil
+	}
 
 	var list []models.TaskMessage
-	q := r.queryByTaskID(ctx, taskID, filter).Order("created_at ASC")
-	if filter.Limit > 0 {
-		q = q.Limit(filter.Limit)
-	}
+	lim := normalizeTaskMessageListLimit(filter.Limit)
+	q := r.queryByTaskID(ctx, taskID, filter).Order("created_at ASC").Limit(lim)
 	if filter.Offset > 0 {
 		q = q.Offset(filter.Offset)
 	}
@@ -114,12 +130,13 @@ func (r *taskMessageRepository) ListBySender(ctx context.Context, senderType mod
 	if err := base.Count(&count).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count task messages by sender: %w", err)
 	}
+	if count == 0 {
+		return []models.TaskMessage{}, 0, nil
+	}
 
 	var list []models.TaskMessage
-	q := r.queryBySender(ctx, senderType, senderID, filter).Order("created_at DESC")
-	if filter.Limit > 0 {
-		q = q.Limit(filter.Limit)
-	}
+	lim := normalizeTaskMessageListLimit(filter.Limit)
+	q := r.queryBySender(ctx, senderType, senderID, filter).Order("created_at DESC").Limit(lim)
 	if filter.Offset > 0 {
 		q = q.Offset(filter.Offset)
 	}

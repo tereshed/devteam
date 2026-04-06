@@ -107,15 +107,15 @@
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 3.1 | Repository: `TaskRepository` (CRUD + фильтрация по project/status/agent + пагинация) | `backend/internal/repository/task_repository.go` | ⬜ |
-| 3.2 | Repository: `TaskMessageRepository` | `backend/internal/repository/task_message_repository.go` | ⬜ | [детали](docs/tasks/3.2-repository-task-message.md) |
-| 3.3 | Service: `TaskService` (создание, смена статуса, назначение агента, валидация переходов) | `backend/internal/service/task_service.go` | ⬜ |
-| 3.4 | DTO: request/response для задач | `backend/internal/handler/dto/task_dto.go` | ⬜ |
-| 3.5 | Handler: `TaskHandler` | `backend/internal/handler/task_handler.go` | ⬜ |
-| 3.6 | Валидация: state machine для статусов задач (допустимые переходы) | В `TaskService` | ⬜ |
-| 3.7 | Swagger-аннотации | В handler | ⬜ |
-| 3.8 | Unit-тесты: TaskService (особенно переходы статусов) | `backend/internal/service/task_service_test.go` | ⬜ |
-| 3.9 | MCP-инструменты: `task_list`, `task_get`, `task_create`, `task_update` | `backend/internal/mcp/tools_task.go` | ⬜ |
+| 3.1 | Repository: `TaskRepository` (CRUD + фильтрация по project/status/agent + пагинация) | `backend/internal/repository/task_repository.go` | ✅ | [детали](docs/tasks/3.1-repository-task.md) |
+| 3.2 | Repository: `TaskMessageRepository` | `backend/internal/repository/task_message_repository.go` | ✅ | [детали](docs/tasks/3.2-repository-task-message.md) |
+| 3.3 | Service: `TaskService` (создание, смена статуса, назначение агента, валидация переходов) | `backend/internal/service/task_service.go` | ✅ | [детали](docs/tasks/3.3-service-task.md) |
+| 3.4 | DTO: request/response для задач | `backend/internal/handler/dto/task_dto.go` | ✅ | [детали](docs/tasks/3.4-dto-task.md) |
+| 3.5 | Handler: `TaskHandler` | `backend/internal/handler/task_handler.go` | ✅ | [детали](docs/tasks/3.5-handler-task.md) |
+| 3.6 | Валидация: state machine для статусов задач (допустимые переходы) | В `TaskService` | ✅ | [детали](docs/tasks/3.6-state-machine.md) |
+| 3.7 | Swagger-аннотации | В handler | ✅ | [детали](docs/tasks/3.7-swagger-annotations-tasks.md) |
+| 3.8 | Unit-тесты: TaskService (особенно переходы статусов) | `backend/internal/service/task_service_test.go` | ✅ | [детали](docs/tasks/3.8-unit-tests-task-service.md) |
+| 3.9 | MCP-инструменты: `task_list`, `task_get`, `task_create`, `task_update` | `backend/internal/mcp/tools_task.go` | ⬜ | [детали](docs/tasks/3.9-mcp-tools-task.md) |
 
 **API эндпоинты:**
 

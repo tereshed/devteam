@@ -16,6 +16,7 @@ type Dependencies struct {
 	PromptService   service.PromptService
 	ProjectService  service.ProjectService
 	TeamService     service.TeamService
+	TaskService     service.TaskService
 	ApiKeyService   service.ApiKeyService
 }
 
@@ -32,6 +33,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterPromptTools(server, deps.PromptService)
 	RegisterProjectTools(server, deps.ProjectService)
 	RegisterTeamTools(server, deps.ProjectService, deps.TeamService)
+	RegisterTaskTools(server, deps.TaskService)
 
 	return server
 }
