@@ -139,17 +139,17 @@
 
 **Цель:** Абстракция для работы с GitHub/GitLab/Bitbucket, клонирование репозиториев.
 
-| # | Задача | Файлы | Статус |
-|---|--------|-------|--------|
-| 4.1 | Интерфейс `GitProvider` | `backend/pkg/gitprovider/provider.go` | ⬜ |
-| 4.2 | Типы: `CloneOptions`, `PROptions`, `PullRequest`, `Issue` и т.д. | `backend/pkg/gitprovider/types.go` | ⬜ |
-| 4.3 | Реализация: `GitHubProvider` (REST API v3 + go-github) | `backend/pkg/gitprovider/github.go` | ⬜ |
-| 4.4 | Реализация: `LocalGitProvider` (git CLI через exec) | `backend/pkg/gitprovider/local.go` | ⬜ |
-| 4.5 | Фабрика: `NewGitProvider(providerType, credentials)` | `backend/pkg/gitprovider/factory.go` | ⬜ |
-| 4.6 | Service: интеграция GitProvider в `ProjectService` (clone при создании проекта) | `backend/internal/service/project_service.go` | ⬜ |
-| 4.7 | Шифрование credentials (AES-256-GCM) | `backend/pkg/crypto/encrypt.go` | ⬜ |
-| 4.8 | Unit-тесты: GitHubProvider (с моками HTTP) | `backend/pkg/gitprovider/github_test.go` | ⬜ |
-| 4.9 | Unit-тесты: LocalGitProvider | `backend/pkg/gitprovider/local_test.go` | ⬜ |
+| # | Задача | Файлы | Статус | Спека |
+|---|--------|-------|--------|-------|
+| 4.1 | Интерфейс `GitProvider` | `backend/pkg/gitprovider/provider.go` | ⬜ | [детали](docs/tasks/4.1-gitprovider-interface.md) |
+| 4.2 | Типы: `CloneOptions`, `PROptions`, `PullRequest` и т.д. | `backend/pkg/gitprovider/types.go` | ⬜ | [детали](docs/tasks/4.2-gitprovider-types.md) |
+| 4.3 | Реализация: `GitHubProvider` (REST API v3 + go-github) | `backend/pkg/gitprovider/github.go` | ⬜ | |
+| 4.4 | Реализация: `LocalGitProvider` (git CLI через exec) | `backend/pkg/gitprovider/local.go` | ⬜ | |
+| 4.5 | Фабрика: `NewGitProvider(providerType, credentials)` | `backend/pkg/gitprovider/factory.go` | ⬜ | |
+| 4.6 | Service: интеграция GitProvider в `ProjectService` (clone при создании проекта) | `backend/internal/service/project_service.go` | ⬜ | |
+| 4.7 | Шифрование credentials (AES-256-GCM) | `backend/pkg/crypto/encrypt.go` | ⬜ | |
+| 4.8 | Unit-тесты: GitHubProvider (с моками HTTP) | `backend/pkg/gitprovider/github_test.go` | ⬜ | |
+| 4.9 | Unit-тесты: LocalGitProvider | `backend/pkg/gitprovider/local_test.go` | ⬜ | |
 
 **Зависимости:** Sprint 2
 
