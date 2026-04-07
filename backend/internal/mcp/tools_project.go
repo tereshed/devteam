@@ -186,6 +186,16 @@ func projectServiceMCPError(err error) (*mcp.CallToolResult, any, error) {
 		return Err("git credential not found", err)
 	case errors.Is(err, service.ErrGitCredentialForbidden):
 		return Err("git credential access denied", err)
+	case errors.Is(err, service.ErrGitValidationFailed):
+		return Err("Git repository validation failed", err)
+	case errors.Is(err, service.ErrGitCloneFailed):
+		return Err("Git clone failed", err)
+	case errors.Is(err, service.ErrDecryptionFailed):
+		return Err("Failed to process git credentials", err)
+	case errors.Is(err, service.ErrGitURLRequired),
+		errors.Is(err, service.ErrGitCredentialRequired),
+		errors.Is(err, service.ErrGitCredentialNotSupportedForLocal):
+		return ValidationErr(err.Error())
 	case errors.Is(err, service.ErrProjectInvalidName),
 		errors.Is(err, service.ErrProjectInvalidProvider),
 		errors.Is(err, service.ErrProjectInvalidStatus),

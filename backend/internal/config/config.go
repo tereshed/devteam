@@ -16,6 +16,13 @@ type Config struct {
 	Admin      AdminConfig
 	MCP        MCPConfig
 	Encryption EncryptionConfig
+	Git        GitConfig
+}
+
+// GitConfig — параметры работы с git при импорте/индексации.
+type GitConfig struct {
+	// ImportDir — каталог для клонов (GIT_IMPORT_DIR).
+	ImportDir string
 }
 
 // EncryptionConfig — ключи для шифрования чувствительных данных (AES и т.п.).
@@ -137,6 +144,9 @@ func Load() (*Config, error) {
 		},
 		Encryption: EncryptionConfig{
 			Key: getEnv("ENCRYPTION_KEY", ""),
+		},
+		Git: GitConfig{
+			ImportDir: getEnv("GIT_IMPORT_DIR", "/tmp/devteam-import"),
 		},
 	}
 

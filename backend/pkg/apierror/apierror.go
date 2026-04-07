@@ -28,6 +28,8 @@ const (
 	ErrAlreadyExists       = "already_exists"
 	ErrConflict            = "conflict"
 	ErrUnprocessable       = "unprocessable"
+	// ErrExternalService — сбой внешнего сервиса (GitHub API, git remote и т.д.), HTTP 502.
+	ErrExternalService = "external_service_error"
 )
 
 // JSON sends a structured error response

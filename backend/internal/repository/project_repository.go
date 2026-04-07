@@ -169,9 +169,11 @@ func (r *projectRepository) listWithUserScope(ctx context.Context, userID *uuid.
 	return projects, count, nil
 }
 
-// Update полная перезапись строки через Save (контракт: сервис передаёт полную модель)
+// Update полная перезапись строки через Save (контракт: сервис передаёт полную модель).
+// Внутри TransactionManager.WithTransaction использует ту же сессию, что и Create.
 func (r *projectRepository) Update(ctx context.Context, project *models.Project) error {
-	if err := r.db.WithContext(ctx).Save(project).Error; err != nil {
+	db := gormDB(ctx, r.db)
+	if err := db.WithContext(ctx).Save(project).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return ErrProjectNameExists
 		}

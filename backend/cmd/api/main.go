@@ -19,6 +19,7 @@ import (
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/server"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/pkg/gitprovider"
 	"github.com/devteam/backend/pkg/jwt"
 	"github.com/devteam/backend/pkg/llm/factory"
 	"github.com/devteam/backend/pkg/password"
@@ -133,8 +134,17 @@ func main() {
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager)
 	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
 	promptService := service.NewPromptService(promptRepo)
-	encryptionKey := []byte(cfg.Encryption.Key)
-	projectService := service.NewProjectService(projectRepo, teamRepo, gitCredRepo, txManager, encryptionKey)
+	gitFactory := gitprovider.NewFactory()
+	decryptor := service.NoopDecryptor{}
+	projectService := service.NewProjectService(
+		projectRepo,
+		teamRepo,
+		gitCredRepo,
+		txManager,
+		gitFactory,
+		decryptor,
+		cfg.Git.ImportDir,
+	)
 	teamService := service.NewTeamService(teamRepo)
 	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService)
 

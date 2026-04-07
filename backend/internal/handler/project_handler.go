@@ -71,6 +71,16 @@ func writeProjectServiceError(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusForbidden, apierror.ErrForbidden, err.Error())
 	case errors.Is(err, service.ErrProjectNameExists):
 		apierror.JSON(c, http.StatusConflict, apierror.ErrAlreadyExists, err.Error())
+	case errors.Is(err, service.ErrGitValidationFailed):
+		apierror.JSON(c, http.StatusBadGateway, apierror.ErrExternalService, err.Error())
+	case errors.Is(err, service.ErrGitCloneFailed):
+		apierror.JSON(c, http.StatusBadGateway, apierror.ErrExternalService, err.Error())
+	case errors.Is(err, service.ErrDecryptionFailed):
+		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "Failed to process credentials")
+	case errors.Is(err, service.ErrGitURLRequired),
+		errors.Is(err, service.ErrGitCredentialRequired),
+		errors.Is(err, service.ErrGitCredentialNotSupportedForLocal):
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrGitCredentialNotFound),
 		errors.Is(err, service.ErrProjectInvalidName),
 		errors.Is(err, service.ErrProjectInvalidProvider),

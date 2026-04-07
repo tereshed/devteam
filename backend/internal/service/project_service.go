@@ -3,16 +3,24 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/gitprovider"
 	"gorm.io/datatypes"
 )
 
 const devTeamDefaultName = "Development Team"
+
+const cloneTimeout = 10 * time.Minute
 
 var (
 	ErrProjectNotFound        = errors.New("project not found")
@@ -27,6 +35,13 @@ var (
 	ErrUpdateProjectGitCredentialConflict = errors.New("cannot use git_credential_id together with remove_git_credential")
 	ErrUpdateProjectTechStackConflict     = errors.New("cannot use tech_stack together with clear_tech_stack")
 	ErrUpdateProjectSettingsConflict      = errors.New("cannot use settings together with clear_settings")
+
+	ErrGitValidationFailed                 = errors.New("git access validation failed")
+	ErrGitCloneFailed                      = errors.New("git clone failed")
+	ErrDecryptionFailed                    = errors.New("failed to decrypt git credentials")
+	ErrGitURLRequired                      = errors.New("git_url is required for remote git provider")
+	ErrGitCredentialRequired               = errors.New("git_credential_id is required for remote git provider")
+	ErrGitCredentialNotSupportedForLocal   = errors.New("git_credential_id is not supported for local provider")
 )
 
 // jsonbEmptyObject значение по умолчанию для очищенных jsonb-полей проекта (как в миграции default '{}').
@@ -43,27 +58,33 @@ type ProjectService interface {
 }
 
 type projectService struct {
-	projectRepo    repository.ProjectRepository
-	teamRepo       repository.TeamRepository
-	gitCredRepo    repository.GitCredentialRepository
-	transactions   repository.TransactionManager
-	encryptionKey  []byte
+	projectRepo  repository.ProjectRepository
+	teamRepo     repository.TeamRepository
+	gitCredRepo  repository.GitCredentialRepository
+	transactions repository.TransactionManager
+	gitFactory   gitprovider.Factory
+	decryptor    Decryptor
+	importDir    string
 }
 
-// NewProjectService создаёт сервис проектов. encryptionKey зарезервирован для будущего шифрования на уровне сервиса.
+// NewProjectService создаёт сервис проектов.
 func NewProjectService(
 	projectRepo repository.ProjectRepository,
 	teamRepo repository.TeamRepository,
 	gitCredRepo repository.GitCredentialRepository,
 	transactions repository.TransactionManager,
-	encryptionKey []byte,
+	gitFactory gitprovider.Factory,
+	decryptor Decryptor,
+	importDir string,
 ) ProjectService {
 	return &projectService{
-		projectRepo:   projectRepo,
-		teamRepo:      teamRepo,
-		gitCredRepo:   gitCredRepo,
-		transactions:  transactions,
-		encryptionKey: encryptionKey,
+		projectRepo:  projectRepo,
+		teamRepo:     teamRepo,
+		gitCredRepo:  gitCredRepo,
+		transactions: transactions,
+		gitFactory:   gitFactory,
+		decryptor:    decryptor,
+		importDir:    importDir,
 	}
 }
 
@@ -98,6 +119,29 @@ func mapGitCredRepoErr(err error) error {
 		return ErrGitCredentialNotFound
 	}
 	return err
+}
+
+// mapGitProviderErr маппит ошибки gitprovider в ошибки сервиса.
+func mapGitProviderErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, gitprovider.ErrAuthFailed):
+		return fmt.Errorf("%w: authentication failed for repository", ErrGitValidationFailed)
+	case errors.Is(err, gitprovider.ErrRepoNotFound):
+		return fmt.Errorf("%w: repository not found", ErrGitValidationFailed)
+	case errors.Is(err, gitprovider.ErrPermissionDenied):
+		return fmt.Errorf("%w: insufficient permissions", ErrGitValidationFailed)
+	case errors.Is(err, gitprovider.ErrRateLimited):
+		return fmt.Errorf("%w: rate limit exceeded, try later", ErrGitValidationFailed)
+	case errors.Is(err, gitprovider.ErrCloneFailed):
+		return ErrGitCloneFailed
+	case errors.Is(err, gitprovider.ErrUnknownProvider):
+		return ErrProjectInvalidProvider
+	default:
+		return fmt.Errorf("%w: %v", ErrGitValidationFailed, err)
+	}
 }
 
 func normalizeListPagination(limit, offset int) (int, int) {
@@ -163,15 +207,44 @@ func listFilterFromDTO(req dto.ListProjectsRequest) (repository.ProjectFilter, e
 	return f, nil
 }
 
-func (s *projectService) ensureGitCredentialOwned(ctx context.Context, userID uuid.UUID, credID uuid.UUID) error {
-	cred, err := s.gitCredRepo.GetByID(ctx, credID)
+// buildGitProvider расшифровывает credentials и создаёт экземпляр GitProvider.
+func (s *projectService) buildGitProvider(
+	ctx context.Context,
+	providerType models.GitProvider,
+	credentialID *uuid.UUID,
+	userID uuid.UUID,
+) (gitprovider.GitProvider, error) {
+	creds := gitprovider.Credentials{}
+
+	if credentialID != nil {
+		gitCred, err := s.gitCredRepo.GetByID(ctx, *credentialID)
+		if err != nil {
+			return nil, mapGitCredRepoErr(err)
+		}
+		if gitCred.UserID != userID {
+			return nil, ErrGitCredentialForbidden
+		}
+		decrypted, err := s.decryptor.Decrypt(gitCred.EncryptedValue)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, err)
+		}
+		switch gitCred.AuthType {
+		case models.GitCredentialAuthToken, models.GitCredentialAuthOAuth:
+			creds.Token = string(decrypted)
+		case models.GitCredentialAuthSSHKey:
+			creds.SSHKey = string(decrypted)
+		}
+	}
+
+	provider, err := s.gitFactory.Create(string(providerType), creds)
 	if err != nil {
-		return mapGitCredRepoErr(err)
+		if errors.Is(err, gitprovider.ErrUnknownProvider) {
+			return nil, ErrProjectInvalidProvider
+		}
+		return nil, fmt.Errorf("create git provider: %w", err)
 	}
-	if cred.UserID != userID {
-		return ErrGitCredentialForbidden
-	}
-	return nil
+
+	return provider, nil
 }
 
 func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.CreateProjectRequest) (*models.Project, error) {
@@ -187,10 +260,10 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 	if err != nil {
 		return nil, err
 	}
-	if req.GitCredentialID != nil {
-		if err := s.ensureGitCredentialOwned(ctx, userID, *req.GitCredentialID); err != nil {
-			return nil, err
-		}
+
+	isRemote := gp != models.GitProviderLocal
+	if !isRemote && req.GitCredentialID != nil {
+		return nil, ErrGitCredentialNotSupportedForLocal
 	}
 
 	branch := strings.TrimSpace(req.GitDefaultBranch)
@@ -198,11 +271,35 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 		branch = "main"
 	}
 
+	gitURL := strings.TrimSpace(req.GitURL)
+
+	var provider gitprovider.GitProvider
+
+	if isRemote && gitURL != "" {
+		provider, err = s.buildGitProvider(ctx, gp, req.GitCredentialID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if err := provider.ValidateAccess(ctx, gitURL); err != nil {
+			return nil, mapGitProviderErr(err)
+		}
+		repoInfo, infoErr := provider.GetRepoInfo(ctx, gitURL)
+		if infoErr == nil && repoInfo != nil {
+			if branch == "main" && repoInfo.DefaultBranch != "" {
+				branch = repoInfo.DefaultBranch
+			}
+		}
+	} else if isRemote && req.GitCredentialID != nil {
+		if _, err := s.buildGitProvider(ctx, gp, req.GitCredentialID, userID); err != nil {
+			return nil, err
+		}
+	}
+
 	project := &models.Project{
 		Name:             name,
 		Description:      req.Description,
 		GitProvider:      gp,
-		GitURL:           req.GitURL,
+		GitURL:           gitURL,
 		GitDefaultBranch: branch,
 		GitCredentialsID: req.GitCredentialID,
 		VectorCollection: req.VectorCollection,
@@ -226,7 +323,46 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 	if err != nil {
 		return nil, err
 	}
+
+	if provider != nil && s.importDir != "" {
+		go s.cloneForIndexing(provider, project.ID, gitURL, branch)
+	}
+
 	return project, nil
+}
+
+// cloneForIndexing клонирует репозиторий для будущей индексации (Sprint 6+).
+func (s *projectService) cloneForIndexing(
+	provider gitprovider.GitProvider,
+	projectID uuid.UUID,
+	gitURL string,
+	branch string,
+) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[project:%s] panic in cloneForIndexing: %v", projectID, r)
+		}
+	}()
+
+	// TODO(Sprint 6+): привязать к shutdown-контексту приложения, чтобы отменять долгие Clone при SIGTERM.
+	cloneCtx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
+	defer cancel()
+
+	workDir := filepath.Join(s.importDir, projectID.String())
+
+	if err := provider.Clone(cloneCtx, gitURL, gitprovider.CloneOptions{
+		Branch:   branch,
+		DestPath: workDir,
+		Depth:    0,
+	}); err != nil {
+		log.Printf("[project:%s] clone for indexing failed: %v", projectID, err)
+		if rmErr := os.RemoveAll(workDir); rmErr != nil {
+			log.Printf("[project:%s] failed to remove workdir after clone error: %v", projectID, rmErr)
+		}
+		return
+	}
+
+	log.Printf("[project:%s] clone for indexing completed: %s", projectID, workDir)
 }
 
 func (s *projectService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.Project, error) {
@@ -270,6 +406,9 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 		return nil, ErrUpdateProjectSettingsConflict
 	}
 
+	oldGitURL := project.GitURL
+	oldGitProvider := project.GitProvider
+
 	if req.Name != nil {
 		n := strings.TrimSpace(*req.Name)
 		if n == "" {
@@ -288,7 +427,7 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 		project.GitProvider = gp
 	}
 	if req.GitURL != nil {
-		project.GitURL = *req.GitURL
+		project.GitURL = strings.TrimSpace(*req.GitURL)
 	}
 	if req.GitDefaultBranch != nil {
 		b := strings.TrimSpace(*req.GitDefaultBranch)
@@ -300,9 +439,6 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 	case req.RemoveGitCredential:
 		project.GitCredentialsID = nil
 	case req.GitCredentialID != nil:
-		if err := s.ensureGitCredentialOwned(ctx, userID, *req.GitCredentialID); err != nil {
-			return nil, err
-		}
 		project.GitCredentialsID = req.GitCredentialID
 	}
 	if req.VectorCollection != nil {
@@ -326,9 +462,55 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 		project.Settings = *req.Settings
 	}
 
-	if err := s.projectRepo.Update(ctx, project); err != nil {
-		return nil, mapProjectRepoErr(err)
+	if project.GitProvider == models.GitProviderLocal && project.GitCredentialsID != nil {
+		return nil, ErrGitCredentialNotSupportedForLocal
 	}
+
+	needsRevalidation := req.GitURL != nil || req.GitProvider != nil || req.GitCredentialID != nil || req.RemoveGitCredential
+	isRemote := project.GitProvider != models.GitProviderLocal
+	var provider gitprovider.GitProvider
+
+	if needsRevalidation && isRemote {
+		if project.GitURL != "" {
+			provider, err = s.buildGitProvider(ctx, project.GitProvider, project.GitCredentialsID, userID)
+			if err != nil {
+				return nil, err
+			}
+			if err := provider.ValidateAccess(ctx, project.GitURL); err != nil {
+				return nil, mapGitProviderErr(err)
+			}
+		} else if project.GitCredentialsID != nil {
+			if _, err := s.buildGitProvider(ctx, project.GitProvider, project.GitCredentialsID, userID); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := s.transactions.WithTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.projectRepo.Update(txCtx, project); err != nil {
+			return mapProjectRepoErr(err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	gitURLChanged := req.GitURL != nil && project.GitURL != oldGitURL
+	providerChanged := oldGitProvider != project.GitProvider
+	// Любая смена провайдера или URL: чистим importDir (в т.ч. remote→local), затем клон только если remote и есть URL.
+	needsCloneRefresh := (gitURLChanged || providerChanged) && s.importDir != ""
+
+	if needsCloneRefresh {
+		oldWorkDir := filepath.Join(s.importDir, project.ID.String())
+		if rmErr := os.RemoveAll(oldWorkDir); rmErr != nil {
+			log.Printf("[project:%s] failed to remove import workdir: %v", project.ID, rmErr)
+		}
+
+		if provider != nil && project.GitURL != "" {
+			go s.cloneForIndexing(provider, project.ID, project.GitURL, project.GitDefaultBranch)
+		}
+	}
+
 	return project, nil
 }
 

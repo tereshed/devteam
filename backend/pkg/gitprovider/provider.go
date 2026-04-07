@@ -46,6 +46,9 @@ var (
 
 	// ErrNotImplemented — операция не поддерживается данным провайдером (например PR у LocalGitProvider).
 	ErrNotImplemented = errors.New("gitprovider: operation not implemented for this provider")
+
+	// ErrUnknownProvider — неизвестный тип провайдера в Factory.Create.
+	ErrUnknownProvider = errors.New("gitprovider: unknown provider type")
 )
 
 // Factory создаёт GitProvider с уже расшифрованными credentials.
