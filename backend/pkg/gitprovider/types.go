@@ -2,6 +2,7 @@ package gitprovider
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -88,6 +89,23 @@ type Author struct {
 // String форматирует Author для git CLI: "Name <email>".
 func (a Author) String() string {
 	return fmt.Sprintf("%s <%s>", a.Name, a.Email)
+}
+
+// Validate проверяет поля автора перед передачей в git commit --author.
+// Нулевое значение (оба поля пустые после trim) — валидно: git возьмёт автора из config.
+func (a Author) Validate() error {
+	name := strings.TrimSpace(a.Name)
+	email := strings.TrimSpace(a.Email)
+	if name == "" && email == "" {
+		return nil
+	}
+	if name == "" || email == "" {
+		return fmt.Errorf("gitprovider: author requires non-empty name and email")
+	}
+	if strings.ContainsAny(name, "\n<>") || strings.ContainsAny(email, "\n<>") {
+		return fmt.Errorf("gitprovider: author name and email must not contain newlines or angle brackets")
+	}
+	return nil
 }
 
 // CloneOptions задаёт параметры для GitProvider.Clone.

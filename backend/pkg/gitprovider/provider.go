@@ -41,6 +41,9 @@ var (
 	// ErrCloneFailed — ошибка клонирования (сеть, диск, таймаут).
 	ErrCloneFailed = errors.New("gitprovider: clone failed")
 
+	// ErrPushBranchRequired — в PushOptions.Branch пустое или только пробелы.
+	ErrPushBranchRequired = errors.New("gitprovider: branch name is required for push")
+
 	// ErrNotImplemented — операция не поддерживается данным провайдером (например PR у LocalGitProvider).
 	ErrNotImplemented = errors.New("gitprovider: operation not implemented for this provider")
 )

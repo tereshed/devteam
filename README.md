@@ -143,8 +143,8 @@
 |---|--------|-------|--------|-------|
 | 4.1 | Интерфейс `GitProvider` | `backend/pkg/gitprovider/provider.go` | ⬜ | [детали](docs/tasks/4.1-gitprovider-interface.md) |
 | 4.2 | Типы: `CloneOptions`, `PROptions`, `PullRequest` и т.д. | `backend/pkg/gitprovider/types.go` | ⬜ | [детали](docs/tasks/4.2-gitprovider-types.md) |
-| 4.3 | Реализация: `GitHubProvider` (REST API v3 + go-github) | `backend/pkg/gitprovider/github.go` | ⬜ | |
-| 4.4 | Реализация: `LocalGitProvider` (git CLI через exec) | `backend/pkg/gitprovider/local.go` | ⬜ | |
+| 4.3 | Реализация: `GitHubProvider` (REST API v3 + go-github) | `backend/pkg/gitprovider/github.go` | ⬜ | [детали](docs/tasks/4.3-github-provider.md) |
+| 4.4 | Реализация: `LocalGitProvider` (git CLI через exec) | `backend/pkg/gitprovider/local.go` | ⬜ | [детали](docs/tasks/4.4-local-provider.md) |
 | 4.5 | Фабрика: `NewGitProvider(providerType, credentials)` | `backend/pkg/gitprovider/factory.go` | ⬜ | |
 | 4.6 | Service: интеграция GitProvider в `ProjectService` (clone при создании проекта) | `backend/internal/service/project_service.go` | ⬜ | |
 | 4.7 | Шифрование credentials (AES-256-GCM) | `backend/pkg/crypto/encrypt.go` | ⬜ | |
