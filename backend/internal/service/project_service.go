@@ -62,9 +62,9 @@ type projectService struct {
 	teamRepo     repository.TeamRepository
 	gitCredRepo  repository.GitCredentialRepository
 	transactions repository.TransactionManager
-	gitFactory   gitprovider.Factory
-	decryptor    Decryptor
-	importDir    string
+	gitFactory  gitprovider.Factory
+	encryptor   Encryptor
+	importDir   string
 }
 
 // NewProjectService создаёт сервис проектов.
@@ -74,7 +74,7 @@ func NewProjectService(
 	gitCredRepo repository.GitCredentialRepository,
 	transactions repository.TransactionManager,
 	gitFactory gitprovider.Factory,
-	decryptor Decryptor,
+	encryptor Encryptor,
 	importDir string,
 ) ProjectService {
 	return &projectService{
@@ -83,7 +83,7 @@ func NewProjectService(
 		gitCredRepo:  gitCredRepo,
 		transactions: transactions,
 		gitFactory:   gitFactory,
-		decryptor:    decryptor,
+		encryptor:    encryptor,
 		importDir:    importDir,
 	}
 }
@@ -224,7 +224,10 @@ func (s *projectService) buildGitProvider(
 		if gitCred.UserID != userID {
 			return nil, ErrGitCredentialForbidden
 		}
-		decrypted, err := s.decryptor.Decrypt(gitCred.EncryptedValue)
+		// AAD для git_credentials: []byte(credential.ID.String()). При Create/Update в сервисе
+		// сохранения кредов шифровать с тем же AAD после того, как ID строки известен (BeforeCreate/UUID).
+		aad := []byte(gitCred.ID.String())
+		decrypted, err := s.encryptor.Decrypt(gitCred.EncryptedValue, aad)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, err)
 		}

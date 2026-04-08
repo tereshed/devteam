@@ -1,28 +1,48 @@
 package gitprovider
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 )
 
 // LocalGitCLI — общие локальные операции через git CLI (используются LocalGitProvider и GitHubProvider).
 type LocalGitCLI struct {
-	creds Credentials
+	creds  Credentials
+	runner GitCommandRunner // если nil — NewExecGitRunner() при первом использовании через effectiveRunner
+}
+
+func (c *LocalGitCLI) effectiveRunner() GitCommandRunner {
+	if c.runner != nil {
+		return c.runner
+	}
+	return NewExecGitRunner()
 }
 
 // CreateBranch создаёт ветку в workDir.
 func (c *LocalGitCLI) CreateBranch(ctx context.Context, workDir string, opts BranchOptions) error {
-	tok := c.creds.Token
+	if strings.TrimSpace(opts.BranchName) == "" {
+		return fmt.Errorf("gitprovider: branch name is required")
+	}
+	if err := validateNonFlagGitString(opts.BranchName); err != nil {
+		return err
+	}
 	if opts.BaseBranch != "" {
-		if _, err := gitExec(ctx, tok, workDir, "checkout", "--", opts.BaseBranch); err != nil {
+		if err := validateGitRefName(opts.BaseBranch); err != nil {
 			return err
 		}
 	}
-	_, err := gitExec(ctx, tok, workDir, "checkout", "-b", "--", opts.BranchName)
+	tok := c.creds.Token
+	r := c.effectiveRunner()
+	if opts.BaseBranch != "" {
+		if _, err := runGit(ctx, r, tok, workDir, "checkout", "--", opts.BaseBranch); err != nil {
+			return err
+		}
+	}
+	// Имя ветки не идёт после --: git checkout -b не принимает «-b -- name» (ошибка fatal: '--' is not a valid branch name).
+	// Инъекция флагов закрыта validateNonFlagGitString.
+	_, err := runGit(ctx, r, tok, workDir, "checkout", "-b", opts.BranchName)
 	if err != nil {
 		le := strings.ToLower(err.Error())
 		if strings.Contains(le, "already exists") {
@@ -35,7 +55,7 @@ func (c *LocalGitCLI) CreateBranch(ctx context.Context, workDir string, opts Bra
 
 // ListLocalBranches возвращает локальные ветки с опциональным prefix.
 func (c *LocalGitCLI) ListLocalBranches(ctx context.Context, workDir string, prefix string) ([]string, error) {
-	out, err := gitExec(ctx, c.creds.Token, workDir, "branch", "--list", "--format=%(refname:short)")
+	out, err := runGit(ctx, c.effectiveRunner(), c.creds.Token, workDir, "branch", "--list", "--format=%(refname:short)")
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +74,10 @@ func (c *LocalGitCLI) ListLocalBranches(ctx context.Context, workDir string, pre
 
 // DeleteLocalBranch удаляет локальную ветку.
 func (c *LocalGitCLI) DeleteLocalBranch(ctx context.Context, workDir string, branch string) error {
-	_, err := gitExec(ctx, c.creds.Token, workDir, "branch", "-D", "--", branch)
+	if err := validateNonFlagGitString(branch); err != nil {
+		return err
+	}
+	_, err := runGit(ctx, c.effectiveRunner(), c.creds.Token, workDir, "branch", "-D", "--", branch)
 	if err != nil {
 		le := strings.ToLower(err.Error())
 		if strings.Contains(le, "checked out") {
@@ -70,43 +93,40 @@ func (c *LocalGitCLI) DeleteLocalBranch(ctx context.Context, workDir string, bra
 
 // Commit создаёт локальный коммит без push.
 func (c *LocalGitCLI) Commit(ctx context.Context, workDir string, opts CommitOptions) (string, bool, error) {
-	return executeCommit(ctx, c.creds.Token, workDir, opts)
+	return executeCommit(ctx, c.effectiveRunner(), c.creds.Token, workDir, opts)
 }
 
 // GetLocalDiff возвращает unified diff base..head (streaming).
 func (c *LocalGitCLI) GetLocalDiff(ctx context.Context, workDir string, base, head string) (io.ReadCloser, error) {
-	baseSHA, err := gitExec(ctx, c.creds.Token, workDir, "rev-parse", "--verify", base)
+	if err := validateGitRefName(base); err != nil {
+		return nil, err
+	}
+	if err := validateGitRefName(head); err != nil {
+		return nil, err
+	}
+	tok := c.creds.Token
+	r := c.effectiveRunner()
+	baseSHA, err := runGit(ctx, r, tok, workDir, "rev-parse", "--verify", "--", base)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base ref %q: %w", base, err)
 	}
-	headSHA, err := gitExec(ctx, c.creds.Token, workDir, "rev-parse", "--verify", head)
+	headSHA, err := runGit(ctx, r, tok, workDir, "rev-parse", "--verify", "--", head)
 	if err != nil {
 		return nil, fmt.Errorf("invalid head ref %q: %w", head, err)
 	}
 	rangeSpec := strings.TrimSpace(baseSHA) + ".." + strings.TrimSpace(headSHA)
-	cmd := exec.CommandContext(ctx, "git", "diff", rangeSpec)
-	cmd.Dir = workDir
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	return &readCloserWithWait{ReadCloser: stdout, cmd: cmd, stderr: &stderr, token: c.creds.Token}, nil
+	return r.GitStdoutPipe(ctx, workDir, tok, "diff", rangeSpec)
 }
 
-// GetLocalFileContent читает blob ref:path через plumbing cat-file.
+// GetLocalFileContent читает blob ref:path через plumbing cat-file (stdout стримится, без буферизации всего объекта в памяти).
 func (c *LocalGitCLI) GetLocalFileContent(ctx context.Context, workDir string, ref string, path string) (io.ReadCloser, error) {
-	spec := ref + ":" + path
-	out, err := gitExec(ctx, c.creds.Token, workDir, "cat-file", "blob", "--", spec)
-	if err != nil {
-		if isGitBlobOrPathMissing(err.Error()) {
-			return nil, ErrFileNotFound
-		}
+	if err := validateGitRefName(ref); err != nil {
 		return nil, err
 	}
-	return io.NopCloser(bytes.NewReader([]byte(out))), nil
+	if err := validateGitPathForBlob(path); err != nil {
+		return nil, err
+	}
+	spec := ref + ":" + path
+	tok := c.creds.Token
+	return c.effectiveRunner().GitStdoutPipe(ctx, workDir, tok, "cat-file", "blob", "--", spec)
 }

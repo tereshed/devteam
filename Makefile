@@ -17,10 +17,10 @@ logs:
 test: test-unit test-integration
 
 test-unit:
-	cd backend && go test ./internal/handler/... ./internal/service/... ./internal/mcp/... -v
+	cd backend && go test -race ./internal/handler/... ./internal/service/... ./internal/mcp/... ./internal/config/... ./pkg/crypto/... ./pkg/gitprovider/... -v
 
 test-integration:
-	cd backend && go test -tags=integration ./internal/repository/... -v
+	cd backend && go test -race -tags=integration ./internal/repository/... ./pkg/gitprovider/... -v
 
 test-all:
 	cd backend && go test ./... -v

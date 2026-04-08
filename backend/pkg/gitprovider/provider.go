@@ -49,6 +49,9 @@ var (
 
 	// ErrUnknownProvider — неизвестный тип провайдера в Factory.Create.
 	ErrUnknownProvider = errors.New("gitprovider: unknown provider type")
+
+	// ErrUnsafePath — путь или ref отклонён до вызова git (траверсал и т.п.).
+	ErrUnsafePath = errors.New("gitprovider: unsafe path or ref rejected")
 )
 
 // Factory создаёт GitProvider с уже расшифрованными credentials.

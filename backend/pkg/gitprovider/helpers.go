@@ -23,6 +23,27 @@ type readCloserWithWait struct {
 	token  string
 }
 
+func gitSubcommandOrUnknown(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return "?"
+}
+
+// runGitError — при непустом токене Error() маскирует весь текст (stderr + cause), чтобы токен не утекал через err.Error() в цепочке %w.
+type runGitError struct {
+	prefix string
+	cause  error
+	token  string
+}
+
+func (e *runGitError) Error() string {
+	s := fmt.Sprintf("%s: %v", e.prefix, e.cause)
+	return sanitizeToken(s, e.token)
+}
+
+func (e *runGitError) Unwrap() error { return e.cause }
+
 func (r *readCloserWithWait) Close() error {
 	var pipeErr error
 	if r.ReadCloser != nil {
@@ -37,6 +58,10 @@ func (r *readCloserWithWait) Close() error {
 			}
 			if strings.TrimSpace(stdStr) != "" {
 				msg := sanitizeToken(strings.TrimSpace(stdStr), r.token)
+				if r.token != "" {
+					wm := sanitizeToken(waitErr.Error(), r.token)
+					return fmt.Errorf("git command failed: %s, stderr: %s", wm, msg)
+				}
 				return fmt.Errorf("git command failed: %w, stderr: %s", waitErr, msg)
 			}
 		}
@@ -48,23 +73,19 @@ func (r *readCloserWithWait) Close() error {
 	return pipeErr
 }
 
-// gitExec выполняет git в workDir; при ошибке в текст включается stderr (с маскировкой токена).
-func gitExec(ctx context.Context, token, workDir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = workDir
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		msg := fmt.Sprintf("git %s: %s", args[0], strings.TrimSpace(stderr.String()))
+// runGit выполняет git через runner; при ошибке в текст включается stderr (с маскировкой токена).
+func runGit(ctx context.Context, runner GitCommandRunner, token, workDir string, args ...string) (string, error) {
+	stdout, stderr, err := runner.RunGit(ctx, workDir, args...)
+	if err != nil {
+		sub := gitSubcommandOrUnknown(args)
+		se := strings.TrimSpace(stderr)
+		prefix := fmt.Sprintf("git %s: %s", sub, se)
 		if token != "" {
-			msg = sanitizeToken(msg, token)
+			return "", &runGitError{prefix: prefix, cause: err, token: token}
 		}
-		return "", fmt.Errorf("%s: %w", msg, err)
+		return "", fmt.Errorf("%s: %w", prefix, err)
 	}
-	return stdout.String(), nil
+	return stdout, nil
 }
 
 // userinfoEncodedPassword возвращает пароль в том же виде, в каком net/url кодирует userinfo
@@ -102,12 +123,15 @@ func validatePushBranch(branch string) error {
 	if strings.TrimSpace(branch) == "" {
 		return ErrPushBranchRequired
 	}
-	return nil
+	return validateNonFlagGitString(branch)
 }
 
 // executeCommit — общая логика локального commit (LocalGitProvider и GitHubProvider).
 // Между проверкой индекса (git diff --cached) и commit кратковременное окно; в sandbox один процесс — приемлемо.
-func executeCommit(ctx context.Context, token, workDir string, opts CommitOptions) (string, bool, error) {
+func executeCommit(ctx context.Context, runner GitCommandRunner, token, workDir string, opts CommitOptions) (string, bool, error) {
+	if strings.TrimSpace(opts.Message) == "" {
+		return "", false, fmt.Errorf("gitprovider: empty commit message")
+	}
 	if err := opts.Author.Validate(); err != nil {
 		return "", false, err
 	}
@@ -116,16 +140,21 @@ func executeCommit(ctx context.Context, token, workDir string, opts CommitOption
 	if len(opts.Files) == 0 {
 		addArgs = append(addArgs, "-A")
 	} else {
+		for _, f := range opts.Files {
+			if err := validateGitPathForCommit(f); err != nil {
+				return "", false, err
+			}
+		}
 		addArgs = append(addArgs, "--")
 		addArgs = append(addArgs, opts.Files...)
 	}
-	if _, err := gitExec(ctx, token, workDir, addArgs...); err != nil {
+	if _, err := runGit(ctx, runner, token, workDir, addArgs...); err != nil {
 		return "", false, err
 	}
 
-	_, headErr := gitExec(ctx, token, workDir, "rev-parse", "--verify", "HEAD")
+	_, headErr := runGit(ctx, runner, token, workDir, "rev-parse", "--verify", "--", "HEAD")
 	if headErr != nil {
-		statusOut, err := gitExec(ctx, token, workDir, "status", "--porcelain")
+		statusOut, err := runGit(ctx, runner, token, workDir, "status", "--porcelain")
 		if err != nil {
 			return "", false, err
 		}
@@ -133,9 +162,7 @@ func executeCommit(ctx context.Context, token, workDir string, opts CommitOption
 			return "", false, nil
 		}
 	} else {
-		dcmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--quiet")
-		dcmd.Dir = workDir
-		diffErr := dcmd.Run()
+		_, _, diffErr := runner.RunGit(ctx, workDir, "diff", "--cached", "--quiet")
 		if diffErr == nil {
 			return "", false, nil
 		}
@@ -151,10 +178,10 @@ func executeCommit(ctx context.Context, token, workDir string, opts CommitOption
 	if name != "" && email != "" {
 		commitArgs = append(commitArgs, "--author", fmt.Sprintf("%s <%s>", name, email))
 	}
-	if _, err := gitExec(ctx, token, workDir, commitArgs...); err != nil {
+	if _, err := runGit(ctx, runner, token, workDir, commitArgs...); err != nil {
 		return "", false, err
 	}
-	shaOut, err := gitExec(ctx, token, workDir, "rev-parse", "HEAD")
+	shaOut, err := runGit(ctx, runner, token, workDir, "rev-parse", "HEAD")
 	if err != nil {
 		return "", false, err
 	}

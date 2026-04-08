@@ -1,13 +1,11 @@
 package gitprovider
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,11 +25,21 @@ type GitHubProvider struct {
 // oauth2.NewClient использует context.Background() только для транспорта (TLS);
 // каждый вызов API прокидывает ctx в go-github.
 func NewGitHubProvider(creds Credentials) *GitHubProvider {
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: creds.Token})
-	httpClient := oauth2.NewClient(context.Background(), ts)
-	client := github.NewClient(httpClient)
+	return NewGitHubProviderWithDeps(creds, nil, nil)
+}
+
+// NewGitHubProviderWithDeps — для тестов: runner и/или github.Client (nil = значения по умолчанию).
+func NewGitHubProviderWithDeps(creds Credentials, ghClient *github.Client, runner GitCommandRunner) *GitHubProvider {
+	var client *github.Client
+	if ghClient != nil {
+		client = ghClient
+	} else {
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: creds.Token})
+		httpClient := oauth2.NewClient(context.Background(), ts)
+		client = github.NewClient(httpClient)
+	}
 	return &GitHubProvider{
-		LocalGitCLI: LocalGitCLI{creds: creds},
+		LocalGitCLI: LocalGitCLI{creds: creds, runner: runner},
 		client:      client,
 	}
 }
@@ -94,6 +102,12 @@ func (g *GitHubProvider) DeleteBranch(ctx context.Context, repoURL string, branc
 }
 
 func (g *GitHubProvider) GetDiff(ctx context.Context, repoURL string, base, head string) (io.ReadCloser, error) {
+	if err := validateGitRefName(base); err != nil {
+		return nil, err
+	}
+	if err := validateGitRefName(head); err != nil {
+		return nil, err
+	}
 	owner, repo, err := parseRepoURL(repoURL)
 	if err != nil {
 		return nil, err
@@ -397,6 +411,12 @@ func (g *GitHubProvider) GetRepoInfo(ctx context.Context, repoURL string) (*Repo
 }
 
 func (g *GitHubProvider) GetFileContent(ctx context.Context, repoURL string, branch string, path string) (io.ReadCloser, error) {
+	if strings.TrimSpace(branch) == "" {
+		return nil, fmt.Errorf("gitprovider: empty branch for GetFileContent")
+	}
+	if err := validateGitPathForBlob(path); err != nil {
+		return nil, err
+	}
 	owner, repo, err := parseRepoURL(repoURL)
 	if err != nil {
 		return nil, err
@@ -412,6 +432,9 @@ func (g *GitHubProvider) Clone(ctx context.Context, repoURL string, opts CloneOp
 	if g.creds.Token == "" {
 		return fmt.Errorf("%w: missing token", ErrAuthFailed)
 	}
+	if err := validateGitBranchForClone(opts.Branch); err != nil {
+		return err
+	}
 	owner, repo, err := parseRepoURL(repoURL)
 	if err != nil {
 		return err
@@ -419,18 +442,16 @@ func (g *GitHubProvider) Clone(ctx context.Context, repoURL string, opts CloneOp
 	authURL := authenticatedGitHubCloneURL(owner, repo, g.creds.Token)
 	args := []string{"clone"}
 	if opts.Branch != "" {
-		args = append(args, "--branch", opts.Branch)
+		args = append(args, "--branch="+opts.Branch)
 	}
 	if opts.Depth > 0 {
 		args = append(args, "--depth", strconv.Itoa(opts.Depth))
 	}
 	args = append(args, "--", authURL, opts.DestPath)
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := sanitizeToken(stderr.String(), g.creds.Token)
+	_, stderr, err := g.effectiveRunner().RunGit(ctx, "", args...)
+	if err != nil {
+		msg := sanitizeToken(strings.TrimSpace(stderr), g.creds.Token)
 		return fmt.Errorf("%w: %s", ErrCloneFailed, msg)
 	}
 	return nil
@@ -440,6 +461,9 @@ func (g *GitHubProvider) Push(ctx context.Context, workDir string, opts PushOpti
 	if g.creds.Token == "" {
 		return fmt.Errorf("%w: missing token", ErrAuthFailed)
 	}
+	if strings.TrimSpace(workDir) == "" {
+		return fmt.Errorf("gitprovider: empty work directory")
+	}
 	if err := validatePushBranch(opts.Branch); err != nil {
 		return err
 	}
@@ -447,7 +471,11 @@ func (g *GitHubProvider) Push(ctx context.Context, workDir string, opts PushOpti
 	if remote == "" {
 		remote = "origin"
 	}
-	remoteURL, err := gitExec(ctx, g.creds.Token, workDir, "remote", "get-url", "--", remote)
+	if err := validateGitRefName(remote); err != nil {
+		return err
+	}
+	r := g.effectiveRunner()
+	remoteURL, err := runGit(ctx, r, g.creds.Token, workDir, "remote", "get-url", "--", remote)
 	if err != nil {
 		return err
 	}
@@ -467,7 +495,7 @@ func (g *GitHubProvider) Push(ctx context.Context, workDir string, opts PushOpti
 	}
 	args = append(args, pushTarget, "--", opts.Branch)
 
-	_, err = gitExec(ctx, g.creds.Token, workDir, args...)
+	_, err = runGit(ctx, r, g.creds.Token, workDir, args...)
 	if err != nil {
 		le := strings.ToLower(err.Error())
 		switch {

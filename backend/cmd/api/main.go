@@ -19,6 +19,7 @@ import (
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/server"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/pkg/crypto"
 	"github.com/devteam/backend/pkg/gitprovider"
 	"github.com/devteam/backend/pkg/jwt"
 	"github.com/devteam/backend/pkg/llm/factory"
@@ -68,6 +69,15 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	var encryptor service.Encryptor = service.NoopEncryptor{}
+	if len(cfg.Encryption.Key) == 32 {
+		aesEnc, err := crypto.NewAESEncryptor(cfg.Encryption.Key)
+		if err != nil {
+			log.Fatalf("Failed to init AES encryptor: %v", err)
+		}
+		encryptor = aesEnc
 	}
 
 	// Подключаемся к базе данных
@@ -135,14 +145,13 @@ func main() {
 	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
 	promptService := service.NewPromptService(promptRepo)
 	gitFactory := gitprovider.NewFactory()
-	decryptor := service.NoopDecryptor{}
 	projectService := service.NewProjectService(
 		projectRepo,
 		teamRepo,
 		gitCredRepo,
 		txManager,
 		gitFactory,
-		decryptor,
+		encryptor,
 		cfg.Git.ImportDir,
 	)
 	teamService := service.NewTeamService(teamRepo)
@@ -170,11 +179,8 @@ func main() {
 	ctxWorker, cancelWorker := context.WithCancel(context.Background())
 	go workflowEngine.RunWorker(ctxWorker)
 
-	// Scheduler (запускаем планировщик)
+	// Scheduler: внутри cron свой жизненный цикл; останавливаем через Stop() при shutdown.
 	scheduler := service.NewScheduler(workflowRepo, workflowEngine, modelCatalogService)
-	// Используем тот же контекст, что и для worker, или отдельный?
-	// Лучше отдельный, так как scheduler внутри cron использует свои горутины.
-	// Но для gracefull shutdown нам нужно будет вызвать Stop().
 	if err := scheduler.Start(ctxWorker); err != nil {
 		log.Printf("Failed to start scheduler: %v", err)
 	}

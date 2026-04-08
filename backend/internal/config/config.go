@@ -1,16 +1,20 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // Config содержит всю конфигурацию приложения
 type Config struct {
-	Server     ServerConfig
-	Database   DatabaseConfig
+	// Environment — значение ENV после strings.TrimSpace и ToLower (пусто, если переменная не задана).
+	Environment string
+	Server      ServerConfig
+	Database    DatabaseConfig
 	JWT        JWTConfig
 	LLM        LLMConfig
 	Admin      AdminConfig
@@ -25,9 +29,9 @@ type GitConfig struct {
 	ImportDir string
 }
 
-// EncryptionConfig — ключи для шифрования чувствительных данных (AES и т.п.).
+// EncryptionConfig — ключ для AES-256-GCM (32 байта после декодирования ENCRYPTION_KEY).
 type EncryptionConfig struct {
-	Key string // ENCRYPTION_KEY (например 32 байта в base64 или raw — по соглашению проекта)
+	Key []byte // пусто, если ENCRYPTION_KEY не задан; иначе ровно 32 байта из HEX (64 символа)
 }
 
 // MCPConfig содержит конфигурацию MCP (Model Context Protocol) сервера
@@ -76,9 +80,20 @@ type JWTConfig struct {
 	RefreshTokenExpiry time.Duration
 }
 
+// IsProd — «боевое» окружение: ENV=production или prod (без учёта регистра при загрузке).
+func (c *Config) IsProd() bool {
+	switch c.Environment {
+	case "production", "prod":
+		return true
+	default:
+		return false
+	}
+}
+
 // Load загружает конфигурацию из переменных окружения
 func Load() (*Config, error) {
 	cfg := &Config{
+		Environment: normalizeEnvName(os.Getenv("ENV")),
 		Server: ServerConfig{
 			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
 			Port:         getEnv("SERVER_PORT", "8080"),
@@ -142,12 +157,22 @@ func Load() (*Config, error) {
 			MaxTokensLimit: getIntEnv("MCP_MAX_TOKENS_LIMIT", 32_768),
 			MaxInputRunes:  getIntEnv("MCP_MAX_INPUT_RUNES", 50_000),
 		},
-		Encryption: EncryptionConfig{
-			Key: getEnv("ENCRYPTION_KEY", ""),
-		},
+		Encryption: EncryptionConfig{},
 		Git: GitConfig{
 			ImportDir: getEnv("GIT_IMPORT_DIR", "/tmp/devteam-import"),
 		},
+	}
+
+	encKeyRaw := strings.TrimSpace(getEnv("ENCRYPTION_KEY", ""))
+	if encKeyRaw == "" && cfg.IsProd() {
+		return nil, fmt.Errorf("ENCRYPTION_KEY must be set in production")
+	}
+	if encKeyRaw != "" {
+		key, err := DecodeEncryptionKeyHex(encKeyRaw)
+		if err != nil {
+			return nil, fmt.Errorf("ENCRYPTION_KEY: %w", err)
+		}
+		cfg.Encryption.Key = key
 	}
 
 	// Валидация MCP-конфига
@@ -164,7 +189,7 @@ func Load() (*Config, error) {
 
 		// PublicURL обязателен в production
 		if cfg.MCP.PublicURL == "" {
-			if os.Getenv("ENV") == "production" {
+			if cfg.IsProd() {
 				return nil, fmt.Errorf("MCP_PUBLIC_URL must be set in production (e.g. https://your-domain.com/mcp)")
 			}
 			// Для разработки формируем URL по умолчанию
@@ -172,13 +197,8 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Предупреждение, если используется дефолтный ключ
-	if cfg.JWT.SecretKey == "change-me-in-production" {
-		// В production это должно быть ошибкой, но для разработки разрешаем
-		// Можно добавить проверку окружения через переменную ENV=production
-		if os.Getenv("ENV") == "production" {
-			return nil, fmt.Errorf("JWT_SECRET_KEY must be set in production")
-		}
+	if cfg.JWT.SecretKey == "change-me-in-production" && cfg.IsProd() {
+		return nil, fmt.Errorf("JWT_SECRET_KEY must be set in production")
 	}
 
 	return cfg, nil
@@ -220,6 +240,26 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
+}
+
+func normalizeEnvName(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+// DecodeEncryptionKeyHex декодирует ENCRYPTION_KEY: ровно 64 hex-символа → 32 байта.
+func DecodeEncryptionKeyHex(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if len(s) != 64 {
+		return nil, fmt.Errorf("must be exactly 64 hexadecimal characters, got %d", len(s))
+	}
+	key, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hexadecimal: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("decoded key must be 32 bytes, got %d", len(key))
+	}
+	return key, nil
 }
 
 // LLMConfig содержит конфигурацию для LLM провайдеров

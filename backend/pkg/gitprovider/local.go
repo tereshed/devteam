@@ -1,11 +1,9 @@
 package gitprovider
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -18,7 +16,7 @@ type LocalGitProvider struct {
 
 // NewLocalGitProvider создаёт экземпляр LocalGitProvider (фабрика 4.5).
 func NewLocalGitProvider(creds Credentials) *LocalGitProvider {
-	return &LocalGitProvider{LocalGitCLI: LocalGitCLI{creds: creds}}
+	return &LocalGitProvider{LocalGitCLI: LocalGitCLI{creds: creds, runner: nil}}
 }
 
 var _ GitProvider = (*LocalGitProvider)(nil)
@@ -34,13 +32,11 @@ func (l *LocalGitProvider) ValidateAccess(ctx context.Context, repoURL string) e
 	if isHTTPURL(checkURL) && l.creds.Token != "" {
 		checkURL = injectTokenInURL(checkURL, l.creds.Token)
 	}
-	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--", checkURL)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err == nil {
+	_, stderr, err := l.effectiveRunner().RunGit(ctx, "", "ls-remote", "--", checkURL)
+	if err == nil {
 		return nil
 	}
-	msg := strings.ToLower(stderr.String())
+	msg := strings.ToLower(stderr)
 	if strings.Contains(msg, "authentication failed") || strings.Contains(msg, "could not read username") ||
 		strings.Contains(msg, "access denied") || strings.Contains(msg, "invalid username or password") {
 		return ErrAuthFailed
@@ -49,30 +45,34 @@ func (l *LocalGitProvider) ValidateAccess(ctx context.Context, repoURL string) e
 }
 
 func (l *LocalGitProvider) Clone(ctx context.Context, repoURL string, opts CloneOptions) error {
+	if err := validateGitBranchForClone(opts.Branch); err != nil {
+		return err
+	}
 	cloneURL := repoURL
 	if l.creds.Token != "" && isHTTPURL(cloneURL) {
 		cloneURL = injectTokenInURL(cloneURL, l.creds.Token)
 	}
 	args := []string{"clone"}
 	if opts.Branch != "" {
-		args = append(args, "--branch", opts.Branch)
+		args = append(args, "--branch="+opts.Branch)
 	}
 	if opts.Depth > 0 {
 		args = append(args, "--depth", strconv.Itoa(opts.Depth))
 	}
 	args = append(args, "--", cloneURL, opts.DestPath)
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := sanitizeToken(strings.TrimSpace(stderr.String()), l.creds.Token)
+	_, stderr, err := l.effectiveRunner().RunGit(ctx, "", args...)
+	if err != nil {
+		msg := sanitizeToken(strings.TrimSpace(stderr), l.creds.Token)
 		return fmt.Errorf("%w: %s", ErrCloneFailed, msg)
 	}
 	return nil
 }
 
 func (l *LocalGitProvider) Push(ctx context.Context, workDir string, opts PushOptions) error {
+	if strings.TrimSpace(workDir) == "" {
+		return fmt.Errorf("gitprovider: empty work directory")
+	}
 	if err := validatePushBranch(opts.Branch); err != nil {
 		return err
 	}
@@ -80,7 +80,11 @@ func (l *LocalGitProvider) Push(ctx context.Context, workDir string, opts PushOp
 	if remote == "" {
 		remote = "origin"
 	}
-	remoteURL, err := gitExec(ctx, l.creds.Token, workDir, "remote", "get-url", "--", remote)
+	if err := validateGitRefName(remote); err != nil {
+		return err
+	}
+	r := l.effectiveRunner()
+	remoteURL, err := runGit(ctx, r, l.creds.Token, workDir, "remote", "get-url", "--", remote)
 	if err != nil {
 		return err
 	}
@@ -95,7 +99,7 @@ func (l *LocalGitProvider) Push(ctx context.Context, workDir string, opts PushOp
 	}
 	args = append(args, pushTarget, "--", opts.Branch)
 
-	_, err = gitExec(ctx, l.creds.Token, workDir, args...)
+	_, err = runGit(ctx, r, l.creds.Token, workDir, args...)
 	if err != nil {
 		le := strings.ToLower(err.Error())
 		switch {

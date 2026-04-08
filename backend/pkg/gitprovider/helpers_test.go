@@ -7,6 +7,7 @@ import (
 )
 
 func TestSanitizeToken_userinfoEncodingMatchesURLPackage(t *testing.T) {
+	t.Parallel()
 	tok := "ghp_secret with space"
 	u, err := url.Parse("https://github.com/o/r.git")
 	if err != nil {
@@ -27,7 +28,25 @@ func TestSanitizeToken_userinfoEncodingMatchesURLPackage(t *testing.T) {
 	}
 }
 
+func TestSanitizeToken_emptyTokenNoOp(t *testing.T) {
+	t.Parallel()
+	if got := sanitizeToken("keep-me", ""); got != "keep-me" {
+		t.Fatal(got)
+	}
+}
+
+func TestIsGitBlobOrPathMissing(t *testing.T) {
+	t.Parallel()
+	if !isGitBlobOrPathMissing("fatal: path README does not exist") {
+		t.Fatal("expected true")
+	}
+	if isGitBlobOrPathMissing("ok") {
+		t.Fatal("expected false")
+	}
+}
+
 func TestUserinfoEncodedPassword_spaceUsesPercent20NotPlus(t *testing.T) {
+	t.Parallel()
 	enc := userinfoEncodedPassword("a b")
 	if enc == "a+b" || strings.Contains(enc, "+") {
 		t.Fatalf("got %q; want %%20 for space like net/url userinfo, not QueryEscape +", enc)

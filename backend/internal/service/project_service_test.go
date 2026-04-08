@@ -187,13 +187,21 @@ func (m *MockGitProvider) SupportsPullRequests() bool {
 	return m.Called().Bool(0)
 }
 
-// MockDecryptor — мок Decryptor.
-type MockDecryptor struct {
+// MockEncryptor — мок Encryptor.
+type MockEncryptor struct {
 	mock.Mock
 }
 
-func (m *MockDecryptor) Decrypt(ciphertext []byte) ([]byte, error) {
-	args := m.Called(ciphertext)
+func (m *MockEncryptor) Encrypt(plaintext []byte, associatedData []byte) ([]byte, error) {
+	args := m.Called(plaintext, associatedData)
+	if err := args.Error(1); err != nil {
+		return nil, err
+	}
+	return args.Get(0).([]byte), nil
+}
+
+func (m *MockEncryptor) Decrypt(ciphertext []byte, associatedData []byte) ([]byte, error) {
+	args := m.Called(ciphertext, associatedData)
 	if err := args.Error(1); err != nil {
 		return nil, err
 	}
@@ -221,7 +229,7 @@ func newTestProjectService(
 	gr *MockGitCredentialRepository,
 	txMgr repository.TransactionManager,
 ) ProjectService {
-	return newProjectServiceWithGitDeps(pr, tr, gr, txMgr, new(MockFactory), NoopDecryptor{}, "")
+	return newProjectServiceWithGitDeps(pr, tr, gr, txMgr, new(MockFactory), NoopEncryptor{}, "")
 }
 
 func newProjectServiceWithGitDeps(
@@ -230,11 +238,11 @@ func newProjectServiceWithGitDeps(
 	gr *MockGitCredentialRepository,
 	txMgr repository.TransactionManager,
 	gf *MockFactory,
-	dec Decryptor,
+	enc Encryptor,
 	importDir string,
 ) ProjectService {
-	if dec == nil {
-		dec = NoopDecryptor{}
+	if enc == nil {
+		enc = NoopEncryptor{}
 	}
 	if gf == nil {
 		gf = new(MockFactory)
@@ -245,7 +253,7 @@ func newProjectServiceWithGitDeps(
 		gitCredRepo:  gr,
 		transactions: txMgr,
 		gitFactory:   gf,
-		decryptor:    dec,
+		encryptor:    enc,
 		importDir:    importDir,
 	}
 }
@@ -299,7 +307,7 @@ func TestProjectService_Create_WithGitCredential(t *testing.T) {
 	gr := new(MockGitCredentialRepository)
 	gf := new(MockFactory)
 	mp := new(MockGitProvider)
-	svc := newProjectServiceWithGitDeps(pr, tr, gr, &stubTxManager{tx: sharedTx}, gf, NoopDecryptor{}, "")
+	svc := newProjectServiceWithGitDeps(pr, tr, gr, &stubTxManager{tx: sharedTx}, gf, NoopEncryptor{}, "")
 
 	gr.On("GetByID", ctx, credID).Return(&models.GitCredential{
 		ID: credID, UserID: userID, AuthType: models.GitCredentialAuthToken, EncryptedValue: []byte("tok"),
@@ -548,7 +556,7 @@ func TestProjectService_Update_ChangeCredential(t *testing.T) {
 	gr := new(MockGitCredentialRepository)
 	gf := new(MockFactory)
 	mp := new(MockGitProvider)
-	svc := newProjectServiceWithGitDeps(pr, new(MockTeamRepository), gr, noopTxManager{}, gf, NoopDecryptor{}, "")
+	svc := newProjectServiceWithGitDeps(pr, new(MockTeamRepository), gr, noopTxManager{}, gf, NoopEncryptor{}, "")
 
 	existing := &models.Project{
 		ID:               pid,
@@ -919,14 +927,15 @@ func TestCreate_GitHub_WithCredential_Decrypted(t *testing.T) {
 	gr := new(MockGitCredentialRepository)
 	gf := new(MockFactory)
 	mp := new(MockGitProvider)
-	dec := new(MockDecryptor)
-	svc := newProjectServiceWithGitDeps(pr, tr, gr, &stubTxManager{tx: sharedTx}, gf, dec, "")
+	encMock := new(MockEncryptor)
+	svc := newProjectServiceWithGitDeps(pr, tr, gr, &stubTxManager{tx: sharedTx}, gf, encMock, "")
 
-	enc := []byte("secret")
+	encBlob := []byte("secret")
+	aad := []byte(credID.String())
 	gr.On("GetByID", ctx, credID).Once().Return(&models.GitCredential{
-		ID: credID, UserID: userID, AuthType: models.GitCredentialAuthToken, EncryptedValue: enc,
+		ID: credID, UserID: userID, AuthType: models.GitCredentialAuthToken, EncryptedValue: encBlob,
 	}, nil)
-	dec.On("Decrypt", enc).Once().Return([]byte("tok"), nil)
+	encMock.On("Decrypt", encBlob, aad).Once().Return([]byte("tok"), nil)
 	gf.On("Create", "github", mock.MatchedBy(func(c gitprovider.Credentials) bool { return c.Token == "tok" })).Return(mp, nil)
 	mp.On("ValidateAccess", ctx, url).Return(nil)
 	mp.On("GetRepoInfo", ctx, url).Return(nil, errors.New("skip"))
@@ -939,7 +948,7 @@ func TestCreate_GitHub_WithCredential_Decrypted(t *testing.T) {
 	})
 	require.NoError(t, err)
 	gr.AssertExpectations(t)
-	dec.AssertExpectations(t)
+	encMock.AssertExpectations(t)
 }
 
 func TestCreate_GitHub_WithCredential_DecryptError(t *testing.T) {
@@ -949,14 +958,15 @@ func TestCreate_GitHub_WithCredential_DecryptError(t *testing.T) {
 	url := "https://github.com/o/r"
 	gr := new(MockGitCredentialRepository)
 	gf := new(MockFactory)
-	dec := new(MockDecryptor)
-	svc := newProjectServiceWithGitDeps(new(MockProjectRepository), new(MockTeamRepository), gr, noopTxManager{}, gf, dec, "")
+	encMock := new(MockEncryptor)
+	svc := newProjectServiceWithGitDeps(new(MockProjectRepository), new(MockTeamRepository), gr, noopTxManager{}, gf, encMock, "")
 
-	enc := []byte("x")
+	encBlob := []byte("x")
+	aad := []byte(credID.String())
 	gr.On("GetByID", ctx, credID).Return(&models.GitCredential{
-		ID: credID, UserID: userID, AuthType: models.GitCredentialAuthToken, EncryptedValue: enc,
+		ID: credID, UserID: userID, AuthType: models.GitCredentialAuthToken, EncryptedValue: encBlob,
 	}, nil)
-	dec.On("Decrypt", enc).Return(nil, errors.New("bad"))
+	encMock.On("Decrypt", encBlob, aad).Return(nil, errors.New("bad"))
 
 	_, err := svc.Create(ctx, userID, dto.CreateProjectRequest{
 		Name: "N", GitProvider: "github", GitURL: url, GitCredentialID: &credID,
@@ -1031,15 +1041,16 @@ func TestCreate_NoBuildProviderCalledTwice(t *testing.T) {
 	gr := new(MockGitCredentialRepository)
 	gf := new(MockFactory)
 	mp := new(MockGitProvider)
-	dec := new(MockDecryptor)
+	encMock := new(MockEncryptor)
 	importDir := t.TempDir()
-	svc := newProjectServiceWithGitDeps(pr, tr, gr, &stubTxManager{tx: sharedTx}, gf, dec, importDir)
+	svc := newProjectServiceWithGitDeps(pr, tr, gr, &stubTxManager{tx: sharedTx}, gf, encMock, importDir)
 
-	enc := []byte("e")
+	encBlob := []byte("e")
+	aad := []byte(credID.String())
 	gr.On("GetByID", ctx, credID).Once().Return(&models.GitCredential{
-		ID: credID, UserID: userID, AuthType: models.GitCredentialAuthToken, EncryptedValue: enc,
+		ID: credID, UserID: userID, AuthType: models.GitCredentialAuthToken, EncryptedValue: encBlob,
 	}, nil)
-	dec.On("Decrypt", enc).Once().Return([]byte("t"), nil)
+	encMock.On("Decrypt", encBlob, aad).Once().Return([]byte("t"), nil)
 	gf.On("Create", "github", mock.Anything).Once().Return(mp, nil)
 	mp.On("ValidateAccess", ctx, url).Return(nil)
 	mp.On("GetRepoInfo", ctx, url).Return(nil, errors.New("skip"))
@@ -1055,7 +1066,7 @@ func TestCreate_NoBuildProviderCalledTwice(t *testing.T) {
 	require.NoError(t, err)
 	<-done
 	gr.AssertExpectations(t)
-	dec.AssertExpectations(t)
+	encMock.AssertExpectations(t)
 	gf.AssertExpectations(t)
 }
 
