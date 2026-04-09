@@ -143,6 +143,31 @@ func TestExecuteCommit_emptyMessage(t *testing.T) {
 	}
 }
 
+func TestExecuteCommit_diffCachedFailure_masksToken(t *testing.T) {
+	t.Parallel()
+	tok := "glpat_EXECUTE_COMMIT_DIFF"
+	rr := &recordingRunner{}
+	rr.runHook = func(ctx context.Context, workDir string, args []string) (string, string, error) {
+		switch args[0] {
+		case "add":
+			return "", "", nil
+		case "rev-parse":
+			return "cafebabe", "", nil
+		case "diff":
+			return "", "fatal: " + tok + " perm", errors.New("exit 2")
+		default:
+			return "", "", errors.New("unexpected")
+		}
+	}
+	_, _, err := executeCommit(context.Background(), rr, tok, "/w", CommitOptions{Message: "m", Files: nil})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), tok) {
+		t.Fatalf("token leaked: %v", err)
+	}
+}
+
 func TestExecuteCommit_noChangesEmptyRepo(t *testing.T) {
 	t.Parallel()
 	step := 0

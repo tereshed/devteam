@@ -46,6 +46,7 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.mongodb.org/mongo-driver v1.17.6 // indirect
+	go.uber.org/goleak v1.3.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251103181224-f26f9409b101 // indirect
 	google.golang.org/grpc v1.77.0 // indirect
 	gorm.io/driver/mysql v1.5.6 // indirect

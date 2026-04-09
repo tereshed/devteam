@@ -22,6 +22,9 @@ func (c *LocalGitCLI) effectiveRunner() GitCommandRunner {
 
 // CreateBranch создаёт ветку в workDir.
 func (c *LocalGitCLI) CreateBranch(ctx context.Context, workDir string, opts BranchOptions) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	if strings.TrimSpace(opts.BranchName) == "" {
 		return fmt.Errorf("gitprovider: branch name is required")
 	}
@@ -55,6 +58,9 @@ func (c *LocalGitCLI) CreateBranch(ctx context.Context, workDir string, opts Bra
 
 // ListLocalBranches возвращает локальные ветки с опциональным prefix.
 func (c *LocalGitCLI) ListLocalBranches(ctx context.Context, workDir string, prefix string) ([]string, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	out, err := runGit(ctx, c.effectiveRunner(), c.creds.Token, workDir, "branch", "--list", "--format=%(refname:short)")
 	if err != nil {
 		return nil, err
@@ -74,6 +80,9 @@ func (c *LocalGitCLI) ListLocalBranches(ctx context.Context, workDir string, pre
 
 // DeleteLocalBranch удаляет локальную ветку.
 func (c *LocalGitCLI) DeleteLocalBranch(ctx context.Context, workDir string, branch string) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	if err := validateNonFlagGitString(branch); err != nil {
 		return err
 	}
@@ -93,11 +102,17 @@ func (c *LocalGitCLI) DeleteLocalBranch(ctx context.Context, workDir string, bra
 
 // Commit создаёт локальный коммит без push.
 func (c *LocalGitCLI) Commit(ctx context.Context, workDir string, opts CommitOptions) (string, bool, error) {
+	if err := requireContext(ctx); err != nil {
+		return "", false, err
+	}
 	return executeCommit(ctx, c.effectiveRunner(), c.creds.Token, workDir, opts)
 }
 
 // GetLocalDiff возвращает unified diff base..head (streaming).
 func (c *LocalGitCLI) GetLocalDiff(ctx context.Context, workDir string, base, head string) (io.ReadCloser, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	if err := validateGitRefName(base); err != nil {
 		return nil, err
 	}
@@ -106,11 +121,11 @@ func (c *LocalGitCLI) GetLocalDiff(ctx context.Context, workDir string, base, he
 	}
 	tok := c.creds.Token
 	r := c.effectiveRunner()
-	baseSHA, err := runGit(ctx, r, tok, workDir, "rev-parse", "--verify", "--", base)
+	baseSHA, err := runGit(ctx, r, tok, workDir, "rev-parse", "--verify", "--end-of-options", base)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base ref %q: %w", base, err)
 	}
-	headSHA, err := runGit(ctx, r, tok, workDir, "rev-parse", "--verify", "--", head)
+	headSHA, err := runGit(ctx, r, tok, workDir, "rev-parse", "--verify", "--end-of-options", head)
 	if err != nil {
 		return nil, fmt.Errorf("invalid head ref %q: %w", head, err)
 	}
@@ -120,6 +135,9 @@ func (c *LocalGitCLI) GetLocalDiff(ctx context.Context, workDir string, base, he
 
 // GetLocalFileContent читает blob ref:path через plumbing cat-file (stdout стримится, без буферизации всего объекта в памяти).
 func (c *LocalGitCLI) GetLocalFileContent(ctx context.Context, workDir string, ref string, path string) (io.ReadCloser, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	if err := validateGitRefName(ref); err != nil {
 		return nil, err
 	}

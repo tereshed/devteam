@@ -55,3 +55,37 @@ func TestUserinfoEncodedPassword_spaceUsesPercent20NotPlus(t *testing.T) {
 		t.Fatalf("got %q, want a%%20b", enc)
 	}
 }
+
+func TestMapGitCLIError_table(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		stderr string
+		want   error
+	}{
+		{"Authentication failed", ErrAuthFailed},
+		{"could not read Username", ErrAuthFailed},
+		{"Access denied", ErrAuthFailed},
+		{"Invalid username or password", ErrAuthFailed},
+		{"repository not found", ErrRepoNotFound},
+		{"random network glitch", ErrRepoNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.stderr, func(t *testing.T) {
+			t.Parallel()
+			got := mapGitCLIError(tc.stderr)
+			if got != tc.want {
+				t.Fatalf("mapGitCLIError(%q) = %v, want %v", tc.stderr, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeToken_QueryEscape_plusForm(t *testing.T) {
+	t.Parallel()
+	tok := "ab+cd"
+	s := "https://x/?q=" + tok + "&z=1"
+	out := sanitizeToken(s, tok)
+	if strings.Contains(out, tok) {
+		t.Fatalf("raw + form leaked: %q", out)
+	}
+}

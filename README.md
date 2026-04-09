@@ -148,8 +148,8 @@
 | 4.5 | Фабрика: `NewGitProvider(providerType, credentials)` | `backend/pkg/gitprovider/factory.go` | ⬜ | [детали](docs/tasks/4.5-gitprovider-factory.md) |
 | 4.6 | Service: интеграция GitProvider в `ProjectService` (clone при создании проекта) | `backend/internal/service/project_service.go` | ⬜ | [детали](docs/tasks/4.6-project-service-gitprovider.md) |
 | 4.7 | Шифрование credentials (AES-256-GCM) | `backend/pkg/crypto/encrypt.go` | ⬜ | [детали](docs/tasks/4.7-encrypt-credentials.md) |
-| 4.8 | Unit-тесты: GitHubProvider (с моками HTTP) | `backend/pkg/gitprovider/github_test.go` | ⬜ | |
-| 4.9 | Unit-тесты: LocalGitProvider | `backend/pkg/gitprovider/local_test.go` | ⬜ | |
+| 4.8 | Unit-тесты: GitHubProvider (с моками HTTP) | `backend/pkg/gitprovider/github_test.go` | ⬜ |  [детали](docs/tasks/4.8-unit-tests-github-provider.md)  |
+| 4.9 | Unit-тесты: LocalGitProvider | `local_test.go`, `local_cli_test.go`, `helpers_test.go` (+ `local_integration_test.go`) в `backend/pkg/gitprovider/` | ✅ | [детали](docs/tasks/4.9-unit-tests-local-provider.md) |
 
 **Зависимости:** Sprint 2
 

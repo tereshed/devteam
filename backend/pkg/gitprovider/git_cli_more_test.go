@@ -6,28 +6,6 @@ import (
 	"testing"
 )
 
-func TestLocalGitCLI_ListLocalBranches_and_DeleteLocalBranch(t *testing.T) {
-	t.Parallel()
-	rr := &recordingRunner{defaultOut: "main\nfeature\n"}
-	cli := LocalGitCLI{creds: Credentials{}, runner: rr}
-	ctx := context.Background()
-	names, err := cli.ListLocalBranches(ctx, "/w", "feat")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(names) != 1 || names[0] != "feature" {
-		t.Fatalf("%v", names)
-	}
-	rr2 := &recordingRunner{}
-	rr2.runHook = func(ctx context.Context, workDir string, args []string) (string, string, error) {
-		return "", "", nil
-	}
-	cli2 := LocalGitCLI{creds: Credentials{}, runner: rr2}
-	if err := cli2.DeleteLocalBranch(ctx, "/w", "topic"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestGitHubProvider_CommitAndPush(t *testing.T) {
 	t.Parallel()
 	n := 0

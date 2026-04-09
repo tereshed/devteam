@@ -2,6 +2,7 @@ package gitprovider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -25,6 +26,9 @@ func (l *LocalGitProvider) ProviderType() string       { return "local" }
 func (l *LocalGitProvider) SupportsPullRequests() bool { return false }
 
 func (l *LocalGitProvider) ValidateAccess(ctx context.Context, repoURL string) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	if strings.TrimSpace(repoURL) == "" {
 		return ErrRepoNotFound
 	}
@@ -36,16 +40,20 @@ func (l *LocalGitProvider) ValidateAccess(ctx context.Context, repoURL string) e
 	if err == nil {
 		return nil
 	}
-	msg := strings.ToLower(stderr)
-	if strings.Contains(msg, "authentication failed") || strings.Contains(msg, "could not read username") ||
-		strings.Contains(msg, "access denied") || strings.Contains(msg, "invalid username or password") {
-		return ErrAuthFailed
-	}
-	return ErrRepoNotFound
+	tok := l.creds.Token
+	details := sanitizeToken(strings.TrimSpace(stderr), tok)
+	sent := mapGitCLIError(stderr)
+	return fmt.Errorf("git validate access: %w, details: %s", sent, details)
 }
 
 func (l *LocalGitProvider) Clone(ctx context.Context, repoURL string, opts CloneOptions) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	if err := validateGitBranchForClone(opts.Branch); err != nil {
+		return err
+	}
+	if err := validateCloneDestPath(opts.DestPath); err != nil {
 		return err
 	}
 	cloneURL := repoURL
@@ -64,12 +72,15 @@ func (l *LocalGitProvider) Clone(ctx context.Context, repoURL string, opts Clone
 	_, stderr, err := l.effectiveRunner().RunGit(ctx, "", args...)
 	if err != nil {
 		msg := sanitizeToken(strings.TrimSpace(stderr), l.creds.Token)
-		return fmt.Errorf("%w: %s", ErrCloneFailed, msg)
+		return fmt.Errorf("git clone: %w, details: %s", ErrCloneFailed, msg)
 	}
 	return nil
 }
 
 func (l *LocalGitProvider) Push(ctx context.Context, workDir string, opts PushOptions) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	if strings.TrimSpace(workDir) == "" {
 		return fmt.Errorf("gitprovider: empty work directory")
 	}
@@ -101,12 +112,17 @@ func (l *LocalGitProvider) Push(ctx context.Context, workDir string, opts PushOp
 
 	_, err = runGit(ctx, r, l.creds.Token, workDir, args...)
 	if err != nil {
-		le := strings.ToLower(err.Error())
+		details := strings.TrimSpace(err.Error())
+		var rge *runGitError
+		if errors.As(err, &rge) && strings.TrimSpace(rge.stderr) != "" {
+			details = sanitizeToken(strings.TrimSpace(rge.stderr), l.creds.Token)
+		}
+		le := strings.ToLower(details)
 		switch {
 		case strings.Contains(le, "rejected"):
-			return ErrConflict
+			return fmt.Errorf("git push: %w, details: %s", ErrConflict, details)
 		case strings.Contains(le, "permission denied"), strings.Contains(le, "403"):
-			return ErrPermissionDenied
+			return fmt.Errorf("git push: %w, details: %s", ErrPermissionDenied, details)
 		}
 		return err
 	}
@@ -114,6 +130,9 @@ func (l *LocalGitProvider) Push(ctx context.Context, workDir string, opts PushOp
 }
 
 func (l *LocalGitProvider) CommitAndPush(ctx context.Context, workDir string, commitOpts CommitOptions, pushOpts PushOptions) (string, bool, error) {
+	if err := requireContext(ctx); err != nil {
+		return "", false, err
+	}
 	sha, hasChanges, err := l.Commit(ctx, workDir, commitOpts)
 	if err != nil {
 		return "", false, err
@@ -125,61 +144,106 @@ func (l *LocalGitProvider) CommitAndPush(ctx context.Context, workDir string, co
 }
 
 func (l *LocalGitProvider) ListBranches(ctx context.Context, repoURL string, prefix string) ([]string, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) DeleteBranch(ctx context.Context, repoURL string, branch string) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	return ErrNotImplemented
 }
 
 func (l *LocalGitProvider) GetDiff(ctx context.Context, repoURL string, base, head string) (io.ReadCloser, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) GetFileContent(ctx context.Context, repoURL string, branch string, path string) (io.ReadCloser, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) GetRepoInfo(ctx context.Context, repoURL string) (*RepoInfo, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) CreatePullRequest(ctx context.Context, repoURL string, opts PRCreateOptions) (*PullRequest, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) UpdatePullRequest(ctx context.Context, repoURL string, number int, opts PRUpdateOptions) (*PullRequest, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) GetPullRequest(ctx context.Context, repoURL string, number int) (*PullRequest, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) ListPullRequests(ctx context.Context, repoURL string, opts PROptions) ([]PullRequest, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) ListPRFiles(ctx context.Context, repoURL string, number int) ([]PRFile, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) ListPRComments(ctx context.Context, repoURL string, number int) ([]PRComment, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
 	return nil, ErrNotImplemented
 }
 
 func (l *LocalGitProvider) AddPRComment(ctx context.Context, repoURL string, number int, body string) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	return ErrNotImplemented
 }
 
 func (l *LocalGitProvider) AddPRReviewComment(ctx context.Context, repoURL string, number int, opts PRReviewCommentOptions) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	return ErrNotImplemented
 }
 
 func (l *LocalGitProvider) SubmitPRReview(ctx context.Context, repoURL string, number int, opts PRReviewOptions) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	return ErrNotImplemented
 }
 
 func (l *LocalGitProvider) MergePullRequest(ctx context.Context, repoURL string, number int, opts PRMergeOptions) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
 	return ErrNotImplemented
 }

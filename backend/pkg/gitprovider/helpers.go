@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os/exec"
 	"strings"
+	"syscall"
 )
 
 // gitHTTPAccessTokenUser — имя пользователя в HTTPS URL при token injection (как в injectTokenInURL).
@@ -35,6 +36,7 @@ type runGitError struct {
 	prefix string
 	cause  error
 	token  string
+	stderr string // сырой stderr для классификации (Push и др.), не для прямого вывода в лог
 }
 
 func (e *runGitError) Error() string {
@@ -44,12 +46,36 @@ func (e *runGitError) Error() string {
 
 func (e *runGitError) Unwrap() error { return e.cause }
 
+// isGitStdoutClosedSigPIPE — дочерний процесс завершился из‑за SIGPIPE после того, как читатель
+// закрыл stdout (штатное раннее закрытие стрима). На Unix часто exit 141 или WaitStatus(Signal=SIGPIPE);
+// на macOS встречается текст «signal: broken pipe» без кода 141.
+func isGitStdoutClosedSigPIPE(waitErr error) bool {
+	if waitErr == nil {
+		return false
+	}
+	var ee *exec.ExitError
+	if errors.As(waitErr, &ee) {
+		if ee.ExitCode() == 141 {
+			return true
+		}
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok {
+			if ws.Signaled() && ws.Signal() == syscall.SIGPIPE {
+				return true
+			}
+		}
+	}
+	return strings.Contains(strings.ToLower(waitErr.Error()), "broken pipe")
+}
+
 func (r *readCloserWithWait) Close() error {
 	var pipeErr error
 	if r.ReadCloser != nil {
 		pipeErr = r.ReadCloser.Close()
 	}
 	waitErr := r.cmd.Wait()
+	if waitErr != nil && isGitStdoutClosedSigPIPE(waitErr) {
+		return pipeErr
+	}
 	if waitErr != nil {
 		if r.stderr != nil {
 			stdStr := r.stderr.String()
@@ -80,12 +106,34 @@ func runGit(ctx context.Context, runner GitCommandRunner, token, workDir string,
 		sub := gitSubcommandOrUnknown(args)
 		se := strings.TrimSpace(stderr)
 		prefix := fmt.Sprintf("git %s: %s", sub, se)
-		if token != "" {
-			return "", &runGitError{prefix: prefix, cause: err, token: token}
-		}
-		return "", fmt.Errorf("%s: %w", prefix, err)
+		return "", &runGitError{prefix: prefix, cause: err, token: token, stderr: stderr}
 	}
 	return stdout, nil
+}
+
+// gitRunFailure — результат прямого runner.RunGit(...) с маскировкой токена (как у runGit).
+func gitRunFailure(token, subcommand, stderr string, cause error) error {
+	se := strings.TrimSpace(stderr)
+	prefix := fmt.Sprintf("git %s: %s", subcommand, se)
+	return &runGitError{prefix: prefix, cause: cause, token: token, stderr: stderr}
+}
+
+// requireContext отклоняет nil context до вызова exec / runner (без panic).
+func requireContext(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("gitprovider: nil context")
+	}
+	return nil
+}
+
+// mapGitCLIError сопоставляет stderr неуспешной git-команды с доменной sentinel-ошибкой (ls-remote / общие случаи).
+func mapGitCLIError(stderr string) error {
+	msg := strings.ToLower(stderr)
+	if strings.Contains(msg, "authentication failed") || strings.Contains(msg, "could not read username") ||
+		strings.Contains(msg, "access denied") || strings.Contains(msg, "invalid username or password") {
+		return ErrAuthFailed
+	}
+	return ErrRepoNotFound
 }
 
 // userinfoEncodedPassword возвращает пароль в том же виде, в каком net/url кодирует userinfo
@@ -129,6 +177,9 @@ func validatePushBranch(branch string) error {
 // executeCommit — общая логика локального commit (LocalGitProvider и GitHubProvider).
 // Между проверкой индекса (git diff --cached) и commit кратковременное окно; в sandbox один процесс — приемлемо.
 func executeCommit(ctx context.Context, runner GitCommandRunner, token, workDir string, opts CommitOptions) (string, bool, error) {
+	if err := requireContext(ctx); err != nil {
+		return "", false, err
+	}
 	if strings.TrimSpace(opts.Message) == "" {
 		return "", false, fmt.Errorf("gitprovider: empty commit message")
 	}
@@ -152,7 +203,7 @@ func executeCommit(ctx context.Context, runner GitCommandRunner, token, workDir 
 		return "", false, err
 	}
 
-	_, headErr := runGit(ctx, runner, token, workDir, "rev-parse", "--verify", "--", "HEAD")
+	_, headErr := runGit(ctx, runner, token, workDir, "rev-parse", "--verify", "--end-of-options", "HEAD")
 	if headErr != nil {
 		statusOut, err := runGit(ctx, runner, token, workDir, "status", "--porcelain")
 		if err != nil {
@@ -162,13 +213,13 @@ func executeCommit(ctx context.Context, runner GitCommandRunner, token, workDir 
 			return "", false, nil
 		}
 	} else {
-		_, _, diffErr := runner.RunGit(ctx, workDir, "diff", "--cached", "--quiet")
+		_, stderr, diffErr := runner.RunGit(ctx, workDir, "diff", "--cached", "--quiet")
 		if diffErr == nil {
 			return "", false, nil
 		}
 		var exitErr *exec.ExitError
 		if !errors.As(diffErr, &exitErr) || exitErr.ExitCode() != 1 {
-			return "", false, diffErr
+			return "", false, gitRunFailure(token, "diff", stderr, diffErr)
 		}
 	}
 

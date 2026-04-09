@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -43,6 +44,37 @@ func TestReadCloserWithWait_Close_unblocksBlockedWriter(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("deadlock: Close() не завершился — ожидался разрыв пайпа и Wait()")
+	}
+}
+
+// Раннее закрытие stdout: писатель получает SIGPIPE (exit 141 на Unix) — не считаем это ошибкой Close().
+func TestReadCloserWithWait_Close_sigPIPEAfterShortRead(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("exit 141 / SIGPIPE после закрытия пайпа — проверяем на Unix")
+	}
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("yes"); err == nil {
+		cmd = exec.CommandContext(context.Background(), "yes")
+	} else {
+		cmd = exec.CommandContext(context.Background(), "sh", "-c", "while true; do printf 'x\\n'; done")
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := new(bytes.Buffer)
+	cmd.Stderr = stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	r := &readCloserWithWait{ReadCloser: stdout, cmd: cmd, stderr: stderr, token: ""}
+	buf := make([]byte, 16)
+	if _, err := r.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
 	}
 }
 
