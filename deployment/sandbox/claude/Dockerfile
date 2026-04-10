@@ -34,9 +34,12 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
     && npm cache clean --force \
     && bash -c 'rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true'
 
+# entrypoint после npm: правки скрипта не инвалидируют кэш слоя с CLI
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh && chown sandbox:sandbox /entrypoint.sh
+
 USER sandbox
 
 ENV HOME=/home/sandbox
 
-# Временно до задачи 5.2 (entrypoint.sh): явный дефолт для docker run
-CMD ["/bin/bash"]
+ENTRYPOINT ["/entrypoint.sh"]

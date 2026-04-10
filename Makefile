@@ -1,4 +1,4 @@
-.PHONY: help build up down logs test test-unit test-integration migrate-create migrate-up migrate-down migrate-status frontend-test frontend-test-unit frontend-test-widget frontend-test-integration frontend-analyze frontend-codegen frontend-codegen-watch frontend-run-web frontend-run-android frontend-run-ios frontend-build-web frontend-build-android frontend-build-ios swagger
+.PHONY: help build up down logs test test-unit test-integration sandbox-build migrate-create migrate-up migrate-down migrate-status frontend-test frontend-test-unit frontend-test-widget frontend-test-integration frontend-analyze frontend-codegen frontend-codegen-watch frontend-run-web frontend-run-android frontend-run-ios frontend-build-web frontend-build-android frontend-build-ios swagger
 
 # === Управление сервисами ===
 build:
@@ -20,7 +20,11 @@ test-unit:
 	cd backend && go test -race ./internal/handler/... ./internal/service/... ./internal/mcp/... ./internal/config/... ./pkg/crypto/... ./pkg/gitprovider/... -v
 
 test-integration:
-	cd backend && go test -race -tags=integration ./internal/repository/... ./pkg/gitprovider/... -v
+	cd backend && go test -race -tags=integration ./internal/repository/... ./internal/sandbox/... ./pkg/gitprovider/... -v
+
+# Образ Claude sandbox (нужен для make test-integration и внутренних тестов entrypoint)
+sandbox-build:
+	docker build -t devteam/sandbox-claude:local -f deployment/sandbox/claude/Dockerfile deployment/sandbox/claude
 
 test-all:
 	cd backend && go test ./... -v
