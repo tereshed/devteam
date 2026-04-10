@@ -34,7 +34,18 @@ func setupTestDB(t *testing.T) *gorm.DB {
 
 func cleanupTestDB(t *testing.T, db *gorm.DB) {
 	// Очищаем таблицы в правильном порядке (сначала зависимые)
-	db.Exec("TRUNCATE TABLE llm_logs, scheduled_workflows, execution_steps, executions, workflows, agents, users, prompts, refresh_tokens, api_keys CASCADE")
+	db.Exec(`
+		DELETE FROM llm_logs;
+		DELETE FROM scheduled_workflows;
+		DELETE FROM execution_steps;
+		DELETE FROM executions;
+		DELETE FROM workflows;
+		DELETE FROM agents;
+		DELETE FROM users;
+		DELETE FROM prompts;
+		DELETE FROM refresh_tokens;
+		DELETE FROM api_keys;
+	`)
 }
 
 func TestUserRepository_Create(t *testing.T) {

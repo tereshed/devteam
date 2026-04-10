@@ -23,7 +23,14 @@ func taskRepoTestUserProject(t *testing.T, db *gorm.DB) (*models.User, *models.P
 func taskRepoTestAgent(t *testing.T, db *gorm.DB, projectID uuid.UUID) *models.Agent {
 	t.Helper()
 	ctx := context.Background()
-	team := teamRepoCreate(t, db, projectID, "tr-"+uuid.NewString()[:8])
+	
+	// Ищем существующую команду для проекта или создаем новую
+	var team models.Team
+	err := db.WithContext(ctx).Where("project_id = ?", projectID).First(&team).Error
+	if err != nil {
+		team = *teamRepoCreate(t, db, projectID, "tr-"+uuid.NewString()[:8])
+	}
+
 	skills := datatypes.JSON([]byte("[]"))
 	settings := datatypes.JSON([]byte("{}"))
 	a := &models.Agent{

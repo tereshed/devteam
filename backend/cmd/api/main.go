@@ -175,9 +175,13 @@ func main() {
 	// Workflow Engine
 	workflowEngine := service.NewWorkflowEngine(workflowRepo, llmService)
 	
-	// Запускаем Workflow Worker в фоне
+	// Запускаем Workflow Worker в фоне (отключить: WORKFLOW_WORKER_ENABLED=false)
 	ctxWorker, cancelWorker := context.WithCancel(context.Background())
-	go workflowEngine.RunWorker(ctxWorker)
+	if cfg.WorkflowWorkerEnabled {
+		go workflowEngine.RunWorker(ctxWorker)
+	} else {
+		log.Println("Workflow worker is disabled (WORKFLOW_WORKER_ENABLED=false); pending executions will not run until re-enabled")
+	}
 
 	// Scheduler: внутри cron свой жизненный цикл; останавливаем через Stop() при shutdown.
 	scheduler := service.NewScheduler(workflowRepo, workflowEngine, modelCatalogService)

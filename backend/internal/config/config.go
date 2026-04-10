@@ -21,6 +21,8 @@ type Config struct {
 	MCP        MCPConfig
 	Encryption EncryptionConfig
 	Git        GitConfig
+	// WorkflowWorkerEnabled — фоновый worker, раз в секунду ищет pending/running executions.
+	WorkflowWorkerEnabled bool
 }
 
 // GitConfig — параметры работы с git при импорте/индексации.
@@ -161,6 +163,7 @@ func Load() (*Config, error) {
 		Git: GitConfig{
 			ImportDir: getEnv("GIT_IMPORT_DIR", "/tmp/devteam-import"),
 		},
+		WorkflowWorkerEnabled: getBoolEnv("WORKFLOW_WORKER_ENABLED", true),
 	}
 
 	encKeyRaw := strings.TrimSpace(getEnv("ENCRYPTION_KEY", ""))

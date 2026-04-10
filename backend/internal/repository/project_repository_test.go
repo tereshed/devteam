@@ -20,29 +20,27 @@ import (
 func cleanupProjectIntegrationDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	err := db.Exec(`
-		TRUNCATE TABLE
-			conversation_messages,
-			conversations,
-			task_messages,
-			tasks,
-			agent_mcp_bindings,
-			mcp_server_configs,
-			teams,
-			projects,
-			git_credentials,
-			llm_logs,
-			scheduled_workflows,
-			execution_steps,
-			executions,
-			workflows,
-			agent_tool_bindings,
-			agents,
-			tool_definitions,
-			users,
-			prompts,
-			refresh_tokens,
-			api_keys
-		CASCADE
+		DELETE FROM conversation_messages;
+		DELETE FROM conversations;
+		DELETE FROM task_messages;
+		DELETE FROM tasks;
+		DELETE FROM agent_mcp_bindings;
+		DELETE FROM mcp_server_configs;
+		DELETE FROM teams;
+		DELETE FROM projects;
+		DELETE FROM git_credentials;
+		DELETE FROM llm_logs;
+		DELETE FROM scheduled_workflows;
+		DELETE FROM execution_steps;
+		DELETE FROM executions;
+		DELETE FROM workflows;
+		DELETE FROM agent_tool_bindings;
+		DELETE FROM agents;
+		DELETE FROM tool_definitions;
+		DELETE FROM users;
+		DELETE FROM prompts;
+		DELETE FROM refresh_tokens;
+		DELETE FROM api_keys;
 	`).Error
 	require.NoError(t, err)
 }
