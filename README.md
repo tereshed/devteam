@@ -161,7 +161,7 @@
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 5.1 | Dockerfile: `devteam/sandbox-claude` (Node.js + Claude Code CLI + git) | `deployment/sandbox/claude/Dockerfile` | ⬜ |
+| 5.1 | Dockerfile: `devteam/sandbox-claude` (Node.js + Claude Code CLI + git) | `deployment/sandbox/claude/Dockerfile` | ✅ | [детали](docs/tasks/5.1-dockerfile-sandbox-claude.md) |
 | 5.2 | Entrypoint-скрипт sandbox (clone → branch → agent → diff → result) | `deployment/sandbox/claude/entrypoint.sh` | ⬜ |
 | 5.3 | Интерфейс `SandboxRunner` | `backend/internal/sandbox/runner.go` | ⬜ |
 | 5.4 | Типы: `SandboxOptions`, `SandboxStatus`, `CodeResult`, `ResourceLimit` | `backend/internal/sandbox/types.go` | ⬜ |
