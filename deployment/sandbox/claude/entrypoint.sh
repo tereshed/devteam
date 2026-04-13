@@ -30,6 +30,7 @@ CANCELLED=0
 LAST_EXIT_CODE=0
 PHASE="init"
 AGENT_EXIT_CODE=""
+AGENT_FAILED=0
 COMMIT_HASH=""
 MESSAGE=""
 FINALIZED=0
@@ -53,6 +54,8 @@ mask_url_for_log() {
   local url="${1:-}"
   if [[ "$url" =~ ^([a-zA-Z][a-zA-Z0-9+.-]*://)(.*@)(.*)$ ]]; then
     printf '%s***@%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}"
+  elif [[ "$url" == *"@"* ]]; then
+    printf '***@%s\n' "${url#*@}"
   else
     printf '%s\n' "$url"
   fi
@@ -264,12 +267,13 @@ if ! git fetch origin --depth=50 -- "${BASE_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; 
 fi
 
 # --- branch: рабочая ветка от origin/<BASE_REF> ---
-# Имя ветки заранее отсекает ведущий «-» (Git такие ref не создаёт) — один атомарный checkout -b без лишнего if/else.
+# git switch -C: создать ветку или переключиться с reset на ref (если имя совпадает с дефолтной после clone — не падаем).
+# «--» перед start-point: не истолковать пользовательский ref как опцию (5.4).
 PHASE="branch"
-if ! git checkout -b "$BRANCH_NAME" "origin/${BASE_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
-  echo "entrypoint: could not create branch from origin/${BASE_REF_RESOLVED}" >&2
+if ! git switch -C "$BRANCH_NAME" -- "origin/${BASE_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
+  echo "entrypoint: could not create/switch to branch ${BRANCH_NAME} at origin/${BASE_REF_RESOLVED}" >&2
   LAST_EXIT_CODE=1
-  MESSAGE="git checkout -b failed"
+  MESSAGE="git switch -C failed"
   exit 1
 fi
 
@@ -305,10 +309,10 @@ if [[ "${CANCELLED:-0}" -eq 1 ]]; then
 fi
 
 if [[ "$AGENT_EXIT_CODE" -ne 0 ]]; then
+  AGENT_FAILED=1
   MESSAGE="claude exited with code ${AGENT_EXIT_CODE}"
-  LAST_EXIT_CODE="$AGENT_EXIT_CODE"
   PHASE="agent"
-  exit "$AGENT_EXIT_CODE"
+  # Не выходим: ниже собираем diff/артефакты, чтобы не потерять частичную работу агента.
 fi
 
 # --- diff: сначала индексируем всё, включая untracked ---
@@ -343,6 +347,11 @@ fi
 COMMIT_HASH="$(git rev-parse HEAD)"
 
 PHASE="done"
-MESSAGE="completed"
-LAST_EXIT_CODE=0
-exit 0
+if [[ "${AGENT_FAILED:-0}" -eq 1 ]]; then
+  LAST_EXIT_CODE="$AGENT_EXIT_CODE"
+  # MESSAGE уже задан при падении агента
+else
+  MESSAGE="completed"
+  LAST_EXIT_CODE=0
+fi
+exit "$LAST_EXIT_CODE"

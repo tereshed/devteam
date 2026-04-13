@@ -3,6 +3,10 @@ package sandbox
 
 import "time"
 
+// DefaultSandboxTimeout — жёсткий дефолт бизнес-таймаута задачи, если SandboxOptions.Timeout <= 0.
+// Раннер (5.5) и таймеры (5.8) обязаны использовать EffectiveTimeout(), не планировать бесконечное выполнение по умолчанию.
+const DefaultSandboxTimeout = 30 * time.Minute
+
 // Имена переменных окружения для SandboxRunner / entrypoint.
 // Instruction и Context из SandboxOptions не имеют имён ENV в Go: большие тексты
 // передаются только файлами (PromptFilePath, ContextFilePath), см. CopyToContainer в 5.5.
@@ -64,13 +68,18 @@ const (
 )
 
 // SandboxOptions — параметры запуска изоляции без доменных типов БД (ID задачи/проекта — строки).
+//
+// Безопасность логов/JSON: для вывода используйте LogSafe(), String() или MarshalJSON — не fmt.Printf("%+v", opts):
+// такой вывод обходит fmt.Stringer и утечёт Instruction/Context и сырые EnvVars (секреты).
 type SandboxOptions struct {
-	TaskID    string
+	TaskID string
+	// ProjectID — опционально; в текущем контракте 5.5 не участвует в имени контейнера и хостовых путях.
+	// Если позже ID попадёт в эти строки — сохраняйте ValidateProjectID (тот же формат, что TaskID) в Validate().
 	ProjectID string
 
 	Backend CodeBackendType
 	Image   string
-	// RepoURL — URL клона; до контейнера обязан пройти ValidateRepoURL (схемы http/https/git/ssh, без file:// и SSRF-хостов).
+	// RepoURL — URL клона; до контейнера обязан пройти ValidateRepoURL(ctx, …) (схемы http/https/git/ssh, без file:// и SSRF-хостов, DNS).
 	RepoURL string
 	// Branch — имя git-ветки; до Docker/entrypoint обязана пройти ValidateBranchName (защита от flag/command injection).
 	Branch string
@@ -80,12 +89,13 @@ type SandboxOptions struct {
 	Context     string
 
 	// EnvVars: при передаче SandboxOptions по значению мапа копируется только по ссылке (shallow copy).
-	// RunTask обязан сделать глубокую копию мапы (новая map + копия пар ключ/значение) до любой
-	// итерации или асинхронного использования — иначе concurrent map iteration and map write.
+	// Реализация RunTask обязана первой строкой вызвать opts = opts.Clone() (или эквивалентную глубокую
+	// копию EnvVars) до любой итерации или асинхронного использования — иначе concurrent map read/write.
 	// Ключи проходят ValidateEnvKeys (белый список + APP_*, без PATH/LD_* и т.д.).
 	EnvVars map[string]string
 
 	// Timeout — бизнес-таймаут жизни задачи в изоляции (после успешного start контейнера, политика 5.5/5.8).
+	// Ноль и отрицательные значения запрещены как «бесконечность»: используйте EffectiveTimeout() перед таймерами.
 	Timeout       time.Duration
 	ResourceLimit ResourceLimit
 
@@ -93,6 +103,20 @@ type SandboxOptions struct {
 	// false — контейнер в изолированной bridge-сети без доступа к внутренним сервисам хоста (БД, Redis и т.д.);
 	// детали политики маршрутизации и egress — в реализации 5.5/compose.
 	DisableNetwork bool
+}
+
+// Clone возвращает копию опций с глубокой копией EnvVars. Используйте в начале RunTask до чтения/передачи opts в горутины.
+func (o SandboxOptions) Clone() SandboxOptions {
+	res := o
+	if o.EnvVars != nil {
+		res.EnvVars = make(map[string]string, len(o.EnvVars))
+		for k, v := range o.EnvVars {
+			res.EnvVars[k] = v
+		}
+	} else {
+		res.EnvVars = nil
+	}
+	return res
 }
 
 // SandboxInstance — созданный инстанс сразу после RunTask (без ожидания завершения агента).
@@ -152,6 +176,9 @@ type ResourceLimit struct {
 }
 
 // LogEntry — одна порция логов из stdout/stderr контейнера.
+//
+// Рекомендация (5.4): при росте пакета имеет смысл вынести LogEntry и константы стрима в logs.go/stream.go
+// в том же пакете без переименования типов.
 //
 // Если Error != nil, запись терминальная: стрим оборвался (сеть, рестарт Docker и т.д.);
 // Line/Stderr могут быть пустыми. Оркестратор обязан проверять entry.Error после чтения из канала,

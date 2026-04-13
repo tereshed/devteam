@@ -22,10 +22,8 @@ type SandboxRunner interface {
 	// opts: образ, RepoURL, ветка, backend, Timeout (бизнес-таймаут), лимиты, EnvVars для entrypoint.
 	// Не дожидается завершения процесса в контейнере — используйте Wait.
 	// В SandboxInstance.ID возвращается только доверенный ID рантайма (см. ValidateSandboxID).
-	// В начале RunTask: валидация opts, включая ValidateRepoURL(opts.RepoURL), ValidateBranchName(opts.Branch)
-	// и ValidateEnvKeys(opts.EnvVars).
-	// opts передаётся по значению, но EnvVars — ссылочный тип: реализация обязана сделать глубокую
-	// копию мапы перед использованием (см. SandboxOptions.EnvVars).
+	// Первая строка тела RunTask: opts = opts.Clone() — снимок полей и глубокая копия EnvVars (гонки с вызывающим кодом).
+	// Далее: opts.Validate(ctx), ValidateRepoURL(ctx, opts.RepoURL), ValidateBranchName(opts.Branch), ValidateEnvKeys(opts.EnvVars).
 	//
 	// Сироты: если Docker уже выдал ID контейнера (create успешен), а последующий шаг (start, pull и т.д.)
 	// падает из-за ошибки или отмены ctx, реализация обязана best-effort удалить этот контейнер до возврата

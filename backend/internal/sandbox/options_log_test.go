@@ -3,6 +3,7 @@ package sandbox
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSandboxOptions_LogSafe_masksSecrets(t *testing.T) {
@@ -46,5 +47,25 @@ func TestSandboxOptions_String_sameAsLogSafe(t *testing.T) {
 	opts := SandboxOptions{EnvVars: map[string]string{EnvAnthropicAPIKey: "x"}}
 	if opts.String() != opts.LogSafe() {
 		t.Fatal("String() must match LogSafe()")
+	}
+}
+
+func Test_maskRepoURL_scpMasksUserBeforeAt(t *testing.T) {
+	raw := "ghp_supersecret12345@github.com:org/repo.git"
+	out := maskRepoURL(raw)
+	if strings.Contains(out, "supersecret") {
+		t.Fatal("SCP-style token leaked")
+	}
+	if !strings.HasPrefix(out, "***@github.com:") {
+		t.Fatalf("unexpected: %q", out)
+	}
+}
+
+func Test_maskSecretValue_runeSafePrefix(t *testing.T) {
+	// длинная строка с кириллицей: срез по рунам не должен давать битый UTF-8 в %q
+	v := "пароль" + strings.Repeat("x", 20) + "конец"
+	s := maskSecretValue(v)
+	if !utf8.ValidString(s) {
+		t.Fatalf("invalid UTF-8 in log mask: %q", s)
 	}
 }

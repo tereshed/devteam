@@ -45,12 +45,17 @@ func byteLenDesc(s string) string {
 }
 
 // maskRepoURL скрывает userinfo в clone URL (аналог маскирования в entrypoint).
+// Для SCP-формы без «://» (например token@github.com:org/repo.git) маскирует всё до последнего «@» перед хостом.
 func maskRepoURL(raw string) string {
 	if raw == "" {
 		return ""
 	}
 	scheme := strings.Index(raw, "://")
 	if scheme < 0 {
+		at := strings.LastIndex(raw, "@")
+		if at > 0 {
+			return "***@" + raw[at+1:]
+		}
 		return raw
 	}
 	at := strings.LastIndex(raw, "@")
@@ -96,24 +101,26 @@ func sensitiveEnvKey(k string) bool {
 	return strings.Contains(ku, "API_KEY") ||
 		strings.Contains(ku, "SECRET") ||
 		strings.Contains(ku, "TOKEN") ||
-		strings.Contains(ku, "PASSWORD")
+		strings.Contains(ku, "PASSWORD") ||
+		strings.Contains(ku, "KEY")
 }
 
 func maskSecretValue(v string) string {
+	r := []rune(v)
 	switch {
-	case v == "":
+	case len(r) == 0:
 		return `""`
-	case len(v) <= 6:
+	case len(r) <= 6:
 		return `"***"`
 	case strings.HasPrefix(v, "sk-"):
-		if len(v) <= 14 {
+		if len(r) <= 14 {
 			return `"sk-***"`
 		}
-		return fmt.Sprintf("%q", v[:8]+"***"+v[len(v)-4:])
+		return fmt.Sprintf("%q", string(r[:8])+"***"+string(r[len(r)-4:]))
 	default:
-		if len(v) <= 10 {
+		if len(r) <= 10 {
 			return `"***"`
 		}
-		return fmt.Sprintf("%q", v[:3]+"***"+v[len(v)-2:])
+		return fmt.Sprintf("%q", string(r[:3])+"***"+string(r[len(r)-2:]))
 	}
 }
