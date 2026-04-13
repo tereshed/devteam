@@ -255,3 +255,17 @@ func isBlockedRepoHost(ctx context.Context, host string) (blocked bool, err erro
 	}
 	return false, nil
 }
+
+// ValidateAllowedImage отклоняет образы вне allowlist (строгое совпадение строки ref).
+// allowed должен быть непустым (раннер подставляет безопасные дефолты в конструкторе).
+func ValidateAllowedImage(image string, allowed []string) error {
+	if len(allowed) == 0 {
+		return fmt.Errorf("image: empty allowlist: %w", ErrInvalidOptions)
+	}
+	for _, a := range allowed {
+		if image == a {
+			return nil
+		}
+	}
+	return fmt.Errorf("image %q not in allowlist: %w", image, ErrInvalidOptions)
+}

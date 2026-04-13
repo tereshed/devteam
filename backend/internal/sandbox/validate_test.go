@@ -129,3 +129,19 @@ func TestValidateRepoURL_dnsFailureIsInvalid(t *testing.T) {
 		t.Fatalf("expected cancelled lookup to fail closed: %v", err)
 	}
 }
+
+func TestValidateAllowedImage(t *testing.T) {
+	allowed := []string{"devteam/sandbox-claude:local", "devteam/sandbox-aider:latest"}
+	if err := ValidateAllowedImage("devteam/sandbox-claude:local", allowed); err != nil {
+		t.Fatalf("expected ok: %v", err)
+	}
+	if err := ValidateAllowedImage("ubuntu:latest", allowed); err == nil || !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("expected ErrInvalidOptions, got %v", err)
+	}
+	if err := ValidateAllowedImage("devteam/sandbox-claude:latest", allowed); err == nil {
+		t.Fatal("expected strict mismatch")
+	}
+	if err := ValidateAllowedImage("x", nil); err == nil || !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("expected empty allowlist error, got %v", err)
+	}
+}

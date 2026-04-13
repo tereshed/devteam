@@ -26,4 +26,8 @@ var (
 	ErrInvalidRepoURL = errors.New("sandbox: invalid repo url")
 	// ErrSandboxRunConflict — повторный RunTask при уже существующем контейнере для того же TaskID (политика без adopt).
 	ErrSandboxRunConflict = errors.New("sandbox: run conflict for task id")
+	// ErrSandboxDocker — ошибка Docker Engine после валидации (оборачивайте %w вокруг исходной ошибки для логов).
+	ErrSandboxDocker = errors.New("sandbox: docker engine")
+	// ErrSandboxStartup — контейнер создан, но сразу после старта не прошёл sanity-check (entrypoint / OOM / exec error).
+	ErrSandboxStartup = errors.New("sandbox: container startup failed")
 )
