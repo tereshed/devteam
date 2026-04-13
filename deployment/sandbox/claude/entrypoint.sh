@@ -4,8 +4,9 @@
 # Контракт env (согласовать с backend/internal/sandbox/types.go):
 #   REPO_URL           — URL для git clone (обязательно, не пусто)
 #   BRANCH_NAME        — рабочая ветка задачи (обязательно)
-#   TASK_INSTRUCTION   — задание агенту (обязательно); пишется в /workspace/prompt.txt, не в argv
-#   TASK_CONTEXT       — контекст (опционально) → /workspace/context.txt
+#   Инструкция/контекст: не через большие ENV (ARG_MAX). Раннер кладёт prompt/context в
+#   /workspace/prompt.txt и /workspace/context.txt до старта (CopyToContainer). Для локальной
+#   отладки при маленьком объёме допустимы TASK_INSTRUCTION / TASK_CONTEXT — см. prepare_files.
 #   BASE_REF           — база для diff (ветка на origin), по умолчанию GIT_DEFAULT_BRANCH или main
 #   GIT_DEFAULT_BRANCH — fallback, если BASE_REF не задан
 #   BACKEND            — ожидается claude-code (по умолчанию claude-code)
@@ -14,8 +15,8 @@
 #
 # Артефакты (стабильные пути для оркестратора):
 #   /workspace/repo/       — клон
-#   /workspace/prompt.txt  — инструкция из env
-#   /workspace/context.txt — контекст из env
+#   /workspace/prompt.txt  — инструкция (файл от раннера или из TASK_* при отладке)
+#   /workspace/context.txt — контекст (аналогично)
 #   /workspace/agent.log   — stdout/stderr Claude Code
 #   /workspace/full.diff   — unified diff (индекс vs origin/<BASE_REF>)
 #   /workspace/changes.txt — --stat для краткой сводки
@@ -191,14 +192,6 @@ if [[ "$BRANCH_NAME" == -* ]]; then
   exit 1
 fi
 
-if is_blank "${TASK_INSTRUCTION:-}"; then
-  echo "entrypoint: TASK_INSTRUCTION is required" >&2
-  LAST_EXIT_CODE=1
-  PHASE="validation"
-  MESSAGE="TASK_INSTRUCTION is required"
-  exit 1
-fi
-
 BACKEND="${BACKEND:-claude-code}"
 if [[ "$BACKEND" != "claude-code" ]]; then
   echo "entrypoint: BACKEND must be claude-code for this image (got: ${BACKEND})" >&2
@@ -222,10 +215,23 @@ if is_blank "$BASE_REF_RESOLVED"; then
 fi
 export BASE_REF_RESOLVED
 
-# Инструкция и контекст только в файлах (ARG_MAX / политика 5.2)
+# Инструкция и контекст: приоритет файлов от раннера (CopyToContainer); иначе маленький TASK_* для отладки.
 PHASE="prepare_files"
-printf '%s' "$TASK_INSTRUCTION" > "$PROMPT_FILE"
-if [[ -n "${TASK_CONTEXT:-}" ]]; then
+if [[ -f "$PROMPT_FILE" ]] && [[ -s "$PROMPT_FILE" ]]; then
+  :
+elif is_blank "${TASK_INSTRUCTION:-}"; then
+  echo "entrypoint: prompt required: inject ${PROMPT_FILE} before start or set TASK_INSTRUCTION (dev only)" >&2
+  LAST_EXIT_CODE=1
+  PHASE="validation"
+  MESSAGE="prompt required"
+  exit 1
+else
+  printf '%s' "$TASK_INSTRUCTION" > "$PROMPT_FILE"
+fi
+
+if [[ -f "$CONTEXT_FILE" ]] && [[ -s "$CONTEXT_FILE" ]]; then
+  :
+elif [[ -n "${TASK_CONTEXT:-}" ]]; then
   printf '%s' "$TASK_CONTEXT" > "$CONTEXT_FILE"
 else
   : > "$CONTEXT_FILE"

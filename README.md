@@ -159,22 +159,22 @@
 
 **Цель:** Запуск задач в изолированных Docker-контейнерах.
 
-| # | Задача | Файлы | Статус |
-|---|--------|-------|--------|
+| # | Задача | Файлы | Статус | Детали |
+|---|--------|-------|--------|--------|
 | 5.1 | Dockerfile: `devteam/sandbox-claude` (Node.js + Claude Code CLI + git) | `deployment/sandbox/claude/Dockerfile` | ✅ | [детали](docs/tasks/5.1-dockerfile-sandbox-claude.md) |
 | 5.2 | Entrypoint-скрипт sandbox (clone → branch → agent → diff → result) | `deployment/sandbox/claude/entrypoint.sh` | ✅ | [детали](docs/tasks/5.2-entrypoint-sandbox-claude.md) |
-| 5.3 | Интерфейс `SandboxRunner` | `backend/internal/sandbox/runner.go` | ⬜ |
-| 5.4 | Типы: `SandboxOptions`, `SandboxStatus`, `CodeResult`, `ResourceLimit` | `backend/internal/sandbox/types.go` | ⬜ |
-| 5.5 | Реализация: `DockerSandboxRunner` (Docker SDK для Go) | `backend/internal/sandbox/docker_runner.go` | ⬜ |
-| 5.6 | Стрим логов из контейнера (`docker.ContainerLogs` → channel) | В `docker_runner.go` | ⬜ |
-| 5.7 | Сбор результата (`docker.CopyFromContainer` → parse result.json + diff) | В `docker_runner.go` | ⬜ |
-| 5.8 | Таймаут и принудительная остановка | В `docker_runner.go` | ⬜ |
-| 5.9 | Resource limits (CPU, Memory) при создании контейнера | В `docker_runner.go` | ⬜ |
-| 5.10 | Конфигурация: `SandboxConfig` в `config.go` | `backend/internal/config/config.go` | ⬜ |
-| 5.11 | docker-compose: монтирование `/var/run/docker.sock` | `deployment/docker-compose.yaml` | ⬜ |
-| 5.12 | Makefile: `sandbox-build` (сборка sandbox-образов) | `Makefile` | ⬜ |
-| 5.13 | Unit-тесты: DockerSandboxRunner (с мок Docker Client) | `backend/internal/sandbox/docker_runner_test.go` | ⬜ |
-| 5.14 | Интеграционный тест: запуск реального контейнера с простой задачей | `backend/internal/sandbox/integration_test.go` | ⬜ |
+| 5.3 | Интерфейс `SandboxRunner` | `backend/internal/sandbox/runner.go` | ✅ | [детали](docs/tasks/5.3-sandbox-runner-interface.md) |
+| 5.4 | Типы: `SandboxOptions`, `SandboxStatus`, `CodeResult`, `ResourceLimit` | `backend/internal/sandbox/types.go` | ✅ | |
+| 5.5 | Реализация: `DockerSandboxRunner` (Docker SDK для Go) | `backend/internal/sandbox/docker_runner.go` | ⬜ | |
+| 5.6 | Стрим логов из контейнера (`docker.ContainerLogs` → channel) | В `docker_runner.go` | ⬜ | |
+| 5.7 | Сбор результата (`docker.CopyFromContainer` → parse result.json + diff) | В `docker_runner.go` | ⬜ | |
+| 5.8 | Таймаут и принудительная остановка | В `docker_runner.go` | ⬜ | |
+| 5.9 | Resource limits (CPU, Memory) при создании контейнера | В `docker_runner.go` | ⬜ | |
+| 5.10 | Конфигурация: `SandboxConfig` в `config.go` | `backend/internal/config/config.go` | ⬜ | |
+| 5.11 | docker-compose: монтирование `/var/run/docker.sock` | `deployment/docker-compose.yaml` | ⬜ | |
+| 5.12 | Makefile: `sandbox-build` (сборка sandbox-образов) | `Makefile` | ⬜ | |
+| 5.13 | Unit-тесты: DockerSandboxRunner (с мок Docker Client) | `backend/internal/sandbox/docker_runner_test.go` | ⬜ | |
+| 5.14 | Интеграционный тест: запуск реального контейнера с простой задачей | `backend/internal/sandbox/integration_test.go` | ⬜ | |
 
 **Зависимости:** Sprint 1
 
