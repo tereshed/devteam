@@ -166,7 +166,7 @@
 | 5.3 | Интерфейс `SandboxRunner` | `backend/internal/sandbox/runner.go` | ✅ | [детали](docs/tasks/5.3-sandbox-runner-interface.md) |
 | 5.4 | Типы: `SandboxOptions`, `SandboxStatus`, `CodeResult`, `ResourceLimit` | `backend/internal/sandbox/types.go` | ✅ | [детали](docs/tasks/5.4-sandbox-types.md) |
 | 5.5 | Реализация: `DockerSandboxRunner` (Docker SDK для Go) | `backend/internal/sandbox/docker_runner.go` | ✅ | [детали](docs/tasks/5.5-docker-sandbox-runner.md) |
-| 5.6 | Стрим логов из контейнера (`docker.ContainerLogs` → channel) | В `docker_runner.go` | ⬜ | |
+| 5.6 | Стрим логов из контейнера (`docker.ContainerLogs` → channel) | `stream_logs.go`, `stream_line_writer.go` | ✅ | [детали](docs/tasks/5.6-sandbox-stream-logs.md) |
 | 5.7 | Сбор результата (`docker.CopyFromContainer` → parse result.json + diff) | В `docker_runner.go` | ⬜ | |
 | 5.8 | Таймаут и принудительная остановка | В `docker_runner.go` | ⬜ | |
 | 5.9 | Resource limits (CPU, Memory) при создании контейнера | В `docker_runner.go` | ⬜ | |

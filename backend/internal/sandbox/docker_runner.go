@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"archive/tar"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -21,7 +20,6 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/stdcopy"
 )
 
 // Политика образов (5.5): при отсутствии локально выполняем ImagePull и обязательно дочитываем тело ответа.
@@ -42,6 +40,9 @@ type DockerSandboxRunner struct {
 	cli     *client.Client
 	allowed []string
 
+	// streamLogsEntryBuffer, если > 0, задаёт ёмкость буферизованного канала StreamLogs вместо StreamLogsDefaultBuffer (тесты / конфиг).
+	streamLogsEntryBuffer int
+
 	mu sync.Mutex
 	// instances — полный ID контейнера (64 hex).
 	instances map[string]*instanceState
@@ -59,18 +60,36 @@ func DefaultAllowedSandboxImages() []string {
 	}
 }
 
+// RunnerOption — опциональная настройка DockerSandboxRunner (расширяем без ломки существующих вызовов конструктора).
+type RunnerOption func(*DockerSandboxRunner)
+
+// WithStreamLogsEntryBuffer задаёт ёмкость канала StreamLogs (число слотов LogEntry). Значения <= 0 игнорируются.
+func WithStreamLogsEntryBuffer(n int) RunnerOption {
+	return func(r *DockerSandboxRunner) {
+		if n > 0 {
+			r.streamLogsEntryBuffer = n
+		}
+	}
+}
+
 // NewDockerSandboxRunner создаёт раннер. cli не должен быть nil; allowedImages пустой — дефолты.
-func NewDockerSandboxRunner(cli *client.Client, allowedImages []string) *DockerSandboxRunner {
+func NewDockerSandboxRunner(cli *client.Client, allowedImages []string, opts ...RunnerOption) *DockerSandboxRunner {
 	allowed := append([]string(nil), allowedImages...)
 	if len(allowed) == 0 {
 		allowed = DefaultAllowedSandboxImages()
 	}
-	return &DockerSandboxRunner{
+	r := &DockerSandboxRunner{
 		cli:       cli,
 		allowed:   allowed,
 		instances: make(map[string]*instanceState),
 		creating:  make(map[string]*instanceState),
 	}
+	for _, o := range opts {
+		if o != nil {
+			o(r)
+		}
+	}
+	return r
 }
 
 func taskContainerName(taskID string) string {
@@ -722,120 +741,6 @@ func (r *DockerSandboxRunner) GetStatus(ctx context.Context, sandboxID string) (
 	return out, nil
 }
 
-// streamLineWriter пишет строки в канал LogEntry (минимальный стрим до задачи 5.6).
-type streamLineWriter struct {
-	ch        chan<- LogEntry
-	sandboxID string
-	stderr    bool
-	buf       []byte
-}
-
-func (w *streamLineWriter) emitFragment(line []byte) {
-	if len(line) == 0 {
-		return
-	}
-	for len(line) > 0 {
-		n := len(line)
-		if n > LogEntryMaxLineBytes {
-			n = LogEntryMaxLineBytes
-		}
-		chunk := string(line[:n])
-		line = line[n:]
-		select {
-		case w.ch <- LogEntry{SandboxID: w.sandboxID, Timestamp: time.Now(), Line: chunk, Stderr: w.stderr}:
-		default:
-			return
-		}
-	}
-}
-
-func (w *streamLineWriter) Write(p []byte) (int, error) {
-	w.buf = append(w.buf, p...)
-	for {
-		i := bytes.IndexByte(w.buf, '\n')
-		if i < 0 {
-			break
-		}
-		w.emitFragment(w.buf[:i])
-		n := copy(w.buf, w.buf[i+1:])
-		w.buf = w.buf[:n]
-	}
-	if len(w.buf) > LogEntryMaxLineBytes*8 {
-		w.emitFragment(w.buf)
-		w.buf = w.buf[:0]
-	}
-	return len(p), nil
-}
-
-func (w *streamLineWriter) flush() {
-	if len(w.buf) == 0 {
-		return
-	}
-	w.emitFragment(w.buf)
-	w.buf = nil
-}
-
-// StreamLogs — минимальный follow-стрим (stdout/stderr); детали буфера — 5.6.
-func (r *DockerSandboxRunner) StreamLogs(ctx context.Context, sandboxID string) (<-chan LogEntry, error) {
-	if err := ValidateSandboxID(sandboxID); err != nil {
-		return nil, err
-	}
-	st, err := r.getOrAttachState(ctx, sandboxID)
-	if err != nil {
-		return nil, err
-	}
-
-	ch := make(chan LogEntry, StreamLogsDefaultBuffer)
-	st.streamMu.Lock()
-	if st.streamActive {
-		st.streamMu.Unlock()
-		return nil, ErrStreamAlreadyActive
-	}
-	streamCtx, cancel := context.WithCancel(ctx)
-	st.streamCancel = cancel
-	st.streamActive = true
-	st.streamMu.Unlock()
-
-	go func() {
-		defer close(ch)
-		defer func() {
-			st.streamMu.Lock()
-			st.streamActive = false
-			st.streamCancel = nil
-			st.streamMu.Unlock()
-			cancel()
-		}()
-
-		rc, err := r.cli.ContainerLogs(streamCtx, sandboxID, containertypes.LogsOptions{
-			ShowStdout: true,
-			ShowStderr: true,
-			Follow:     true,
-			Timestamps: false,
-		})
-		if err != nil {
-			select {
-			case ch <- LogEntry{SandboxID: sandboxID, Timestamp: time.Now(), Error: fmt.Errorf("container logs: %w", errors.Join(ErrSandboxDocker, err))}:
-			default:
-			}
-			return
-		}
-		defer rc.Close()
-
-		outW := &streamLineWriter{ch: ch, sandboxID: sandboxID, stderr: false}
-		errW := &streamLineWriter{ch: ch, sandboxID: sandboxID, stderr: true}
-		_, cpyErr := stdcopy.StdCopy(outW, errW, rc)
-		outW.flush()
-		errW.flush()
-		if cpyErr != nil && !errors.Is(cpyErr, context.Canceled) {
-			select {
-			case ch <- LogEntry{SandboxID: sandboxID, Timestamp: time.Now(), Error: fmt.Errorf("log stream: %w", errors.Join(ErrSandboxDocker, cpyErr))}:
-			default:
-			}
-		}
-	}()
-	return ch, nil
-}
-
 // Stop — SIGTERM через ContainerStop с таймаутом, затем SIGKILL; при отмене ctx — best-effort kill (5.8 уточнит).
 func (r *DockerSandboxRunner) Stop(ctx context.Context, sandboxID string) error {
 	if err := ValidateSandboxID(sandboxID); err != nil {
@@ -889,7 +794,7 @@ func (r *DockerSandboxRunner) Cleanup(ctx context.Context, sandboxID string) err
 			st.streamCancel()
 			st.streamCancel = nil
 		}
-		st.streamActive = false
+		// streamActive сбрасывает только горутина стрима после закрытия канала (5.6, без гонки со вторым StreamLogs).
 		st.streamMu.Unlock()
 	} else {
 		if insp, ierr := r.cli.ContainerInspect(rmCtx, sandboxID); ierr == nil {
