@@ -574,8 +574,21 @@ func (r *DockerSandboxRunner) containerWaitLoop(st *instanceState) {
 		return
 	}
 
+	// Сбор артефактов: отдельный дедлайн от ctx вызывающего Wait. При таймауте/отмене collectCtx
+	// collErr попадает в finalWaitErr — Wait вернёт ошибку (инфраструктура), а не SandboxStatus с пустым Result;
+	// оркестратору так отличить «движок/сеть» от «контейнер завершился, но нет контракта status.json».
+	collectCtx, cancelCollect := context.WithTimeout(context.Background(), dockerOpDetachTimeout)
+	artOut, collErr := collectArtifactsForRunner(collectCtx, r.cli, cid)
+	cancelCollect()
+
 	st.mu.Lock()
-	st.finalStatus = r.composeFinalStatus(st, &insp, int(wr.StatusCode))
+	fs := r.composeFinalStatus(st, &insp, int(wr.StatusCode))
+	if collErr != nil {
+		st.finalWaitErr = collErr
+	} else {
+		mergeArtifactResultsIntoFinalStatus(fs, st, &insp, artOut)
+	}
+	st.finalStatus = fs
 	st.mu.Unlock()
 	st.closeDone()
 }
@@ -735,8 +748,26 @@ func (r *DockerSandboxRunner) GetStatus(ctx context.Context, sandboxID string) (
 		return nil, fmt.Errorf("inspect: %w", errors.Join(ErrSandboxDocker, err))
 	}
 	out := r.snapshotStatusFromInspect(&insp)
+	if insp.State != nil && insp.State.Status == "exited" {
+		st.mu.Lock()
+		fs := st.finalStatus
+		st.mu.Unlock()
+		if fs != nil {
+			if fs.HasResult() {
+				out.Result = fs.Result
+			}
+			// Согласование с Wait после 5.7 (контракт status.json, таймаут, стоп).
+			switch fs.Status {
+			case SandboxStatusCompleted, SandboxStatusFailed, SandboxStatusTimedOut, SandboxStatusStopped:
+				out.Status = fs.Status
+			}
+		}
+	}
+	// Атомики таймаута/стопа раннера — приоритетнее снимка inspect (гонка до containerWaitLoop).
 	if st.timedOut.Load() == 1 {
 		out.Status = SandboxStatusTimedOut
+	} else if st.stoppedByRunner.Load() == 1 {
+		out.Status = SandboxStatusStopped
 	}
 	return out, nil
 }

@@ -146,7 +146,10 @@ func (s *SandboxStatus) HasResult() bool {
 	return s != nil && s.Result != nil
 }
 
-// CodeResult — артефакты после завершения (парсинг 5.7).
+// CodeResult — артефакты после завершения (сбор 5.7: CopyFromContainer + status.json из StatusJSONPath).
+//
+// Логи: тип реализует slog.LogValuer — безопасное представление для slog (Diff/Output не целиком).
+// fmt.Printf("%+v", result) и %#v обходят LogValue и могут утечь секреты — не использовать для отладки.
 type CodeResult struct {
 	Success bool
 	// FilesChanged: при заполнении из git предпочтительно `git diff --name-only -z` + Split по 0x00,
@@ -154,6 +157,7 @@ type CodeResult struct {
 	// Каждый элемент — относительный путь внутри корня репозитория (без ведущего /, без ..).
 	// Реализация 5.7 и потребители обязаны санитизировать: filepath.Clean + проверка, что путь не выходит
 	// за пределы корня клона (path traversal в UI/диффе).
+	// MVP 5.7 (вариант A): nil до доработки entrypoint (5.2) с отдельным файлом name-only.
 	FilesChanged []string
 	// Diff — unified diff; реализация 5.7 обязана усекать до CodeResultMaxArtifactBytes байт перед отдачей в API/БД (OOM/DoS).
 	Diff       string
