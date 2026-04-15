@@ -30,14 +30,14 @@ const (
 	sandboxPidsFloor        int64 = 100
 	sandboxMemoryCeilBytes  int64 = 16 << 30
 	sandboxPidsCeil         int64 = 8192
-	sandboxNanoCPUsCeil     int64 = 16_000_000_000
-	dockerOpDetachTimeout         = 45 * time.Second
-	dockerStopGraceSeconds        = 10
+	sandboxNanoCPUsCeil int64 = 16_000_000_000
+	dockerOpDetachTimeout = 45 * time.Second
 )
 
 // DockerSandboxRunner — реализация SandboxRunner через Docker Engine API (задача 5.5).
 type DockerSandboxRunner struct {
 	cli     *client.Client
+	stopper *dockerStopper
 	allowed []string
 
 	// streamLogsEntryBuffer, если > 0, задаёт ёмкость буферизованного канала StreamLogs вместо StreamLogsDefaultBuffer (тесты / конфиг).
@@ -80,6 +80,7 @@ func NewDockerSandboxRunner(cli *client.Client, allowedImages []string, opts ...
 	}
 	r := &DockerSandboxRunner{
 		cli:       cli,
+		stopper: newDockerStopper(cli),
 		allowed:   allowed,
 		instances: make(map[string]*instanceState),
 		creating:  make(map[string]*instanceState),
@@ -189,10 +190,16 @@ func (r *DockerSandboxRunner) ensureLocalImage(ctx context.Context, ref string) 
 	return r.pullImage(ctx, ref)
 }
 
-func (r *DockerSandboxRunner) removeContainerForce(ctx context.Context, id string) {
+func (r *DockerSandboxRunner) removeContainerForceLogged(ctx context.Context, taskID, id, phase string) {
+	if id == "" || r.cli == nil {
+		return
+	}
 	rmCtx, cancel := detachTimeout(ctx, dockerOpDetachTimeout)
 	defer cancel()
-	_ = r.cli.ContainerRemove(rmCtx, id, containertypes.RemoveOptions{Force: true, RemoveVolumes: true})
+	err := r.cli.ContainerRemove(rmCtx, id, containertypes.RemoveOptions{Force: true, RemoveVolumes: true})
+	if err != nil && !errdefs.IsNotFound(err) {
+		slog.Warn("sandbox: rollback container remove", "task_id", taskID, "sandbox_id", id, "phase", phase, "err", err)
+	}
 }
 
 func isNetworkRemoveRetryable(err error) bool {
@@ -296,6 +303,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 
 	st := newInstanceState(opts.TaskID)
 	st.containerName = cName
+	st.stopGracePeriod = opts.EffectiveStopGrace()
 
 	r.mu.Lock()
 	if _, dup := r.creating[opts.TaskID]; dup {
@@ -316,13 +324,15 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		delete(r.creating, opts.TaskID)
 		r.mu.Unlock()
 		if !registeredRun && containerID != "" {
-			r.removeContainerForce(ctx, containerID)
+			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "run_task_defer")
 		}
 		if !registeredRun && networkID != "" {
 			r.removeNetworkBestEffort(ctx, networkID)
 		}
 		if !registeredRun && hostTmp != "" {
-			_ = os.RemoveAll(hostTmp)
+			if rmErr := os.RemoveAll(hostTmp); rmErr != nil {
+				slog.Warn("sandbox: rollback host temp", "task_id", opts.TaskID, "path", hostTmp, "err", rmErr)
+			}
 		}
 	}()
 
@@ -330,6 +340,9 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	hostTmp = ""
 
 	if err := r.ensureLocalImage(ctx, opts.Image); err != nil {
+		return nil, err
+	}
+	if err := st.errIfInitCancelled(); err != nil {
 		return nil, err
 	}
 
@@ -365,6 +378,9 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	if opts.DisableNetwork {
 		hc.NetworkMode = network.NetworkNone
 		netCfg = &network.NetworkingConfig{}
+		if err := st.errIfInitCancelled(); err != nil {
+			return nil, err
+		}
 	} else {
 		netName = sandboxBridgeNetworkName(opts.TaskID)
 		netResp, nerr := r.cli.NetworkCreate(ctx, netName, network.CreateOptions{
@@ -391,6 +407,9 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		} else {
 			networkID = netResp.ID
 		}
+		if err := st.errIfInitCancelled(); err != nil {
+			return nil, err
+		}
 		st.mu.Lock()
 		st.networkID = networkID
 		st.mu.Unlock()
@@ -414,6 +433,10 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		"devteam.network_id":   networkID,
 	}
 
+	if err := st.errIfInitCancelled(); err != nil {
+		return nil, err
+	}
+
 	cfg := &containertypes.Config{
 		Image:      opts.Image,
 		Env:        mergeSandboxEnv(opts),
@@ -432,7 +455,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	}
 	containerID = createResp.ID
 	if err := ValidateSandboxID(containerID); err != nil {
-		r.removeContainerForce(ctx, containerID)
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "bad_container_id")
 		return nil, fmt.Errorf("unexpected container id from engine: %w", errors.Join(ErrSandboxDocker, err))
 	}
 
@@ -442,22 +465,34 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 
 	tarRC, err := buildPromptContextTar(opts.Instruction, opts.Context)
 	if err != nil {
-		r.removeContainerForce(ctx, containerID)
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "before_copy_tar")
 		return nil, err
 	}
 	defer tarRC.Close()
+	if err := st.errIfInitCancelled(); err != nil {
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "before_copy")
+		return nil, err
+	}
 	if cpErr := r.cli.CopyToContainer(ctx, containerID, WorkspacePath, tarRC, containertypes.CopyToContainerOptions{}); cpErr != nil {
-		r.removeContainerForce(ctx, containerID)
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "copy_failed")
 		return nil, fmt.Errorf("copy to container: %w", errors.Join(ErrSandboxDocker, cpErr))
 	}
 
+	if err := st.errIfInitCancelled(); err != nil {
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "before_start")
+		return nil, err
+	}
 	if err := r.cli.ContainerStart(ctx, containerID, containertypes.StartOptions{}); err != nil {
-		r.removeContainerForce(ctx, containerID)
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "start_failed")
 		return nil, fmt.Errorf("container start: %w", errors.Join(ErrSandboxDocker, err))
 	}
 
+	if err := st.errIfInitCancelled(); err != nil {
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "after_start")
+		return nil, err
+	}
 	if err := r.postStartSanity(ctx, containerID); err != nil {
-		r.removeContainerForce(ctx, containerID)
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "sanity_failed")
 		return nil, err
 	}
 
@@ -466,17 +501,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	st.effectiveTimeout = eff
 	st.mu.Unlock()
 
-	st.businessTimer = time.AfterFunc(eff, func() {
-		if st.cleaned.Load() {
-			return
-		}
-		st.timedOut.Store(1)
-		st.stoppedByRunner.Store(1)
-		killCtx, cancel := detachTimeout(context.Background(), dockerOpDetachTimeout)
-		defer cancel()
-		_ = r.cli.ContainerStop(killCtx, containerID, containertypes.StopOptions{Timeout: ptrInt(0)})
-		_ = r.cli.ContainerKill(killCtx, containerID, "SIGKILL")
-	})
+	scheduleSandboxBusinessDeadline(st, r.stopper, containerID, eff, opts.TaskID)
 
 	r.mu.Lock()
 	delete(r.creating, opts.TaskID)
@@ -527,35 +552,55 @@ func (r *DockerSandboxRunner) containerWaitLoop(st *instanceState) {
 	defer st.stopBusinessTimer()
 	cid := st.containerID
 	waitCtx, cancelWait := context.WithCancel(context.Background())
+	st.mu.Lock()
+	st.cancelWait = cancelWait
+	st.mu.Unlock()
 	respC, errC := r.cli.ContainerWait(waitCtx, cid, containertypes.WaitConditionNotRunning)
 	defer func() {
-		cancelWait()
+		st.mu.Lock()
+		st.cancelContainerWaitLocked()
+		st.mu.Unlock()
 		drainDockerWait(respC, errC)
 	}()
 
 	var wr containertypes.WaitResponse
+	var waitOK bool
+	var waitCtxCanceled bool
+
 	select {
 	case err := <-errC:
 		if err != nil {
-			st.mu.Lock()
-			st.finalWaitErr = fmt.Errorf("wait: %w", errors.Join(ErrSandboxDocker, err))
-			st.mu.Unlock()
-			st.closeDone()
-			return
-		}
-		select {
-		case wr = <-respC:
-		case <-time.After(5 * time.Minute):
-			st.mu.Lock()
-			st.finalWaitErr = fmt.Errorf("wait: missing body: %w", ErrSandboxDocker)
-			st.mu.Unlock()
-			st.closeDone()
-			return
+			if errors.Is(err, context.Canceled) {
+				// Ручная отмена wait-контекста после сбоя ForceStop или Cleanup — не инфраструктурный сбой Docker:
+				// идём к Inspect и сбору артефактов, exit code берём из движка.
+				waitCtxCanceled = true
+			} else {
+				st.mu.Lock()
+				st.finalWaitErr = fmt.Errorf("wait: %w", errors.Join(ErrSandboxDocker, err))
+				st.mu.Unlock()
+				st.closeDone()
+				return
+			}
+		} else {
+			select {
+			case wr = <-respC:
+				waitOK = true
+			case <-time.After(5 * time.Minute):
+				st.mu.Lock()
+				st.finalWaitErr = fmt.Errorf("wait: missing body: %w", ErrSandboxDocker)
+				st.mu.Unlock()
+				st.closeDone()
+				return
+			}
 		}
 	case wr = <-respC:
+		waitOK = true
 	}
 
-	if wr.Error != nil {
+	st.markWaitCompleted()
+	st.stopBusinessTimer()
+
+	if waitOK && wr.Error != nil {
 		st.mu.Lock()
 		st.finalWaitErr = fmt.Errorf("wait engine error: %s: %w", wr.Error.Message, ErrSandboxDocker)
 		st.mu.Unlock()
@@ -574,6 +619,22 @@ func (r *DockerSandboxRunner) containerWaitLoop(st *instanceState) {
 		return
 	}
 
+	effectiveExit := 0
+	if waitOK {
+		effectiveExit = int(wr.StatusCode)
+	}
+	if insp.State != nil && insp.State.Status == "exited" {
+		if waitCtxCanceled || !waitOK {
+			effectiveExit = insp.State.ExitCode
+		} else if effectiveExit == 0 {
+			st.mu.Lock()
+			if st.businessTimeoutIntent || st.userStopIntent {
+				effectiveExit = insp.State.ExitCode
+			}
+			st.mu.Unlock()
+		}
+	}
+
 	// Сбор артефактов: отдельный дедлайн от ctx вызывающего Wait. При таймауте/отмене collectCtx
 	// collErr попадает в finalWaitErr — Wait вернёт ошибку (инфраструктура), а не SandboxStatus с пустым Result;
 	// оркестратору так отличить «движок/сеть» от «контейнер завершился, но нет контракта status.json».
@@ -582,18 +643,20 @@ func (r *DockerSandboxRunner) containerWaitLoop(st *instanceState) {
 	cancelCollect()
 
 	st.mu.Lock()
-	fs := r.composeFinalStatus(st, &insp, int(wr.StatusCode))
+	fs := r.composeFinalStatusLocked(st, &insp, effectiveExit)
+	infraStrict := st.lifecycleInfraStrictLocked() || (insp.State != nil && insp.State.OOMKilled)
 	if collErr != nil {
 		st.finalWaitErr = collErr
 	} else {
-		mergeArtifactResultsIntoFinalStatus(fs, st, &insp, artOut)
+		mergeArtifactResultsIntoFinalStatus(fs, st, &insp, artOut, infraStrict)
 	}
 	st.finalStatus = fs
 	st.mu.Unlock()
 	st.closeDone()
 }
 
-func (r *DockerSandboxRunner) composeFinalStatus(st *instanceState, insp *types.ContainerJSON, exitCode int) *SandboxStatus {
+// composeFinalStatusLocked — держатель st.mu. exitCode — из ContainerWait или из Inspect при отменённом wait (5.8).
+func (r *DockerSandboxRunner) composeFinalStatusLocked(st *instanceState, insp *types.ContainerJSON, exitCode int) *SandboxStatus {
 	out := &SandboxStatus{
 		ID:       insp.ID,
 		ExitCode: exitCode,
@@ -603,19 +666,19 @@ func (r *DockerSandboxRunner) composeFinalStatus(st *instanceState, insp *types.
 		out.Status = SandboxStatusFailed
 		return out
 	}
-	if st.timedOut.Load() == 1 {
+	if exitCode == 0 {
+		out.Status = SandboxStatusCompleted
+		return out
+	}
+	if st.businessTimeoutIntent {
 		out.Status = SandboxStatusTimedOut
 		return out
 	}
-	if st.stoppedByRunner.Load() == 1 && st.timedOut.Load() == 0 {
+	if st.userStopIntent {
 		out.Status = SandboxStatusStopped
 		return out
 	}
-	if exitCode == 0 {
-		out.Status = SandboxStatusCompleted
-	} else {
-		out.Status = SandboxStatusFailed
-	}
+	out.Status = SandboxStatusFailed
 	return out
 }
 
@@ -650,6 +713,7 @@ func (r *DockerSandboxRunner) getOrAttachState(ctx context.Context, sandboxID st
 	st.containerName = strings.TrimPrefix(insp.Name, "/")
 	st.hostTempDir = insp.Config.Labels["devteam.host_tmp"]
 	st.networkID = insp.Config.Labels["devteam.network_id"]
+	st.stopGracePeriod = DefaultSandboxStopGrace
 	if secs, perr := strconv.ParseInt(insp.Config.Labels["devteam.timeout_secs"], 10, 64); perr == nil && secs > 0 {
 		st.effectiveTimeout = time.Duration(secs) * time.Second
 	} else {
@@ -763,40 +827,92 @@ func (r *DockerSandboxRunner) GetStatus(ctx context.Context, sandboxID string) (
 			}
 		}
 	}
-	// Атомики таймаута/стопа раннера — приоритетнее снимка inspect (гонка до containerWaitLoop).
-	if st.timedOut.Load() == 1 {
+	if insp.State != nil && insp.State.Status == "exited" && insp.State.ExitCode == 0 && !insp.State.OOMKilled {
+		// Успешный exit 0 первичен над гонкой намерений таймера/стопа (5.8).
+		return out, nil
+	}
+	st.mu.Lock()
+	timed := st.businessTimeoutIntent
+	user := st.userStopIntent
+	st.mu.Unlock()
+	if timed {
 		out.Status = SandboxStatusTimedOut
-	} else if st.stoppedByRunner.Load() == 1 {
+	} else if user {
 		out.Status = SandboxStatusStopped
 	}
 	return out, nil
 }
 
-// Stop — SIGTERM через ContainerStop с таймаутом, затем SIGKILL; при отмене ctx — best-effort kill (5.8 уточнит).
+// Stop — graceful stop через ContainerStopper + отмена бизнес-таймера и ContainerWait (5.8).
 func (r *DockerSandboxRunner) Stop(ctx context.Context, sandboxID string) error {
 	if err := ValidateSandboxID(sandboxID); err != nil {
 		return err
 	}
-	st, _ := r.getOrAttachState(ctx, sandboxID)
-	if st != nil {
-		st.stoppedByRunner.Store(1)
-	}
-	err := r.cli.ContainerStop(ctx, sandboxID, containertypes.StopOptions{Timeout: ptrInt(dockerStopGraceSeconds)})
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		killCtx, cancel := detachTimeout(ctx, dockerOpDetachTimeout)
-		defer cancel()
-		_ = r.cli.ContainerKill(killCtx, sandboxID, "SIGKILL")
+	st, err := r.getOrAttachState(ctx, sandboxID)
+	if err != nil {
+		if errors.Is(err, ErrSandboxNotFound) {
+			return nil
+		}
 		return err
 	}
-	killCtx, cancel := detachTimeout(ctx, dockerOpDetachTimeout)
-	defer cancel()
-	if kerr := r.cli.ContainerKill(killCtx, sandboxID, "SIGKILL"); kerr != nil && !errdefs.IsNotFound(kerr) {
-		return fmt.Errorf("stop/kill: %w", errors.Join(ErrSandboxDocker, errors.Join(err, kerr)))
+	cid, grace, already := st.applyUserStopIntent()
+	if already {
+		return nil
 	}
-	return nil
+	if cid == "" {
+		return nil
+	}
+	sErr := r.stopper.ForceStop(ctx, cid, grace, "user_stop", st.taskID)
+	if sErr != nil {
+		st.mu.Lock()
+		st.cancelContainerWaitLocked()
+		st.mu.Unlock()
+	}
+	return sErr
+}
+
+// StopTask отменяет RunTask до появления containerID (фаза creating) или делегирует Stop по ID для уже запущенной задачи (5.8).
+func (r *DockerSandboxRunner) StopTask(ctx context.Context, taskID string) error {
+	if err := ValidateTaskID(taskID); err != nil {
+		return err
+	}
+	if r.cli == nil {
+		return fmt.Errorf("docker client is nil: %w", ErrSandboxDocker)
+	}
+	r.mu.Lock()
+	if st, ok := r.creating[taskID]; ok {
+		st.mu.Lock()
+		st.initCancelRequested = true
+		st.mu.Unlock()
+		r.mu.Unlock()
+		return nil
+	}
+	var found *instanceState
+	for _, s := range r.instances {
+		if s.taskID == taskID {
+			found = s
+			break
+		}
+	}
+	r.mu.Unlock()
+	if found != nil {
+		return r.Stop(ctx, found.containerID)
+	}
+	cname := taskContainerName(taskID)
+	insp, ierr := r.cli.ContainerInspect(ctx, cname)
+	if ierr != nil {
+		if errdefs.IsNotFound(ierr) {
+			return nil
+		}
+		return fmt.Errorf("inspect: %w", errors.Join(ErrSandboxDocker, ierr))
+	}
+	if insp.Config.Labels["devteam.sandbox"] != "1" {
+		return nil
+	}
+	if err := ValidateSandboxID(insp.ID); err != nil {
+		return nil
+	}
+	return r.Stop(ctx, insp.ID)
 }
 
 // Cleanup — идемпотентная уборка контейнера, сети и хостового temp (см. 5.3 про ctx).
@@ -818,7 +934,7 @@ func (r *DockerSandboxRunner) Cleanup(ctx context.Context, sandboxID string) err
 	r.mu.Unlock()
 
 	if st != nil {
-		st.cleaned.Store(true)
+		st.setCleaned()
 		st.stopBusinessTimer()
 		st.streamMu.Lock()
 		if st.streamCancel != nil {

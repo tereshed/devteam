@@ -3,11 +3,14 @@ package sandbox
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 // instanceState — in-memory состояние инстанса (ожидание Wait, таймер, стрим, пути уборки).
+//
+// Порядок блокировок (5.8): сначала st.mu (lifecycle, таймер, намерения), затем streamMu для StreamLogs.
+// Никогда не захватывать streamMu удерживая st.mu в обратном порядке — дедлок со стримом.
+//
 // Источник правды для контейнера остаётся Docker Engine; поля нужны для таймаутов и Cleanup.
 type instanceState struct {
 	mu sync.Mutex
@@ -18,6 +21,7 @@ type instanceState struct {
 	hostTempDir      string
 	networkID        string
 	effectiveTimeout time.Duration
+	stopGracePeriod  time.Duration
 	createdAt        time.Time
 
 	doneOnce sync.Once
@@ -28,15 +32,18 @@ type instanceState struct {
 
 	waitLoopOnce sync.Once
 
-	timedOut        atomic.Uint32
-	stoppedByRunner atomic.Uint32
-	cleaned         atomic.Bool
+	// Намерения и фазы остановки — только под st.mu (без разрозненных атомиков, 5.8).
+	initCancelRequested     bool
+	userStopIntent          bool
+	businessTimeoutIntent   bool
+	waitCompleted           bool
+	cleaned                 bool
+	businessTimer           *time.Timer
+	cancelWait              context.CancelFunc
 
 	streamMu     sync.Mutex
 	streamCancel context.CancelFunc
 	streamActive bool
-
-	businessTimer *time.Timer
 }
 
 func newInstanceState(taskID string) *instanceState {
@@ -60,5 +67,12 @@ func (s *instanceState) stopBusinessTimer() {
 	s.mu.Unlock()
 	if t != nil {
 		t.Stop()
+	}
+}
+
+func (s *instanceState) cancelContainerWaitLocked() {
+	if s.cancelWait != nil {
+		s.cancelWait()
+		s.cancelWait = nil
 	}
 }

@@ -20,6 +20,15 @@ func TestSandboxOptions_EffectiveTimeout(t *testing.T) {
 	}
 }
 
+func TestSandboxOptions_EffectiveStopGrace(t *testing.T) {
+	if d := (SandboxOptions{StopGracePeriod: 3 * time.Second}).EffectiveStopGrace(); d != 3*time.Second {
+		t.Fatalf("expected 3s, got %v", d)
+	}
+	if d := (SandboxOptions{StopGracePeriod: 0}).EffectiveStopGrace(); d != DefaultSandboxStopGrace {
+		t.Fatalf("expected DefaultSandboxStopGrace, got %v", d)
+	}
+}
+
 func TestValidateTaskID(t *testing.T) {
 	ok := []string{
 		"550e8400-e29b-41d4-a716-446655440000",
@@ -91,6 +100,12 @@ func TestSandboxOptions_Validate(t *testing.T) {
 	negTimeout.Timeout = -1 * time.Hour
 	if err := negTimeout.Validate(context.Background()); err == nil || !errors.Is(err, ErrInvalidOptions) {
 		t.Fatalf("negative timeout: %v", err)
+	}
+
+	negGrace := base
+	negGrace.StopGracePeriod = -1 * time.Second
+	if err := negGrace.Validate(context.Background()); err == nil || !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("negative stop grace: %v", err)
 	}
 
 	zeroTimeout := base

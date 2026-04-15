@@ -12,8 +12,9 @@ type sandboxOptionsWire struct {
 	Instruction    string            `json:"instruction"`
 	Context        string            `json:"context"`
 	EnvVars        map[string]string `json:"env_vars,omitempty"`
-	Timeout        string            `json:"timeout"`
-	DisableNetwork bool              `json:"disable_network"`
+	Timeout          string            `json:"timeout"`
+	StopGracePeriod  string            `json:"stop_grace_period"`
+	DisableNetwork   bool              `json:"disable_network"`
 	ResourceLimit  ResourceLimit     `json:"resource_limit"`
 }
 
@@ -30,8 +31,9 @@ func (o SandboxOptions) MarshalJSON() ([]byte, error) {
 		Instruction:    byteLenDesc(o.Instruction),
 		Context:        byteLenDesc(o.Context),
 		EnvVars:        maskEnvVarsMapForJSON(o.EnvVars),
-		Timeout:        o.Timeout.String(),
-		DisableNetwork: o.DisableNetwork,
+		Timeout:         o.Timeout.String(),
+		StopGracePeriod: o.StopGracePeriod.String(),
+		DisableNetwork:  o.DisableNetwork,
 		ResourceLimit:  o.ResourceLimit,
 	}
 	return json.Marshal(w)

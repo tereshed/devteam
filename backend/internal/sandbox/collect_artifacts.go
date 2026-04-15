@@ -206,7 +206,8 @@ func tarNameMatchesArtifact(headerName, wantSuffix string) bool {
 }
 
 // mergeArtifactResultsIntoFinalStatus вписывает CodeResult и применяет политику «контракт vs Docker» (5.7).
-func mergeArtifactResultsIntoFinalStatus(fs *SandboxStatus, st *instanceState, insp *types.ContainerJSON, out *artifactCollectionOutcome) {
+// infraStrict передаётся снаружи под st.mu (не вызывать lifecycleInfraStrictLocked изнутри — вложенный лок).
+func mergeArtifactResultsIntoFinalStatus(fs *SandboxStatus, st *instanceState, insp *types.ContainerJSON, out *artifactCollectionOutcome, infraStrict bool) {
 	if fs == nil {
 		return
 	}
@@ -215,10 +216,7 @@ func mergeArtifactResultsIntoFinalStatus(fs *SandboxStatus, st *instanceState, i
 	}
 	fs.Result = out.buildCodeResult()
 
-	infraStrict := st.timedOut.Load() == 1 ||
-		(st.stoppedByRunner.Load() == 1 && st.timedOut.Load() == 0) ||
-		(insp != nil && insp.State != nil && insp.State.OOMKilled)
-	if infraStrict {
+	if infraStrict || (insp != nil && insp.State != nil && insp.State.OOMKilled) {
 		// OOM / таймаут / стоп — SandboxStatus.Status первичен; JSON success не апгрейдит completed (5.7).
 		return
 	}

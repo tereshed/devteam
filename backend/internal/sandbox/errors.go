@@ -30,4 +30,6 @@ var (
 	ErrSandboxDocker = errors.New("sandbox: docker engine")
 	// ErrSandboxStartup — контейнер создан, но сразу после старта не прошёл sanity-check (entrypoint / OOM / exec error).
 	ErrSandboxStartup = errors.New("sandbox: container startup failed")
+	// ErrSandboxInitCancelled — StopTask во время инициализации RunTask; контейнер не должен стартовать (5.8).
+	ErrSandboxInitCancelled = errors.New("sandbox: init cancelled by stop")
 )

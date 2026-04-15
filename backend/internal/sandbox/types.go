@@ -7,6 +7,9 @@ import "time"
 // Раннер (5.5) и таймеры (5.8) обязаны использовать EffectiveTimeout(), не планировать бесконечное выполнение по умолчанию.
 const DefaultSandboxTimeout = 30 * time.Minute
 
+// DefaultSandboxStopGrace — SIGTERM/ContainerStop до SIGKILL при ручном Stop, если StopGracePeriod <= 0 (5.8).
+const DefaultSandboxStopGrace = 10 * time.Second
+
 // Имена переменных окружения для SandboxRunner / entrypoint.
 // Instruction и Context из SandboxOptions не имеют имён ENV в Go: большие тексты
 // передаются только файлами (PromptFilePath, ContextFilePath), см. CopyToContainer в 5.5.
@@ -97,7 +100,9 @@ type SandboxOptions struct {
 	// Timeout — бизнес-таймаут жизни задачи в изоляции (после успешного start контейнера, политика 5.5/5.8).
 	// Ноль и отрицательные значения запрещены как «бесконечность»: используйте EffectiveTimeout() перед таймерами.
 	Timeout       time.Duration
-	ResourceLimit ResourceLimit
+	// StopGracePeriod — время SIGTERM до SIGKILL при Stop (5.8). Ноль — DefaultSandboxStopGrace; <0 запрещено в Validate.
+	StopGracePeriod time.Duration
+	ResourceLimit   ResourceLimit
 
 	// DisableNetwork: true — режим сети «none» (без исходящего интернета и без bridge к хосту).
 	// false — контейнер в изолированной bridge-сети без доступа к внутренним сервисам хоста (БД, Redis и т.д.);

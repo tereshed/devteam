@@ -131,7 +131,7 @@ func TestMergeArtifactResultsIntoFinalStatus_contractMissingDowngradesCompleted(
 		},
 	}
 	out := &artifactCollectionOutcome{StatusJSONMissing: true}
-	mergeArtifactResultsIntoFinalStatus(fs, st, insp, out)
+	mergeArtifactResultsIntoFinalStatus(fs, st, insp, out, false)
 	require.Equal(t, SandboxStatusFailed, fs.Status)
 	require.NotNil(t, fs.Result)
 	require.False(t, fs.Result.Success)
@@ -139,7 +139,9 @@ func TestMergeArtifactResultsIntoFinalStatus_contractMissingDowngradesCompleted(
 
 func TestMergeArtifactResultsIntoFinalStatus_timedOutKeepsStatus(t *testing.T) {
 	st := newInstanceState("task-1")
-	st.timedOut.Store(1)
+	st.mu.Lock()
+	st.businessTimeoutIntent = true
+	st.mu.Unlock()
 	doc := &statusJSONDoc{Success: true}
 	out := &artifactCollectionOutcome{StatusJSONOK: true, parsed: doc}
 	fs := &SandboxStatus{ID: "c1", Status: SandboxStatusTimedOut, ExitCode: 137}
@@ -148,7 +150,7 @@ func TestMergeArtifactResultsIntoFinalStatus_timedOutKeepsStatus(t *testing.T) {
 			State: &ctypes.State{OOMKilled: false},
 		},
 	}
-	mergeArtifactResultsIntoFinalStatus(fs, st, insp, out)
+	mergeArtifactResultsIntoFinalStatus(fs, st, insp, out, true)
 	require.Equal(t, SandboxStatusTimedOut, fs.Status)
 	require.True(t, fs.Result.Success)
 }

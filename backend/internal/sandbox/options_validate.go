@@ -25,6 +25,14 @@ func (o SandboxOptions) EffectiveTimeout() time.Duration {
 	return DefaultSandboxTimeout
 }
 
+// EffectiveStopGrace — длительность graceful stop; при StopGracePeriod <= 0 — DefaultSandboxStopGrace (5.8).
+func (o SandboxOptions) EffectiveStopGrace() time.Duration {
+	if o.StopGracePeriod > 0 {
+		return o.StopGracePeriod
+	}
+	return DefaultSandboxStopGrace
+}
+
 // ValidateTaskID — формат TaskID до Docker/имени контейнера: канонический UUID (github.com/google/uuid) или
 // ^[a-zA-Z0-9_-]+$ длиной не более maxRunnerTaskOrProjectIDLen. Без ведущих/хвостовых пробелов (см. Validate).
 func ValidateTaskID(s string) error {
@@ -127,6 +135,10 @@ func (o SandboxOptions) Validate(ctx context.Context) error {
 
 	if o.Timeout < 0 {
 		return fmt.Errorf("%w: timeout must not be negative", ErrInvalidOptions)
+	}
+
+	if o.StopGracePeriod < 0 {
+		return fmt.Errorf("%w: stop_grace_period must not be negative", ErrInvalidOptions)
 	}
 
 	return nil

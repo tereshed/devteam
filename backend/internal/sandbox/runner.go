@@ -78,6 +78,10 @@ type SandboxRunner interface {
 	// Контейнер должен быть остановлен гарантированно; ctx ограничивает только сам RPC к движку.
 	Stop(ctx context.Context, sandboxID string) error
 
+	// StopTask останавливает задачу по TaskID: до появления containerID отменяет фазу creating (5.8),
+	// после — то же, что Stop по sandboxID (поиск в реестре или inspect по детерминированному имени контейнера).
+	StopTask(ctx context.Context, taskID string) error
+
 	// Cleanup удаляет контейнер и связанные ресурсы; желательна идемпотентность.
 	// Обязанность: завершить активные стримы StreamLogs для этого sandboxID, закрыть канал,
 	// разблокировать ожидающий Wait (ошибка состояния / sentinel), не оставлять горутины после удаления.

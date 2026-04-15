@@ -13,7 +13,7 @@ import (
 // используйте opts.LogSafe() или fmt.Sprintf("%s", opts) при наличии fmt.Stringer.
 func (o SandboxOptions) LogSafe() string {
 	return fmt.Sprintf(
-		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s Timeout:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d}}",
+		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s Timeout:%v StopGracePeriod:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d}}",
 		o.TaskID,
 		o.ProjectID,
 		o.Backend,
@@ -24,6 +24,7 @@ func (o SandboxOptions) LogSafe() string {
 		byteLenDesc(o.Context),
 		maskEnvVarsForLog(o.EnvVars),
 		o.Timeout,
+		o.StopGracePeriod,
 		o.DisableNetwork,
 		o.ResourceLimit.NanoCPUs,
 		o.ResourceLimit.MemoryMB,
