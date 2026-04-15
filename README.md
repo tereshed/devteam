@@ -174,7 +174,7 @@
 | 5.11 | docker-compose: монтирование `/var/run/docker.sock` | `docker-compose.yml` (корень), `Makefile` | ✅ | [детали](docs/tasks/5.11-docker-compose-docker-sock.md) |
 | 5.12 | Makefile: `sandbox-build` (сборка sandbox-образов) | `Makefile` | ✅ | [детали](docs/tasks/5.12-makefile-sandbox-build.md) |
 | 5.13 | Unit-тесты: DockerSandboxRunner (с мок Docker Client) | `backend/internal/sandbox/docker_runner_test.go` | ✅ | [детали](docs/tasks/5.13-unit-tests-docker-sandbox-runner.md) |
-| 5.14 | Интеграционный тест: запуск реального контейнера с простой задачей | `backend/internal/sandbox/integration_test.go` | ⬜ | |
+| 5.14 | Интеграционный тест: запуск реального контейнера с простой задачей | `backend/internal/sandbox/integration_test.go` | ✅ | [детали](docs/tasks/5.14-integration-test-docker-sandbox-runner.md) |
 
 Параметры **`SANDBOX_*`** (лимиты, таймаут по умолчанию, `SANDBOX_MAX_CONCURRENT`) загружаются в `config.Load()`; имена и дефолты — `backend/internal/config/sandbox_config.go`.
 

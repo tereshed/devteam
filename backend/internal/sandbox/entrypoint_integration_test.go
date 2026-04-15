@@ -13,31 +13,9 @@ import (
 	"testing"
 )
 
-const defaultSandboxImage = "devteam/sandbox-claude:local"
-
-func dockerImageExists(t *testing.T, image string) bool {
-	t.Helper()
-	cmd := exec.Command("docker", "image", "inspect", image)
-	return cmd.Run() == nil
-}
-
-func dockerAvailable(t *testing.T) bool {
-	t.Helper()
-	_, err := exec.LookPath("docker")
-	return err == nil
-}
-
-func sandboxImage(t *testing.T) string {
-	t.Helper()
-	if v := os.Getenv("SANDBOX_CLAUDE_IMAGE"); v != "" {
-		return v
-	}
-	return defaultSandboxImage
-}
-
 func dockerRm(t *testing.T, containerID string) {
 	t.Helper()
-	_ = exec.Command("docker", "rm", "-f", containerID).Run()
+	_ = exec.Command("docker", "rm", "-f", "--", containerID).Run()
 }
 
 func exitStatus(err error) int {
@@ -84,7 +62,7 @@ func runEntrypointAndCopyStatus(t *testing.T, image string, env []string, docker
 	for _, e := range env {
 		args = append(args, "-e", e)
 	}
-	args = append(args, image)
+	args = append(args, "--", image)
 
 	out, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
@@ -96,10 +74,10 @@ func runEntrypointAndCopyStatus(t *testing.T, image string, env []string, docker
 	}
 	t.Cleanup(func() { dockerRm(t, cid) })
 
-	_, err = exec.Command("docker", "start", "-a", cid).CombinedOutput()
+	_, err = exec.Command("docker", "start", "-a", "--", cid).CombinedOutput()
 	exitCode := exitStatus(err)
 
-	cpOut, err := exec.Command("docker", "cp", cid+":"+StatusJSONPath, statusHost).CombinedOutput()
+	cpOut, err := exec.Command("docker", "cp", "--", cid+":"+StatusJSONPath, statusHost).CombinedOutput()
 	if err != nil {
 		t.Fatalf("docker cp status.json: %v out=%s", err, cpOut)
 	}
@@ -111,11 +89,11 @@ func runEntrypointAndCopyStatus(t *testing.T, image string, env []string, docker
 }
 
 func TestEntrypoint_MissingRepoURL_WritesStatusJSON(t *testing.T) {
-	if !dockerAvailable(t) {
+	if !integrationDockerCLIAvailable(t) {
 		t.Skip("docker CLI not in PATH")
 	}
-	img := sandboxImage(t)
-	if !dockerImageExists(t, img) {
+	img := integrationSandboxImageRef(t)
+	if !integrationDockerImageExistsCLI(t, img) {
 		t.Skipf("image %q missing; build: docker build -t %s -f deployment/sandbox/claude/Dockerfile deployment/sandbox/claude", img, img)
 	}
 
@@ -150,11 +128,11 @@ func TestEntrypoint_MissingRepoURL_WritesStatusJSON(t *testing.T) {
 }
 
 func TestEntrypoint_BranchNameLeadingHyphen_Validation(t *testing.T) {
-	if !dockerAvailable(t) {
+	if !integrationDockerCLIAvailable(t) {
 		t.Skip("docker CLI not in PATH")
 	}
-	img := sandboxImage(t)
-	if !dockerImageExists(t, img) {
+	img := integrationSandboxImageRef(t)
+	if !integrationDockerImageExistsCLI(t, img) {
 		t.Skipf("image %q missing", img)
 	}
 
@@ -182,11 +160,11 @@ func TestEntrypoint_BranchNameLeadingHyphen_Validation(t *testing.T) {
 }
 
 func TestEntrypoint_MissingAnthropicAPIKey_Validation(t *testing.T) {
-	if !dockerAvailable(t) {
+	if !integrationDockerCLIAvailable(t) {
 		t.Skip("docker CLI not in PATH")
 	}
-	img := sandboxImage(t)
-	if !dockerImageExists(t, img) {
+	img := integrationSandboxImageRef(t)
+	if !integrationDockerImageExistsCLI(t, img) {
 		t.Skipf("image %q missing", img)
 	}
 
@@ -214,11 +192,11 @@ func TestEntrypoint_MissingAnthropicAPIKey_Validation(t *testing.T) {
 }
 
 func TestEntrypoint_UnsupportedBackend_WritesStatusJSON(t *testing.T) {
-	if !dockerAvailable(t) {
+	if !integrationDockerCLIAvailable(t) {
 		t.Skip("docker CLI not in PATH")
 	}
-	img := sandboxImage(t)
-	if !dockerImageExists(t, img) {
+	img := integrationSandboxImageRef(t)
+	if !integrationDockerImageExistsCLI(t, img) {
 		t.Skipf("image %q missing", img)
 	}
 
@@ -242,14 +220,15 @@ func TestEntrypoint_UnsupportedBackend_WritesStatusJSON(t *testing.T) {
 }
 
 // TestEntrypoint_HappyPath_Success — контейнер завершается с ненулевым кодом (агент падает); runEntrypointAndCopyStatus
-// не требует «успешного» docker start — ожидаем падение на фазе agent и согласованный status.json.
+// не требует «успешного» docker start — после падения claude entrypoint собирает diff и финализирует с phase «done»
+// (раньше в status.json оставалась фаза «agent»; см. deployment/sandbox/claude/entrypoint.sh).
 // Реальный claude-code не детерминирован; подменяем /usr/local/bin/claude на testdata/fake-claude.sh (exit 42).
 func TestEntrypoint_HappyPath_Success(t *testing.T) {
-	if !dockerAvailable(t) {
+	if !integrationDockerCLIAvailable(t) {
 		t.Skip("docker CLI not in PATH")
 	}
-	img := sandboxImage(t)
-	if !dockerImageExists(t, img) {
+	img := integrationSandboxImageRef(t)
+	if !integrationDockerImageExistsCLI(t, img) {
 		t.Skipf("image %q missing", img)
 	}
 
@@ -283,9 +262,9 @@ func TestEntrypoint_HappyPath_Success(t *testing.T) {
 		t.Fatal("cancelled must be false")
 	}
 
-	// Скрипт должен дойти до фазы agent и корректно обработать падение Claude
-	if st.Phase != "agent" {
-		t.Fatalf("Expected phase 'agent', got %q. Message: %s", st.Phase, st.Message)
+	// Агент отработал (fake exit 42); финальная запись status.json — после diff, phase «done» (или «agent» на старых образах).
+	if st.Phase != "done" && st.Phase != "agent" {
+		t.Fatalf("Expected phase 'done' or 'agent', got %q. Message: %s", st.Phase, st.Message)
 	}
 	if st.Success {
 		t.Fatal("Expected success=false when the agent CLI exits with an error (fake claude)")
