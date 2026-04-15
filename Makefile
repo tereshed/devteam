@@ -1,17 +1,19 @@
 .PHONY: help build up down logs test test-unit test-integration sandbox-build migrate-create migrate-up migrate-down migrate-status frontend-test frontend-test-unit frontend-test-widget frontend-test-integration frontend-analyze frontend-codegen frontend-codegen-watch frontend-run-web frontend-run-android frontend-run-ios frontend-build-web frontend-build-android frontend-build-ios swagger
 
+COMPOSE_FILE := docker-compose.yml
+
 # === Управление сервисами ===
 build:
-	docker-compose -f deployment/docker-compose.yaml build
+	docker-compose -f $(COMPOSE_FILE) build
 
 up:
-	docker-compose -f deployment/docker-compose.yaml up -d
+	docker-compose -f $(COMPOSE_FILE) up -d
 
 down:
-	docker-compose -f deployment/docker-compose.yaml down
+	docker-compose -f $(COMPOSE_FILE) down
 
 logs:
-	docker-compose -f deployment/docker-compose.yaml logs -f app
+	docker-compose -f $(COMPOSE_FILE) logs -f app
 
 # === Тестирование (Backend) ===
 test: test-unit test-integration
@@ -43,16 +45,16 @@ frontend-test-integration:
 # === Миграции Базы Данных (YugabyteDB) ===
 migrate-create:
 	@read -p "Enter migration name: " name; \
-	docker-compose -f deployment/docker-compose.yaml run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" create $$name sql
+	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" create $$name sql
 
 migrate-up:
-	docker-compose -f deployment/docker-compose.yaml run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" up
+	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" up
 
 migrate-down:
-	docker-compose -f deployment/docker-compose.yaml run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" down
+	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" down
 
 migrate-status:
-	docker-compose -f deployment/docker-compose.yaml run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" status
+	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" status
 
 # === Frontend: Подготовка окружения ===
 frontend-setup:

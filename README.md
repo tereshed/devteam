@@ -171,7 +171,7 @@
 | 5.8 | Таймаут и принудительная остановка | `lifecycle_manager.go`, `docker_stopper.go`, `docker_runner.go` | ✅ | [детали](docs/tasks/5.8-sandbox-timeout-and-stop.md) |
 | 5.9 | Resource limits (CPU, Memory) при создании контейнера | `docker_runner.go`, `resource_limits*.go`, `options_validate.go` | ✅ | [детали](docs/tasks/5.9-sandbox-resource-limits.md) |
 | 5.10 | Конфигурация: `SandboxConfig` в `config.go` | `backend/internal/config/config.go` | ✅ | [детали](docs/tasks/5.10-sandbox-config.md) |
-| 5.11 | docker-compose: монтирование `/var/run/docker.sock` | `deployment/docker-compose.yaml` | ⬜ | |
+| 5.11 | docker-compose: монтирование `/var/run/docker.sock` | `docker-compose.yml` (корень), `Makefile` | ✅ | [детали](docs/tasks/5.11-docker-compose-docker-sock.md) |
 | 5.12 | Makefile: `sandbox-build` (сборка sandbox-образов) | `Makefile` | ⬜ | |
 | 5.13 | Unit-тесты: DockerSandboxRunner (с мок Docker Client) | `backend/internal/sandbox/docker_runner_test.go` | ⬜ | |
 | 5.14 | Интеграционный тест: запуск реального контейнера с простой задачей | `backend/internal/sandbox/integration_test.go` | ⬜ | |
@@ -455,6 +455,21 @@ make frontend-run-web
 | Swagger UI | `http://localhost:8080/swagger/index.html` |
 | YugabyteDB Admin | `http://localhost:15000` |
 | Weaviate | `http://localhost:8082` |
+
+### Docker Engine и sandbox
+
+Файл `docker-compose.yml` монтирует **`/var/run/docker.sock`** в сервис **`app`** (режим **rw**, без `:ro`), чтобы `DockerSandboxRunner` мог вызывать Docker API с хоста, на котором выполняется `make up`. Путь на хосте тот же для **Docker Desktop** (macOS / Windows): сокет проксируется в VM, монтирование в compose не отличается.
+
+**Безопасность:** доступ к сокету в dev даёт контейнеру **`app`** по сути полный контроль над Docker хоста. В production так не деплоят; нужны отдельные паттерны (TLS к удалённому демону, Kubernetes и т.п.).
+
+**Linux:** если при обращении к API Docker в логах **`permission denied`** на сокет, задайте GID группы `docker` на хосте — compose подставляет его в **`group_add`** (процесс остаётся без жёсткого `user:`):
+
+```bash
+export DOCKER_GID=$(getent group docker | cut -d: -f3)   # один раз в сессии или в `.env` в корне репозитория
+make up
+```
+
+Если **`DOCKER_HOST`** указывает на удалённый демон (`tcp://...`), клиент Docker в контейнере использует его в приоритете над смонтированным сокетом; для локального сокета не задавайте **`DOCKER_HOST`** в `backend/.env`.
 
 ---
 

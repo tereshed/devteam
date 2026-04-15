@@ -1,3 +1,6 @@
+# Локальная разработка. Монтирование docker.sock даёт контейнеру app доступ к Docker API
+# хоста (эквивалентно высоким привилегиям на машине разработчика). Для production нужна
+# отдельная стратегия (TCP+TLS, оркестратор, прокси), а не сокет хоста в приложении.
 services:
   yugabytedb:
     image: yugabytedb/yugabyte:2.20.1.0-b97
@@ -59,11 +62,11 @@ services:
       start_period: 90s  # Модель загружается ~30-90 секунд
   app:
     build:
-      context: ../backend
+      context: ./backend
       dockerfile: Dockerfile
     container_name: wibe_backend
     env_file:
-      - ../backend/.env
+      - ./backend/.env
     environment:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8080
@@ -86,7 +89,12 @@ services:
       - "8080:8080"   # Основной API (Gin)
       - "8081:8081"   # MCP сервер (Model Context Protocol)
     volumes:
-      - ../backend/db/migrations:/root/db/migrations
+      - ./backend/db/migrations:/root/db/migrations
+      - /var/run/docker.sock:/var/run/docker.sock
+    # TODO: Если бэкенд перейдет на non-root пользователя в Dockerfile, 
+    # фоллбек 0 (root) не даст доступа к сокету. Потребуется явно передавать DOCKER_GID.
+    group_add:
+      - "${DOCKER_GID:-0}"
     depends_on:
       yugabytedb:
         condition: service_healthy
