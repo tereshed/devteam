@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -76,10 +77,52 @@ func noLeadingTrailingWhitespace(field, s string) error {
 	return nil
 }
 
-// Validate — быстрый фейл до Docker API (вызывается в начале RunTask, 5.5).
-// ctx передаётся в ValidateRepoURL для DNS (SSRF); при nil подставляется context.Background().
-// Любая ошибка удовлетворяет errors.Is(err, ErrInvalidOptions); часть ошибок дополнительно раскрывает причину через Join.
-func (o SandboxOptions) Validate(ctx context.Context) error {
+// maxAllowedMemoryMB — верхняя граница MemoryMB без переполнения int64 при умножении на 1024*1024 и с учётом ceil байт.
+func maxAllowedMemoryMB(ceilBytes int64) int64 {
+	const bytesPerMB = 1024 * 1024
+	maxFromInt64 := int64(math.MaxInt64 / bytesPerMB)
+	if ceilBytes <= 0 {
+		return maxFromInt64
+	}
+	ceilMB := ceilBytes / bytesPerMB
+	if ceilMB < maxFromInt64 {
+		return ceilMB
+	}
+	return maxFromInt64
+}
+
+// ValidateResourceLimits проверяет ResourceLimit до Docker (overflow, потолки политики). policy нормализуется внутри.
+func (o SandboxOptions) ValidateResourceLimits(policy ResourceLimitPolicy) error {
+	policy = normalizeResourceLimitPolicy(policy)
+	rl := o.ResourceLimit
+
+	if rl.DiskMB != 0 {
+		return fmt.Errorf("%w: resource_limit.disk_mb is reserved; only 0 is allowed until disk quotas are implemented", ErrInvalidOptions)
+	}
+	if rl.NanoCPUs < 0 {
+		return fmt.Errorf("%w: resource_limit.nano_cpus must not be negative", ErrInvalidOptions)
+	}
+	if rl.NanoCPUs > policy.NanoCPUsCeil {
+		return fmt.Errorf("%w: resource_limit.nano_cpus exceeds maximum", ErrInvalidOptions)
+	}
+	if rl.MemoryMB < 0 {
+		return fmt.Errorf("%w: resource_limit.memory_mb must not be negative", ErrInvalidOptions)
+	}
+	maxMB := maxAllowedMemoryMB(policy.MemoryCeilBytes)
+	if int64(rl.MemoryMB) > maxMB {
+		return fmt.Errorf("%w: resource_limit.memory_mb exceeds maximum safe value", ErrInvalidOptions)
+	}
+	if rl.PIDsLimit < 0 {
+		return fmt.Errorf("%w: resource_limit.pids_limit must not be negative", ErrInvalidOptions)
+	}
+	if int64(rl.PIDsLimit) > policy.PidsCeil {
+		return fmt.Errorf("%w: resource_limit.pids_limit exceeds maximum", ErrInvalidOptions)
+	}
+	return nil
+}
+
+// validateWithoutResourceLimits — поля SandboxOptions кроме ResourceLimit (для RunTask с политикой раннера).
+func (o SandboxOptions) validateWithoutResourceLimits(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -142,4 +185,15 @@ func (o SandboxOptions) Validate(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Validate — быстрый фейл до Docker API (вызывается в начале RunTask, 5.5).
+// ctx передаётся в ValidateRepoURL для DNS (SSRF); при nil подставляется context.Background().
+// Любая ошибка удовлетворяет errors.Is(err, ErrInvalidOptions); часть ошибок дополнительно раскрывает причину через Join.
+// Лимиты ресурсов проверяются с DefaultResourceLimitPolicy(); DockerSandboxRunner.RunTask использует политику раннера.
+func (o SandboxOptions) Validate(ctx context.Context) error {
+	if err := o.validateWithoutResourceLimits(ctx); err != nil {
+		return err
+	}
+	return o.ValidateResourceLimits(DefaultResourceLimitPolicy())
 }

@@ -25,20 +25,16 @@ import (
 // Политика образов (5.5): при отсутствии локально выполняем ImagePull и обязательно дочитываем тело ответа.
 // Детальная настройка и вариант «только предзагрузка» — 5.10 / README.
 
-const (
-	sandboxMemoryFloorBytes int64 = 1 << 30 // 1 GiB
-	sandboxPidsFloor        int64 = 100
-	sandboxMemoryCeilBytes  int64 = 16 << 30
-	sandboxPidsCeil         int64 = 8192
-	sandboxNanoCPUsCeil int64 = 16_000_000_000
-	dockerOpDetachTimeout = 45 * time.Second
-)
+const dockerOpDetachTimeout = 45 * time.Second
 
 // DockerSandboxRunner — реализация SandboxRunner через Docker Engine API (задача 5.5).
 type DockerSandboxRunner struct {
 	cli     *client.Client
 	stopper *dockerStopper
 	allowed []string
+
+	// limitPolicy — полы/потолки cgroup для ContainerCreate (5.9); по умолчанию DefaultResourceLimitPolicy().
+	limitPolicy ResourceLimitPolicy
 
 	// streamLogsEntryBuffer, если > 0, задаёт ёмкость буферизованного канала StreamLogs вместо StreamLogsDefaultBuffer (тесты / конфиг).
 	streamLogsEntryBuffer int
@@ -72,6 +68,13 @@ func WithStreamLogsEntryBuffer(n int) RunnerOption {
 	}
 }
 
+// WithResourceLimitPolicy задаёт политику лимитов для RunTask (5.9). Нулевые поля нормализуются к дефолтам.
+func WithResourceLimitPolicy(p ResourceLimitPolicy) RunnerOption {
+	return func(r *DockerSandboxRunner) {
+		r.limitPolicy = normalizeResourceLimitPolicy(p)
+	}
+}
+
 // NewDockerSandboxRunner создаёт раннер. cli не должен быть nil; allowedImages пустой — дефолты.
 func NewDockerSandboxRunner(cli *client.Client, allowedImages []string, opts ...RunnerOption) *DockerSandboxRunner {
 	allowed := append([]string(nil), allowedImages...)
@@ -79,11 +82,12 @@ func NewDockerSandboxRunner(cli *client.Client, allowedImages []string, opts ...
 		allowed = DefaultAllowedSandboxImages()
 	}
 	r := &DockerSandboxRunner{
-		cli:       cli,
-		stopper: newDockerStopper(cli),
-		allowed:   allowed,
-		instances: make(map[string]*instanceState),
-		creating:  make(map[string]*instanceState),
+		cli:         cli,
+		stopper:     newDockerStopper(cli),
+		allowed:     allowed,
+		limitPolicy: normalizeResourceLimitPolicy(ResourceLimitPolicy{}),
+		instances:   make(map[string]*instanceState),
+		creating:    make(map[string]*instanceState),
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -127,39 +131,6 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 		EnvBackend+"="+string(opts.Backend),
 	)
 	return out
-}
-
-func effectiveMemoryBytes(rl ResourceLimit) int64 {
-	mb := int64(rl.MemoryMB)
-	if mb <= 0 || mb*1024*1024 < sandboxMemoryFloorBytes {
-		return sandboxMemoryFloorBytes
-	}
-	b := mb * 1024 * 1024
-	if b > sandboxMemoryCeilBytes {
-		return sandboxMemoryCeilBytes
-	}
-	return b
-}
-
-func effectivePidsLimit(rl ResourceLimit) int64 {
-	p := int64(rl.PIDsLimit)
-	if p < sandboxPidsFloor {
-		p = sandboxPidsFloor
-	}
-	if p > sandboxPidsCeil {
-		p = sandboxPidsCeil
-	}
-	return p
-}
-
-func effectiveNanoCPUs(rl ResourceLimit) int64 {
-	if rl.NanoCPUs <= 0 {
-		return 0
-	}
-	if rl.NanoCPUs > sandboxNanoCPUsCeil {
-		return sandboxNanoCPUsCeil
-	}
-	return rl.NanoCPUs
 }
 
 func drainDockerWait(respC <-chan containertypes.WaitResponse, errC <-chan error) {
@@ -277,15 +248,11 @@ func buildPromptContextTar(instruction, contextText string) (io.ReadCloser, erro
 // RunTask реализует SandboxRunner.RunTask.
 func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) (*SandboxInstance, error) {
 	opts = opts.Clone()
-	if err := opts.Validate(ctx); err != nil {
+	if err := opts.validateWithoutResourceLimits(ctx); err != nil {
 		return nil, err
 	}
-	// Явная защита от инъекций через env/ветку (Validate уже вызывает ValidateRepoURL с DNS — не дублируем).
-	if err := ValidateEnvKeys(opts.EnvVars); err != nil {
-		return nil, errors.Join(ErrInvalidOptions, err)
-	}
-	if err := ValidateBranchName(opts.Branch); err != nil {
-		return nil, errors.Join(ErrInvalidOptions, err)
+	if err := opts.ValidateResourceLimits(r.limitPolicy); err != nil {
+		return nil, err
 	}
 	if err := ValidateAllowedImage(opts.Image, r.allowed); err != nil {
 		return nil, err
@@ -346,13 +313,15 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		return nil, err
 	}
 
+	pol := r.limitPolicy
 	var (
 		netName  string
 		netCfg   *network.NetworkingConfig
 		hostNet  containertypes.NetworkMode
 		initTrue = true
-		memBytes = effectiveMemoryBytes(opts.ResourceLimit)
-		pidsLim  = effectivePidsLimit(opts.ResourceLimit)
+		memBytes = effectiveMemoryBytes(opts.ResourceLimit.MemoryMB, pol.MemoryFloorBytes, pol.MemoryCeilBytes)
+		pidsLim  = effectivePidsLimit(opts.ResourceLimit.PIDsLimit, pol.PidsFloor, pol.PidsCeil)
+		nanoCPUs = effectiveNanoCPUs(opts.ResourceLimit.NanoCPUs, pol.DefaultNanoCPUs, pol.NanoCPUsCeil)
 		hc       = &containertypes.HostConfig{
 			NetworkMode: hostNet,
 			Init:        &initTrue,
@@ -366,14 +335,12 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 			Resources: containertypes.Resources{
 				Memory:     memBytes,
 				MemorySwap: memBytes,
+				NanoCPUs:   nanoCPUs,
 				PidsLimit:  &pidsLim,
 			},
 			ReadonlyRootfs: false,
 		}
 	)
-	if nc := effectiveNanoCPUs(opts.ResourceLimit); nc > 0 {
-		hc.Resources.NanoCPUs = nc
-	}
 
 	if opts.DisableNetwork {
 		hc.NetworkMode = network.NetworkNone
@@ -448,12 +415,21 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	if err != nil {
 		return nil, fmt.Errorf("container create: %w", errors.Join(ErrSandboxDocker, err))
 	}
-	for _, w := range createResp.Warnings {
-		if w != "" {
-			slog.Warn("sandbox: docker create warning", "warning", w)
-		}
-	}
 	containerID = createResp.ID
+	for _, w := range createResp.Warnings {
+		if w == "" {
+			continue
+		}
+		if isDockerSwapLimitKernelUnsupportedWarning(w) {
+			slog.Warn("sandbox: docker create warning (swap cgroup limits not enforced by kernel; continuing)", "warning", w)
+			continue
+		}
+		if isDockerCreateWarningFatal(w) {
+			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "docker_create_fatal_warning")
+			return nil, fmt.Errorf("docker create warning is fatal: %q: %w", w, ErrSandboxDocker)
+		}
+		slog.Warn("sandbox: docker create warning", "warning", w)
+	}
 	if err := ValidateSandboxID(containerID); err != nil {
 		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "bad_container_id")
 		return nil, fmt.Errorf("unexpected container id from engine: %w", errors.Join(ErrSandboxDocker, err))

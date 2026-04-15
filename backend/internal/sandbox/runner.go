@@ -23,7 +23,8 @@ type SandboxRunner interface {
 	// Не дожидается завершения процесса в контейнере — используйте Wait.
 	// В SandboxInstance.ID возвращается только доверенный ID рантайма (см. ValidateSandboxID).
 	// Первая строка тела RunTask: opts = opts.Clone() — снимок полей и глубокая копия EnvVars (гонки с вызывающим кодом).
-	// Далее: opts.Validate(ctx), ValidateRepoURL(ctx, opts.RepoURL), ValidateBranchName(opts.Branch), ValidateEnvKeys(opts.EnvVars).
+	// Далее: валидация полей опций до Docker и проверка ResourceLimit по политике раннера (5.9).
+	// Публичный opts.Validate(ctx) совпадает с этим для лимитов, если используется DefaultResourceLimitPolicy().
 	//
 	// Сироты: если Docker уже выдал ID контейнера (create успешен), а последующий шаг (start, pull и т.д.)
 	// падает из-за ошибки или отмены ctx, реализация обязана best-effort удалить этот контейнер до возврата

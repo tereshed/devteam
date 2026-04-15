@@ -174,9 +174,16 @@ type CodeResult struct {
 	BranchName string
 }
 
-// ResourceLimit — лимиты контейнера (Docker — 5.9).
-// NanoCPUs — как в docker.HostConfig.NanoCPUs: 1 CPU = 1_000_000_000; 0 = не задавать лимит.
-// PIDsLimit — лимит процессов в cgroup (pids.max); защита от fork bomb. 0 = политика по умолчанию в реализации (5.9).
+// ResourceLimit — лимиты контейнера (Docker cgroup, задача 5.9).
+//
+// NanoCPUs — как в docker.Resources.NanoCPUs: 1 CPU = 1_000_000_000. Ноль — «не задано»: в HostConfig подставляется
+// DefaultSandboxNanoCPUs (не меньше 1 CPU). Значения < 0 отклоняются Validate.
+//
+// MemoryMB — мегабайты RAM; 0 — политический минимум (пол). Валидация отсекает переполнение int64 и значения выше потолка.
+//
+// DiskMB — зарезервировано: только 0 до реализации квоты диска (overlay/volume driver). Иначе Validate — ошибка.
+//
+// PIDsLimit — cgroup pids.max; 0 — применяется пол из ResourceLimitPolicy. Отрицательные значения запрещены.
 type ResourceLimit struct {
 	NanoCPUs  int64
 	MemoryMB  int
