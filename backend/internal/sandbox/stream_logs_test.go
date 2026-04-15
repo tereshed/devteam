@@ -4,43 +4,19 @@ import (
 	"context"
 	"encoding/binary"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
 )
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
-}
-
-// testSandboxID — валидный 64-символьный hex sandboxID для тестов.
-const testSandboxID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 func muxDockerFrame(streamType byte, payload []byte) []byte {
 	h := make([]byte, 8)
 	h[0] = streamType
 	binary.BigEndian.PutUint32(h[4:], uint32(len(payload)))
 	return append(h, payload...)
-}
-
-func newTestDockerClient(t *testing.T, h http.Handler) *client.Client {
-	t.Helper()
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	host := strings.TrimPrefix(srv.URL, "http://")
-	cli, err := client.NewClientWithOpts(
-		client.WithHost("http://"+host),
-		client.WithVersion("1.43"),
-		client.WithHTTPClient(srv.Client()),
-	)
-	require.NoError(t, err)
-	return cli
 }
 
 func registerTrackedInstance(t *testing.T, r *DockerSandboxRunner, cid string) *instanceState {

@@ -163,9 +163,19 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 	return out
 }
 
+// drainDockerWait освобождает каналы ContainerWait без вечной блокировки: после select в containerWaitLoop
+// заполнено не более одного из каналов; второй может остаться пустым навсегда (буфер errC не гарантирует закрытие).
 func drainDockerWait(respC <-chan containertypes.WaitResponse, errC <-chan error) {
-	go func() { <-respC }()
-	go func() { <-errC }()
+	go func() {
+		select {
+		case <-respC:
+		default:
+		}
+		select {
+		case <-errC:
+		default:
+		}
+	}()
 }
 
 func (r *DockerSandboxRunner) pullImage(ctx context.Context, ref string) error {
@@ -957,8 +967,13 @@ func (r *DockerSandboxRunner) Cleanup(ctx context.Context, sandboxID string) err
 		}
 	}
 
-	if err := r.cli.ContainerRemove(rmCtx, sandboxID, containertypes.RemoveOptions{Force: true, RemoveVolumes: true}); err != nil && !errdefs.IsNotFound(err) {
-		return fmt.Errorf("container remove: %w", errors.Join(ErrSandboxDocker, err))
+	if err := r.cli.ContainerRemove(rmCtx, sandboxID, containertypes.RemoveOptions{Force: true, RemoveVolumes: true}); err != nil {
+		if errdefs.IsNotFound(err) {
+			slog.Debug("sandbox: container remove not found (already gone)",
+				"sandbox_id", sandboxID, "op", "container_remove", "err", err)
+		} else {
+			return fmt.Errorf("container remove: %w", errors.Join(ErrSandboxDocker, err))
+		}
 	}
 	r.removeNetworkBestEffort(rmCtx, netID)
 	if hostTmp != "" {

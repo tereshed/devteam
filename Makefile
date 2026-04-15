@@ -30,7 +30,7 @@ logs:
 test: test-unit test-integration
 
 test-unit:
-	cd backend && go test -race ./internal/handler/... ./internal/service/... ./internal/mcp/... ./internal/config/... ./pkg/crypto/... ./pkg/gitprovider/... -v
+	cd backend && go test -race ./internal/handler/... ./internal/service/... ./internal/mcp/... ./internal/config/... ./internal/sandbox/... ./pkg/crypto/... ./pkg/gitprovider/... -v
 
 test-integration:
 	cd backend && go test -race -tags=integration ./internal/repository/... ./internal/sandbox/... ./pkg/gitprovider/... -v
