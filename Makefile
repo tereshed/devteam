@@ -1,6 +1,17 @@
-.PHONY: help build up down logs test test-unit test-integration sandbox-build migrate-create migrate-up migrate-down migrate-status frontend-test frontend-test-unit frontend-test-widget frontend-test-integration frontend-analyze frontend-codegen frontend-codegen-watch frontend-run-web frontend-run-android frontend-run-ios frontend-build-web frontend-build-android frontend-build-ios swagger
-
 COMPOSE_FILE := docker-compose.yml
+
+# Поддерживаемые stem для sandbox-build-<stem> (deployment/sandbox/<stem>/).
+SANDBOX_BUILDABLE_STEMS := claude
+SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
+
+.PHONY: help build up down logs test test-unit test-integration \
+	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
+	migrate-create migrate-up migrate-down migrate-status \
+	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration \
+	frontend-analyze frontend-codegen frontend-codegen-watch \
+	frontend-run-web frontend-run-android frontend-run-ios \
+	frontend-build-web frontend-build-android frontend-build-ios \
+	swagger
 
 # === Управление сервисами ===
 build:
@@ -24,9 +35,22 @@ test-unit:
 test-integration:
 	cd backend && go test -race -tags=integration ./internal/repository/... ./internal/sandbox/... ./pkg/gitprovider/... -v
 
-# Образ Claude sandbox (нужен для make test-integration и внутренних тестов entrypoint)
-sandbox-build:
-	docker build -t devteam/sandbox-claude:local -f deployment/sandbox/claude/Dockerfile deployment/sandbox/claude
+# --- Sandbox images (task 5.12, docs/tasks/5.12-makefile-sandbox-build.md) ---
+# Сборка через docker build, не сервис в docker-compose: образы — эфемерные CI/тестовые
+# артефакты; compose описывает долгоживущий стек (API, БД). См. раздел Compliance в задаче 5.12.
+export DOCKER_BUILDKIT := 1
+
+check-docker:
+	@docker info >/dev/null 2>&1 || (echo "Error: Docker Engine is not available (daemon not running or no permissions). Start Docker and retry." >&2 && exit 1)
+
+# Ref -t, -f и контекст в кавычках — защита от flag injection при переопределении переменных make.
+# Статическое шаблонное правило: на GNU Make 3.81 (macOS) обычное sandbox-build-% не срабатывает для
+# целей из .PHONY — получается «Nothing to be done» без сборки образа.
+$(SANDBOX_BUILD_TARGETS): sandbox-build-%: check-docker
+	$(if $(filter $*,$(SANDBOX_BUILDABLE_STEMS)),,$(error Unknown sandbox stem '$*'. Expected one of: $(SANDBOX_BUILDABLE_STEMS)))
+	docker build -t "devteam/sandbox-$*:local" -f "deployment/sandbox/$*/Dockerfile" "deployment/sandbox/$*"
+
+sandbox-build: sandbox-build-claude
 
 test-all:
 	cd backend && go test ./... -v
@@ -109,6 +133,8 @@ help:
 	@echo "  make test            - Run all backend tests"
 	@echo "  make test-unit       - Run backend unit tests (handler, service, mcp)"
 	@echo "  make test-integration - Run backend integration tests"
+	@echo "  make sandbox-build    - Build default sandbox image (Claude, devteam/sandbox-claude:local)"
+	@echo "  make sandbox-build-<stem> - Build a specific sandbox image (e.g. sandbox-build-claude)"
 	@echo "  make migrate-create  - Create new migration"
 	@echo "  make migrate-up      - Apply migrations"
 	@echo "  make migrate-down    - Rollback last migration"

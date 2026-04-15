@@ -172,7 +172,7 @@
 | 5.9 | Resource limits (CPU, Memory) при создании контейнера | `docker_runner.go`, `resource_limits*.go`, `options_validate.go` | ✅ | [детали](docs/tasks/5.9-sandbox-resource-limits.md) |
 | 5.10 | Конфигурация: `SandboxConfig` в `config.go` | `backend/internal/config/config.go` | ✅ | [детали](docs/tasks/5.10-sandbox-config.md) |
 | 5.11 | docker-compose: монтирование `/var/run/docker.sock` | `docker-compose.yml` (корень), `Makefile` | ✅ | [детали](docs/tasks/5.11-docker-compose-docker-sock.md) |
-| 5.12 | Makefile: `sandbox-build` (сборка sandbox-образов) | `Makefile` | ⬜ | |
+| 5.12 | Makefile: `sandbox-build` (сборка sandbox-образов) | `Makefile` | ✅ | [детали](docs/tasks/5.12-makefile-sandbox-build.md) |
 | 5.13 | Unit-тесты: DockerSandboxRunner (с мок Docker Client) | `backend/internal/sandbox/docker_runner_test.go` | ⬜ | |
 | 5.14 | Интеграционный тест: запуск реального контейнера с простой задачей | `backend/internal/sandbox/integration_test.go` | ⬜ | |
 
@@ -470,6 +470,8 @@ make up
 ```
 
 Если **`DOCKER_HOST`** указывает на удалённый демон (`tcp://...`), клиент Docker в контейнере использует его в приоритете над смонтированным сокетом; для локального сокета не задавайте **`DOCKER_HOST`** в `backend/.env`.
+
+Перед **`make test-integration`** (или другими проверками с реальным sandbox) на хосте должен существовать образ **`devteam/sandbox-claude:local`**. Если Docker пишет, что образ не найден, выполните **`make sandbox-build`** (или явно **`make sandbox-build-claude`**). Подробности — [5.12](docs/tasks/5.12-makefile-sandbox-build.md).
 
 ---
 
