@@ -36,6 +36,9 @@ type DockerSandboxRunner struct {
 	// limitPolicy — полы/потолки cgroup для ContainerCreate (5.9); по умолчанию DefaultResourceLimitPolicy().
 	limitPolicy ResourceLimitPolicy
 
+	// defaultTaskTimeout — при opts.Timeout <= 0 (5.10 / cfg.Sandbox); 0 — вести себя как DefaultSandboxTimeout.
+	defaultTaskTimeout time.Duration
+
 	// streamLogsEntryBuffer, если > 0, задаёт ёмкость буферизованного канала StreamLogs вместо StreamLogsDefaultBuffer (тесты / конфиг).
 	streamLogsEntryBuffer int
 
@@ -73,6 +76,33 @@ func WithResourceLimitPolicy(p ResourceLimitPolicy) RunnerOption {
 	return func(r *DockerSandboxRunner) {
 		r.limitPolicy = normalizeResourceLimitPolicy(p)
 	}
+}
+
+// WithDefaultTaskTimeout задаёт таймаут задачи при SandboxOptions.Timeout <= 0 (значение из config.Sandbox, 5.10).
+// Значения <= 0 игнорируются (остаётся DefaultSandboxTimeout).
+func WithDefaultTaskTimeout(d time.Duration) RunnerOption {
+	return func(r *DockerSandboxRunner) {
+		if d > 0 {
+			r.defaultTaskTimeout = d
+		}
+	}
+}
+
+func (r *DockerSandboxRunner) effectiveTaskTimeout(opts SandboxOptions) time.Duration {
+	if opts.Timeout > 0 {
+		return opts.Timeout
+	}
+	if r.defaultTaskTimeout > 0 {
+		return r.defaultTaskTimeout
+	}
+	return DefaultSandboxTimeout
+}
+
+func (r *DockerSandboxRunner) fallbackTaskTimeoutFromLabels() time.Duration {
+	if r.defaultTaskTimeout > 0 {
+		return r.defaultTaskTimeout
+	}
+	return DefaultSandboxTimeout
 }
 
 // NewDockerSandboxRunner создаёт раннер. cli не должен быть nil; allowedImages пустой — дефолты.
@@ -388,7 +418,8 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		}
 	}
 
-	timeoutSecs := int(opts.EffectiveTimeout() / time.Second)
+	effTO := r.effectiveTaskTimeout(opts)
+	timeoutSecs := int(effTO / time.Second)
 	if timeoutSecs <= 0 {
 		timeoutSecs = int(DefaultSandboxTimeout / time.Second)
 	}
@@ -472,7 +503,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		return nil, err
 	}
 
-	eff := opts.EffectiveTimeout()
+	eff := r.effectiveTaskTimeout(opts)
 	st.mu.Lock()
 	st.effectiveTimeout = eff
 	st.mu.Unlock()
@@ -693,7 +724,7 @@ func (r *DockerSandboxRunner) getOrAttachState(ctx context.Context, sandboxID st
 	if secs, perr := strconv.ParseInt(insp.Config.Labels["devteam.timeout_secs"], 10, 64); perr == nil && secs > 0 {
 		st.effectiveTimeout = time.Duration(secs) * time.Second
 	} else {
-		st.effectiveTimeout = DefaultSandboxTimeout
+		st.effectiveTimeout = r.fallbackTaskTimeoutFromLabels()
 	}
 
 	r.mu.Lock()

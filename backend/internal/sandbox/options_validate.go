@@ -190,7 +190,7 @@ func (o SandboxOptions) validateWithoutResourceLimits(ctx context.Context) error
 // Validate — быстрый фейл до Docker API (вызывается в начале RunTask, 5.5).
 // ctx передаётся в ValidateRepoURL для DNS (SSRF); при nil подставляется context.Background().
 // Любая ошибка удовлетворяет errors.Is(err, ErrInvalidOptions); часть ошибок дополнительно раскрывает причину через Join.
-// Лимиты ресурсов проверяются с DefaultResourceLimitPolicy(); DockerSandboxRunner.RunTask использует политику раннера.
+// Лимиты ресурсов проверяются с DefaultResourceLimitPolicy(); DockerSandboxRunner.RunTask — с политикой раннера (5.10 — из config/DI).
 func (o SandboxOptions) Validate(ctx context.Context) error {
 	if err := o.validateWithoutResourceLimits(ctx); err != nil {
 		return err

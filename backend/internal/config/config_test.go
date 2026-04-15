@@ -1,12 +1,29 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	for _, k := range []string{
+		"SANDBOX_MEMORY_FLOOR_BYTES",
+		"SANDBOX_MEMORY_CEIL_BYTES",
+		"SANDBOX_PIDS_FLOOR",
+		"SANDBOX_PIDS_CEIL",
+		"SANDBOX_DEFAULT_NANO_CPUS",
+		"SANDBOX_NANO_CPUS_CEIL",
+		"SANDBOX_DEFAULT_TIMEOUT",
+		"SANDBOX_MAX_CONCURRENT",
+	} {
+		_ = os.Unsetenv(k)
+	}
+	os.Exit(m.Run())
+}
 
 func TestDecodeEncryptionKeyHex_Valid(t *testing.T) {
 	// 32 нулевых байт в hex

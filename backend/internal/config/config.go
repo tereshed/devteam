@@ -21,6 +21,8 @@ type Config struct {
 	MCP        MCPConfig
 	Encryption EncryptionConfig
 	Git        GitConfig
+	// Sandbox — лимиты и таймауты sandbox (SANDBOX_*), задача 5.10.
+	Sandbox SandboxConfig
 	// WorkflowWorkerEnabled — фоновый worker, раз в секунду ищет pending/running executions.
 	WorkflowWorkerEnabled bool
 }
@@ -203,6 +205,12 @@ func Load() (*Config, error) {
 	if cfg.JWT.SecretKey == "change-me-in-production" && cfg.IsProd() {
 		return nil, fmt.Errorf("JWT_SECRET_KEY must be set in production")
 	}
+
+	sandboxCfg, err := loadSandboxConfig()
+	if err != nil {
+		return nil, fmt.Errorf("invalid sandbox config: %w", err)
+	}
+	cfg.Sandbox = sandboxCfg
 
 	return cfg, nil
 }

@@ -4,7 +4,8 @@ package sandbox
 // При ResourceLimit.NanoCPUs <= 0 в HostConfig всегда подставляется не меньше этого значения (задача 5.9).
 const DefaultSandboxNanoCPUs int64 = 1_000_000_000
 
-// DefaultResourceLimitPolicy — полы/потолки до появления SandboxConfig (5.10); собирается в одном месте без чтения из effective*.
+// DefaultResourceLimitPolicy — встроенные полы/потолки (fallback при пустом WithResourceLimitPolicy / нулевых полях).
+// Числовые дефолты должны совпадать с backend/internal/config/sandbox_config.go (SANDBOX_* при пустом env).
 func DefaultResourceLimitPolicy() ResourceLimitPolicy {
 	return ResourceLimitPolicy{
 		MemoryFloorBytes: 1 << 30, // 1 GiB
