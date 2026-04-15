@@ -186,18 +186,18 @@
 
 **Цель:** Базовый оркестратор — принимает запрос от пользователя, создаёт задачи, управляет pipeline.
 
-| # | Задача | Файлы | Статус |
-|---|--------|-------|--------|
-| 6.1 | Интерфейс `AgentExecutor` (запуск агента с задачей) | `backend/internal/agent/executor.go` | ⬜ |
-| 6.2 | Реализация: `LLMAgentExecutor` (вызов LLM с промптом + tools) | `backend/internal/agent/llm_executor.go` | ⬜ |
-| 6.3 | Реализация: `SandboxAgentExecutor` (запуск sandbox-контейнера для Developer) | `backend/internal/agent/sandbox_executor.go` | ⬜ |
-| 6.4 | Orchestrator: `OrchestratorService` — основной цикл управления | `backend/internal/service/orchestrator_service.go` | ⬜ |
-| 6.5 | Pipeline: линейный поток `Plan → Develop → Review → Test` | В `OrchestratorService` | ⬜ |
-| 6.6 | Обработка результатов: `completed` → следующий шаг, `changes_requested` → назад к Developer | В `OrchestratorService` | ⬜ |
-| 6.7 | Обработка пользовательских команд: `pause`, `cancel`, `resume`, `correct` | В `OrchestratorService` | ⬜ |
-| 6.8 | Промпты агентов: Orchestrator, Planner, Developer, Reviewer, Tester | `backend/prompts/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ |
-| 6.9 | Агенты по умолчанию (YAML-конфиг) | `backend/agents/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ |
-| 6.10 | Unit-тесты: OrchestratorService (полный pipeline, ретраи, отмена) | `backend/internal/service/orchestrator_service_test.go` | ⬜ |
+| # | Задача | Файлы | Статус | Детали |
+|---|--------|-------|--------|--------|
+| 6.1 | Интерфейс `AgentExecutor` (запуск агента с задачей) | `backend/internal/agent/executor.go` | ⬜ | [детали](docs/tasks/6.1-agent-executor-interface.md) |
+| 6.2 | Реализация: `LLMAgentExecutor` (вызов LLM с промптом + tools) | `backend/internal/agent/llm_executor.go` | ⬜ | |
+| 6.3 | Реализация: `SandboxAgentExecutor` (запуск sandbox-контейнера для Developer) | `backend/internal/agent/sandbox_executor.go` | ⬜ | |
+| 6.4 | Orchestrator: `OrchestratorService` — основной цикл управления | `backend/internal/service/orchestrator_service.go` | ⬜ | |
+| 6.5 | Pipeline: линейный поток `Plan → Develop → Review → Test` | В `OrchestratorService` | ⬜ | |
+| 6.6 | Обработка результатов: `completed` → следующий шаг, `changes_requested` → назад к Developer | В `OrchestratorService` | ⬜ | |
+| 6.7 | Обработка пользовательских команд: `pause`, `cancel`, `resume`, `correct` | В `OrchestratorService` | ⬜ | |
+| 6.8 | Промпты агентов: Orchestrator, Planner, Developer, Reviewer, Tester | `backend/prompts/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ | |
+| 6.9 | Агенты по умолчанию (YAML-конфиг) | `backend/agents/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ | |
+| 6.10 | Unit-тесты: OrchestratorService (полный pipeline, ретраи, отмена) | `backend/internal/service/orchestrator_service_test.go` | ⬜ | |
 
 **Pipeline (линейный MVP):**
 ```
