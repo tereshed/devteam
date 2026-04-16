@@ -11,11 +11,6 @@ import (
 	"github.com/devteam/backend/internal/models"
 )
 
-var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)(api[_-]?key|auth[_-]?token|secret|password|passwd|bearer|token)[\s:=]+[^\s,]{8,}`),
-	regexp.MustCompile(`(?i)ghp_[a-zA-Z0-9]{36}`), // GitHub token
-}
-
 // ContextBuilder собирает и фильтрует контекст для выполнения задачи агентом.
 type ContextBuilder interface {
 	Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project) (*agent.ExecutionInput, error)
