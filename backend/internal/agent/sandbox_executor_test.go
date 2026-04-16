@@ -184,9 +184,64 @@ func TestSandboxAgentExecutor_Execute_InvalidGitURL(t *testing.T) {
 	}
 }
 
+func TestSandboxAgentExecutor_Execute_PreservesInstructionContent(t *testing.T) {
+	// Проверяем, что инструкция передается без изменений (без деструктивной санитизации)
+	mockRunner := new(MockSandboxRunner)
+	executor := NewSandboxAgentExecutor(mockRunner, "test-image")
+
+	// Инструкция с кодом Python и shell-командами - должна передаваться как есть
+	input := ExecutionInput{
+		TaskID:     "task-123",
+		ProjectID:  "proj-456",
+		GitURL:     "https://github.com/org/repo",
+		BranchName: "feature/test",
+		Title:      "Write python script with curl",
+		Description: `Create a python script that uses curl to fetch data.
+		Include error handling: if (err != nil) { return err }`,
+		PromptUser: `Write a bash script that does:
+		curl -s https://api.example.com/data | python3 -c "import json,sys; print(json.load(sys.stdin))"
+		Use variables like ${API_KEY} and $(date)`,
+	}
+
+	sandboxID := "sandbox-789"
+	instance := &sandbox.SandboxInstance{ID: sandboxID}
+	status := &sandbox.SandboxStatus{
+		ID:     sandboxID,
+		Status: sandbox.SandboxStatusCompleted,
+		Result: &sandbox.CodeResult{
+			Success: true,
+			Output:  "Done",
+		},
+	}
+
+	var capturedOpts sandbox.SandboxOptions
+	mockRunner.On("RunTask", mock.Anything, mock.MatchedBy(func(opts sandbox.SandboxOptions) bool {
+		capturedOpts = opts
+		return true
+	})).Return(instance, nil)
+
+	mockRunner.On("Wait", mock.Anything, sandboxID).Return(status, nil)
+	mockRunner.On("Cleanup", mock.Anything, sandboxID).Return(nil)
+
+	res, err := executor.Execute(context.Background(), input)
+
+	assert.NoError(t, err)
+	assert.True(t, res.Success)
+
+	// Проверяем, что инструкция содержит все специальные символы и код
+	assert.Contains(t, capturedOpts.Instruction, "python")
+	assert.Contains(t, capturedOpts.Instruction, "curl")
+	assert.Contains(t, capturedOpts.Instruction, "if (err != nil)")
+	assert.Contains(t, capturedOpts.Instruction, "${API_KEY}")
+	assert.Contains(t, capturedOpts.Instruction, "$(date)")
+	assert.Contains(t, capturedOpts.Instruction, "|")
+
+	mockRunner.AssertExpectations(t)
+}
+
 func TestSandboxAgentExecutor_truncateArtifact(t *testing.T) {
 	executor := &SandboxAgentExecutor{}
-	
+
 	t.Run("No truncation", func(t *testing.T) {
 		s := "short string"
 		res := executor.truncateArtifact(s, "Test")
@@ -199,5 +254,47 @@ func TestSandboxAgentExecutor_truncateArtifact(t *testing.T) {
 		res := executor.truncateArtifact(s, "Test")
 		assert.Equal(t, limit+len("\n...[TRUNCATED]"), len(res))
 		assert.True(t, strings.HasSuffix(res, "...[TRUNCATED]"))
+	})
+}
+
+func TestSandboxAgentExecutor_buildInstruction(t *testing.T) {
+	executor := &SandboxAgentExecutor{}
+
+	t.Run("Normal input", func(t *testing.T) {
+		input := ExecutionInput{
+			Title:       "Test Task",
+			Description: "Create API endpoint",
+			PromptUser:  "Use gin framework",
+		}
+		res := executor.buildInstruction(input)
+		assert.Contains(t, res, "Title: Test Task")
+		assert.Contains(t, res, "Description: Create API endpoint")
+		assert.Contains(t, res, "Instruction: Use gin framework")
+	})
+
+	t.Run("Preserves special characters", func(t *testing.T) {
+		// Проверяем, что специальные символы НЕ удаляются (санитизация отключена)
+		input := ExecutionInput{
+			Title:       "Task with; | & < > $ ( )",
+			Description: "Code: if (err != nil) { return $HOME }",
+			PromptUser:  "Use ${VAR} and $(cmd)",
+		}
+		res := executor.buildInstruction(input)
+
+		// Все специальные символы должны сохраниться
+		assert.Contains(t, res, ";")
+		assert.Contains(t, res, "|")
+		assert.Contains(t, res, "&")
+		assert.Contains(t, res, "$")
+		assert.Contains(t, res, "(")
+		assert.Contains(t, res, ")")
+		assert.Contains(t, res, "${VAR}")
+		assert.Contains(t, res, "$(cmd)")
+	})
+
+	t.Run("Empty input", func(t *testing.T) {
+		input := ExecutionInput{}
+		res := executor.buildInstruction(input)
+		assert.Equal(t, "", res)
 	})
 }

@@ -52,6 +52,8 @@ type TransitionOpts struct {
 	ErrorMessage    *string
 	Artifacts       *datatypes.JSON
 	BranchName      *string
+	// Context обновленный JSON контекст задачи (например, iteration_count)
+	Context *datatypes.JSON
 }
 
 // TaskService бизнес-логика задач и state machine.
@@ -513,6 +515,9 @@ func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newStatu
 	}
 	if opts.BranchName != nil {
 		task.BranchName = opts.BranchName
+	}
+	if opts.Context != nil {
+		task.Context = *opts.Context
 	}
 	task.Status = newStatus
 	applyTimestampsOnStatusChange(task, from, newStatus)

@@ -13,6 +13,10 @@ import (
 
 // SandboxAgentExecutor реализует AgentExecutor через запуск задачи в изолированном контейнере.
 // Используется для ролей Developer и Tester.
+//
+// Безопасность обеспечивается на уровне SandboxRunner: инструкция передается через
+// монтирование файла в контейнер (/workspace/instruction.txt), а не через shell-аргументы.
+// Это исключает возможность command injection.
 type SandboxAgentExecutor struct {
 	runner sandbox.SandboxRunner
 	image  string // Дефолтный образ, если не задан в ExecutionInput
@@ -59,6 +63,10 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	slog.Info("SandboxAgentExecutor.Execute started", "task_id", in.TaskID, "project_id", in.ProjectID)
 
 	// 3. Подготовка опций для SandboxRunner
+	// Инструкция передается как есть - безопасность обеспечивается на уровне Runner
+	// через монтирование файла в контейнер, а не через shell
+	instruction := e.buildInstruction(in)
+
 	opts := sandbox.SandboxOptions{
 		TaskID:      in.TaskID,
 		ProjectID:   in.ProjectID,
@@ -66,7 +74,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		Image:       e.image, // В MVP берем дефолтный образ
 		RepoURL:     in.GitURL,
 		Branch:      in.BranchName,
-		Instruction: e.buildInstruction(in),
+		Instruction: instruction,
 		Context:     string(NormalizeJSONForParse(in.ContextJSON)),
 		EnvVars:     in.EnvSecrets,
 		Timeout:     0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
@@ -129,6 +137,8 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	return res, nil
 }
 
+// buildInstruction собирает инструкцию для агента из входных данных.
+// Текст передается как есть - безопасность обеспечивается на уровне SandboxRunner.
 func (e *SandboxAgentExecutor) buildInstruction(in ExecutionInput) string {
 	var sb strings.Builder
 	// Оптимизация аллокаций

@@ -40,6 +40,16 @@ func (e *pipelineEngine) DetermineNextStatus(task *models.Task, result *agent.Ex
 		return models.TaskStatusFailed, nil
 	}
 
+	// Проверка на пустой ответ от агента (early fail)
+	// Проверяем что Output пустой AND (ArtifactsJSON пустой ИЛИ содержит только пустой объект/null)
+	artifactsEmpty := len(result.ArtifactsJSON) == 0 ||
+		string(result.ArtifactsJSON) == "{}" ||
+		string(result.ArtifactsJSON) == "null" ||
+		string(result.ArtifactsJSON) == ""
+	if result.Output == "" && artifactsEmpty {
+		return models.TaskStatusFailed, fmt.Errorf("pipeline: agent returned empty result")
+	}
+
 	// Валидация путей в артефактах (Path Traversal Protection)
 	if len(result.ArtifactsJSON) > 0 {
 		if err := e.validateArtifactPaths(result.ArtifactsJSON); err != nil {
@@ -67,7 +77,7 @@ func (e *pipelineEngine) DetermineNextStatus(task *models.Task, result *agent.Ex
 		if decision == "changes_requested" {
 			// Проверяем лимит итераций
 			if e.GetIterationCount(task) >= e.maxIterations {
-				return models.TaskStatusFailed, fmt.Errorf("iteration limit reached: %d", e.maxIterations)
+				return models.TaskStatusFailed, ErrOrchestratorIterationLimitReached
 			}
 			return models.TaskStatusChangesRequested, nil
 		}
@@ -82,7 +92,7 @@ func (e *pipelineEngine) DetermineNextStatus(task *models.Task, result *agent.Ex
 		decision := gjson.GetBytes(result.ArtifactsJSON, "decision").String()
 		if decision == "failed" {
 			if e.GetIterationCount(task) >= e.maxIterations {
-				return models.TaskStatusFailed, fmt.Errorf("iteration limit reached during testing: %d", e.maxIterations)
+				return models.TaskStatusFailed, ErrOrchestratorIterationLimitReached
 			}
 			return models.TaskStatusChangesRequested, nil
 		}

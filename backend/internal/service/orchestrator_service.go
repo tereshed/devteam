@@ -177,6 +177,13 @@ func (s *orchestratorService) ProcessTask(ctx context.Context, taskID uuid.UUID)
 		select {
 		case <-ctx.Done():
 			slog.Info("Context cancelled, stopping task processing", "project_id", project.ID, "task_id", task.ID)
+			// Graceful Shutdown: переводим задачу в Cancelled через detached context
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, transitionErr := s.taskSvc.Transition(cleanupCtx, task.ID, models.TaskStatusCancelled, TransitionOpts{})
+			if transitionErr != nil {
+				slog.Error("Failed to transition task to cancelled", "project_id", project.ID, "task_id", task.ID, "error", transitionErr)
+			}
 			return ctx.Err()
 		default:
 		}
@@ -198,12 +205,21 @@ func (s *orchestratorService) ProcessTask(ctx context.Context, taskID uuid.UUID)
 		if err != nil {
 			slog.Error("Failed to execute task step", "project_id", project.ID, "task_id", task.ID, "error", err)
 
-			// Переводим задачу в Failed (Transactional Consistency via Transition)
-			// Используем новый контекст с таймаутом, отвязанный от родительского,
-			// чтобы гарантированно сохранить статус ошибки даже при отмене ctx.
+			// Graceful Shutdown: при отмене контекста переводим задачу в Cancelled
+			// Используем detached context с таймаутом для гарантированного сохранения статуса
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				slog.Info("Task cancelled by user or timeout", "project_id", project.ID, "task_id", task.ID)
+				_, transitionErr := s.taskSvc.Transition(cleanupCtx, task.ID, models.TaskStatusCancelled, TransitionOpts{})
+				if transitionErr != nil {
+					slog.Error("Failed to transition task to cancelled", "project_id", project.ID, "task_id", task.ID, "error", transitionErr)
+				}
+				return err
+			}
+
+			// Другие ошибки - переводим в Failed
 			errMsg := err.Error()
 			_, transitionErr := s.taskSvc.Transition(cleanupCtx, task.ID, models.TaskStatusFailed, TransitionOpts{
 				ErrorMessage: &errMsg,
@@ -321,7 +337,10 @@ func (s *orchestratorService) handleExecutionResult(ctx context.Context, task *m
 	newContext := task.Context
 	if nextStatus == models.TaskStatusChangesRequested {
 		count := s.pipeline.GetIterationCount(task)
-		newContextBytes, _ := sjson.SetBytes(task.Context, "iteration_count", count+1)
+		newContextBytes, err := sjson.SetBytes(task.Context, "iteration_count", count+1)
+		if err != nil {
+			return fmt.Errorf("failed to update iteration_count: %w", err)
+		}
 		newContext = datatypes.JSON(newContextBytes)
 	}
 
@@ -348,8 +367,10 @@ func (s *orchestratorService) handleExecutionResult(ctx context.Context, task *m
 			Result:    &result.Output,
 			Artifacts: (*datatypes.JSON)(&result.ArtifactsJSON),
 		}
-		// Обновляем контекст (счетчик итераций)
-		task.Context = newContext
+		// Передаем обновленный контекст (счетчик итераций) в БД
+		if nextStatus == models.TaskStatusChangesRequested {
+			opts.Context = &newContext
+		}
 
 		slog.Info("Transitioning task", "project_id", task.ProjectID, "task_id", task.ID, "from", task.Status, "to", nextStatus)
 

@@ -129,7 +129,7 @@ func (m *MockTaskService) ListMessages(ctx context.Context, userID uuid.UUID, us
 func setupTaskRouter(mockSvc *MockTaskService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewTaskHandler(mockSvc)
+	h := NewTaskHandler(mockSvc, nil)
 
 	authFn := func(c *gin.Context) {
 		c.Set("userID", testProjectUserID)

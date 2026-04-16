@@ -232,7 +232,7 @@ func TestTaskGet_Forbidden(t *testing.T) {
 
 func TestTaskCreate_Success(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	pid := uuid.New()
@@ -254,7 +254,7 @@ func TestTaskCreate_Success(t *testing.T) {
 
 func TestTaskCreate_MissingTitle(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	pid := uuid.New()
 
@@ -267,7 +267,7 @@ func TestTaskCreate_MissingTitle(t *testing.T) {
 
 func TestTaskCreate_MissingProjectID(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	ctx := testUserCtx(t)
 
 	result, structured, err := h(ctx, nil, &TaskCreateParams{Title: "x"})
@@ -279,7 +279,7 @@ func TestTaskCreate_MissingProjectID(t *testing.T) {
 
 func TestTaskCreate_InvalidProjectID(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	ctx := testUserCtx(t)
 
 	result, _, err := h(ctx, nil, &TaskCreateParams{ProjectID: "x", Title: "t"})
@@ -290,7 +290,7 @@ func TestTaskCreate_InvalidProjectID(t *testing.T) {
 
 func TestTaskCreate_NoAuth(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	pid := uuid.New()
 
 	result, structured, err := h(context.Background(), nil, &TaskCreateParams{ProjectID: pid.String(), Title: "t"})
@@ -302,7 +302,7 @@ func TestTaskCreate_NoAuth(t *testing.T) {
 
 func TestTaskCreate_AgentNotInTeam(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	pid := uuid.New()
@@ -323,7 +323,7 @@ func TestTaskCreate_AgentNotInTeam(t *testing.T) {
 
 func TestTaskCreate_WithOptionalFields(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	pid := uuid.New()
@@ -350,7 +350,7 @@ func TestTaskCreate_WithOptionalFields(t *testing.T) {
 
 func TestTaskCreate_InvalidAgentID(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskCreateHandler(svc)
+	h := makeTaskCreateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	pid := uuid.New()
 
@@ -366,7 +366,7 @@ func TestTaskCreate_InvalidAgentID(t *testing.T) {
 
 func TestTaskUpdate_Success(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	pid := uuid.New()
@@ -386,7 +386,7 @@ func TestTaskUpdate_Success(t *testing.T) {
 
 func TestTaskUpdate_MissingTaskID(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 
 	result, _, err := h(ctx, nil, &TaskUpdateParams{TaskID: ""})
@@ -397,7 +397,7 @@ func TestTaskUpdate_MissingTaskID(t *testing.T) {
 
 func TestTaskUpdate_InvalidTaskID(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 
 	result, _, err := h(ctx, nil, &TaskUpdateParams{TaskID: "bad"})
@@ -408,7 +408,7 @@ func TestTaskUpdate_InvalidTaskID(t *testing.T) {
 
 func TestTaskUpdate_NotFound(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	tid := uuid.New()
@@ -424,7 +424,7 @@ func TestTaskUpdate_NotFound(t *testing.T) {
 
 func TestTaskUpdate_InvalidTransition(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	tid := uuid.New()
@@ -440,7 +440,7 @@ func TestTaskUpdate_InvalidTransition(t *testing.T) {
 
 func TestTaskUpdate_ConcurrentUpdate(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	tid := uuid.New()
@@ -456,7 +456,7 @@ func TestTaskUpdate_ConcurrentUpdate(t *testing.T) {
 
 func TestTaskUpdate_ChangeStatus(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	pid := uuid.New()
@@ -476,7 +476,7 @@ func TestTaskUpdate_ChangeStatus(t *testing.T) {
 
 func TestTaskUpdate_ClearAgent(t *testing.T) {
 	svc := new(mockTaskService)
-	h := makeTaskUpdateHandler(svc)
+	h := makeTaskUpdateHandler(svc, nil)
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 	pid := uuid.New()
