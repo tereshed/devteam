@@ -15,4 +15,13 @@ var (
 
 	// ErrExecutorNotConfigured — нет API-ключа, не задан SandboxRunner и т.п.
 	ErrExecutorNotConfigured = errors.New("agent: executor not configured")
+
+	// ErrRateLimit — превышен лимит запросов к LLM API.
+	ErrRateLimit = errors.New("agent: rate limit exceeded")
+
+	// ErrContextTooLarge — размер промпта и контекста превышает лимит модели.
+	ErrContextTooLarge = errors.New("agent: context too large")
+
+	// ErrInvalidResponse — невалидный ответ от LLM (например, невалидный JSON в Artifacts).
+	ErrInvalidResponse = errors.New("agent: invalid response format")
 )
