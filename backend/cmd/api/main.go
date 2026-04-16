@@ -10,13 +10,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/docker/client"
 	"github.com/pressly/goose/v3"
 	"github.com/devteam/backend/docs"
+	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/handler"
 	mcpserver "github.com/devteam/backend/internal/mcp"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/internal/sandbox"
 	"github.com/devteam/backend/internal/server"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/crypto"
@@ -174,7 +177,45 @@ func main() {
 
 	// Workflow Engine
 	workflowEngine := service.NewWorkflowEngine(workflowRepo, llmService)
-	
+
+	// Docker Client for Sandbox
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		log.Printf("Warning: Failed to init Docker client (sandbox tasks will fail): %v", err)
+	}
+
+	// Agent Executors
+	llmAgentExecutor := agent.NewLLMAgentExecutor(llmService)
+	// Sandbox Runner (учитываем лимиты из конфига)
+	sandboxRunner := sandbox.NewDockerSandboxRunner(dockerCli, []string{
+		"devteam/sandbox-claude:latest",
+		"devteam/sandbox-aider:latest",
+	})
+	sandboxAgentExecutor := agent.NewSandboxAgentExecutor(sandboxRunner, "devteam/sandbox-claude:latest")
+
+	// Orchestrator Components
+	orchestratorPipeline := service.NewPipelineEngine(5)
+	orchestratorContextBuilder := service.NewContextBuilder(encryptor)
+
+	// Orchestrator Service
+	orchestratorService := service.NewOrchestratorService(
+		taskRepo,
+		taskMsgRepo,
+		workflowRepo,
+		projectService,
+		txManager,
+		llmAgentExecutor,
+		sandboxAgentExecutor,
+		taskService,
+		orchestratorPipeline,
+		orchestratorContextBuilder,
+	)
+
+	// Запускаем оркестратор (очистка зомби-задач)
+	if err := orchestratorService.Start(context.Background()); err != nil {
+		log.Printf("Failed to start orchestrator: %v", err)
+	}
+
 	// Запускаем Workflow Worker в фоне (отключить: WORKFLOW_WORKER_ENABLED=false)
 	ctxWorker, cancelWorker := context.WithCancel(context.Background())
 	if cfg.WorkflowWorkerEnabled {
@@ -195,7 +236,7 @@ func main() {
 	promptHandler := handler.NewPromptHandler(promptService)
 	projectHandler := handler.NewProjectHandler(projectService)
 	teamHandler := handler.NewTeamHandler(teamService, projectService)
-	taskHandler := handler.NewTaskHandler(taskService)
+	taskHandler := handler.NewTaskHandler(taskService, orchestratorService)
 	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
@@ -238,6 +279,7 @@ func main() {
 			ProjectService:  projectService,
 			TeamService:     teamService,
 			TaskService:     taskService,
+			OrchestratorSvc: orchestratorService,
 			ApiKeyService:   apiKeyService,
 		})
 

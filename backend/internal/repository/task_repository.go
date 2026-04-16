@@ -67,6 +67,7 @@ type TaskFilter struct {
 	RootOnly        bool
 	BranchName      *string
 	Search          *string
+	UpdatedAtBefore *time.Time
 	Limit           int
 	Offset          int
 	OrderBy         string
@@ -146,6 +147,9 @@ func (r *taskRepository) applyFilters(db *gorm.DB, filter TaskFilter) *gorm.DB {
 		escaped := escapeILIKEWildcards(*filter.Search)
 		pattern := "%" + escaped + "%"
 		db = db.Where("(title ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", pattern, pattern)
+	}
+	if filter.UpdatedAtBefore != nil {
+		db = db.Where("updated_at < ?", *filter.UpdatedAtBefore)
 	}
 	return db
 }

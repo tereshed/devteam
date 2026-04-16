@@ -13,12 +13,16 @@ import (
 
 // TaskHandler HTTP-слой для задач (bind → service → DTO).
 type TaskHandler struct {
-	service service.TaskService
+	service         service.TaskService
+	orchestratorSvc service.OrchestratorService
 }
 
 // NewTaskHandler создаёт обработчик задач.
-func NewTaskHandler(svc service.TaskService) *TaskHandler {
-	return &TaskHandler{service: svc}
+func NewTaskHandler(svc service.TaskService, orchestratorSvc service.OrchestratorService) *TaskHandler {
+	return &TaskHandler{
+		service:         svc,
+		orchestratorSvc: orchestratorSvc,
+	}
 }
 
 func normalizeTaskListPagination(limit, offset int) (int, int) {
@@ -108,6 +112,21 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		writeTaskServiceError(c, err)
 		return
 	}
+
+	// Запускаем оркестрацию в фоне
+	if h.orchestratorSvc != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("Panic in background task orchestration", "error", r, "task_id", task.ID)
+				}
+			}()
+			if err := h.orchestratorSvc.ProcessTask(context.Background(), task.ID); err != nil {
+				slog.Error("Background task orchestration failed", "error", err, "task_id", task.ID)
+			}
+		}()
+	}
+
 	c.JSON(http.StatusCreated, dto.ToTaskResponse(task))
 }
 
@@ -397,6 +416,21 @@ func (h *TaskHandler) Resume(c *gin.Context) {
 		writeTaskServiceError(c, err)
 		return
 	}
+
+	// Запускаем оркестрацию в фоне
+	if h.orchestratorSvc != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("Panic in background task orchestration (resume)", "error", r, "task_id", task.ID)
+				}
+			}()
+			if err := h.orchestratorSvc.ProcessTask(context.Background(), task.ID); err != nil {
+				slog.Error("Background task orchestration failed (resume)", "error", err, "task_id", task.ID)
+			}
+		}()
+	}
+
 	c.JSON(http.StatusOK, dto.ToTaskResponse(task))
 }
 
