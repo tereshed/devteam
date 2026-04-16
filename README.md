@@ -189,8 +189,8 @@
 | # | Задача | Файлы | Статус | Детали |
 |---|--------|-------|--------|--------|
 | 6.1 | Интерфейс `AgentExecutor` (запуск агента с задачей) | `backend/internal/agent/executor.go` | ✅ | [детали](docs/tasks/6.1-agent-executor-interface.md) |
-| 6.2 | Реализация: `LLMAgentExecutor` (вызов LLM с промптом + tools) | `backend/internal/agent/llm_executor.go` | ⬜ | |
-| 6.3 | Реализация: `SandboxAgentExecutor` (запуск sandbox-контейнера для Developer) | `backend/internal/agent/sandbox_executor.go` | ⬜ | |
+| 6.2 | Реализация: `LLMAgentExecutor` (вызов LLM с промптом + tools) | `backend/internal/agent/llm_executor.go` | ⬜ | [детали](docs/tasks/6.2-llm-agent-executor.md) |
+| 6.3 | Реализация: `SandboxAgentExecutor` (запуск sandbox-контейнера для Developer) | `backend/internal/agent/sandbox_executor.go` | ⬜ | [детали](docs/tasks/6.3-sandbox-agent-executor.md) |
 | 6.4 | Orchestrator: `OrchestratorService` — основной цикл управления | `backend/internal/service/orchestrator_service.go` | ⬜ | |
 | 6.5 | Pipeline: линейный поток `Plan → Develop → Review → Test` | В `OrchestratorService` | ⬜ | |
 | 6.6 | Обработка результатов: `completed` → следующий шаг, `changes_requested` → назад к Developer | В `OrchestratorService` | ⬜ | |
