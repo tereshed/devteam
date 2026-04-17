@@ -209,7 +209,7 @@ func TestOrchestratorProcessTask_Success(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(5)
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
@@ -275,7 +275,7 @@ func TestOrchestratorProcessTask_ZombieRecovery(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(5)
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 	
@@ -316,7 +316,7 @@ func TestOrchestratorProcessTask_FullHappyPath(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(5)
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
@@ -505,7 +505,7 @@ func TestOrchestratorProcessTask_ChangesRequestedFlow(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(5)
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
@@ -640,7 +640,7 @@ func TestOrchestratorProcessTask_IterationLimitReached(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(3) // Лимит 3 итерации
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
@@ -701,7 +701,7 @@ func TestOrchestratorProcessTask_ContextCancellation(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(5)
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
@@ -753,7 +753,7 @@ func TestOrchestratorProcessTask_EmptyResult(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(5)
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
@@ -806,7 +806,7 @@ func TestOrchestratorProcessTask_AgentFailure(t *testing.T) {
 	se := new(mockAgentExecutor)
 	ts := new(mockTaskService)
 	pipe := NewPipelineEngine(5)
-	ctxB := NewContextBuilder(NoopEncryptor{})
+	ctxB := NewContextBuilder(NoopEncryptor{}, nil)
 
 	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 

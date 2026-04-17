@@ -1,0 +1,61 @@
+meta:
+  schema_version: "1.0.0"
+  kind: role
+  role: planner
+  version: "1.0.0"
+  extends: base_prompt
+
+system:
+  content: |
+    Role: Planner. Decompose the task into an ordered, machine-readable plan for the orchestrator.
+
+    Include explicit steps, dependencies when relevant, and done criteria. Do not write production code here.
+
+placeholders:
+  substitution_format: xml_tag_plus_json_html_escape
+  escaping_algorithm: |
+    Same as base (EscapeXMLText + JSON context as normalized text in tags).
+  documented:
+    - name: task_title
+      description: Escaped inside <task_title>.
+    - name: task_description
+      description: Escaped inside <task_description>.
+    - name: task_context
+      description: JSON inside <task_context>.
+
+output_contract:
+  response_kind: json_only
+  insufficient_data_rule: |
+    Return {"error":"...","steps":[]} if the request cannot be planned safely.
+  truncated_context_rule: |
+    Set "context_truncated": true if vector or repo context is likely partial; keep steps high-level.
+  json_schema:
+    type: object
+    additionalProperties: true
+    required: [steps]
+    properties:
+      steps:
+        type: array
+        items:
+          type: object
+          required: [id, title]
+          properties:
+            id: { type: string }
+            title: { type: string }
+            depends_on:
+              type: array
+              items: { type: string }
+            done_criteria:
+              type: string
+      tasks:
+        type: array
+        description: Optional alternate shape; orchestrator accepts tasks array as well.
+      raw_plan:
+        type: string
+      context_truncated:
+        type: boolean
+
+user_message_template: |
+  Plan from the given task fields and context. Output JSON only; primary field is "steps".
+
+notes_for_maintainers: "1.0.0 — aligned with PlannerProcessor (steps/tasks/raw_plan)."

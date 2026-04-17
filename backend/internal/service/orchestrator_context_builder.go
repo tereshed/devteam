@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/models"
@@ -16,13 +17,21 @@ type ContextBuilder interface {
 	Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project) (*agent.ExecutionInput, error)
 }
 
-type contextBuilder struct {
-	encryptor Encryptor
+// PipelinePromptComposer merges base + role system prompts from disk (task 6.8).
+type PipelinePromptComposer interface {
+	ComposeSystem(role string) (string, error)
+	UserTemplate(role string) (string, error)
 }
 
-func NewContextBuilder(encryptor Encryptor) ContextBuilder {
+type contextBuilder struct {
+	encryptor Encryptor
+	composer  PipelinePromptComposer
+}
+
+func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptComposer) ContextBuilder {
 	return &contextBuilder{
 		encryptor: encryptor,
+		composer:  promptComposer,
 	}
 }
 
@@ -50,9 +59,23 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		input.Model = *assignedAgent.Model
 	}
 
-	// Системный промпт агента
+	// Системный промпт агента (из БД; при наличии композера pipeline — переопределяется YAML base+role)
 	if assignedAgent.Prompt != nil {
 		input.PromptSystem = assignedAgent.Prompt.Template
+	}
+	if b.composer != nil {
+		if sys, err := b.composer.ComposeSystem(string(assignedAgent.Role)); err == nil && strings.TrimSpace(sys) != "" {
+			input.PromptSystem = sys
+		} else if err != nil {
+			slog.Warn("pipeline prompt compose failed; keeping DB system prompt", "role", assignedAgent.Role, "error", err)
+		}
+		if ut, err := b.composer.UserTemplate(string(assignedAgent.Role)); err == nil && strings.TrimSpace(ut) != "" {
+			if input.PromptUser != "" {
+				input.PromptUser = ut + "\n\n" + input.PromptUser
+			} else {
+				input.PromptUser = ut
+			}
+		}
 	}
 
 	if assignedAgent.CodeBackend != nil {

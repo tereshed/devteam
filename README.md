@@ -195,7 +195,7 @@
 | 6.5 | Pipeline: линейный поток `Plan → Develop → Review → Test` | `backend/internal/service/orchestrator_service.go` | ⬜ | [детали](docs/tasks/6.5-pipeline-linear-flow.md) |
 | 6.6 | Обработка результатов: `completed` → следующий шаг, `changes_requested` → назад к Developer | `backend/internal/service/result_processor.go` | ⬜ | [детали](docs/tasks/6.6-result-processor.md) |
 | 6.7 | Обработка пользовательских команд: `pause`, `cancel`, `resume`, `correct` | В `OrchestratorService` | ⬜ | [детали](docs/tasks/6.7-user-commands.md) |
-| 6.8 | Промпты агентов: Orchestrator, Planner, Developer, Reviewer, Tester | `backend/prompts/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ | |
+| 6.8 | Промпты агентов: Orchestrator, Planner, Developer, Reviewer, Tester | `backend/prompts/base_prompt.yaml`, `orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml`, `prompt_schema.json` | ⬜ | [детали](docs/tasks/6.8-agent-prompts.md) |
 | 6.9 | Агенты по умолчанию (YAML-конфиг) | `backend/agents/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ | |
 | 6.10 | Unit-тесты: OrchestratorService (полный pipeline, ретраи, отмена) | `backend/internal/service/orchestrator_service_test.go` | ⬜ | |
 
@@ -481,6 +481,7 @@ make up
 make build / up / down / logs        # Инфраструктура
 make migrate-up / down / status      # Миграции
 make test / test-unit / test-integration  # Backend тесты
+make validate-agent-prompts          # Проверка YAML промптов пайплайна (6.8) против prompt_schema.json
 make swagger                         # Генерация Swagger
 make sandbox-build                   # Сборка sandbox-образов
 make frontend-setup                  # Первоначальная настройка Flutter

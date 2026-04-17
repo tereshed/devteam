@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/models"
@@ -22,6 +23,16 @@ type PromptConfig struct {
 	Template    string                 `yaml:"template"`
 	JSONSchema  map[string]interface{} `yaml:"json_schema"`
 	IsActive    bool                   `yaml:"is_active"`
+}
+
+// pipelinePromptFilenames — YAML с контрактом 6.8 (схема prompt_schema.json), не формат PromptConfig.
+var pipelinePromptFilenames = map[string]struct{}{
+	"base_prompt.yaml": {},
+	"orchestrator.yaml": {},
+	"planner.yaml":      {},
+	"developer.yaml":    {},
+	"reviewer.yaml":     {},
+	"tester.yaml":       {},
 }
 
 // Loader отвечает за загрузку промптов из файлов
@@ -49,9 +60,13 @@ func (l *Loader) LoadFromDir(ctx context.Context, dirPath string) error {
 			continue
 		}
 
-		path := filepath.Join(dirPath, file.Name())
+		name := file.Name()
+		if _, skip := pipelinePromptFilenames[strings.ToLower(name)]; skip {
+			continue
+		}
+		path := filepath.Join(dirPath, name)
 		if err := l.loadAndSavePrompt(ctx, path); err != nil {
-			return fmt.Errorf("failed to load prompt from %s: %w", file.Name(), err)
+			return fmt.Errorf("failed to load prompt from %s: %w", name, err)
 		}
 	}
 

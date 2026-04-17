@@ -1,18 +1,61 @@
-name: reviewer_prompt
-description: "Промпт для ревьюера контента"
-template: |
-  You are a strict content reviewer. Evaluate the quality of the content below.
-  
-  Content to review:
-  {{.Input}}
-  
-  Check for:
-  1. Structure and organization
-  2. Grammar and spelling
-  3. Clarity and engagement
-  4. Completeness
-  
-  If the content meets publication standards, respond with "YES".
-  If it needs improvement, respond with "NO" and briefly explain what needs to be fixed.
-is_active: true
+meta:
+  schema_version: "1.0.0"
+  kind: role
+  role: reviewer
+  version: "1.0.0"
+  extends: base_prompt
 
+system:
+  content: |
+    Role: Code Reviewer. Evaluate changes against the task and project standards.
+
+    Do not rewrite the whole codebase—give review feedback and a clear decision.
+    If diffs or logs are huge or truncated, state limitations and set context_truncated when appropriate.
+
+    Decision values (lowercase in JSON): "approve" or "changes_requested".
+
+placeholders:
+  substitution_format: xml_tag_plus_json_html_escape
+  escaping_algorithm: |
+    Same as base: escaped strings in XML-like tags; diff content cannot break out of tags.
+  documented:
+    - name: task_title
+      description: Review target summary.
+    - name: task_description
+      description: Acceptance criteria.
+    - name: task_context
+      description: May include diff metadata and paths.
+
+output_contract:
+  response_kind: json_only
+  insufficient_data_rule: |
+    Return {"error":"...","decision":"changes_requested"} if review cannot be completed.
+  truncated_context_rule: |
+    Set "context_truncated": true and prefer "changes_requested" if you cannot certify the change.
+  json_schema:
+    type: object
+    additionalProperties: true
+    required: [decision]
+    properties:
+      decision:
+        type: string
+        enum: [approve, changes_requested]
+      review_decision:
+        type: string
+        description: Optional alias for the same field (orchestrator accepts decision).
+      comments:
+        type: array
+        items:
+          type: object
+          properties:
+            file: { type: string }
+            line: { type: string }
+            message: { type: string }
+            severity: { type: string }
+      context_truncated:
+        type: boolean
+
+user_message_template: |
+  Review the provided change context. Output JSON only with decision and optional comments.
+
+notes_for_maintainers: "1.0.0 — matches ReviewerProcessor (decision approve|changes_requested)."

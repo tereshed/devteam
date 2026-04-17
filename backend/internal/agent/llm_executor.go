@@ -93,31 +93,31 @@ func (e *LLMAgentExecutor) buildUserPrompt(in ExecutionInput) string {
 
 	if in.Title != "" {
 		sb.WriteString("<task_title>\n")
-		sb.WriteString(in.Title)
+		sb.WriteString(EscapeXMLText(in.Title))
 		sb.WriteString("\n</task_title>\n\n")
 	}
 
 	if in.Description != "" {
 		sb.WriteString("<task_description>\n")
-		sb.WriteString(in.Description)
+		sb.WriteString(EscapeXMLText(in.Description))
 		sb.WriteString("\n</task_description>\n\n")
 	}
 
 	if len(in.ContextJSON) > 0 {
-		sb.WriteString("<task_context>\n")
-		sb.Write(NormalizeJSONForParse(in.ContextJSON))
+		sb.WriteString("<task_context encoding=\"json-escaped\">\n")
+		sb.WriteString(EmbedJSONForXML(NormalizeJSONForParse(in.ContextJSON)))
 		sb.WriteString("\n</task_context>\n\n")
 	}
 
 	if len(in.StructuredContext) > 0 {
-		sb.WriteString("<role_context>\n")
-		sb.Write(NormalizeJSONForParse(in.StructuredContext))
+		sb.WriteString("<role_context encoding=\"json-escaped\">\n")
+		sb.WriteString(EmbedJSONForXML(NormalizeJSONForParse(in.StructuredContext)))
 		sb.WriteString("\n</role_context>\n\n")
 	}
 
 	if in.PromptUser != "" {
 		sb.WriteString("<user_instruction>\n")
-		sb.WriteString(in.PromptUser)
+		sb.WriteString(EscapeXMLText(in.PromptUser))
 		sb.WriteString("\n</user_instruction>\n")
 	}
 
@@ -140,12 +140,21 @@ func (e *LLMAgentExecutor) extractArtifacts(content string, res *ExecutionResult
 			res.Success = false
 			res.Summary = "LLM returned invalid JSON in artifacts block"
 		}
+		return
+	}
+
+	// Prompts 6.8: JSON-only output without markdown fences — accept whole trimmed payload.
+	trimmed := strings.TrimSpace(content)
+	if len(trimmed) > 0 && json.Valid([]byte(trimmed)) {
+		res.ArtifactsJSON = json.RawMessage(trimmed)
+		res.Summary = "Extracted structured artifacts from LLM response"
+		return
+	}
+
+	// Если артефактов нет, summary — просто начало ответа
+	if len(content) > 100 {
+		res.Summary = content[:100] + "..."
 	} else {
-		// Если артефактов нет, summary — просто начало ответа
-		if len(content) > 100 {
-			res.Summary = content[:100] + "..."
-		} else {
-			res.Summary = content
-		}
+		res.Summary = content
 	}
 }

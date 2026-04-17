@@ -4,7 +4,7 @@ COMPOSE_FILE := docker-compose.yml
 SANDBOX_BUILDABLE_STEMS := claude
 SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 
-.PHONY: help build up down logs test test-unit test-integration test-all \
+.PHONY: help build up down logs test test-unit test-integration test-all validate-agent-prompts \
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
 	migrate-create migrate-up migrate-down migrate-status \
 	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration \
@@ -37,6 +37,10 @@ test-unit:
 
 test-integration:
 	cd backend && go test -race -tags=integration ./... -v
+
+# Pipeline agent prompts (task 6.8): YAML vs backend/prompts/prompt_schema.json
+validate-agent-prompts:
+	cd backend && go test ./pkg/agentprompts -run TestValidateAllYAMLAgainstSchema -count=1
 
 # --- Sandbox images (task 5.12, docs/tasks/5.12-makefile-sandbox-build.md) ---
 # Сборка через docker build, не сервис в docker-compose: образы — эфемерные CI/тестовые
@@ -135,6 +139,7 @@ help:
 	@echo "  make test            - Run all backend tests (unit + integration, ./...)"
 	@echo "  make test-unit       - Backend tests without //go:build integration (faster)"
 	@echo "  make test-integration - Full backend test suite (-tags=integration ./...)"
+	@echo "  make validate-agent-prompts - Validate backend/prompts/*.yaml against prompt_schema.json"
 	@echo "  make test-all        - Same as test-integration"
 	@echo "  make sandbox-build    - Build default sandbox image (Claude, devteam/sandbox-claude:local)"
 	@echo "  make sandbox-build-<stem> - Build a specific sandbox image (e.g. sandbox-build-claude)"

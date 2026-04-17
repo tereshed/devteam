@@ -75,7 +75,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		RepoURL:     in.GitURL,
 		Branch:      in.BranchName,
 		Instruction: instruction,
-		Context:     string(NormalizeJSONForParse(in.ContextJSON)),
+		Context:     EmbedJSONForXML(NormalizeJSONForParse(in.ContextJSON)),
 		EnvVars:     in.EnvSecrets,
 		Timeout:     0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
 	}

@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devteam.local/schemas/agent-prompt-v1.json",
+  "title": "DevTeam agent pipeline prompt file",
+  "oneOf": [
+    { "$ref": "#/$defs/basePromptFile" },
+    { "$ref": "#/$defs/rolePromptFile" }
+  ],
+  "$defs": {
+    "systemBlock": {
+      "type": "object",
+      "required": ["content"],
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "placeholdersBlock": {
+      "type": "object",
+      "required": ["substitution_format", "escaping_algorithm", "documented"],
+      "additionalProperties": false,
+      "properties": {
+        "substitution_format": {
+          "type": "string",
+          "enum": ["xml_tag_plus_json_html_escape"]
+        },
+        "escaping_algorithm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "documented": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "outputContractBlock": {
+      "type": "object",
+      "required": ["response_kind", "json_schema"],
+      "additionalProperties": false,
+      "properties": {
+        "response_kind": {
+          "type": "string",
+          "enum": ["json_only", "json_only_or_error"]
+        },
+        "insufficient_data_rule": {
+          "type": "string"
+        },
+        "truncated_context_rule": {
+          "type": "string"
+        },
+        "json_schema": {
+          "type": "object"
+        }
+      }
+    },
+    "basePromptFile": {
+      "type": "object",
+      "required": [
+        "meta",
+        "system",
+        "placeholders",
+        "output_contract",
+        "user_message_template"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "meta": {
+          "type": "object",
+          "required": ["schema_version", "kind"],
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+            "kind": { "const": "base" }
+          }
+        },
+        "system": { "$ref": "#/$defs/systemBlock" },
+        "placeholders": { "$ref": "#/$defs/placeholdersBlock" },
+        "output_contract": { "$ref": "#/$defs/outputContractBlock" },
+        "user_message_template": { "type": "string" },
+        "notes_for_maintainers": { "type": "string" }
+      }
+    },
+    "rolePromptFile": {
+      "type": "object",
+      "required": [
+        "meta",
+        "system",
+        "placeholders",
+        "output_contract",
+        "user_message_template"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "meta": {
+          "type": "object",
+          "required": ["schema_version", "kind", "role", "version", "extends"],
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+            "kind": { "const": "role" },
+            "role": {
+              "type": "string",
+              "enum": ["orchestrator", "planner", "developer", "reviewer", "tester"]
+            },
+            "version": { "type": "string", "minLength": 1 },
+            "extends": { "const": "base_prompt" }
+          }
+        },
+        "system": { "$ref": "#/$defs/systemBlock" },
+        "placeholders": { "$ref": "#/$defs/placeholdersBlock" },
+        "output_contract": { "$ref": "#/$defs/outputContractBlock" },
+        "user_message_template": { "type": "string" },
+        "notes_for_maintainers": { "type": "string" }
+      }
+    }
+  }
+}

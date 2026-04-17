@@ -27,6 +27,7 @@ import (
 	"github.com/devteam/backend/pkg/jwt"
 	"github.com/devteam/backend/pkg/llm/factory"
 	"github.com/devteam/backend/pkg/password"
+	"github.com/devteam/backend/pkg/agentprompts"
 	"github.com/devteam/backend/pkg/promptsloader"
 	"github.com/devteam/backend/pkg/workflowloader"
 
@@ -195,7 +196,15 @@ func main() {
 
 	// Orchestrator Components
 	orchestratorPipeline := service.NewPipelineEngine(5)
-	orchestratorContextBuilder := service.NewContextBuilder(encryptor)
+
+	var pipelinePromptComposer service.PipelinePromptComposer
+	if pc, err := agentprompts.NewComposer("prompts"); err != nil {
+		log.Printf("Pipeline agent prompts (YAML) not active: %v", err)
+	} else {
+		pipelinePromptComposer = pc
+		log.Println("Pipeline agent prompts: loaded base + role composition (backend/prompts)")
+	}
+	orchestratorContextBuilder := service.NewContextBuilder(encryptor, pipelinePromptComposer)
 
 	taskControlBus := service.NewUserTaskControlBus()
 
