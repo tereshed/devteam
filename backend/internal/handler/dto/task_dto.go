@@ -36,6 +36,11 @@ type ListTasksRequest struct {
 	OrderDir        string     `form:"order_dir"`
 }
 
+// CorrectTaskRequest коррекция требований к задаче (6.7).
+type CorrectTaskRequest struct {
+	Text string `json:"text" binding:"required,min=1"`
+}
+
 // UpdateTaskRequest частичное обновление задачи.
 type UpdateTaskRequest struct {
 	Title              *string    `json:"title"`

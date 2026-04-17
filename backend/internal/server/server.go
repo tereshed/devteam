@@ -143,6 +143,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			tasks.POST("/:id/pause", deps.TaskHandler.Pause)
 			tasks.POST("/:id/cancel", deps.TaskHandler.Cancel)
 			tasks.POST("/:id/resume", deps.TaskHandler.Resume)
+			tasks.POST("/:id/correct", deps.TaskHandler.Correct)
 			tasks.GET("/:id/messages", deps.TaskHandler.ListMessages)
 			tasks.POST("/:id/messages", deps.TaskHandler.AddMessage)
 		}

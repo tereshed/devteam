@@ -146,6 +146,13 @@ func (m *mockTaskService) Resume(ctx context.Context, userID uuid.UUID, userRole
 	args := m.Called(ctx, userID, userRole, taskID)
 	return args.Get(0).(*models.Task), args.Error(1)
 }
+func (m *mockTaskService) Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, taskID, text)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
 func (m *mockTaskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts TransitionOpts) (*models.Task, error) {
 	args := m.Called(ctx, taskID, newStatus, opts)
 	if args.Get(0) == nil {
@@ -184,6 +191,14 @@ func (m *mockOrchestratorTaskMessageRepository) CountByTaskID(ctx context.Contex
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func TestPollIndicatesStepRestart(t *testing.T) {
+	require.True(t, pollIndicatesStepRestart(models.TaskStatusReview, models.TaskStatusInProgress))
+	require.True(t, pollIndicatesStepRestart(models.TaskStatusTesting, models.TaskStatusInProgress))
+	require.True(t, pollIndicatesStepRestart(models.TaskStatusChangesRequested, models.TaskStatusInProgress))
+	require.False(t, pollIndicatesStepRestart(models.TaskStatusInProgress, models.TaskStatusInProgress))
+	require.False(t, pollIndicatesStepRestart(models.TaskStatusReview, models.TaskStatusReview))
+}
+
 func TestOrchestratorProcessTask_Success(t *testing.T) {
 	tr := new(mockTaskRepository)
 	tmr := new(mockOrchestratorTaskMessageRepository)
@@ -196,7 +211,7 @@ func TestOrchestratorProcessTask_Success(t *testing.T) {
 	pipe := NewPipelineEngine(5)
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
 	ctx := context.Background()
 	taskID := uuid.New()
@@ -219,11 +234,12 @@ func TestOrchestratorProcessTask_Success(t *testing.T) {
 	// Первая итерация: Pending -> Planning
 	tr.On("GetByID", ctx, taskID).Return(task, nil).Once()
 	ps.On("GetByID", ctx, uuid.Nil, models.RoleAdmin, projectID).Return(project, nil)
-	wr.On("GetAgentByID", ctx, agentID).Return(agentModel, nil)
+	tr.On("GetByID", mock.Anything, taskID).Return(task, nil).Once() // finishStep до Transition
+	wr.On("GetAgentByID", mock.Anything, agentID).Return(agentModel, nil)
 	
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
 
-	le.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	le.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "plan",
 	}, nil).Once()
@@ -261,7 +277,7 @@ func TestOrchestratorProcessTask_ZombieRecovery(t *testing.T) {
 	pipe := NewPipelineEngine(5)
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 	
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -302,7 +318,7 @@ func TestOrchestratorProcessTask_FullHappyPath(t *testing.T) {
 	pipe := NewPipelineEngine(5)
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
 	ctx := context.Background()
 	taskID := uuid.New()
@@ -320,12 +336,18 @@ func TestOrchestratorProcessTask_FullHappyPath(t *testing.T) {
 		AssignedAgentID: &plannerAgentID,
 	}, nil).Once()
 	ps.On("GetByID", ctx, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
-	wr.On("GetAgentByID", ctx, plannerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusPending,
+		AssignedAgentID: &plannerAgentID,
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, plannerAgentID).Return(&models.Agent{
 		ID:   plannerAgentID,
 		Role: models.AgentRolePlanner,
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	le.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	le.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Task plan created",
 		ArtifactsJSON: []byte(`{"plan": ["Step 1", "Step 2"]}`),
@@ -343,13 +365,19 @@ func TestOrchestratorProcessTask_FullHappyPath(t *testing.T) {
 		Status:          models.TaskStatusPlanning,
 		AssignedAgentID: &developerAgentID,
 	}, nil).Once()
-	wr.On("GetAgentByID", ctx, developerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusPlanning,
+		AssignedAgentID: &developerAgentID,
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, developerAgentID).Return(&models.Agent{
 		ID:          developerAgentID,
 		Role:        models.AgentRoleDeveloper,
 			CodeBackend: &[]models.CodeBackend{models.CodeBackendClaudeCode}[0],
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	se.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	se.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Code implemented",
 		ArtifactsJSON: []byte(`{"diff": "+code", "files": ["main.go"]}`),
@@ -367,12 +395,18 @@ func TestOrchestratorProcessTask_FullHappyPath(t *testing.T) {
 		Status:          models.TaskStatusInProgress,
 		AssignedAgentID: &reviewerAgentID,
 	}, nil).Once()
-	wr.On("GetAgentByID", ctx, reviewerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusInProgress,
+		AssignedAgentID: &reviewerAgentID,
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, reviewerAgentID).Return(&models.Agent{
 		ID:   reviewerAgentID,
 		Role: models.AgentRoleReviewer,
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	le.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	le.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Code reviewed and approved",
 		ArtifactsJSON: []byte(`{"decision": "approved"}`),
@@ -390,13 +424,19 @@ func TestOrchestratorProcessTask_FullHappyPath(t *testing.T) {
 		Status:          models.TaskStatusReview,
 		AssignedAgentID: &testerAgentID,
 	}, nil).Once()
-	wr.On("GetAgentByID", ctx, testerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusReview,
+		AssignedAgentID: &testerAgentID,
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, testerAgentID).Return(&models.Agent{
 		ID:          testerAgentID,
 		Role:        models.AgentRoleTester,
 			CodeBackend: &[]models.CodeBackend{models.CodeBackendClaudeCode}[0],
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	se.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	se.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Tests passed",
 		ArtifactsJSON: []byte(`{"decision": "passed", "test_count": 5}`),
@@ -414,13 +454,19 @@ func TestOrchestratorProcessTask_FullHappyPath(t *testing.T) {
 		Status:          models.TaskStatusTesting,
 		AssignedAgentID: &testerAgentID,
 	}, nil).Once()
-	wr.On("GetAgentByID", ctx, testerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusTesting,
+		AssignedAgentID: &testerAgentID,
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, testerAgentID).Return(&models.Agent{
 		ID:          testerAgentID,
 		Role:        models.AgentRoleTester,
 			CodeBackend: &[]models.CodeBackend{models.CodeBackendClaudeCode}[0],
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	se.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	se.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "All tests passed successfully",
 		ArtifactsJSON: []byte(`{"decision": "passed"}`),
@@ -461,7 +507,7 @@ func TestOrchestratorProcessTask_ChangesRequestedFlow(t *testing.T) {
 	pipe := NewPipelineEngine(5)
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
 	ctx := context.Background()
 	taskID := uuid.New()
@@ -477,13 +523,19 @@ func TestOrchestratorProcessTask_ChangesRequestedFlow(t *testing.T) {
 		AssignedAgentID: &developerAgentID,
 	}, nil).Once()
 	ps.On("GetByID", ctx, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
-	wr.On("GetAgentByID", ctx, developerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusInProgress,
+		AssignedAgentID: &developerAgentID,
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, developerAgentID).Return(&models.Agent{
 		ID:          developerAgentID,
 		Role:        models.AgentRoleDeveloper,
 			CodeBackend: &[]models.CodeBackend{models.CodeBackendClaudeCode}[0],
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	se.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	se.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Code implemented",
 	}, nil).Once()
@@ -501,12 +553,19 @@ func TestOrchestratorProcessTask_ChangesRequestedFlow(t *testing.T) {
 		AssignedAgentID: &reviewerAgentID,
 		Context:         []byte(`{}`),
 	}, nil).Once()
-	wr.On("GetAgentByID", ctx, reviewerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusReview,
+		AssignedAgentID: &reviewerAgentID,
+		Context:         []byte(`{}`),
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, reviewerAgentID).Return(&models.Agent{
 		ID:   reviewerAgentID,
 		Role: models.AgentRoleReviewer,
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	le.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	le.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Please fix the error handling",
 		ArtifactsJSON: []byte(`{"decision": "changes_requested"}`),
@@ -530,13 +589,20 @@ func TestOrchestratorProcessTask_ChangesRequestedFlow(t *testing.T) {
 		AssignedAgentID: &developerAgentID,
 		Context:         []byte(`{"iteration_count": 1}`),
 	}, nil).Once()
-	wr.On("GetAgentByID", ctx, developerAgentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusChangesRequested,
+		AssignedAgentID: &developerAgentID,
+		Context:         []byte(`{"iteration_count": 1}`),
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, developerAgentID).Return(&models.Agent{
 		ID:          developerAgentID,
 		Role:        models.AgentRoleDeveloper,
 		CodeBackend: &[]models.CodeBackend{models.CodeBackendClaudeCode}[0],
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	se.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	se.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Fixed error handling",
 	}, nil).Once()
@@ -576,7 +642,7 @@ func TestOrchestratorProcessTask_IterationLimitReached(t *testing.T) {
 	pipe := NewPipelineEngine(3) // Лимит 3 итерации
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
 	ctx := context.Background()
 	taskID := uuid.New()
@@ -584,20 +650,21 @@ func TestOrchestratorProcessTask_IterationLimitReached(t *testing.T) {
 	reviewerAgentID := uuid.New()
 
 	// Review with iteration_count = 3 (max reached)
-	tr.On("GetByID", ctx, taskID).Return(&models.Task{
+	reviewTask := &models.Task{
 		ID:              taskID,
 		ProjectID:       projectID,
 		Status:          models.TaskStatusReview,
 		AssignedAgentID: &reviewerAgentID,
 		Context:         []byte(`{"iteration_count": 3}`),
-	}, nil).Once()
+	}
+	tr.On("GetByID", mock.Anything, taskID).Return(reviewTask, nil)
 	ps.On("GetByID", ctx, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
-	wr.On("GetAgentByID", ctx, reviewerAgentID).Return(&models.Agent{
+	wr.On("GetAgentByID", mock.Anything, reviewerAgentID).Return(&models.Agent{
 		ID:   reviewerAgentID,
 		Role: models.AgentRoleReviewer,
 	}, nil)
 	tmr.On("Create", mock.Anything, mock.Anything).Return(nil)
-	le.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	le.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: true,
 		Output:  "Still needs changes",
 		ArtifactsJSON: []byte(`{"decision": "changes_requested"}`),
@@ -636,7 +703,7 @@ func TestOrchestratorProcessTask_ContextCancellation(t *testing.T) {
 	pipe := NewPipelineEngine(5)
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	taskID := uuid.New()
@@ -650,7 +717,7 @@ func TestOrchestratorProcessTask_ContextCancellation(t *testing.T) {
 		AssignedAgentID: &agentID,
 	}, nil).Once()
 	ps.On("GetByID", ctx, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
-	wr.On("GetAgentByID", ctx, agentID).Return(&models.Agent{
+	wr.On("GetAgentByID", mock.Anything, agentID).Return(&models.Agent{
 		ID:   agentID,
 		Role: models.AgentRolePlanner,
 	}, nil)
@@ -688,27 +755,28 @@ func TestOrchestratorProcessTask_EmptyResult(t *testing.T) {
 	pipe := NewPipelineEngine(5)
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
 	ctx := context.Background()
 	taskID := uuid.New()
 	projectID := uuid.New()
 	agentID := uuid.New()
 
-	tr.On("GetByID", ctx, taskID).Return(&models.Task{
+	pendingTask := &models.Task{
 		ID:              taskID,
 		ProjectID:       projectID,
 		Status:          models.TaskStatusPending,
 		AssignedAgentID: &agentID,
-	}, nil).Once()
+	}
+	tr.On("GetByID", mock.Anything, taskID).Return(pendingTask, nil)
 	ps.On("GetByID", ctx, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
-	wr.On("GetAgentByID", ctx, agentID).Return(&models.Agent{
+	wr.On("GetAgentByID", mock.Anything, agentID).Return(&models.Agent{
 		ID:   agentID,
 		Role: models.AgentRolePlanner,
 	}, nil)
 
 	// Агент возвращает nil результат (что-то пошло не так)
-	le.On("Execute", ctx, mock.Anything).Return(nil, nil).Once()
+	le.On("Execute", mock.Anything, mock.Anything).Return(nil, nil).Once()
 
 	// Ожидаем переход в Failed при nil результате
 	ts.On("Transition", mock.Anything, taskID, models.TaskStatusFailed, mock.MatchedBy(func(opts TransitionOpts) bool {
@@ -740,7 +808,7 @@ func TestOrchestratorProcessTask_AgentFailure(t *testing.T) {
 	pipe := NewPipelineEngine(5)
 	ctxB := NewContextBuilder(NoopEncryptor{})
 
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, nil, nil, WithStepPollInterval(0))
 
 	ctx := context.Background()
 	taskID := uuid.New()
@@ -754,13 +822,19 @@ func TestOrchestratorProcessTask_AgentFailure(t *testing.T) {
 		AssignedAgentID: &agentID,
 	}, nil).Once()
 	ps.On("GetByID", ctx, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
-	wr.On("GetAgentByID", ctx, agentID).Return(&models.Agent{
+	tr.On("GetByID", mock.Anything, taskID).Return(&models.Task{
+		ID:              taskID,
+		ProjectID:       projectID,
+		Status:          models.TaskStatusPending,
+		AssignedAgentID: &agentID,
+	}, nil).Once()
+	wr.On("GetAgentByID", mock.Anything, agentID).Return(&models.Agent{
 		ID:   agentID,
 		Role: models.AgentRolePlanner,
 	}, nil)
 
 	// Агент возвращает Success=false
-	le.On("Execute", ctx, mock.Anything).Return(&agent.ExecutionResult{
+	le.On("Execute", mock.Anything, mock.Anything).Return(&agent.ExecutionResult{
 		Success: false,
 		Output:  "Failed to create plan: insufficient context",
 	}, nil).Once()

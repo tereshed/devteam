@@ -197,6 +197,8 @@ func main() {
 	orchestratorPipeline := service.NewPipelineEngine(5)
 	orchestratorContextBuilder := service.NewContextBuilder(encryptor)
 
+	taskControlBus := service.NewUserTaskControlBus()
+
 	// Orchestrator Service
 	orchestratorService := service.NewOrchestratorService(
 		taskRepo,
@@ -209,6 +211,8 @@ func main() {
 		taskService,
 		orchestratorPipeline,
 		orchestratorContextBuilder,
+		sandboxRunner,
+		taskControlBus,
 	)
 
 	// Запускаем оркестратор (очистка зомби-задач)
@@ -236,7 +240,7 @@ func main() {
 	promptHandler := handler.NewPromptHandler(promptService)
 	projectHandler := handler.NewProjectHandler(projectService)
 	teamHandler := handler.NewTeamHandler(teamService, projectService)
-	taskHandler := handler.NewTaskHandler(taskService, orchestratorService)
+	taskHandler := handler.NewTaskHandler(taskService, orchestratorService, taskControlBus)
 	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)

@@ -11,6 +11,7 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/tidwall/sjson"
 	"gorm.io/datatypes"
 )
 
@@ -38,9 +39,9 @@ var allowedTransitions = map[models.TaskStatus][]models.TaskStatus{
 	models.TaskStatusPending:          {models.TaskStatusPlanning, models.TaskStatusCancelled},
 	models.TaskStatusPlanning:         {models.TaskStatusInProgress, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
 	models.TaskStatusInProgress:       {models.TaskStatusReview, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
-	models.TaskStatusReview:           {models.TaskStatusTesting, models.TaskStatusChangesRequested, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
+	models.TaskStatusReview:           {models.TaskStatusTesting, models.TaskStatusChangesRequested, models.TaskStatusInProgress, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
 	models.TaskStatusChangesRequested: {models.TaskStatusInProgress, models.TaskStatusCancelled, models.TaskStatusPaused},
-	models.TaskStatusTesting:          {models.TaskStatusCompleted, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
+	models.TaskStatusTesting:          {models.TaskStatusCompleted, models.TaskStatusFailed, models.TaskStatusInProgress, models.TaskStatusCancelled, models.TaskStatusPaused},
 	models.TaskStatusPaused:           {models.TaskStatusPending},
 	models.TaskStatusFailed:           {models.TaskStatusPending},
 }
@@ -67,6 +68,7 @@ type TaskService interface {
 	Pause(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error)
 	Cancel(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error)
 	Resume(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error)
+	Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error)
 
 	Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts TransitionOpts) (*models.Task, error)
 
@@ -384,6 +386,12 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 			if isTerminalTaskStatus(task.Status) {
 				return nil, ErrTaskTerminalStatus
 			}
+			// Переход review/testing → in_progress только через API correct (задача 6.7).
+			if newStatus == models.TaskStatusInProgress {
+				if task.Status == models.TaskStatusReview || task.Status == models.TaskStatusTesting {
+					return nil, ErrTaskInvalidTransition
+				}
+			}
 			if !canTransition(task.Status, newStatus) {
 				return nil, ErrTaskInvalidTransition
 			}
@@ -473,6 +481,69 @@ func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 	task.Status = models.TaskStatusPending
 	applyTimestampsOnStatusChange(task, prev, models.TaskStatusPending)
 	if err := s.taskRepo.Update(ctx, task, expectedStatus, expectedUpdatedAt); err != nil {
+		return nil, mapTaskRepoErr(err)
+	}
+	return s.taskRepo.GetByID(ctx, taskID)
+}
+
+func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error) {
+	sanitized, err := ValidateAndSanitizeUserCorrection(text)
+	if err != nil {
+		return nil, err
+	}
+	task, err := s.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		return nil, mapTaskRepoErr(err)
+	}
+	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
+		return nil, err
+	}
+	if isTerminalTaskStatus(task.Status) || task.Status == models.TaskStatusPaused {
+		return nil, ErrTaskInvalidTransition
+	}
+
+	newContextBytes, err := sjson.SetBytes(task.Context, "user_correction", sanitized)
+	if err != nil {
+		return nil, fmt.Errorf("failed to patch task context: %w", err)
+	}
+	newContextBytes, err = sjson.SetBytes(newContextBytes, "user_correction_at", time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, fmt.Errorf("failed to patch task context: %w", err)
+	}
+	newContext := datatypes.JSON(newContextBytes)
+
+	msg := &models.TaskMessage{
+		TaskID:      task.ID,
+		SenderType:  models.SenderTypeUser,
+		SenderID:    userID,
+		Content:     FormatCorrectionForPrompt(sanitized),
+		MessageType: models.MessageTypeFeedback,
+		Metadata:    datatypes.JSON([]byte("{}")),
+	}
+	if err := s.taskMsgRepo.Create(ctx, msg); err != nil {
+		return nil, mapTaskRepoErr(err)
+	}
+
+	from := task.Status
+	expectedUpdatedAt := task.UpdatedAt
+	nextStatus := from
+	switch from {
+	case models.TaskStatusReview, models.TaskStatusTesting:
+		nextStatus = models.TaskStatusInProgress
+	default:
+		// planning, in_progress, changes_requested — только обновление контекста
+	}
+
+	task.Context = newContext
+	if nextStatus != from {
+		if !canTransition(from, nextStatus) {
+			return nil, ErrTaskInvalidTransition
+		}
+		task.Status = nextStatus
+		applyTimestampsOnStatusChange(task, from, nextStatus)
+	}
+
+	if err := s.taskRepo.Update(ctx, task, from, expectedUpdatedAt); err != nil {
 		return nil, mapTaskRepoErr(err)
 	}
 	return s.taskRepo.GetByID(ctx, taskID)

@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 )
@@ -17,14 +18,28 @@ import (
 type TaskHandler struct {
 	service         service.TaskService
 	orchestratorSvc service.OrchestratorService
+	controlBus      *service.UserTaskControlBus
 }
 
 // NewTaskHandler создаёт обработчик задач.
-func NewTaskHandler(svc service.TaskService, orchestratorSvc service.OrchestratorService) *TaskHandler {
+func NewTaskHandler(svc service.TaskService, orchestratorSvc service.OrchestratorService, controlBus *service.UserTaskControlBus) *TaskHandler {
 	return &TaskHandler{
 		service:         svc,
 		orchestratorSvc: orchestratorSvc,
+		controlBus:      controlBus,
 	}
+}
+
+func (h *TaskHandler) publishTaskControl(ctx context.Context, kind service.UserTaskControlType, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) {
+	if h.controlBus == nil {
+		return
+	}
+	h.controlBus.PublishCommand(ctx, service.UserTaskControlCommand{
+		Kind:     kind,
+		TaskID:   taskID,
+		UserID:   userID,
+		UserRole: userRole,
+	})
 }
 
 func normalizeTaskListPagination(limit, offset int) (int, int) {
@@ -65,6 +80,9 @@ func writeTaskServiceError(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrTaskInvalidStatus):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTaskMessageInvalidType):
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
+	case errors.Is(err, service.ErrUserCorrectionTooLarge), errors.Is(err, service.ErrUserCorrectionInvalidUTF8),
+		errors.Is(err, service.ErrUserCorrectionEmpty):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	default:
 		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "Request failed")
@@ -344,6 +362,7 @@ func (h *TaskHandler) Pause(c *gin.Context) {
 		writeTaskServiceError(c, err)
 		return
 	}
+	h.publishTaskControl(ctx, service.UserTaskControlPause, userID, userRole, taskID)
 	c.JSON(http.StatusOK, dto.ToTaskResponse(task))
 }
 
@@ -381,6 +400,7 @@ func (h *TaskHandler) Cancel(c *gin.Context) {
 		writeTaskServiceError(c, err)
 		return
 	}
+	h.publishTaskControl(ctx, service.UserTaskControlCancel, userID, userRole, taskID)
 	c.JSON(http.StatusOK, dto.ToTaskResponse(task))
 }
 
@@ -418,6 +438,7 @@ func (h *TaskHandler) Resume(c *gin.Context) {
 		writeTaskServiceError(c, err)
 		return
 	}
+	h.publishTaskControl(ctx, service.UserTaskControlResume, userID, userRole, taskID)
 
 	// Запускаем оркестрацию в фоне
 	if h.orchestratorSvc != nil {
@@ -432,6 +453,49 @@ func (h *TaskHandler) Resume(c *gin.Context) {
 			}
 		}()
 	}
+
+	c.JSON(http.StatusOK, dto.ToTaskResponse(task))
+}
+
+// Correct применяет коррекцию к задаче (контекст + при необходимости возврат к разработке).
+// @Summary Коррекция задачи
+// @Description Обновляет контекст задачи валидированным текстом; из review/testing переводит в in_progress.
+// @Tags tasks
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
+// @Accept json
+// @Produce json
+// @Param id path string true "Task ID"
+// @Param request body dto.CorrectTaskRequest true "Текст коррекции"
+// @Success 200 {object} dto.TaskResponse
+// @Failure 400 {object} apierror.ErrorResponse "Слишком длинный или невалидный текст"
+// @Router /tasks/{id}/correct [post]
+func (h *TaskHandler) Correct(c *gin.Context) {
+	userID, userRole, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+	ctx := c.Request.Context()
+
+	taskID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid task ID format")
+		return
+	}
+
+	var req dto.CorrectTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
+		return
+	}
+
+	task, err := h.service.Correct(ctx, userID, userRole, taskID, req.Text)
+	if err != nil {
+		writeTaskServiceError(c, err)
+		return
+	}
+	h.publishTaskControl(ctx, service.UserTaskControlCorrect, userID, userRole, taskID)
 
 	c.JSON(http.StatusOK, dto.ToTaskResponse(task))
 }

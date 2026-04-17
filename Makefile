@@ -4,7 +4,7 @@ COMPOSE_FILE := docker-compose.yml
 SANDBOX_BUILDABLE_STEMS := claude
 SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 
-.PHONY: help build up down logs test test-unit test-integration \
+.PHONY: help build up down logs test test-unit test-integration test-all \
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
 	migrate-create migrate-up migrate-down migrate-status \
 	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration \
@@ -27,13 +27,16 @@ logs:
 	docker-compose -f $(COMPOSE_FILE) logs -f app
 
 # === Тестирование (Backend) ===
-test: test-unit test-integration
+# test: полный прогон всех пакетов; -tags=integration подключает файлы с //go:build integration
+# (обычные *_test.go без тега тоже выполняются в этом же проходе).
+test: test-integration
 
+# Быстрый прогон без тестов с //go:build integration (без БД и прочих интеграций).
 test-unit:
-	cd backend && go test -race ./internal/agent/... ./internal/handler/... ./internal/service/... ./internal/mcp/... ./internal/config/... ./internal/sandbox/... ./pkg/crypto/... ./pkg/gitprovider/... -v
+	cd backend && go test -race ./... -v
 
 test-integration:
-	cd backend && go test -race -tags=integration ./internal/repository/... ./internal/sandbox/... ./pkg/gitprovider/... -v
+	cd backend && go test -race -tags=integration ./... -v
 
 # --- Sandbox images (task 5.12, docs/tasks/5.12-makefile-sandbox-build.md) ---
 # Сборка через docker build, не сервис в docker-compose: образы — эфемерные CI/тестовые
@@ -52,8 +55,7 @@ $(SANDBOX_BUILD_TARGETS): sandbox-build-%: check-docker
 
 sandbox-build: sandbox-build-claude
 
-test-all:
-	cd backend && go test ./... -v
+test-all: test-integration
 
 # === Тестирование (Frontend) ===
 frontend-test:
@@ -130,9 +132,10 @@ help:
 	@echo "  make up              - Start services"
 	@echo "  make down            - Stop services"
 	@echo "  make logs            - Show application logs"
-	@echo "  make test            - Run all backend tests"
-	@echo "  make test-unit       - Run backend unit tests (handler, service, mcp)"
-	@echo "  make test-integration - Run backend integration tests"
+	@echo "  make test            - Run all backend tests (unit + integration, ./...)"
+	@echo "  make test-unit       - Backend tests without //go:build integration (faster)"
+	@echo "  make test-integration - Full backend test suite (-tags=integration ./...)"
+	@echo "  make test-all        - Same as test-integration"
 	@echo "  make sandbox-build    - Build default sandbox image (Claude, devteam/sandbox-claude:local)"
 	@echo "  make sandbox-build-<stem> - Build a specific sandbox image (e.g. sandbox-build-claude)"
 	@echo "  make migrate-create  - Create new migration"

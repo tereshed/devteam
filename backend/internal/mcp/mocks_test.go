@@ -233,6 +233,14 @@ func (m *mockTaskService) Resume(ctx context.Context, userID uuid.UUID, userRole
 	return args.Get(0).(*models.Task), args.Error(1)
 }
 
+func (m *mockTaskService) Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error) {
+	args := m.Called(ctx, userID, userRole, taskID, text)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
 func (m *mockTaskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts service.TransitionOpts) (*models.Task, error) {
 	args := m.Called(ctx, taskID, newStatus, opts)
 	if args.Get(0) == nil {

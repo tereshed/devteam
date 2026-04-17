@@ -47,6 +47,7 @@ func TestSandboxAgentExecutor_Integration_DisableNetwork(t *testing.T) {
 	input := ExecutionInput{
 		TaskID:      uuid.New().String(),
 		ProjectID:   uuid.New().String(),
+		PromptUser:  "integration smoke: print workspace path and exit",
 		GitURL:      "https://github.com/octocat/Hello-World.git",
 		BranchName:  "master",
 		CodeBackend: string(sandbox.CodeBackendClaudeCode),

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/devteam/backend/internal/agent"
@@ -22,7 +23,24 @@ var (
 	ErrOrchestratorNoAgentAssigned       = errors.New("orchestrator: no agent assigned to task")
 	ErrOrchestratorInvalidRole           = errors.New("orchestrator: invalid agent role for this state")
 	ErrOrchestratorIterationLimitReached = errors.New("orchestrator: iteration limit reached")
+	// ErrStepRestarted — шаг отменён для перезапуска (correct / откат статуса в БД); не переводить задачу в cancelled.
+	ErrStepRestarted = errors.New("orchestrator: step restarted")
 )
+
+// TaskSandboxStopper принудительно останавливает изолированный runtime по ID задачи (задача 6.7: cancel).
+type TaskSandboxStopper interface {
+	StopTask(ctx context.Context, taskID string) error
+}
+
+// OrchestratorOption настраивает оркестратор (тесты, расширения).
+type OrchestratorOption func(*orchestratorService)
+
+// WithStepPollInterval задаёт интервал опроса БД на pause/cancel внутри шага; 0 — отключить опрос.
+func WithStepPollInterval(d time.Duration) OrchestratorOption {
+	return func(s *orchestratorService) {
+		s.stepPollInterval = d
+	}
+}
 
 // OrchestratorService управляет жизненным циклом выполнения задач через агентов.
 type OrchestratorService interface {
@@ -45,9 +63,16 @@ type orchestratorService struct {
 	pipeline        PipelineEngine
 	contextBuilder  ContextBuilder
 
+	sandboxStop TaskSandboxStopper
+	controlBus  *UserTaskControlBus
+
 	// Настройки
-	zombieTimeout time.Duration
-	zombieTicker  *time.Ticker
+	zombieTimeout          time.Duration
+	gracefulPauseTimeout   time.Duration
+	stepPollInterval       time.Duration
+	zombieTicker           *time.Ticker
+	stepMu                 sync.Mutex
+	stepCancelByTask       map[uuid.UUID]context.CancelCauseFunc
 }
 
 // NewOrchestratorService создает новый экземпляр OrchestratorService.
@@ -62,24 +87,42 @@ func NewOrchestratorService(
 	taskSvc TaskService,
 	pipeline PipelineEngine,
 	contextBuilder ContextBuilder,
+	sandboxStop TaskSandboxStopper,
+	controlBus *UserTaskControlBus,
+	opts ...OrchestratorOption,
 ) OrchestratorService {
-	return &orchestratorService{
-		taskRepo:        taskRepo,
-		taskMsgRepo:     taskMsgRepo,
-		workflowRepo:    workflowRepo,
-		projectSvc:      projectSvc,
-		txManager:       txManager,
-		llmExecutor:     llmExecutor,
-		sandboxExecutor: sandboxExecutor,
-		taskSvc:         taskSvc,
-		pipeline:        pipeline,
-		contextBuilder:  contextBuilder,
-		zombieTimeout:   1 * time.Hour,
+	s := &orchestratorService{
+		taskRepo:             taskRepo,
+		taskMsgRepo:          taskMsgRepo,
+		workflowRepo:         workflowRepo,
+		projectSvc:           projectSvc,
+		txManager:            txManager,
+		llmExecutor:          llmExecutor,
+		sandboxExecutor:      sandboxExecutor,
+		taskSvc:              taskSvc,
+		pipeline:             pipeline,
+		contextBuilder:       contextBuilder,
+		sandboxStop:          sandboxStop,
+		controlBus:           controlBus,
+		zombieTimeout:        1 * time.Hour,
+		gracefulPauseTimeout: 30 * time.Second,
+		stepPollInterval:     400 * time.Millisecond,
+		stepCancelByTask:     make(map[uuid.UUID]context.CancelCauseFunc),
 	}
+	for _, o := range opts {
+		if o != nil {
+			o(s)
+		}
+	}
+	return s
 }
 
 func (s *orchestratorService) Start(ctx context.Context) error {
 	slog.Info("Starting OrchestratorService...")
+
+	if s.controlBus != nil {
+		s.controlBus.SubscribeCommands(s.handleControlCommand)
+	}
 
 	// Первичная очистка
 	if err := s.recoverZombieTasks(ctx); err != nil {
@@ -153,6 +196,72 @@ func (s *orchestratorService) recoverZombieTasks(ctx context.Context) error {
 	return nil
 }
 
+func (s *orchestratorService) registerStepCancel(taskID uuid.UUID, cancel context.CancelCauseFunc) {
+	s.stepMu.Lock()
+	defer s.stepMu.Unlock()
+	s.stepCancelByTask[taskID] = cancel
+}
+
+func (s *orchestratorService) clearStepCancel(taskID uuid.UUID) {
+	s.stepMu.Lock()
+	defer s.stepMu.Unlock()
+	delete(s.stepCancelByTask, taskID)
+}
+
+func (s *orchestratorService) runStepCancelCause(taskID uuid.UUID, cause error) {
+	s.stepMu.Lock()
+	fn := s.stepCancelByTask[taskID]
+	s.stepMu.Unlock()
+	if fn != nil {
+		fn(cause)
+	}
+}
+
+func (s *orchestratorService) stopSandboxForTask(ctx context.Context, taskID uuid.UUID) {
+	if s.sandboxStop == nil {
+		return
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.sandboxStop.StopTask(cleanupCtx, taskID.String()); err != nil {
+		slog.Warn("StopTask failed", "task_id", taskID, "error", err)
+	}
+}
+
+func (s *orchestratorService) handleControlCommand(ctx context.Context, cmd UserTaskControlCommand) {
+	task, err := s.taskRepo.GetByID(ctx, cmd.TaskID)
+	if err != nil {
+		slog.Debug("task control: task not found", "task_id", cmd.TaskID, "error", err)
+		return
+	}
+	if _, err := s.projectSvc.GetByID(ctx, cmd.UserID, cmd.UserRole, task.ProjectID); err != nil {
+		slog.Warn("task control command forbidden", "task_id", cmd.TaskID, "user_id", cmd.UserID, "error", err)
+		return
+	}
+	switch cmd.Kind {
+	case UserTaskControlCancel:
+		s.runStepCancelCause(cmd.TaskID, context.Canceled)
+		s.stopSandboxForTask(ctx, cmd.TaskID)
+	case UserTaskControlPause:
+		// Graceful pause по таймауту обрабатывается при опросе БД в executeStep
+	case UserTaskControlCorrect:
+		s.runStepCancelCause(cmd.TaskID, ErrStepRestarted)
+		s.stopSandboxForTask(ctx, cmd.TaskID)
+	case UserTaskControlResume:
+		// Состояние уже в БД; новый цикл ProcessTask запускается из HTTP Resume
+	default:
+		slog.Debug("task control: unknown kind", "kind", cmd.Kind)
+	}
+	if s.controlBus != nil {
+		s.controlBus.PublishOutcome(ctx, TaskControlOutcome{
+			TaskID:    task.ID,
+			ProjectID: task.ProjectID,
+			Kind:      cmd.Kind,
+			Detail:    "ack",
+		})
+	}
+}
+
 func (s *orchestratorService) ProcessTask(ctx context.Context, taskID uuid.UUID) error {
 	// 1. Загрузка задачи
 	task, err := s.taskRepo.GetByID(ctx, taskID)
@@ -163,7 +272,7 @@ func (s *orchestratorService) ProcessTask(ctx context.Context, taskID uuid.UUID)
 		return err
 	}
 
-	// 2. Проверка прав (Tenant Isolation)
+	// 2. Внутренний прогон оркестратора: доступ к проекту с системной ролью (ProcessTask вызывается после проверок API).
 	project, err := s.projectSvc.GetByID(ctx, uuid.Nil, models.RoleAdmin, task.ProjectID)
 	if err != nil {
 		return ErrOrchestratorProjectNotFound
@@ -173,14 +282,12 @@ func (s *orchestratorService) ProcessTask(ctx context.Context, taskID uuid.UUID)
 
 	// 3. Основной цикл выполнения
 	for {
-		// Проверяем контекст на отмену (Safe Cancellation)
 		select {
 		case <-ctx.Done():
 			slog.Info("Context cancelled, stopping task processing", "project_id", project.ID, "task_id", task.ID)
-			// Graceful Shutdown: переводим задачу в Cancelled через detached context
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+			cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 10*time.Second)
 			_, transitionErr := s.taskSvc.Transition(cleanupCtx, task.ID, models.TaskStatusCancelled, TransitionOpts{})
+			cancelCleanup()
 			if transitionErr != nil {
 				slog.Error("Failed to transition task to cancelled", "project_id", project.ID, "task_id", task.ID, "error", transitionErr)
 			}
@@ -188,49 +295,22 @@ func (s *orchestratorService) ProcessTask(ctx context.Context, taskID uuid.UUID)
 		default:
 		}
 
-		// Если задача в терминальном статусе — выходим
+		// task поднят до цикла и обновляется в конце каждой итерации (без лишнего GetByID в начале).
 		if s.isTerminalStatus(task.Status) {
 			slog.Info("Task reached terminal status", "project_id", project.ID, "task_id", task.ID, "status", task.Status)
 			return nil
 		}
 
-		// Если задача в паузе или отменена — выходим
 		if task.Status == models.TaskStatusPaused || task.Status == models.TaskStatusCancelled {
 			slog.Info("Task is paused or cancelled", "project_id", project.ID, "task_id", task.ID, "status", task.Status)
 			return nil
 		}
 
-		// Выполняем один шаг пайплайна
-		err := s.executeStep(ctx, task, project)
+		err = s.executeStep(ctx, task, project)
 		if err != nil {
-			slog.Error("Failed to execute task step", "project_id", project.ID, "task_id", task.ID, "error", err)
-
-			// Graceful Shutdown: при отмене контекста переводим задачу в Cancelled
-			// Используем detached context с таймаутом для гарантированного сохранения статуса
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				slog.Info("Task cancelled by user or timeout", "project_id", project.ID, "task_id", task.ID)
-				_, transitionErr := s.taskSvc.Transition(cleanupCtx, task.ID, models.TaskStatusCancelled, TransitionOpts{})
-				if transitionErr != nil {
-					slog.Error("Failed to transition task to cancelled", "project_id", project.ID, "task_id", task.ID, "error", transitionErr)
-				}
-				return err
-			}
-
-			// Другие ошибки - переводим в Failed
-			errMsg := err.Error()
-			_, transitionErr := s.taskSvc.Transition(cleanupCtx, task.ID, models.TaskStatusFailed, TransitionOpts{
-				ErrorMessage: &errMsg,
-			})
-			if transitionErr != nil {
-				slog.Error("Failed to transition task to failed", "project_id", project.ID, "task_id", task.ID, "error", transitionErr)
-			}
-			return err
+			return s.handleProcessTaskError(ctx, project.ID, task.ID, err)
 		}
 
-		// Перечитываем задачу для следующей итерации
 		task, err = s.taskRepo.GetByID(ctx, taskID)
 		if err != nil {
 			return err
@@ -238,57 +318,208 @@ func (s *orchestratorService) ProcessTask(ctx context.Context, taskID uuid.UUID)
 	}
 }
 
+func (s *orchestratorService) handleProcessTaskError(ctx context.Context, projectID, taskID uuid.UUID, execErr error) error {
+	if errors.Is(execErr, ErrStepRestarted) {
+		return nil
+	}
+	slog.Error("Failed to execute task step", "project_id", projectID, "task_id", taskID, "error", execErr)
+
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelCleanup()
+
+	task, gerr := s.taskRepo.GetByID(ctx, taskID)
+	if gerr == nil {
+		if task.Status == models.TaskStatusPaused || task.Status == models.TaskStatusCancelled {
+			return nil
+		}
+	}
+
+	cancelLike := errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) || errors.Is(execErr, agent.ErrExecutionCancelled)
+	if cancelLike {
+		t2, e2 := s.taskRepo.GetByID(cleanupCtx, taskID)
+		if e2 == nil && (t2.Status == models.TaskStatusPaused || t2.Status == models.TaskStatusCancelled) {
+			return nil
+		}
+		slog.Info("Task cancelled by user or timeout", "project_id", projectID, "task_id", taskID)
+		_, transitionErr := s.taskSvc.Transition(cleanupCtx, taskID, models.TaskStatusCancelled, TransitionOpts{})
+		if transitionErr != nil {
+			slog.Error("Failed to transition task to cancelled", "project_id", projectID, "task_id", taskID, "error", transitionErr)
+		}
+		return execErr
+	}
+
+	errMsg := execErr.Error()
+	_, transitionErr := s.taskSvc.Transition(cleanupCtx, taskID, models.TaskStatusFailed, TransitionOpts{
+		ErrorMessage: &errMsg,
+	})
+	if transitionErr != nil {
+		slog.Error("Failed to transition task to failed", "project_id", projectID, "task_id", taskID, "error", transitionErr)
+	}
+	return execErr
+}
+
 func (s *orchestratorService) isTerminalStatus(status models.TaskStatus) bool {
 	return status == models.TaskStatusCompleted || status == models.TaskStatusFailed
 }
 
+// pollIndicatesStepRestart — Correct на другом инстансе меняет статус (например review→in_progress); шаг нужно перезапустить.
+func pollIndicatesStepRestart(orig, cur models.TaskStatus) bool {
+	if cur != models.TaskStatusInProgress {
+		return false
+	}
+	switch orig {
+	case models.TaskStatusReview, models.TaskStatusTesting, models.TaskStatusChangesRequested:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *orchestratorService) executeStep(ctx context.Context, task *models.Task, project *models.Project) error {
-	// 1. Подготовка (Context Builder)
-	executor, input, err := s.prepareExecution(ctx, task, project)
+	origStatus := task.Status
+	stepCtx, cancelStep := context.WithCancelCause(ctx)
+	defer cancelStep(context.Canceled)
+
+	s.registerStepCancel(task.ID, cancelStep)
+	defer s.clearStepCancel(task.ID)
+
+	executor, input, err := s.prepareExecution(stepCtx, task, project)
 	if err != nil {
 		return err
 	}
 
-	// 2. Выполнение (Agent Executor) с ретраями при инфраструктурных ошибках
-	var result *agent.ExecutionResult
-	var execErr error
+	type stepOutcome struct {
+		result *agent.ExecutionResult
+		err    error
+	}
+	done := make(chan stepOutcome, 1)
 
-	maxRetries := 3
-	for i := 0; i < maxRetries; i++ {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					execErr = fmt.Errorf("agent panic: %v", r)
-				}
+	go func() {
+		var result *agent.ExecutionResult
+		var execErr error
+		maxRetries := 3
+		for i := 0; i < maxRetries; i++ {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						execErr = fmt.Errorf("agent panic: %v", r)
+					}
+				}()
+				result, execErr = executor.Execute(stepCtx, *input)
 			}()
-			result, execErr = executor.Execute(ctx, *input)
-		}()
 
-		if execErr == nil {
+			if execErr == nil {
+				break
+			}
+
+			if errors.Is(execErr, agent.ErrRateLimit) && i < maxRetries-1 {
+				backoff := time.Duration(1<<i) * time.Second
+				slog.Warn("Agent rate limited, retrying", "project_id", project.ID, "task_id", task.ID, "retry", i+1, "backoff", backoff)
+				select {
+				case <-stepCtx.Done():
+					done <- stepOutcome{nil, stepCtx.Err()}
+					return
+				case <-time.After(backoff):
+					continue
+				}
+			}
 			break
 		}
-
-		// Проверяем, стоит ли ретраить (только RateLimit или временные ошибки)
-		if errors.Is(execErr, agent.ErrRateLimit) && i < maxRetries-1 {
-			backoff := time.Duration(1<<i) * time.Second
-			slog.Warn("Agent rate limited, retrying", "project_id", project.ID, "task_id", task.ID, "retry", i+1, "backoff", backoff)
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(backoff):
-				continue
-			}
+		if execErr != nil {
+			done <- stepOutcome{nil, execErr}
+			return
 		}
-		break
+		done <- stepOutcome{result, nil}
+	}()
+
+	var poll *time.Ticker
+	if s.stepPollInterval > 0 {
+		poll = time.NewTicker(s.stepPollInterval)
+		defer poll.Stop()
 	}
 
+	var pauseGraceStart *time.Time
+
+	for {
+		if poll == nil {
+			select {
+			case <-ctx.Done():
+				cancelStep(context.Canceled)
+				s.stopSandboxForTask(ctx, task.ID)
+				out := <-done
+				return s.finishStepExecution(ctx, stepCtx, task, out.result, out.err)
+			case out := <-done:
+				return s.finishStepExecution(ctx, stepCtx, task, out.result, out.err)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			cancelStep(context.Canceled)
+			s.stopSandboxForTask(ctx, task.ID)
+			out := <-done
+			return s.finishStepExecution(ctx, stepCtx, task, out.result, out.err)
+
+		case out := <-done:
+			return s.finishStepExecution(ctx, stepCtx, task, out.result, out.err)
+
+		case <-poll.C:
+			t, err := s.taskRepo.GetByID(ctx, task.ID)
+			if err != nil {
+				continue
+			}
+			if pollIndicatesStepRestart(origStatus, t.Status) {
+				cancelStep(ErrStepRestarted)
+				s.stopSandboxForTask(ctx, task.ID)
+				out := <-done
+				return s.finishStepExecution(ctx, stepCtx, task, out.result, out.err)
+			}
+			switch t.Status {
+			case models.TaskStatusCancelled:
+				cancelStep(context.Canceled)
+				s.stopSandboxForTask(ctx, task.ID)
+				out := <-done
+				return s.finishStepExecution(ctx, stepCtx, task, out.result, out.err)
+			case models.TaskStatusPaused:
+				if pauseGraceStart == nil {
+					now := time.Now()
+					pauseGraceStart = &now
+				}
+				if time.Since(*pauseGraceStart) > s.gracefulPauseTimeout {
+					cancelStep(context.Canceled)
+					s.stopSandboxForTask(ctx, task.ID)
+					out := <-done
+					return s.finishStepExecution(ctx, stepCtx, task, out.result, out.err)
+				}
+			}
+		}
+	}
+}
+
+func (s *orchestratorService) finishStepExecution(ctx context.Context, stepCtx context.Context, task *models.Task, result *agent.ExecutionResult, execErr error) error {
 	if execErr != nil {
+		if stepCtx != nil && errors.Is(context.Cause(stepCtx), ErrStepRestarted) {
+			return nil
+		}
+		if errors.Is(execErr, ErrStepRestarted) {
+			return nil
+		}
+		t, err := s.taskRepo.GetByID(ctx, task.ID)
+		if err == nil {
+			if t.Status == models.TaskStatusPaused || t.Status == models.TaskStatusCancelled {
+				return nil
+			}
+		}
 		return fmt.Errorf("agent execution failed after retries: %w", execErr)
 	}
 
-	// 3. Обработка результата и переход (Pipeline Engine)
-	return s.handleExecutionResult(ctx, task, result)
+	t, err := s.taskRepo.GetByID(ctx, task.ID)
+	if err != nil {
+		return err
+	}
+	if t.Status == models.TaskStatusPaused || t.Status == models.TaskStatusCancelled {
+		return nil
+	}
+	return s.handleExecutionResult(ctx, t, result)
 }
 
 func (s *orchestratorService) prepareExecution(ctx context.Context, task *models.Task, project *models.Project) (agent.AgentExecutor, *agent.ExecutionInput, error) {
