@@ -5,13 +5,14 @@ SANDBOX_BUILDABLE_STEMS := claude
 SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 
 .PHONY: help build up down logs test test-unit test-integration test-all validate-agent-prompts \
+	validate-agent-configs \
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
 	migrate-create migrate-up migrate-down migrate-status \
 	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration \
 	frontend-analyze frontend-codegen frontend-codegen-watch \
 	frontend-run-web frontend-run-android frontend-run-ios \
 	frontend-build-web frontend-build-android frontend-build-ios \
-	swagger
+	swagger rules
 
 # === Управление сервисами ===
 build:
@@ -41,6 +42,10 @@ test-integration:
 # Pipeline agent prompts (task 6.8): YAML vs backend/prompts/prompt_schema.json
 validate-agent-prompts:
 	cd backend && go test ./pkg/agentprompts -run TestValidateAllYAMLAgainstSchema -count=1
+
+# Agent configs (task 6.9): YAML vs backend/agents/agent_schema.json + in-memory cache
+validate-agent-configs:
+	cd backend && go test ./pkg/agentsloader -run TestValidateAgentConfigs -count=1
 
 # --- Sandbox images (task 5.12, docs/tasks/5.12-makefile-sandbox-build.md) ---
 # Сборка через docker build, не сервис в docker-compose: образы — эфемерные CI/тестовые
@@ -127,6 +132,10 @@ frontend-run-ios:
 swagger:
 	cd backend && ~/go/bin/swag init -g cmd/api/main.go -o docs || (go install github.com/swaggo/swag/cmd/swag@latest && ~/go/bin/swag init -g cmd/api/main.go -o docs)
 
+# === AI Правила ===
+rules:
+	node scripts/sync-ai-rules.js
+
 # === Помощь ===
 help:
 	@echo "Available commands:"
@@ -140,6 +149,7 @@ help:
 	@echo "  make test-unit       - Backend tests without //go:build integration (faster)"
 	@echo "  make test-integration - Full backend test suite (-tags=integration ./...)"
 	@echo "  make validate-agent-prompts - Validate backend/prompts/*.yaml against prompt_schema.json"
+	@echo "  make validate-agent-configs - Validate backend/agents/*.yaml against agent_schema.json"
 	@echo "  make test-all        - Same as test-integration"
 	@echo "  make sandbox-build    - Build default sandbox image (Claude, devteam/sandbox-claude:local)"
 	@echo "  make sandbox-build-<stem> - Build a specific sandbox image (e.g. sandbox-build-claude)"
@@ -148,6 +158,7 @@ help:
 	@echo "  make migrate-down    - Rollback last migration"
 	@echo "  make migrate-status  - Show migration status"
 	@echo "  make swagger         - Generate Swagger documentation"
+	@echo "  make rules           - Sync AI rules across IDEs (Cursor, Windsurf, Copilot)"
 	@echo ""
 	@echo "=== Frontend ==="
 	@echo "  make frontend-setup           - Setup frontend (pub get, gen-l10n, codegen)"
