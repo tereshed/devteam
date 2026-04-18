@@ -16,7 +16,8 @@ func TestValidateAgentConfigs(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	dir := filepath.Join(filepath.Dir(thisFile), "..", "..", "agents")
-	cache, err := NewCache(dir)
+	promptsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "prompts")
+	cache, err := NewCache(dir, promptsDir)
 	if err != nil {
 		t.Fatalf("failed to load agent cache: %v", err)
 	}
@@ -69,7 +70,7 @@ func TestTemperatureBounds(t *testing.T) {
 }
 
 func TestNewCache_FileNotFound(t *testing.T) {
-	_, err := NewCache("/nonexistent/path")
+	_, err := NewCache("/nonexistent/path", "")
 	if err == nil {
 		t.Error("expected error for nonexistent path")
 	}
@@ -81,7 +82,8 @@ func TestCache_GetByPromptName(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	dir := filepath.Join(filepath.Dir(thisFile), "..", "..", "agents")
-	cache, err := NewCache(dir)
+	promptsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "prompts")
+	cache, err := NewCache(dir, promptsDir)
 	if err != nil {
 		t.Fatalf("failed to load cache: %v", err)
 	}
@@ -104,9 +106,10 @@ func TestLoadSchema_Integration(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	dir := filepath.Join(filepath.Dir(thisFile), "..", "..", "agents")
+	promptsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "prompts")
 	schemaPath := filepath.Join(dir, "agent_schema.json")
 	// loadSchema is called internally by NewCache, test the public interface
-	_, err := NewCache(dir)
+	_, err := NewCache(dir, promptsDir)
 	if err != nil {
 		t.Fatalf("failed to create cache from %s: %v", schemaPath, err)
 	}
@@ -126,7 +129,8 @@ func TestCache_AgentsList(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	dir := filepath.Join(filepath.Dir(thisFile), "..", "..", "agents")
-	cache, err := NewCache(dir)
+	promptsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "prompts")
+	cache, err := NewCache(dir, promptsDir)
 	if err != nil {
 		t.Fatalf("failed to load cache: %v", err)
 	}

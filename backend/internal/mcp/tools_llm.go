@@ -122,10 +122,7 @@ func makeLLMGenerateHandler(llmService service.LLMService, cfg config.MCPConfig)
 		}
 
 		// --- Собираем llm.Request ---
-		// Temperature и MaxTokens — НЕ pointer-типы в llm.Request.
-		// json-тег `omitempty` в llm.Request означает, что zero-значения (0.0 / 0)
-		// не попадут в JSON провайдеру, и тот применит свой дефолт.
-		// Если пользователь явно передал значение (pointer != nil) — пробрасываем его.
+		// Temperature / MaxTokens — указатели: nil = не передавать провайдеру; иначе передаём, в т.ч. 0.
 
 		llmReq := llm.Request{
 			Provider: provider,
@@ -136,10 +133,10 @@ func makeLLMGenerateHandler(llmService service.LLMService, cfg config.MCPConfig)
 			SystemPrompt: params.SystemPrompt,
 		}
 		if params.Temperature != nil {
-			llmReq.Temperature = *params.Temperature
+			llmReq.Temperature = params.Temperature
 		}
 		if params.MaxTokens != nil {
-			llmReq.MaxTokens = *params.MaxTokens
+			llmReq.MaxTokens = params.MaxTokens
 		}
 
 		// --- Вызов сервиса ---

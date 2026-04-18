@@ -156,7 +156,8 @@ func TestLLMGenerate_WithOptionalParams(t *testing.T) {
 	tokens := 100
 
 	svc.On("Generate", mock.Anything, mock.MatchedBy(func(req llm.Request) bool {
-		return req.Temperature == 0.7 && req.MaxTokens == 100 && req.SystemPrompt == "Be helpful"
+		return req.Temperature != nil && *req.Temperature == 0.7 &&
+			req.MaxTokens != nil && *req.MaxTokens == 100 && req.SystemPrompt == "Be helpful"
 	})).Return(&llm.Response{
 		Content: "ok",
 		Usage:   llm.Usage{TotalTokens: 5},

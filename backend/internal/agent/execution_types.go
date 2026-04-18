@@ -32,6 +32,12 @@ type ExecutionInput struct {
 	Model        string
 	PromptSystem string
 	PromptUser   string
+	// PromptName — идентификатор промпта из backend/agents/*.yaml (задача 6.9).
+	PromptName string
+	// Temperature / MaxTokens — параметры LLM из предзагруженного YAML-конфига агента (nil = не заданы).
+	Temperature *float64
+	MaxTokens   *int
+
 
 	// GitURL, GitDefaultBranch, BranchName — строки из БД/пользователя/LLM.
 	// Реализации 6.2–6.3 обязаны валидировать формат; при вызове git и оболочки после фиксированных флагов
@@ -87,6 +93,9 @@ func (in ExecutionInput) String() string {
 	b.WriteString(in.Role)
 	b.WriteString(" Model:")
 	b.WriteString(in.Model)
+	if in.Temperature != nil {
+		fmt.Fprintf(&b, " Temperature:%g", *in.Temperature)
+	}
 	b.WriteString(" PromptSystem:")
 	b.WriteString(truncateForLog(in.PromptSystem, stringLogTruncate))
 	b.WriteString(" PromptUser:")

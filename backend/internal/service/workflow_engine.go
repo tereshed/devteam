@@ -230,7 +230,6 @@ func (e *workflowEngine) executeLLMStep(ctx context.Context, exec *models.Execut
 
 	llmReq := llm.Request{
 		Model:        modelConfig.Model,
-		Temperature:  modelConfig.Temperature,
 		SystemPrompt: promptText,
 		Messages: []llm.Message{
 			{
@@ -243,6 +242,9 @@ func (e *workflowEngine) executeLLMStep(ctx context.Context, exec *models.Execut
 			"step_id":      exec.CurrentStepID,
 			"agent_id":     agent.ID.String(),
 		},
+	}
+	if len(agent.ModelConfig) > 0 {
+		llmReq.Temperature = llm.Float64Ptr(modelConfig.Temperature)
 	}
 
 	response, err := e.llmService.Generate(ctx, llmReq)
@@ -475,7 +477,7 @@ func (e *workflowEngine) checkLoopExitCondition(ctx context.Context, exec *model
 
 	llmReq := llm.Request{
 		Model:        modelName,
-		Temperature:  temperature,
+		Temperature:  llm.Float64Ptr(temperature),
 		SystemPrompt: systemPrompt,
 		Messages: []llm.Message{
 			{
@@ -547,7 +549,7 @@ Respond with ONLY one of the options listed above.`,
 
 	llmReq := llm.Request{
 		Model:       modelName,
-		Temperature: 0.0, // Детерминированный ответ
+		Temperature: llm.Float64Ptr(0.0), // Детерминированный ответ
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleUser,

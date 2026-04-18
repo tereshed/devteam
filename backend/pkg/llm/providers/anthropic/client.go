@@ -31,7 +31,7 @@ type messagesRequest struct {
 	Messages    []message   `json:"messages"`
 	System      string      `json:"system,omitempty"`
 	MaxTokens   int         `json:"max_tokens"`
-	Temperature float64     `json:"temperature,omitempty"`
+	Temperature *float64    `json:"temperature,omitempty"`
 	Tools       []tool      `json:"tools,omitempty"`
 	ToolChoice  *toolChoice `json:"tool_choice,omitempty"`
 }
@@ -181,13 +181,21 @@ func (c *Client) mapRequest(req llm.Request) messagesRequest {
 	// we would add a specific tool for it and force it.
 	// Ignoring StructuredOutputSchema for now or assuming it's handled via Tools.
 
-	model := "claude-3-5-sonnet-20240620" // Default
+	model := req.Model
+	if model == "" {
+		model = "claude-3-5-sonnet-20240620"
+	}
+
+	maxTokens := 4096
+	if req.MaxTokens != nil {
+		maxTokens = *req.MaxTokens
+	}
 
 	return messagesRequest{
 		Model:       model,
 		Messages:    messages,
 		System:      req.SystemPrompt,
-		MaxTokens:   req.MaxTokens,
+		MaxTokens:   maxTokens,
 		Temperature: req.Temperature,
 		Tools:       tools,
 		ToolChoice:  toolChoice,

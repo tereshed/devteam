@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/devteam/backend/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,13 +21,13 @@ type Composer struct {
 // NewComposer loads and validates base_prompt.yaml plus all role files against prompt_schema.json.
 func NewComposer(dir string) (*Composer, error) {
 	schemaPath := filepath.Join(dir, "prompt_schema.json")
-	schema, err := loadJSONSchema(schemaPath)
+	s, err := schema.Compile(schemaPath)
 	if err != nil {
 		return nil, err
 	}
 
 	basePath := filepath.Join(dir, "base_prompt.yaml")
-	if err := validateYAMLFile(schema, basePath); err != nil {
+	if err := s.Validate(basePath); err != nil {
 		return nil, fmt.Errorf("agentprompts: base prompt: %w", err)
 	}
 
@@ -49,7 +50,7 @@ func NewComposer(dir string) (*Composer, error) {
 	roles := []string{"orchestrator", "planner", "developer", "reviewer", "tester"}
 	for _, r := range roles {
 		path := filepath.Join(dir, r+".yaml")
-		if err := validateYAMLFile(schema, path); err != nil {
+		if err := s.Validate(path); err != nil {
 			return nil, fmt.Errorf("agentprompts: role %s: %w", r, err)
 		}
 		data, err := os.ReadFile(path)
@@ -75,7 +76,7 @@ func (c *Composer) ComposeSystem(role string) (string, error) {
 	r := strings.ToLower(strings.TrimSpace(role))
 	spec, ok := c.roleSystems[r]
 	if !ok {
-		return "", fmt.Errorf("agentprompts: unknown role %q", role)
+		return "", fmt.Errorf("agentprompts: unknown role %q", r)
 	}
 	var b strings.Builder
 	b.WriteString(c.baseSystem)
@@ -89,7 +90,7 @@ func (c *Composer) UserTemplate(role string) (string, error) {
 	r := strings.ToLower(strings.TrimSpace(role))
 	t, ok := c.roleUsers[r]
 	if !ok {
-		return "", fmt.Errorf("agentprompts: unknown role %q", role)
+		return "", fmt.Errorf("agentprompts: unknown role %q", r)
 	}
 	return t, nil
 }
@@ -97,7 +98,7 @@ func (c *Composer) UserTemplate(role string) (string, error) {
 // ValidateAllYAMLAgainstSchema checks six pipeline YAML files (for tests and CI).
 func ValidateAllYAMLAgainstSchema(dir string) error {
 	schemaPath := filepath.Join(dir, "prompt_schema.json")
-	schema, err := loadJSONSchema(schemaPath)
+	s, err := schema.Compile(schemaPath)
 	if err != nil {
 		return err
 	}
@@ -110,7 +111,7 @@ func ValidateAllYAMLAgainstSchema(dir string) error {
 		"tester.yaml",
 	}
 	for _, name := range files {
-		if err := validateYAMLFile(schema, filepath.Join(dir, name)); err != nil {
+		if err := s.Validate(filepath.Join(dir, name)); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 	}

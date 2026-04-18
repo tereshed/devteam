@@ -32,8 +32,8 @@ type chatCompletionRequest struct {
 	Messages       []message       `json:"messages"`
 	Tools          []tool          `json:"tools,omitempty"`
 	ResponseFormat *responseFormat `json:"response_format,omitempty"`
-	Temperature    float64         `json:"temperature,omitempty"`
-	MaxTokens      int             `json:"max_tokens,omitempty"`
+	Temperature    *float64        `json:"temperature,omitempty"`
+	MaxTokens      *int            `json:"max_tokens,omitempty"`
 }
 
 type message struct {
@@ -192,7 +192,10 @@ func (c *Client) mapRequest(req llm.Request) chatCompletionRequest {
 		}
 	}
 
-	model := "qwen-turbo" // Default for Qwen
+	model := req.Model
+	if model == "" {
+		model = "qwen-turbo"
+	}
 
 	return chatCompletionRequest{
 		Model:          model,

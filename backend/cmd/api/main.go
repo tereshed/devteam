@@ -28,6 +28,7 @@ import (
 	"github.com/devteam/backend/pkg/llm/factory"
 	"github.com/devteam/backend/pkg/password"
 	"github.com/devteam/backend/pkg/agentprompts"
+	"github.com/devteam/backend/pkg/agentsloader"
 	"github.com/devteam/backend/pkg/promptsloader"
 	"github.com/devteam/backend/pkg/workflowloader"
 
@@ -197,6 +198,15 @@ func main() {
 	// Orchestrator Components
 	orchestratorPipeline := service.NewPipelineEngine(5)
 
+	agentConfigCache, err := agentsloader.NewCache("agents", "prompts")
+	if err != nil {
+		log.Fatalf("agent YAML configs: %v", err)
+	}
+	if err := agentConfigCache.ValidateRequiredAgents(); err != nil {
+		log.Fatalf("agent YAML validation: %v", err)
+	}
+	log.Println("Agent default configs: loaded and validated (backend/agents)")
+
 	var pipelinePromptComposer service.PipelinePromptComposer
 	if pc, err := agentprompts.NewComposer("prompts"); err != nil {
 		log.Printf("Pipeline agent prompts (YAML) not active: %v", err)
@@ -204,7 +214,7 @@ func main() {
 		pipelinePromptComposer = pc
 		log.Println("Pipeline agent prompts: loaded base + role composition (backend/prompts)")
 	}
-	orchestratorContextBuilder := service.NewContextBuilder(encryptor, pipelinePromptComposer)
+	orchestratorContextBuilder := service.NewContextBuilder(encryptor, pipelinePromptComposer, agentConfigCache)
 
 	taskControlBus := service.NewUserTaskControlBus()
 

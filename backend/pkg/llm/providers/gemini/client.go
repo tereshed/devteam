@@ -65,8 +65,8 @@ type functionDeclaration struct {
 }
 
 type generationConfig struct {
-	Temperature      float64          `json:"temperature,omitempty"`
-	MaxOutputTokens  int              `json:"maxOutputTokens,omitempty"`
+	Temperature      *float64         `json:"temperature,omitempty"`
+	MaxOutputTokens  *int             `json:"maxOutputTokens,omitempty"`
 	ResponseMimeType string           `json:"responseMimeType,omitempty"`
 	ResponseSchema   *json.RawMessage `json:"responseSchema,omitempty"`
 }
@@ -196,7 +196,7 @@ func (c *Client) mapRequest(req llm.Request) generateContentRequest {
 			ResponseMimeType: "application/json",
 			ResponseSchema:   &req.StructuredOutputSchema,
 			Temperature:      req.Temperature,
-			MaxOutputTokens:  req.MaxTokens,
+			MaxOutputTokens:    req.MaxTokens,
 		}
 	} else {
 		genConfig = &generationConfig{

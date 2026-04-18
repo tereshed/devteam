@@ -1,15 +1,13 @@
 package agentsloader
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sync"
+	"strings"
 
-	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/devteam/backend/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,47 +23,31 @@ type AgentConfig struct {
 
 // ModelConfig holds LLM parameters for an agent.
 type ModelConfig struct {
-	Model       string
-	Temperature float64
-	MaxTokens   int
-	TopP        float64
+	Model       string  `yaml:"model"`
+	Temperature float64 `yaml:"temperature"`
+	MaxTokens   int     `yaml:"max_tokens,omitempty"`
+	TopP        float64 `yaml:"top_p,omitempty"`
 }
 
 // agentRawYAML is used to unmarshal YAML before schema validation.
 type agentRawYAML struct {
-	Name        string                 `yaml:"name"`
-	Role        string                 `yaml:"role"`
-	PromptName  string                 `yaml:"prompt_name"`
-	ModelConfig map[string]interface{} `yaml:"model_config"`
-	IsActive    bool                   `yaml:"is_active"`
-	Limits      map[string]interface{} `yaml:"limits"`
+	Name        string      `yaml:"name"`
+	Role        string      `yaml:"role"`
+	PromptName  string      `yaml:"prompt_name"`
+	ModelConfig ModelConfig `yaml:"model_config"`
+	IsActive    bool        `yaml:"is_active"`
+	Limits      interface{} `yaml:"limits"`
 }
 
-var (
-	schema     *jsonschema.Schema
-	schemaOnce sync.Once
+var promptNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
-	promptNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-)
-
-func loadSchema(schemaPath string) error {
-	raw, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("read schema: %w", err)
-	}
-	sch, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-	if err != nil {
-		return fmt.Errorf("parse schema json: %w", err)
-	}
-	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource("file://"+schemaPath, sch); err != nil {
-		return fmt.Errorf("add schema resource: %w", err)
-	}
-	schema, err = compiler.Compile("file://" + schemaPath)
-	if err != nil {
-		return fmt.Errorf("compile schema: %w", err)
-	}
-	return nil
+// pipelineRoleKeys — роли пайплайна 6.9; для них индекс по role (один конфиг на роль).
+var pipelineRoleKeys = map[string]struct{}{
+	"orchestrator": {},
+	"planner":      {},
+	"developer":    {},
+	"reviewer":     {},
+	"tester":       {},
 }
 
 func validatePromptName(name string) error {
@@ -82,28 +64,48 @@ func validateTemperatureBounds(temp float64) error {
 	return nil
 }
 
-func validateYAMLFile(yamlPath string) error {
-	if schema == nil {
-		return fmt.Errorf("schema not loaded")
+func validateTopPBounds(topP float64) error {
+	if topP < 0.0 || topP > 1.0 {
+		return fmt.Errorf("top_p must be between 0.0 and 1.0, got: %f", topP)
 	}
-	raw, err := os.ReadFile(yamlPath)
+	return nil
+}
+
+// promptYAMLPath maps prompt_name (e.g. orchestrator_prompt) to backend/prompts/orchestrator.yaml.
+func promptYAMLPath(promptsDir, promptName string) (string, error) {
+	stem := strings.TrimSuffix(promptName, "_prompt")
+	if stem == "" {
+		return "", fmt.Errorf("empty stem from prompt_name %q", promptName)
+	}
+	return filepath.Join(promptsDir, stem+".yaml"), nil
+}
+
+func validatePromptFile(promptsDir, promptName string) error {
+	p, err := promptYAMLPath(promptsDir, promptName)
 	if err != nil {
 		return err
 	}
-	var doc interface{}
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("yaml parse: %w", err)
-	}
-	intermediate, err := json.Marshal(doc)
+	absBase, err := filepath.Abs(promptsDir)
 	if err != nil {
-		return fmt.Errorf("marshal bridge: %w", err)
+		return fmt.Errorf("prompts dir abs: %w", err)
 	}
-	var jsonDoc interface{}
-	if err := json.Unmarshal(intermediate, &jsonDoc); err != nil {
-		return fmt.Errorf("unmarshal bridge: %w", err)
+	absP, err := filepath.Abs(p)
+	if err != nil {
+		return fmt.Errorf("prompt file abs: %w", err)
 	}
-	if err := schema.Validate(jsonDoc); err != nil {
-		return fmt.Errorf("jsonschema: %w", err)
+	rel, err := filepath.Rel(absBase, absP)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("resolved prompt path escapes prompts directory")
+	}
+	st, err := os.Stat(absP)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("prompt file for prompt_name %q not found (expected %s)", promptName, absP)
+		}
+		return err
+	}
+	if st.IsDir() {
+		return fmt.Errorf("prompt path is a directory: %s", absP)
 	}
 	return nil
 }
@@ -118,58 +120,63 @@ func parseAgentConfig(path string) (*AgentConfig, error) {
 		return nil, fmt.Errorf("yaml parse: %w", err)
 	}
 
-	// Validate prompt_name for path traversal
 	if err := validatePromptName(raw.PromptName); err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}
 
-	// Extract and validate model_config
-	model, _ := raw.ModelConfig["model"].(string)
-	temp, _ := raw.ModelConfig["temperature"].(float64)
-	maxTokens, _ := raw.ModelConfig["max_tokens"].(int)
-	topP, _ := raw.ModelConfig["top_p"].(float64)
-
-	if err := validateTemperatureBounds(temp); err != nil {
+	if err := validateTemperatureBounds(raw.ModelConfig.Temperature); err != nil {
 		return nil, fmt.Errorf("%s: model_config.temperature: %w", filepath.Base(path), err)
 	}
 
+	if raw.ModelConfig.TopP != 0 {
+		if err := validateTopPBounds(raw.ModelConfig.TopP); err != nil {
+			return nil, fmt.Errorf("%s: model_config.top_p: %w", filepath.Base(path), err)
+		}
+	}
+
+	var limits map[string]interface{}
+	if raw.Limits != nil {
+		limits, _ = raw.Limits.(map[string]interface{})
+	}
+
 	return &AgentConfig{
-		Name:       raw.Name,
-		Role:       raw.Role,
-		PromptName: raw.PromptName,
-		ModelConfig: ModelConfig{
-			Model:       model,
-			Temperature: temp,
-			MaxTokens:   maxTokens,
-			TopP:        topP,
-		},
-		IsActive: raw.IsActive,
-		Limits:   raw.Limits,
+		Name:        raw.Name,
+		Role:        raw.Role,
+		PromptName:  raw.PromptName,
+		ModelConfig: raw.ModelConfig,
+		IsActive:    raw.IsActive,
+		Limits:      limits,
 	}, nil
 }
 
 // Cache holds all validated agent configs in memory.
 type Cache struct {
-	mu      sync.RWMutex
-	agents  map[string]*AgentConfig
-	prompts map[string]*AgentConfig // by prompt_name
+	schema           *schema.Schema
+	agents           map[string]*AgentConfig
+	prompts          map[string]*AgentConfig
+	byPipelineRole   map[string]*AgentConfig
 }
 
-// NewCache loads and validates all agent YAML configs from dirPath.
-func NewCache(dirPath string) (*Cache, error) {
-	schemaPath := filepath.Join(dirPath, "agent_schema.json")
-	if err := loadSchema(schemaPath); err != nil {
+// NewCache loads and validates all agent YAML configs from agentsDir.
+// If promptsDir is non-empty, each prompt_name must resolve to an existing file under promptsDir
+// (orchestrator_prompt → promptsDir/orchestrator.yaml).
+func NewCache(agentsDir, promptsDir string) (*Cache, error) {
+	schemaPath := filepath.Join(agentsDir, "agent_schema.json")
+	s, err := schema.Compile(schemaPath)
+	if err != nil {
 		return nil, fmt.Errorf("agentsloader: load schema: %w", err)
 	}
 
-	files, err := os.ReadDir(dirPath)
+	files, err := os.ReadDir(agentsDir)
 	if err != nil {
 		return nil, fmt.Errorf("agentsloader: read dir: %w", err)
 	}
 
 	cache := &Cache{
-		agents:  make(map[string]*AgentConfig),
-		prompts: make(map[string]*AgentConfig),
+		schema:         s,
+		agents:         make(map[string]*AgentConfig),
+		prompts:        make(map[string]*AgentConfig),
+		byPipelineRole: make(map[string]*AgentConfig),
 	}
 
 	for _, file := range files {
@@ -180,16 +187,30 @@ func NewCache(dirPath string) (*Cache, error) {
 		if ext != ".yaml" && ext != ".yml" {
 			continue
 		}
-		path := filepath.Join(dirPath, file.Name())
-		if err := validateYAMLFile(path); err != nil {
+		path := filepath.Join(agentsDir, file.Name())
+		if err := s.Validate(path); err != nil {
 			return nil, fmt.Errorf("agentsloader: %s: %w", file.Name(), err)
 		}
 		cfg, err := parseAgentConfig(path)
 		if err != nil {
 			return nil, fmt.Errorf("agentsloader: %s: %w", file.Name(), err)
 		}
+		if promptsDir != "" {
+			if err := validatePromptFile(promptsDir, cfg.PromptName); err != nil {
+				return nil, fmt.Errorf("agentsloader: %s: %w", file.Name(), err)
+			}
+		}
+		if _, dup := cache.agents[cfg.Name]; dup {
+			return nil, fmt.Errorf("agentsloader: duplicate agent name %q", cfg.Name)
+		}
 		cache.agents[cfg.Name] = cfg
 		cache.prompts[cfg.PromptName] = cfg
+		if _, isPipeline := pipelineRoleKeys[cfg.Role]; isPipeline {
+			if _, exists := cache.byPipelineRole[cfg.Role]; exists {
+				return nil, fmt.Errorf("agentsloader: duplicate pipeline role %q", cfg.Role)
+			}
+			cache.byPipelineRole[cfg.Role] = cfg
+		}
 	}
 
 	return cache, nil
@@ -197,17 +218,19 @@ func NewCache(dirPath string) (*Cache, error) {
 
 // GetByName returns agent config by name.
 func (c *Cache) GetByName(name string) (*AgentConfig, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	cfg, ok := c.agents[name]
 	return cfg, ok
 }
 
 // GetByPromptName returns agent config by prompt_name.
 func (c *Cache) GetByPromptName(promptName string) (*AgentConfig, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	cfg, ok := c.prompts[promptName]
+	return cfg, ok
+}
+
+// GetByPipelineRole returns config for orchestrator|planner|developer|reviewer|tester.
+func (c *Cache) GetByPipelineRole(role string) (*AgentConfig, bool) {
+	cfg, ok := c.byPipelineRole[role]
 	return cfg, ok
 }
 
@@ -215,7 +238,7 @@ func (c *Cache) GetByPromptName(promptName string) (*AgentConfig, bool) {
 func (c *Cache) ValidateRequiredAgents() error {
 	required := []string{"orchestrator", "planner", "developer", "reviewer", "tester"}
 	for _, name := range required {
-		cfg, ok := c.GetByName(name)
+		cfg, ok := c.agents[name]
 		if !ok {
 			return fmt.Errorf("agentsloader: required agent %q not found in config", name)
 		}

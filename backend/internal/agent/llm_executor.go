@@ -52,7 +52,8 @@ func (e *LLMAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (*Exe
 				Content: userPrompt,
 			},
 		},
-		// В MVP используем значения по умолчанию для Temperature/MaxTokens или можно расширить ExecutionInput
+		Temperature: in.Temperature,
+		MaxTokens:   in.MaxTokens,
 	}
 
 	resp, err := e.client.Generate(ctx, req)

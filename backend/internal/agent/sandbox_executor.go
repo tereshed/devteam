@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 	"time"
 
@@ -67,6 +68,20 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	// через монтирование файла в контейнер, а не через shell
 	instruction := e.buildInstruction(in)
 
+	envVars := map[string]string{}
+	if len(in.EnvSecrets) > 0 {
+		maps.Copy(envVars, in.EnvSecrets)
+	}
+	if in.Model != "" {
+		envVars["DEVTEAM_AGENT_MODEL"] = in.Model
+	}
+	if in.Temperature != nil {
+		envVars["DEVTEAM_AGENT_TEMPERATURE"] = fmt.Sprintf("%g", *in.Temperature)
+	}
+	if in.PromptName != "" {
+		envVars["DEVTEAM_AGENT_PROMPT_NAME"] = in.PromptName
+	}
+
 	opts := sandbox.SandboxOptions{
 		TaskID:      in.TaskID,
 		ProjectID:   in.ProjectID,
@@ -76,7 +91,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		Branch:      in.BranchName,
 		Instruction: instruction,
 		Context:     EmbedJSONForXML(NormalizeJSONForParse(in.ContextJSON)),
-		EnvVars:     in.EnvSecrets,
+		EnvVars:     envVars,
 		Timeout:     0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
 	}
 

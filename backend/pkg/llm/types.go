@@ -66,9 +66,10 @@ type Request struct {
 	SystemPrompt           string          `json:"system_prompt,omitempty"`
 	Tools                  []Tool          `json:"tools,omitempty"`
 	StructuredOutputSchema json.RawMessage `json:"structured_output_schema,omitempty" swaggertype:"object"` // JSON Schema for structured output
-	Temperature            float64         `json:"temperature,omitempty"`
-	MaxTokens              int             `json:"max_tokens,omitempty"`
-	Metadata               map[string]any  `json:"-"` // Internal metadata for logging (not sent to provider)
+	// Temperature — если не nil, передаётся провайдеру, в том числе при значении 0 (важно для YAML-конфигов агентов).
+	Temperature *float64 `json:"temperature,omitempty"`
+	MaxTokens   *int     `json:"max_tokens,omitempty"`
+	Metadata    map[string]any `json:"-"` // Internal metadata for logging (not sent to provider)
 }
 
 // Response represents the generation response

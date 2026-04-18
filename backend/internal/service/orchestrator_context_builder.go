@@ -10,6 +10,8 @@ import (
 
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/pkg/agentsloader"
+	"github.com/devteam/backend/pkg/llm"
 )
 
 // ContextBuilder собирает и фильтрует контекст для выполнения задачи агентом.
@@ -26,12 +28,15 @@ type PipelinePromptComposer interface {
 type contextBuilder struct {
 	encryptor Encryptor
 	composer  PipelinePromptComposer
+	agentCfg  *agentsloader.Cache
 }
 
-func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptComposer) ContextBuilder {
+// NewContextBuilder создаёт сборщик контекста. agentCfg — предзагруженный кэш backend/agents (6.9); nil в тестах.
+func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptComposer, agentCfg *agentsloader.Cache) ContextBuilder {
 	return &contextBuilder{
 		encryptor: encryptor,
 		composer:  promptComposer,
+		agentCfg:  agentCfg,
 	}
 }
 
@@ -55,7 +60,19 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		EnvSecrets:  make(map[string]string),
 	}
 
-	if assignedAgent.Model != nil {
+	if b.agentCfg != nil {
+		if cfg := b.resolveDefaultAgentConfig(assignedAgent); cfg != nil {
+			if cfg.ModelConfig.Model != "" {
+				input.Model = cfg.ModelConfig.Model
+			}
+			input.PromptName = cfg.PromptName
+			input.Temperature = llm.Float64Ptr(cfg.ModelConfig.Temperature)
+			if cfg.ModelConfig.MaxTokens > 0 {
+				input.MaxTokens = llm.IntPtr(cfg.ModelConfig.MaxTokens)
+			}
+		}
+	}
+	if input.Model == "" && assignedAgent.Model != nil {
 		input.Model = *assignedAgent.Model
 	}
 
@@ -114,6 +131,23 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 	// TODO: Интеграция с VectorRepository и TaskMessageRepository
 
 	return input, nil
+}
+
+func (b *contextBuilder) resolveDefaultAgentConfig(agent *models.Agent) *agentsloader.AgentConfig {
+	if b.agentCfg == nil {
+		return nil
+	}
+	switch agent.Role {
+	case models.AgentRoleOrchestrator, models.AgentRolePlanner, models.AgentRoleDeveloper,
+		models.AgentRoleReviewer, models.AgentRoleTester:
+		if cfg, ok := b.agentCfg.GetByPipelineRole(string(agent.Role)); ok {
+			return cfg
+		}
+	}
+	if cfg, ok := b.agentCfg.GetByName(agent.Name); ok {
+		return cfg
+	}
+	return nil
 }
 
 func (b *contextBuilder) scrubJSON(data []byte) json.RawMessage {

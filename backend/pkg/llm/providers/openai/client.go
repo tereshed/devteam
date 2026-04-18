@@ -31,8 +31,8 @@ type chatCompletionRequest struct {
 	Messages       []message       `json:"messages"`
 	Tools          []tool          `json:"tools,omitempty"`
 	ResponseFormat *responseFormat `json:"response_format,omitempty"`
-	Temperature    float64         `json:"temperature,omitempty"`
-	MaxTokens      int             `json:"max_tokens,omitempty"`
+	Temperature    *float64        `json:"temperature,omitempty"`
+	MaxTokens      *int            `json:"max_tokens,omitempty"`
 }
 
 type message struct {
@@ -193,12 +193,10 @@ func (c *Client) mapRequest(req llm.Request) chatCompletionRequest {
 		}
 	}
 
-	// Default model if not specified (though usually passed in config or request,
-	// for this template we'll default to gpt-4o-mini or similar, but better to make it configurable.
-	// For now, hardcoding a sensible default or assuming the user might want to pass it.
-	// Since Request doesn't have Model, we'll use a default const or config.
-	// Let's use "gpt-4o" as a placeholder default, but ideally this comes from config.
-	model := "gpt-4o"
+	model := req.Model
+	if model == "" {
+		model = "gpt-4o"
+	}
 
 	return chatCompletionRequest{
 		Model:          model,

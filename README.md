@@ -196,7 +196,7 @@
 | 6.6 | Обработка результатов: `completed` → следующий шаг, `changes_requested` → назад к Developer | `backend/internal/service/result_processor.go` | ⬜ | [детали](docs/tasks/6.6-result-processor.md) |
 | 6.7 | Обработка пользовательских команд: `pause`, `cancel`, `resume`, `correct` | В `OrchestratorService` | ⬜ | [детали](docs/tasks/6.7-user-commands.md) |
 | 6.8 | Промпты агентов: Orchestrator, Planner, Developer, Reviewer, Tester | `backend/prompts/base_prompt.yaml`, `orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml`, `prompt_schema.json` | ⬜ | [детали](docs/tasks/6.8-agent-prompts.md) |
-| 6.9 | Агенты по умолчанию (YAML-конфиг) | `backend/agents/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ⬜ | |
+| 6.9 | Агенты по умолчанию (YAML-конфиг) | `backend/agents/orchestrator.yaml`, `planner.yaml`, `developer.yaml`, `reviewer.yaml`, `tester.yaml` | ✅ | [детали](docs/tasks/6.9-agents-default-config.md) |
 | 6.10 | Unit-тесты: OrchestratorService (полный pipeline, ретраи, отмена) | `backend/internal/service/orchestrator_service_test.go` | ⬜ | |
 
 **Pipeline (линейный MVP):**

@@ -23,5 +23,7 @@ jobs:
           go-version-file: backend/go.mod
       - name: Validate agent prompts (6.8)
         run: go test ./pkg/agentprompts -run TestValidateAllYAMLAgainstSchema -count=1
+      - name: Validate agent configs (6.9)
+        run: go test ./pkg/agentsloader -run TestValidateAgentConfigs -count=1
       - name: Unit tests
         run: go test -race ./... -count=1
