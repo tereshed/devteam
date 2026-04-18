@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devteam.local/schemas/agent-config-v1.json",
+  "title": "DevTeam agent configuration file",
+  "type": "object",
+  "required": ["name", "role", "prompt_name", "model_config", "is_active"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+      "minLength": 1
+    },
+    "role": {
+      "type": "string",
+      "enum": ["orchestrator", "planner", "developer", "reviewer", "tester", "worker", "supervisor"]
+    },
+    "prompt_name": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "minLength": 1
+    },
+    "model_config": {
+      "type": "object",
+      "required": ["model", "temperature"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2.0
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "top_p": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      }
+    },
+    "is_active": {
+      "type": "boolean"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,7 @@
+name: orchestrator
+role: orchestrator
+prompt_name: orchestrator_prompt
+model_config:
+  temperature: 0.1
+  model: "gpt-4o"
+is_active: true

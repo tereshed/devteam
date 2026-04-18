@@ -1,6 +1,6 @@
-name: reviewer
-role: reviewer
-prompt_name: reviewer_prompt
+name: tester
+role: tester
+prompt_name: tester_prompt
 model_config:
   temperature: 0.1
   model: "gpt-4o"

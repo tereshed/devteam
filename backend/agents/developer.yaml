@@ -1,0 +1,7 @@
+name: developer
+role: developer
+prompt_name: developer_prompt
+model_config:
+  temperature: 0.2
+  model: "gpt-4o"
+is_active: true

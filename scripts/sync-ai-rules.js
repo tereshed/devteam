@@ -21,8 +21,7 @@ function stripFrontmatter(content) {
 // 1. Copy all .md files from docs/rules to .cursor/rules as .mdc
 const files = fs.readdirSync(DOCS_DIR).filter(f => f.endsWith('.md'));
 
-let mainContent = '';
-let otherRulesList = [];
+let rulesList = [];
 
 for (const file of files) {
     const content = fs.readFileSync(path.join(DOCS_DIR, file), 'utf-8');
@@ -33,16 +32,23 @@ for (const file of files) {
     console.log(`✅ Synced ${file} -> .cursor/rules/${mdcName}`);
 
     // Collect content for global files
-    const cleanContent = stripFrontmatter(content);
-    if (file === 'main.md' || file === 'general.md') {
-        mainContent = cleanContent;
-    } else {
-        otherRulesList.push(`- **${file.replace('.md', '')}**: См. файл \`docs/rules/${file}\``);
-    }
+    rulesList.push(`- **${file.replace('.md', '')}**: См. файл \`docs/rules/${file}\``);
 }
 
 // 2. Generate CLAUDE.md
-const claudeContent = `${mainContent}
+const claudeContent = `# DevTeam — AI Agent Orchestrator
+
+Ты — ведущий архитектор и разработчик платформы **DevTeam**. Это приложение-оркестратор AI-агентов, которое автоматизирует полный цикл разработки ПО: от идеи до работающего кода.
+
+Стек: **Go (Gin)**, **Flutter**, **YugabyteDB**, **Weaviate**, **Claude Code CLI / Aider**.
+
+---
+
+## ⚠️ Главные правила работы с репозиторием
+
+1. **Единый источник правды (SSOT):** Все AI-правила хранятся в \`docs/rules/\`. Если нужно изменить правила, редактируй файлы там, а затем выполни \`make rules\`.
+2. **Никаких лишних файлов:** ЗАПРЕЩЕНО создавать итоговые файлы \`.md\` с результатами работы. Можно писать только сжатую информацию в \`README.md\`.
+3. **Изоляция:** Задачи выполняются в изолированных Docker-контейнерах.
 
 ---
 
@@ -50,7 +56,7 @@ const claudeContent = `${mainContent}
 
 Для работы с конкретными частями проекта, **ОБЯЗАТЕЛЬНО** прочитай соответствующие правила перед началом работы:
 
-${otherRulesList.join('\n')}
+${rulesList.join('\n')}
 
 > ⚠️ **ВНИМАНИЕ AI-АССИСТЕНТ:** Не пытайся угадать правила линтинга, архитектуры или деплоя. Всегда используй инструмент чтения файлов (Read tool), чтобы прочитать нужный файл из \`docs/rules/\` перед написанием кода!
 `;
@@ -63,12 +69,14 @@ fs.writeFileSync(path.join(ROOT_DIR, '.windsurfrules'), claudeContent);
 console.log('✅ Generated .windsurfrules');
 
 // 4. Generate .github/copilot-instructions.md
-const copilotContent = `${mainContent}
+const copilotContent = `# DevTeam — AI Agent Orchestrator
 
----
+Стек: Go (Gin), Flutter, YugabyteDB, Weaviate.
 
 ## Детальные правила
-Ознакомьтесь с файлами в директории \`docs/rules/\` для получения специфичных инструкций по backend, frontend, review и деплою.
+Ознакомьтесь с файлами в директории \`docs/rules/\` для получения специфичных инструкций по архитектуре, backend, frontend, review и деплою:
+
+${rulesList.join('\n')}
 `;
 fs.writeFileSync(path.join(ROOT_DIR, '.github/copilot-instructions.md'), copilotContent);
 console.log('✅ Generated .github/copilot-instructions.md');
