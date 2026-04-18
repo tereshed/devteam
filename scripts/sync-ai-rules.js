@@ -13,11 +13,6 @@ if (!fs.existsSync(path.join(ROOT_DIR, '.github'))) {
     fs.mkdirSync(path.join(ROOT_DIR, '.github'), { recursive: true });
 }
 
-// Helper to strip YAML frontmatter
-function stripFrontmatter(content) {
-    return content.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-}
-
 // 1. Copy all .md files from docs/rules to .cursor/rules as .mdc
 const files = fs.readdirSync(DOCS_DIR).filter(f => f.endsWith('.md'));
 
@@ -32,33 +27,42 @@ for (const file of files) {
     console.log(`✅ Synced ${file} -> .cursor/rules/${mdcName}`);
 
     // Collect content for global files
-    rulesList.push(`- **${file.replace('.md', '')}**: См. файл \`docs/rules/${file}\``);
+    rulesList.push(`- **${file.replace('.md', '')}**: \`docs/rules/${file}\``);
 }
 
 // 2. Generate CLAUDE.md
 const claudeContent = `# DevTeam — AI Agent Orchestrator
 
-Ты — ведущий архитектор и разработчик платформы **DevTeam**. Это приложение-оркестратор AI-агентов, которое автоматизирует полный цикл разработки ПО: от идеи до работающего кода.
-
 Стек: **Go (Gin)**, **Flutter**, **YugabyteDB**, **Weaviate**, **Claude Code CLI / Aider**.
 
----
+## ⚠️ Главные правила (SSOT)
+1. **Правила в \`docs/rules/\`**: Всегда читай детальные правила перед работой. При изменении правил запускай \`make rules\`.
+2. **Никаких лишних файлов**: ЗАПРЕЩЕНО создавать итоговые \`.md\` файлы с результатами. Пиши только в \`README.md\`.
+3. **Изоляция**: Задачи выполняются в изолированных Docker-контейнерах.
 
-## ⚠️ Главные правила работы с репозиторием
+## 🔴 Критичные правила по стеку
+**Backend (Go):**
+- **Clean Architecture**: Строго \`handler\` -> \`service\` -> \`repository\`.
+- **Глобальные переменные**: ЗАПРЕЩЕНЫ. Используй Dependency Injection.
+- **Миграции**: Только Goose (\`make migrate-create\`). ЗАПРЕЩЕНО \`gorm.AutoMigrate\`.
+- **MCP**: Для новых публичных ручек обязательно создавай MCP-инструмент в \`internal/mcp/\`.
+- **Swagger**: Обновляй аннотации и запускай \`make swagger\`.
 
-1. **Единый источник правды (SSOT):** Все AI-правила хранятся в \`docs/rules/\`. Если нужно изменить правила, редактируй файлы там, а затем выполни \`make rules\`.
-2. **Никаких лишних файлов:** ЗАПРЕЩЕНО создавать итоговые файлы \`.md\` с результатами работы. Можно писать только сжатую информацию в \`README.md\`.
-3. **Изоляция:** Задачи выполняются в изолированных Docker-контейнерах.
+**Frontend (Flutter):**
+- **Архитектура**: Feature-First + Riverpod 2.0.
+- **Freezed**: Обязательно используй \`abstract class\` (напр. \`abstract class UserModel\`).
+- **Импорты**: Только абсолютные (\`package:frontend/...\`), НИКАКИХ \`../\`.
+- **Локализация**: ЗАПРЕЩЕН хардкод строк в UI. Используй \`.arb\` и \`flutter gen-l10n\`.
 
----
+## ✅ Чек-лист перед коммитом
+- [ ] Прочитан ли профильный файл из \`docs/rules/\`?
+- [ ] Написаны ли тесты (Unit/Integration)?
+- [ ] (Backend) Выполнен ли \`make swagger\` и \`make test-all\`?
+- [ ] (Frontend) Выполнен ли \`make frontend-codegen\` и \`make frontend-analyze\`?
+- [ ] Нет ли захардкоженных строк или секретов?
 
-## 📚 Детальные правила по компонентам системы
-
-Для работы с конкретными частями проекта, **ОБЯЗАТЕЛЬНО** прочитай соответствующие правила перед началом работы:
-
+## 📚 Детальные правила (Читай через Read tool!)
 ${rulesList.join('\n')}
-
-> ⚠️ **ВНИМАНИЕ AI-АССИСТЕНТ:** Не пытайся угадать правила линтинга, архитектуры или деплоя. Всегда используй инструмент чтения файлов (Read tool), чтобы прочитать нужный файл из \`docs/rules/\` перед написанием кода!
 `;
 
 fs.writeFileSync(path.join(ROOT_DIR, 'CLAUDE.md'), claudeContent);
@@ -69,16 +73,7 @@ fs.writeFileSync(path.join(ROOT_DIR, '.windsurfrules'), claudeContent);
 console.log('✅ Generated .windsurfrules');
 
 // 4. Generate .github/copilot-instructions.md
-const copilotContent = `# DevTeam — AI Agent Orchestrator
-
-Стек: Go (Gin), Flutter, YugabyteDB, Weaviate.
-
-## Детальные правила
-Ознакомьтесь с файлами в директории \`docs/rules/\` для получения специфичных инструкций по архитектуре, backend, frontend, review и деплою:
-
-${rulesList.join('\n')}
-`;
-fs.writeFileSync(path.join(ROOT_DIR, '.github/copilot-instructions.md'), copilotContent);
+fs.writeFileSync(path.join(ROOT_DIR, '.github/copilot-instructions.md'), claudeContent);
 console.log('✅ Generated .github/copilot-instructions.md');
 
 console.log('🎉 Все AI-правила успешно синхронизированы!');
