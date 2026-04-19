@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,14 @@ import (
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/models"
 	"github.com/tidwall/gjson"
+)
+
+// Sentinel-ошибки pipeline для проверок errors.Is в оркестраторе и тестах.
+var (
+	ErrPipelineNilResult         = errors.New("pipeline: execution result is nil")
+	ErrPipelineEmptyResult       = errors.New("pipeline: agent returned empty result")
+	ErrPipelineEmptyDiff         = errors.New("pipeline: developer diff is empty")
+	ErrPipelineInvalidTransition = errors.New("pipeline: invalid status transition")
 )
 
 // PipelineEngine управляет логикой переходов между этапами выполнения задачи.
@@ -32,7 +41,7 @@ func NewPipelineEngine(maxIterations int) PipelineEngine {
 func (e *pipelineEngine) DetermineNextStatus(task *models.Task, result *agent.ExecutionResult) (models.TaskStatus, error) {
 	// Проверка на nil result (защита от паники)
 	if result == nil {
-		return models.TaskStatusFailed, fmt.Errorf("pipeline: execution result is nil")
+		return models.TaskStatusFailed, ErrPipelineNilResult
 	}
 
 	// Если агент сообщил о провале выполнения
@@ -47,7 +56,7 @@ func (e *pipelineEngine) DetermineNextStatus(task *models.Task, result *agent.Ex
 		string(result.ArtifactsJSON) == "null" ||
 		string(result.ArtifactsJSON) == ""
 	if result.Output == "" && artifactsEmpty {
-		return models.TaskStatusFailed, fmt.Errorf("pipeline: agent returned empty result")
+		return models.TaskStatusFailed, ErrPipelineEmptyResult
 	}
 
 	// Валидация путей в артефактах (Path Traversal Protection)
@@ -67,7 +76,13 @@ func (e *pipelineEngine) DetermineNextStatus(task *models.Task, result *agent.Ex
 		return models.TaskStatusInProgress, nil
 
 	case models.TaskStatusInProgress:
-		// После разработки — на Review
+		// После разработки — на Review; пустой diff в артефактах — явная ошибка
+		if len(result.ArtifactsJSON) > 0 {
+			diffNode := gjson.GetBytes(result.ArtifactsJSON, "diff")
+			if diffNode.Exists() && strings.TrimSpace(diffNode.String()) == "" {
+				return models.TaskStatusFailed, ErrPipelineEmptyDiff
+			}
+		}
 		return models.TaskStatusReview, nil
 
 	case models.TaskStatusReview:
@@ -99,7 +114,7 @@ func (e *pipelineEngine) DetermineNextStatus(task *models.Task, result *agent.Ex
 		return models.TaskStatusCompleted, nil
 
 	default:
-		return models.TaskStatusFailed, fmt.Errorf("pipeline: unexpected task status %s", task.Status)
+		return models.TaskStatusFailed, fmt.Errorf("%w: unexpected task status %s", ErrPipelineInvalidTransition, task.Status)
 	}
 }
 

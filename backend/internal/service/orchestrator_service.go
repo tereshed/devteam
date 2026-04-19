@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,8 @@ var (
 	ErrOrchestratorNoAgentAssigned       = errors.New("orchestrator: no agent assigned to task")
 	ErrOrchestratorInvalidRole           = errors.New("orchestrator: invalid agent role for this state")
 	ErrOrchestratorIterationLimitReached = errors.New("orchestrator: iteration limit reached")
+	// ErrOrchestratorInvalidUserMessage — нет видимого пользовательского текста в задаче (title/description).
+	ErrOrchestratorInvalidUserMessage = errors.New("orchestrator: invalid user message")
 	// ErrStepRestarted — шаг отменён для перезапуска (correct / откат статуса в БД); не переводить задачу в cancelled.
 	ErrStepRestarted = errors.New("orchestrator: step restarted")
 )
@@ -39,6 +42,13 @@ type OrchestratorOption func(*orchestratorService)
 func WithStepPollInterval(d time.Duration) OrchestratorOption {
 	return func(s *orchestratorService) {
 		s.stepPollInterval = d
+	}
+}
+
+// WithGracefulPauseTimeout задаёт таймаут «мягкой» паузы перед отменой шага (тесты могут ставить мало).
+func WithGracefulPauseTimeout(d time.Duration) OrchestratorOption {
+	return func(s *orchestratorService) {
+		s.gracefulPauseTimeout = d
 	}
 }
 
@@ -383,6 +393,10 @@ func (s *orchestratorService) executeStep(ctx context.Context, task *models.Task
 	s.registerStepCancel(task.ID, cancelStep)
 	defer s.clearStepCancel(task.ID)
 
+	if !taskHasVisibleUserContent(task) {
+		return ErrOrchestratorInvalidUserMessage
+	}
+
 	executor, input, err := s.prepareExecution(stepCtx, task, project)
 	if err != nil {
 		return err
@@ -522,6 +536,13 @@ func (s *orchestratorService) finishStepExecution(ctx context.Context, stepCtx c
 	return s.handleExecutionResult(ctx, t, result)
 }
 
+func taskHasVisibleUserContent(task *models.Task) bool {
+	if task == nil {
+		return false
+	}
+	return strings.TrimSpace(task.Title) != "" || strings.TrimSpace(task.Description) != ""
+}
+
 func (s *orchestratorService) prepareExecution(ctx context.Context, task *models.Task, project *models.Project) (agent.AgentExecutor, *agent.ExecutionInput, error) {
 	// Получаем агента
 	if task.AssignedAgentID == nil {
@@ -561,7 +582,7 @@ func (s *orchestratorService) handleExecutionResult(ctx context.Context, task *m
 	// Определяем следующий статус
 	nextStatus, err := s.pipeline.DetermineNextStatus(task, result)
 	if err != nil {
-		return err
+		return fmt.Errorf("pipeline step failed: %w", err)
 	}
 
 	// Обновляем счетчик итераций в контексте задачи, если переходим в ChangesRequested
