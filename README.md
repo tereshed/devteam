@@ -222,7 +222,7 @@ User Message
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 7.1 | WebSocket Hub: менеджер подключений (по project_id) | `backend/internal/ws/hub.go` | ⬜ |
+| 7.1 | WebSocket Hub: менеджер подключений (по project_id) | `backend/internal/ws/hub.go` | ✅ |
 | 7.2 | WebSocket Handler: upgrade HTTP → WS, аутентификация через JWT | `backend/internal/ws/handler.go` | ⬜ |
 | 7.3 | Типы сообщений: `task_status`, `task_message`, `agent_log`, `error` | `backend/internal/ws/types.go` | ⬜ |
 | 7.4 | Event Bus: внутренний pub/sub для уведомлений между сервисами | `backend/internal/ws/eventbus.go` | ⬜ |
