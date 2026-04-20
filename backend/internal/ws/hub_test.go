@@ -127,12 +127,7 @@ func TestRun_ShutdownClosesAllSendChannels(t *testing.T) {
 	cancel()
 	<-h.done
 
-	for {
-		_, ok := <-c.Send
-		if !ok {
-			break
-		}
-	}
+	assertEventuallySendClosed(t, c)
 }
 
 func TestRun_ShutdownSendsCloseMessage(t *testing.T) {
@@ -194,8 +189,7 @@ func TestUnregister_RemovesClientFromAllProjects(t *testing.T) {
 	registerSynced(h, c, []string{"p1", "p2"})
 	h.Unregister(c)
 
-	_, ok := <-c.Send
-	require.False(t, ok)
+	assertEventuallySendClosed(t, c)
 
 	// После Unregister канал Send закрыт; unicast на удалённый ID — no-op без паники.
 	require.NoError(t, h.SendToClient("c1", "u", []byte("ghost")))
@@ -206,6 +200,7 @@ func TestUnregister_Idempotent(t *testing.T) {
 	c := newFakeClient(t, "c1", 8)
 	registerSynced(h, c, []string{"p1"})
 	h.Unregister(c)
+	assertEventuallySendClosed(t, c)
 	h.Unregister(c)
 }
 

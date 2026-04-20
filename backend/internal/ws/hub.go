@@ -192,12 +192,6 @@ func (h *Hub) registerIfUnderLimit(client *Client, projectIDs []string, max int)
 	// Under limit, register client
 	h.addClient(client, projectIDs)
 
-	// Increment counters
-	for _, pid := range projectIDs {
-		key := userConnKey(client.UserID, pid)
-		h.userConnCounts[key]++
-	}
-
 	return true
 }
 
@@ -254,6 +248,8 @@ func (h *Hub) addClient(client *Client, projectIDs []string) {
 	}
 	for _, pid := range projectIDs {
 		h.clientProjects[client][pid] = true
+		key := userConnKey(client.UserID, pid)
+		h.userConnCounts[key]++
 	}
 }
 
