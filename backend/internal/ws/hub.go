@@ -4,6 +4,9 @@ import (
 	"context"
 )
 
+// maxProjectsPerClient ограничивает число project_id на одного клиента (защита от OOM / зависания Run).
+const maxProjectsPerClient = 100
+
 // Hub — центральный менеджер WebSocket-подключений, организованный по project_id.
 // Использует Actor Model: ВСЕ мутации состояния происходят в единственной горутине Run().
 // Это исключает race conditions при работе с clients.
@@ -13,6 +16,8 @@ import (
 //   - Unregister: удаляет Client из всех групп (отправляет в канал unregister)
 //   - SendToProject: отправляет сообщение всем клиентам в проекте (неблокирующая запись)
 //   - SendToClient: отправляет сообщение конкретному клиенту (неблокирующая запись)
+//   - RegisterIfUnderLimit: атомарно проверяет лимит и регистрирует клиента
+//   - CountUserConnections: возвращает число активных соединений для пары (userID, projectID)
 type Hub struct {
 	register       chan *RegisterMessage
 	unregister     chan *Client
@@ -22,6 +27,21 @@ type Hub struct {
 	projects       map[string]map[*Client]bool
 	clientProjects map[*Client]map[string]bool
 	clientsByID    map[string]*Client
+	// userConnCounts хранит количество соединений для пары (userID, projectID).
+	// Ключ = "userID:projectID". Обновляется атомарно в Run().
+	userConnCounts map[string]int
+	// countReq is the channel for connection count queries
+	countReq chan *CountUserConnectionsMessage
+	// registerIfLimitReq is the channel for atomic register-with-limit check
+	registerIfLimitReq chan *RegisterIfLimitMessage
+}
+
+// RegisterIfLimitMessage is the message for atomic register-if-under-limit check.
+type RegisterIfLimitMessage struct {
+	Client     *Client
+	ProjectIDs []string
+	Max        int
+	Resp       chan bool // true if registered, false if limit exceeded
 }
 
 // Message — сообщение для broadcast в проект.
@@ -42,20 +62,32 @@ type UnicastMessage struct {
 type RegisterMessage struct {
 	Client     *Client
 	ProjectIDs []string
+	// ack, если не nil, закрывается после завершения addClient в Run (строгая синхронизация для тестов).
+	ack chan struct{}
 }
 
-// NewHub создаёт новый Hub.
+// NewHub creates a new Hub.
 func NewHub() *Hub {
 	return &Hub{
-		register:       make(chan *RegisterMessage),
-		unregister:     make(chan *Client),
-		broadcast:      make(chan *Message, 256),
-		unicast:        make(chan *UnicastMessage, 256),
-		done:           make(chan struct{}),
-		projects:       make(map[string]map[*Client]bool),
-		clientProjects: make(map[*Client]map[string]bool),
-		clientsByID:    make(map[string]*Client),
+		register:           make(chan *RegisterMessage),
+		unregister:         make(chan *Client),
+		broadcast:          make(chan *Message, 256),
+		unicast:            make(chan *UnicastMessage, 256),
+		done:               make(chan struct{}),
+		projects:           make(map[string]map[*Client]bool),
+		clientProjects:     make(map[*Client]map[string]bool),
+		clientsByID:        make(map[string]*Client),
+		userConnCounts:     make(map[string]int),
+		countReq:           make(chan *CountUserConnectionsMessage),
+		registerIfLimitReq: make(chan *RegisterIfLimitMessage),
 	}
+}
+
+// CountUserConnectionsMessage is the message for querying connection count.
+type CountUserConnectionsMessage struct {
+	UserID    string
+	ProjectID string
+	Resp      chan int
 }
 
 // Run запускает основной цикл Hub. ВСЕ мутации состояния — здесь.
@@ -69,12 +101,19 @@ func (h *Hub) Run(ctx context.Context) {
 			return
 		case reg := <-h.register:
 			h.addClient(reg.Client, reg.ProjectIDs)
+			if reg.ack != nil {
+				close(reg.ack)
+			}
 		case client := <-h.unregister:
 			h.removeClient(client)
 		case msg := <-h.broadcast:
 			h.broadcastToProject(msg)
 		case msg := <-h.unicast:
 			h.sendToClient(msg)
+		case req := <-h.countReq:
+			req.Resp <- h.getUserConnCount(req.UserID, req.ProjectID)
+		case req := <-h.registerIfLimitReq:
+			req.Resp <- h.registerIfUnderLimit(req.Client, req.ProjectIDs, req.Max)
 		}
 	}
 }
@@ -100,6 +139,73 @@ func (h *Hub) Unregister(client *Client) {
 	}
 }
 
+// CountUserConnections returns the number of active connections for a (userID, projectID) pair.
+// Returns 0 if no connections exist.
+// Thread-safe via Actor Model (handled in Run()).
+func (h *Hub) CountUserConnections(userID, projectID string) int {
+	resp := make(chan int)
+	select {
+	case h.countReq <- &CountUserConnectionsMessage{UserID: userID, ProjectID: projectID, Resp: resp}:
+		return <-resp
+	case <-h.done:
+		return 0
+	}
+}
+
+// RegisterIfUnderLimit atomically checks connection limit and registers client if under limit.
+// Returns true if client was registered, false if limit exceeded.
+// Thread-safe via Actor Model (handled in Run()).
+func (h *Hub) RegisterIfUnderLimit(client *Client, projectIDs []string, max int) bool {
+	resp := make(chan bool)
+	select {
+	case h.registerIfLimitReq <- &RegisterIfLimitMessage{Client: client, ProjectIDs: projectIDs, Max: max, Resp: resp}:
+		return <-resp
+	case <-h.done:
+		return false
+	}
+}
+
+// getUserConnCount is the internal helper called from Run().
+func (h *Hub) getUserConnCount(userID, projectID string) int {
+	key := userConnKey(userID, projectID)
+	return h.userConnCounts[key]
+}
+
+func clipProjectIDs(projectIDs []string) []string {
+	if len(projectIDs) > maxProjectsPerClient {
+		return projectIDs[:maxProjectsPerClient]
+	}
+	return projectIDs
+}
+
+// registerIfUnderLimit is the internal helper called from Run().
+// It checks the limit and registers if OK.
+func (h *Hub) registerIfUnderLimit(client *Client, projectIDs []string, max int) bool {
+	projectIDs = clipProjectIDs(projectIDs)
+	for _, pid := range projectIDs {
+		key := userConnKey(client.UserID, pid)
+		if h.userConnCounts[key] >= max {
+			return false
+		}
+	}
+
+	// Under limit, register client
+	h.addClient(client, projectIDs)
+
+	// Increment counters
+	for _, pid := range projectIDs {
+		key := userConnKey(client.UserID, pid)
+		h.userConnCounts[key]++
+	}
+
+	return true
+}
+
+// userConnKey builds the map key for userConnCounts.
+func userConnKey(userID, projectID string) string {
+	return userID + ":" + projectID
+}
+
 // SendToProject отправляет сообщение всем клиентам проекта.
 // НЕБЛОКИРУЮЩАЯ операция: если канал broadcast переполнен (медленные клиенты),
 // сообщение дропается для этого проекта (slow client isolation).
@@ -119,7 +225,7 @@ func (h *Hub) SendToProject(projectID, msgType string, payload []byte) error {
 // НЕБЛОКИРУЮЩАЯ операция.
 func (h *Hub) SendToClient(clientID, msgType string, payload []byte) error {
 	if clientID == "" {
-		return ErrEmptyProjectID
+		return ErrEmptyClientID
 	}
 	select {
 	case h.unicast <- &UnicastMessage{ClientID: clientID, Type: msgType, Payload: payload}:
@@ -132,6 +238,8 @@ func (h *Hub) SendToClient(clientID, msgType string, payload []byte) error {
 // addClient регистрирует клиента во всех его проектах.
 // ВЫЗЫВАТЬ ТОЛЬКО ИЗ Run()
 func (h *Hub) addClient(client *Client, projectIDs []string) {
+	projectIDs = clipProjectIDs(projectIDs)
+
 	h.clientsByID[client.ID] = client
 
 	for _, projectID := range projectIDs {
@@ -141,7 +249,9 @@ func (h *Hub) addClient(client *Client, projectIDs []string) {
 		h.projects[projectID][client] = true
 	}
 
-	h.clientProjects[client] = make(map[string]bool)
+	if h.clientProjects[client] == nil {
+		h.clientProjects[client] = make(map[string]bool)
+	}
 	for _, pid := range projectIDs {
 		h.clientProjects[client][pid] = true
 	}
@@ -154,6 +264,14 @@ func (h *Hub) addClient(client *Client, projectIDs []string) {
 func (h *Hub) removeClient(client *Client) {
 	if _, ok := h.clientProjects[client]; !ok {
 		return
+	}
+
+	// Decrement connection counters for this client
+	for projectID := range h.clientProjects[client] {
+		key := userConnKey(client.UserID, projectID)
+		if h.userConnCounts[key] > 0 {
+			h.userConnCounts[key]--
+		}
 	}
 
 	for projectID := range h.clientProjects[client] {

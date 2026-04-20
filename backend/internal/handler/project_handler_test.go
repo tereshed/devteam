@@ -69,6 +69,11 @@ func (m *MockProjectService) Delete(ctx context.Context, userID uuid.UUID, userR
 	return args.Error(0)
 }
 
+func (m *MockProjectService) HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	args := m.Called(ctx, userID, userRole, projectID)
+	return args.Error(0)
+}
+
 func setupProjectRouter(mockSvc *MockProjectService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
