@@ -213,4 +213,6 @@ type LogEntry struct {
 	Line   string
 	Stderr bool
 	Error  error
+	// Truncated — признак того, что строка была обрезана или часть логов была пропущена (5.6).
+	Truncated bool
 }

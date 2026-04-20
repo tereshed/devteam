@@ -19,6 +19,7 @@ func TestMain(m *testing.M) {
 		"SANDBOX_NANO_CPUS_CEIL",
 		"SANDBOX_DEFAULT_TIMEOUT",
 		"SANDBOX_MAX_CONCURRENT",
+		"WS_ALLOWED_ORIGINS",
 	} {
 		_ = os.Unsetenv(k)
 	}
@@ -112,6 +113,7 @@ func TestLoad_IsProd_WithValidEncryptionKey(t *testing.T) {
 			t.Setenv("ENV", env)
 			t.Setenv("ENCRYPTION_KEY", validKey)
 			t.Setenv("JWT_SECRET_KEY", "not-the-default-production-placeholder")
+			t.Setenv("WS_ALLOWED_ORIGINS", "https://app.devteam.io")
 			cfg, err := Load()
 			require.NoError(t, err)
 			assert.True(t, cfg.IsProd())

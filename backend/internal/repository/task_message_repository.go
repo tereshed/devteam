@@ -60,7 +60,8 @@ func NewTaskMessageRepository(db *gorm.DB) TaskMessageRepository {
 }
 
 func (r *taskMessageRepository) Create(ctx context.Context, msg *models.TaskMessage) error {
-	if err := r.db.WithContext(ctx).Create(msg).Error; err != nil {
+	db := gormDB(ctx, r.db)
+	if err := db.WithContext(ctx).Create(msg).Error; err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" &&
 			pgErr.ConstraintName == taskMessagesTaskIDFKConstraint {
@@ -72,8 +73,9 @@ func (r *taskMessageRepository) Create(ctx context.Context, msg *models.TaskMess
 }
 
 func (r *taskMessageRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.TaskMessage, error) {
+	db := gormDB(ctx, r.db)
 	var m models.TaskMessage
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
+	if err := db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrTaskMessageNotFound
 		}
@@ -83,7 +85,8 @@ func (r *taskMessageRepository) GetByID(ctx context.Context, id uuid.UUID) (*mod
 }
 
 func (r *taskMessageRepository) queryByTaskID(ctx context.Context, taskID uuid.UUID, filter TaskMessageFilter) *gorm.DB {
-	q := r.db.WithContext(ctx).Model(&models.TaskMessage{}).Where("task_id = ?", taskID)
+	db := gormDB(ctx, r.db)
+	q := db.WithContext(ctx).Model(&models.TaskMessage{}).Where("task_id = ?", taskID)
 	if filter.MessageType != nil {
 		q = q.Where("message_type = ?", *filter.MessageType)
 	}
@@ -116,7 +119,8 @@ func (r *taskMessageRepository) ListByTaskID(ctx context.Context, taskID uuid.UU
 }
 
 func (r *taskMessageRepository) queryBySender(ctx context.Context, senderType models.SenderType, senderID uuid.UUID, filter TaskMessageFilter) *gorm.DB {
-	q := r.db.WithContext(ctx).Model(&models.TaskMessage{}).
+	db := gormDB(ctx, r.db)
+	q := db.WithContext(ctx).Model(&models.TaskMessage{}).
 		Where("sender_type = ? AND sender_id = ?", senderType, senderID)
 	if filter.MessageType != nil {
 		q = q.Where("message_type = ?", *filter.MessageType)
@@ -147,8 +151,9 @@ func (r *taskMessageRepository) ListBySender(ctx context.Context, senderType mod
 }
 
 func (r *taskMessageRepository) CountByTaskID(ctx context.Context, taskID uuid.UUID) (int64, error) {
+	db := gormDB(ctx, r.db)
 	var count int64
-	if err := r.db.WithContext(ctx).Model(&models.TaskMessage{}).Where("task_id = ?", taskID).Count(&count).Error; err != nil {
+	if err := db.WithContext(ctx).Model(&models.TaskMessage{}).Where("task_id = ?", taskID).Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("failed to count task messages by task id: %w", err)
 	}
 	return count, nil

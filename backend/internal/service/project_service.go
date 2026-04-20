@@ -55,6 +55,10 @@ type ProjectService interface {
 	List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, req dto.ListProjectsRequest) ([]models.Project, int64, error)
 	Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.UpdateProjectRequest) (*models.Project, error)
 	Delete(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
+	// HasAccess проверяет доступ пользователя к проекту. Возвращает nil при успехе,
+	// ErrProjectNotFound если проект не существует (или это скрыто намеренно),
+	// ErrProjectForbidden если доступ запрещен.
+	HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
 }
 
 type projectService struct {
@@ -526,4 +530,16 @@ func (s *projectService) Delete(ctx context.Context, userID uuid.UUID, userRole 
 		return err
 	}
 	return s.projectRepo.Delete(ctx, projectID)
+}
+
+// HasAccess проверяет доступ пользователя к проекту.
+// Возвращает nil при успехе, ErrProjectNotFound если проект не существует,
+// ErrProjectForbidden если доступ запрещен.
+// Используется для WebSocket-авторизации (7.2).
+func (s *projectService) HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return mapProjectRepoErr(err)
+	}
+	return s.checkProjectAccess(project, userID, userRole)
 }

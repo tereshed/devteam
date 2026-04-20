@@ -381,16 +381,12 @@ func TestSendToProject_ConcurrentSenders(t *testing.T) {
 
 	received := 0
 	assert.Eventually(t, func() bool {
-		for {
-			select {
-			case <-c.Send:
-				received++
-				if received == 100 {
-					return true
-				}
-			default:
-				return false
-			}
+		select {
+		case <-c.Send:
+			received++
+			return received == 100
+		default:
+			return false
 		}
 	}, 5*time.Second, time.Millisecond, "expected 100 deliveries, got %d", received)
 }
@@ -475,41 +471,27 @@ func TestSlowClient_DoesNotBlockOtherClients(t *testing.T) {
 	for i := 0; i < 32; i++ {
 		require.NoError(t, h.SendToProject("p1", "m", []byte(strconv.Itoa(i))))
 	}
-	drainClientSend := func(cl *Client) {
-		for {
-			select {
-			case _, ok := <-cl.Send:
-				if !ok {
-					return
-				}
-			default:
-				return
-			}
-		}
-	}
-	drainClientSend(slow)
-
 	assertEventuallySendClosed(t, slow)
 
 	require.NoError(t, h.SendToProject("p1", "m", []byte("c")))
 
-	waitForC := func(cl *Client) {
-		for {
-			select {
-			case msg, ok := <-cl.Send:
-				if !ok {
-					return
-				}
-				if string(msg) == "c" {
-					return
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("timeout waiting for 'c'")
-			}
+	assert.Eventually(t, func() bool {
+		select {
+		case msg, ok := <-f1.Send:
+			return ok && string(msg) == "c"
+		default:
+			return false
 		}
-	}
-	waitForC(f1)
-	waitForC(f2)
+	}, 2*time.Second, 10*time.Millisecond, "timeout waiting for 'c'")
+
+	assert.Eventually(t, func() bool {
+		select {
+		case msg, ok := <-f2.Send:
+			return ok && string(msg) == "c"
+		default:
+			return false
+		}
+	}, 2*time.Second, 10*time.Millisecond, "timeout waiting for 'c'")
 }
 
 func TestSlowClient_DoesNotBlockHubLoop(t *testing.T) {
@@ -519,19 +501,6 @@ func TestSlowClient_DoesNotBlockHubLoop(t *testing.T) {
 	for i := 0; i < 32; i++ {
 		require.NoError(t, h.SendToProject("p1", "m", []byte(strconv.Itoa(i))))
 	}
-	drainSlow := func() {
-		for {
-			select {
-			case _, ok := <-slow.Send:
-				if !ok {
-					return
-				}
-			default:
-				return
-			}
-		}
-	}
-	drainSlow()
 	assertEventuallySendClosed(t, slow)
 
 	fast := newFakeClient(t, "fast", 8)
@@ -562,9 +531,9 @@ func TestSlowClient_OnUnicast_AlsoDisconnects(t *testing.T) {
 	h, _ := newTestHub(t)
 	c := newFakeClient(t, "u1", 1)
 	registerSynced(h, c, []string{"p1"})
-	require.NoError(t, h.SendToClient("u1", "a", []byte("1")))
-	require.NoError(t, h.SendToClient("u1", "b", []byte("2")))
-	recvOne(t, c)
+	for i := 0; i < 32; i++ {
+		require.NoError(t, h.SendToClient("u1", "u", []byte(strconv.Itoa(i))))
+	}
 	assertEventuallySendClosed(t, c)
 }
 

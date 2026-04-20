@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
@@ -14,6 +16,8 @@ import (
 	"github.com/tidwall/sjson"
 	"gorm.io/datatypes"
 )
+
+// TODO(7.x): перейти на transactional outbox для гарантии at-least-once доставки.
 
 var (
 	ErrTaskNotFound           = errors.New("task not found")
@@ -81,6 +85,8 @@ type taskService struct {
 	taskMsgRepo repository.TaskMessageRepository
 	projectSvc  ProjectService
 	teamSvc     TeamService
+	txManager   repository.TransactionManager
+	bus         events.EventBus
 }
 
 // NewTaskService создаёт сервис задач.
@@ -89,12 +95,16 @@ func NewTaskService(
 	taskMsgRepo repository.TaskMessageRepository,
 	projectSvc ProjectService,
 	teamSvc TeamService,
+	txManager repository.TransactionManager,
+	bus events.EventBus,
 ) TaskService {
 	return &taskService{
 		taskRepo:    taskRepo,
 		taskMsgRepo: taskMsgRepo,
 		projectSvc:  projectSvc,
 		teamSvc:     teamSvc,
+		txManager:   txManager,
+		bus:         bus,
 	}
 }
 
@@ -213,6 +223,75 @@ func (s *taskService) checkTaskAccess(ctx context.Context, userID uuid.UUID, use
 	return err
 }
 
+func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models.UserRole, task *models.Task, prevStatus models.TaskStatus, msg *models.TaskMessage, occurredAt time.Time) {
+	// Отвязываем от родительского ctx, чтобы закрытая вкладка клиента
+	// не заблокировала доставку остальным подписчикам проекта.
+	pubCtx := context.WithoutCancel(ctx)
+
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+
+	// Публикуем TaskStatusChanged ТОЛЬКО при реальном переходе
+	if task != nil && task.Status != prevStatus {
+		agentRole := ""
+		if task.AssignedAgent != nil {
+			agentRole = string(task.AssignedAgent.Role)
+		}
+
+		// TODO(7.x): перейти на transactional outbox для гарантии at-least-once доставки.
+		s.bus.Publish(pubCtx, events.TaskStatusChanged{
+			ProjectID:       task.ProjectID,
+			TaskID:          task.ID,
+			ParentTaskID:    task.ParentTaskID,
+			Previous:        string(prevStatus),
+			Current:         string(task.Status),
+			AssignedAgentID: task.AssignedAgentID,
+			AgentRole:       agentRole,
+			ErrorMessage:    getSafeErrorMessage(task),
+			OccurredAt:      occurredAt,
+		})
+	}
+
+	// Публикуем TaskMessageCreated ТОЛЬКО если сообщение создано
+	if msg != nil && task != nil {
+		senderRole := ""
+		if msg.SenderType == models.SenderTypeUser {
+			senderRole = string(userRole)
+		} else if msg.SenderType == models.SenderTypeAgent && task.AssignedAgent != nil && task.AssignedAgent.ID == msg.SenderID {
+			senderRole = string(task.AssignedAgent.Role)
+		}
+
+		// TODO(7.x): перейти на transactional outbox для гарантии at-least-once доставки.
+		var metadata map[string]any
+		_ = json.Unmarshal(msg.Metadata, &metadata)
+
+		s.bus.Publish(pubCtx, events.TaskMessageCreated{
+			ProjectID:   task.ProjectID,
+			TaskID:      msg.TaskID,
+			MessageID:   msg.ID,
+			SenderType:  string(msg.SenderType),
+			SenderID:    msg.SenderID,
+			SenderRole:  senderRole,
+			MessageType: string(msg.MessageType),
+			Content:     msg.Content,
+			Metadata:    metadata,
+			OccurredAt:  msg.CreatedAt,
+		})
+	}
+}
+
+func (s *taskService) publishEvents(ctx context.Context, userRole models.UserRole, task *models.Task, prevStatus models.TaskStatus, msg *models.TaskMessage) {
+	s.publishEventsWithTime(ctx, userRole, task, prevStatus, msg, time.Now().UTC())
+}
+
+func getSafeErrorMessage(task *models.Task) string {
+	if task.Status == models.TaskStatusFailed && task.ErrorMessage != nil {
+		return *task.ErrorMessage
+	}
+	return ""
+}
+
 func (s *taskService) listRequestToFilter(projectID uuid.UUID, req dto.ListTasksRequest) (repository.TaskFilter, error) {
 	limit, offset := normalizeTaskServicePagination(req.Limit, req.Offset)
 	f := repository.TaskFilter{
@@ -288,32 +367,44 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		Context:       ctxJSON,
 		Artifacts:     datatypes.JSON([]byte("{}")),
 	}
-	if req.ParentTaskID != nil {
-		parent, err := s.taskRepo.GetByID(ctx, *req.ParentTaskID)
-		if err != nil {
-			if errors.Is(err, repository.ErrTaskNotFound) {
-				return nil, ErrTaskParentNotFound
+
+	var created *models.Task
+	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		if req.ParentTaskID != nil {
+			parent, err := s.taskRepo.GetByID(txCtx, *req.ParentTaskID)
+			if err != nil {
+				if errors.Is(err, repository.ErrTaskNotFound) {
+					return ErrTaskParentNotFound
+				}
+				return mapTaskRepoErr(err)
 			}
-			return nil, mapTaskRepoErr(err)
+			if parent.ProjectID != projectID {
+				return ErrTaskParentNotFound
+			}
+			task.ParentTaskID = req.ParentTaskID
 		}
-		if parent.ProjectID != projectID {
-			return nil, ErrTaskParentNotFound
+		if req.AssignedAgentID != nil {
+			if err := s.checkAgentInTeam(txCtx, projectID, *req.AssignedAgentID); err != nil {
+				return err
+			}
+			task.AssignedAgentID = req.AssignedAgentID
 		}
-		task.ParentTaskID = req.ParentTaskID
-	}
-	if req.AssignedAgentID != nil {
-		if err := s.checkAgentInTeam(ctx, projectID, *req.AssignedAgentID); err != nil {
-			return nil, err
+		if err := s.taskRepo.Create(txCtx, task); err != nil {
+			if errors.Is(err, repository.ErrAgentNotFound) {
+				return fmt.Errorf("assigned agent not found: %w", err)
+			}
+			return err
 		}
-		task.AssignedAgentID = req.AssignedAgentID
-	}
-	if err := s.taskRepo.Create(ctx, task); err != nil {
-		if errors.Is(err, repository.ErrAgentNotFound) {
-			return nil, fmt.Errorf("assigned agent not found: %w", err)
-		}
+		created = task
+		return nil
+	})
+
+	if err != nil {
 		return nil, err
 	}
-	return s.taskRepo.GetByID(ctx, task.ID)
+
+	s.publishEvents(ctx, userRole, created, "", nil)
+	return created, nil
 }
 
 func (s *taskService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
@@ -339,73 +430,90 @@ func (s *taskService) List(ctx context.Context, userID uuid.UUID, userRole model
 }
 
 func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.UpdateTaskRequest) (*models.Task, error) {
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+	var (
+		updated    *models.Task
+		prevStatus models.TaskStatus
+		occurredAt time.Time
+	)
+
+	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return mapTaskRepoErr(err)
+		}
+		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
+			return err
+		}
+		expectedStatus := task.Status
+		expectedUpdatedAt := task.UpdatedAt
+		prevStatus = task.Status
+
+		if req.Title != nil {
+			if err := validateTaskTitle(*req.Title); err != nil {
+				return err
+			}
+			task.Title = strings.TrimSpace(*req.Title)
+		}
+		if req.Description != nil {
+			task.Description = *req.Description
+		}
+		if req.Priority != nil {
+			p, err := parseTaskPriority(*req.Priority)
+			if err != nil {
+				return err
+			}
+			task.Priority = p
+		}
+		if req.ClearAssignedAgent {
+			task.AssignedAgentID = nil
+		} else if req.AssignedAgentID != nil {
+			if err := s.checkAgentInTeam(txCtx, task.ProjectID, *req.AssignedAgentID); err != nil {
+				return err
+			}
+			task.AssignedAgentID = req.AssignedAgentID
+		}
+		if req.BranchName != nil {
+			task.BranchName = req.BranchName
+		}
+		if req.Status != nil {
+			newStatus, err := parseTaskStatus(*req.Status)
+			if err != nil {
+				return err
+			}
+			if newStatus != task.Status {
+				if isTerminalTaskStatus(task.Status) {
+					return ErrTaskTerminalStatus
+				}
+				// Переход review/testing → in_progress только через API correct (задача 6.7).
+				if newStatus == models.TaskStatusInProgress {
+					if task.Status == models.TaskStatusReview || task.Status == models.TaskStatusTesting {
+						return ErrTaskInvalidTransition
+					}
+				}
+				if !canTransition(task.Status, newStatus) {
+					return ErrTaskInvalidTransition
+				}
+				task.Status = newStatus
+				applyTimestampsOnStatusChange(task, prevStatus, newStatus)
+			}
+		}
+		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
+			if errors.Is(err, repository.ErrAgentNotFound) {
+				return fmt.Errorf("assigned agent not found: %w", err)
+			}
+			return mapTaskRepoErr(err)
+		}
+		updated = task
+		occurredAt = task.UpdatedAt
+		return nil
+	})
+
 	if err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
 		return nil, err
 	}
-	expectedStatus := task.Status
-	expectedUpdatedAt := task.UpdatedAt
-	prevStatus := task.Status
 
-	if req.Title != nil {
-		if err := validateTaskTitle(*req.Title); err != nil {
-			return nil, err
-		}
-		task.Title = strings.TrimSpace(*req.Title)
-	}
-	if req.Description != nil {
-		task.Description = *req.Description
-	}
-	if req.Priority != nil {
-		p, err := parseTaskPriority(*req.Priority)
-		if err != nil {
-			return nil, err
-		}
-		task.Priority = p
-	}
-	if req.ClearAssignedAgent {
-		task.AssignedAgentID = nil
-	} else if req.AssignedAgentID != nil {
-		if err := s.checkAgentInTeam(ctx, task.ProjectID, *req.AssignedAgentID); err != nil {
-			return nil, err
-		}
-		task.AssignedAgentID = req.AssignedAgentID
-	}
-	if req.BranchName != nil {
-		task.BranchName = req.BranchName
-	}
-	if req.Status != nil {
-		newStatus, err := parseTaskStatus(*req.Status)
-		if err != nil {
-			return nil, err
-		}
-		if newStatus != task.Status {
-			if isTerminalTaskStatus(task.Status) {
-				return nil, ErrTaskTerminalStatus
-			}
-			// Переход review/testing → in_progress только через API correct (задача 6.7).
-			if newStatus == models.TaskStatusInProgress {
-				if task.Status == models.TaskStatusReview || task.Status == models.TaskStatusTesting {
-					return nil, ErrTaskInvalidTransition
-				}
-			}
-			if !canTransition(task.Status, newStatus) {
-				return nil, ErrTaskInvalidTransition
-			}
-			task.Status = newStatus
-			applyTimestampsOnStatusChange(task, prevStatus, newStatus)
-		}
-	}
-	if err := s.taskRepo.Update(ctx, task, expectedStatus, expectedUpdatedAt); err != nil {
-		if errors.Is(err, repository.ErrAgentNotFound) {
-			return nil, fmt.Errorf("assigned agent not found: %w", err)
-		}
-		return nil, mapTaskRepoErr(err)
-	}
-	return s.taskRepo.GetByID(ctx, taskID)
+	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	return updated, nil
 }
 
 func (s *taskService) Delete(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) error {
@@ -420,70 +528,122 @@ func (s *taskService) Delete(ctx context.Context, userID uuid.UUID, userRole mod
 }
 
 func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+	var (
+		updated    *models.Task
+		prevStatus models.TaskStatus
+		occurredAt time.Time
+	)
+
+	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return mapTaskRepoErr(err)
+		}
+		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
+			return err
+		}
+		expectedStatus := task.Status
+		expectedUpdatedAt := task.UpdatedAt
+		if !canTransition(task.Status, models.TaskStatusPaused) {
+			return ErrTaskInvalidTransition
+		}
+		prevStatus = task.Status
+		task.Status = models.TaskStatusPaused
+		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
+			return mapTaskRepoErr(err)
+		}
+		updated = task
+		occurredAt = task.UpdatedAt
+		return nil
+	})
+
 	if err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
 		return nil, err
 	}
-	expectedStatus := task.Status
-	expectedUpdatedAt := task.UpdatedAt
-	if !canTransition(task.Status, models.TaskStatusPaused) {
-		return nil, ErrTaskInvalidTransition
-	}
-	task.Status = models.TaskStatusPaused
-	if err := s.taskRepo.Update(ctx, task, expectedStatus, expectedUpdatedAt); err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	return s.taskRepo.GetByID(ctx, taskID)
+
+	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	return updated, nil
 }
 
 func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+	var (
+		updated    *models.Task
+		prevStatus models.TaskStatus
+		occurredAt time.Time
+	)
+
+	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return mapTaskRepoErr(err)
+		}
+		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
+			return err
+		}
+		expectedStatus := task.Status
+		expectedUpdatedAt := task.UpdatedAt
+		if !canTransition(task.Status, models.TaskStatusCancelled) {
+			return ErrTaskInvalidTransition
+		}
+		prevStatus = task.Status
+		task.Status = models.TaskStatusCancelled
+		applyTimestampsOnStatusChange(task, prevStatus, models.TaskStatusCancelled)
+		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
+			return mapTaskRepoErr(err)
+		}
+		updated = task
+		occurredAt = task.UpdatedAt
+		return nil
+	})
+
 	if err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
 		return nil, err
 	}
-	expectedStatus := task.Status
-	expectedUpdatedAt := task.UpdatedAt
-	if !canTransition(task.Status, models.TaskStatusCancelled) {
-		return nil, ErrTaskInvalidTransition
-	}
-	prev := task.Status
-	task.Status = models.TaskStatusCancelled
-	applyTimestampsOnStatusChange(task, prev, models.TaskStatusCancelled)
-	if err := s.taskRepo.Update(ctx, task, expectedStatus, expectedUpdatedAt); err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	return s.taskRepo.GetByID(ctx, taskID)
+
+	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	return updated, nil
 }
 
 func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+	var (
+		updated    *models.Task
+		prevStatus models.TaskStatus
+		occurredAt time.Time
+	)
+
+	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return mapTaskRepoErr(err)
+		}
+		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
+			return err
+		}
+		expectedStatus := task.Status
+		expectedUpdatedAt := task.UpdatedAt
+		if task.Status != models.TaskStatusPaused && task.Status != models.TaskStatusFailed {
+			return ErrTaskInvalidTransition
+		}
+		if !canTransition(task.Status, models.TaskStatusPending) {
+			return ErrTaskInvalidTransition
+		}
+		prevStatus = task.Status
+		task.Status = models.TaskStatusPending
+		applyTimestampsOnStatusChange(task, prevStatus, models.TaskStatusPending)
+		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
+			return mapTaskRepoErr(err)
+		}
+		updated = task
+		occurredAt = task.UpdatedAt
+		return nil
+	})
+
 	if err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
 		return nil, err
 	}
-	expectedStatus := task.Status
-	expectedUpdatedAt := task.UpdatedAt
-	if task.Status != models.TaskStatusPaused && task.Status != models.TaskStatusFailed {
-		return nil, ErrTaskInvalidTransition
-	}
-	if !canTransition(task.Status, models.TaskStatusPending) {
-		return nil, ErrTaskInvalidTransition
-	}
-	prev := task.Status
-	task.Status = models.TaskStatusPending
-	applyTimestampsOnStatusChange(task, prev, models.TaskStatusPending)
-	if err := s.taskRepo.Update(ctx, task, expectedStatus, expectedUpdatedAt); err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	return s.taskRepo.GetByID(ctx, taskID)
+
+	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	return updated, nil
 }
 
 func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error) {
@@ -491,144 +651,202 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 	if err != nil {
 		return nil, err
 	}
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+
+	var (
+		updated    *models.Task
+		prevStatus models.TaskStatus
+		msg        *models.TaskMessage
+		occurredAt time.Time
+	)
+
+	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return mapTaskRepoErr(err)
+		}
+		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
+			return err
+		}
+		if isTerminalTaskStatus(task.Status) || task.Status == models.TaskStatusPaused {
+			return ErrTaskInvalidTransition
+		}
+
+		newContextBytes, err := sjson.SetBytes(task.Context, "user_correction", sanitized)
+		if err != nil {
+			return fmt.Errorf("failed to patch task context: %w", err)
+		}
+		newContextBytes, err = sjson.SetBytes(newContextBytes, "user_correction_at", time.Now().UTC().Format(time.RFC3339Nano))
+		if err != nil {
+			return fmt.Errorf("failed to patch task context: %w", err)
+		}
+		newContext := datatypes.JSON(newContextBytes)
+
+		m := &models.TaskMessage{
+			TaskID:      task.ID,
+			SenderType:  models.SenderTypeUser,
+			SenderID:    userID,
+			Content:     FormatCorrectionForPrompt(sanitized),
+			MessageType: models.MessageTypeFeedback,
+			Metadata:    datatypes.JSON([]byte("{}")),
+		}
+		if err := s.taskMsgRepo.Create(txCtx, m); err != nil {
+			return mapTaskRepoErr(err)
+		}
+		msg = m
+
+		prevStatus = task.Status
+		expectedUpdatedAt := task.UpdatedAt
+		nextStatus := prevStatus
+		switch prevStatus {
+		case models.TaskStatusReview, models.TaskStatusTesting:
+			nextStatus = models.TaskStatusInProgress
+		default:
+			// planning, in_progress, changes_requested — только обновление контекста
+		}
+
+		task.Context = newContext
+		if nextStatus != prevStatus {
+			if !canTransition(prevStatus, nextStatus) {
+				return ErrTaskInvalidTransition
+			}
+			task.Status = nextStatus
+			applyTimestampsOnStatusChange(task, prevStatus, nextStatus)
+		}
+
+		if err := s.taskRepo.Update(txCtx, task, prevStatus, expectedUpdatedAt); err != nil {
+			return mapTaskRepoErr(err)
+		}
+		updated = task
+		occurredAt = task.UpdatedAt
+		return nil
+	})
+
 	if err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
 		return nil, err
 	}
-	if isTerminalTaskStatus(task.Status) || task.Status == models.TaskStatusPaused {
-		return nil, ErrTaskInvalidTransition
-	}
 
-	newContextBytes, err := sjson.SetBytes(task.Context, "user_correction", sanitized)
-	if err != nil {
-		return nil, fmt.Errorf("failed to patch task context: %w", err)
-	}
-	newContextBytes, err = sjson.SetBytes(newContextBytes, "user_correction_at", time.Now().UTC().Format(time.RFC3339Nano))
-	if err != nil {
-		return nil, fmt.Errorf("failed to patch task context: %w", err)
-	}
-	newContext := datatypes.JSON(newContextBytes)
-
-	msg := &models.TaskMessage{
-		TaskID:      task.ID,
-		SenderType:  models.SenderTypeUser,
-		SenderID:    userID,
-		Content:     FormatCorrectionForPrompt(sanitized),
-		MessageType: models.MessageTypeFeedback,
-		Metadata:    datatypes.JSON([]byte("{}")),
-	}
-	if err := s.taskMsgRepo.Create(ctx, msg); err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-
-	from := task.Status
-	expectedUpdatedAt := task.UpdatedAt
-	nextStatus := from
-	switch from {
-	case models.TaskStatusReview, models.TaskStatusTesting:
-		nextStatus = models.TaskStatusInProgress
-	default:
-		// planning, in_progress, changes_requested — только обновление контекста
-	}
-
-	task.Context = newContext
-	if nextStatus != from {
-		if !canTransition(from, nextStatus) {
-			return nil, ErrTaskInvalidTransition
-		}
-		task.Status = nextStatus
-		applyTimestampsOnStatusChange(task, from, nextStatus)
-	}
-
-	if err := s.taskRepo.Update(ctx, task, from, expectedUpdatedAt); err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	return s.taskRepo.GetByID(ctx, taskID)
+	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, msg, occurredAt)
+	return updated, nil
 }
 
 func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts TransitionOpts) (*models.Task, error) {
 	if !newStatus.IsValid() {
 		return nil, ErrTaskInvalidStatus
 	}
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+
+	var (
+		updated    *models.Task
+		from       models.TaskStatus
+		occurredAt time.Time
+	)
+
+	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return mapTaskRepoErr(err)
+		}
+		from = task.Status
+		expectedUpdatedAt := task.UpdatedAt
+		if isTerminalTaskStatus(from) {
+			return ErrTaskTerminalStatus
+		}
+		if !canTransition(from, newStatus) {
+			return ErrTaskInvalidTransition
+		}
+		if opts.AssignedAgentID != nil {
+			if err := s.checkAgentInTeam(txCtx, task.ProjectID, *opts.AssignedAgentID); err != nil {
+				return err
+			}
+			task.AssignedAgentID = opts.AssignedAgentID
+		}
+		if opts.Result != nil {
+			task.Result = opts.Result
+		}
+		if opts.ErrorMessage != nil {
+			task.ErrorMessage = opts.ErrorMessage
+		}
+		if opts.Artifacts != nil {
+			art := *opts.Artifacts
+			if len(art) == 0 {
+				art = datatypes.JSON([]byte("{}"))
+			}
+			task.Artifacts = art
+		}
+		if opts.BranchName != nil {
+			task.BranchName = opts.BranchName
+		}
+		if opts.Context != nil {
+			task.Context = *opts.Context
+		}
+		task.Status = newStatus
+		applyTimestampsOnStatusChange(task, from, newStatus)
+		if err := s.taskRepo.Update(txCtx, task, from, expectedUpdatedAt); err != nil {
+			if errors.Is(err, repository.ErrAgentNotFound) {
+				return fmt.Errorf("assigned agent not found: %w", err)
+			}
+			return mapTaskRepoErr(err)
+		}
+		updated = task
+		occurredAt = task.UpdatedAt
+		return nil
+	})
+
 	if err != nil {
-		return nil, mapTaskRepoErr(err)
+		return nil, err
 	}
-	from := task.Status
-	expectedUpdatedAt := task.UpdatedAt
-	if isTerminalTaskStatus(from) {
-		return nil, ErrTaskTerminalStatus
-	}
-	if !canTransition(from, newStatus) {
-		return nil, ErrTaskInvalidTransition
-	}
-	if opts.AssignedAgentID != nil {
-		if err := s.checkAgentInTeam(ctx, task.ProjectID, *opts.AssignedAgentID); err != nil {
-			return nil, err
-		}
-		task.AssignedAgentID = opts.AssignedAgentID
-	}
-	if opts.Result != nil {
-		task.Result = opts.Result
-	}
-	if opts.ErrorMessage != nil {
-		task.ErrorMessage = opts.ErrorMessage
-	}
-	if opts.Artifacts != nil {
-		art := *opts.Artifacts
-		if len(art) == 0 {
-			art = datatypes.JSON([]byte("{}"))
-		}
-		task.Artifacts = art
-	}
-	if opts.BranchName != nil {
-		task.BranchName = opts.BranchName
-	}
-	if opts.Context != nil {
-		task.Context = *opts.Context
-	}
-	task.Status = newStatus
-	applyTimestampsOnStatusChange(task, from, newStatus)
-	if err := s.taskRepo.Update(ctx, task, from, expectedUpdatedAt); err != nil {
-		if errors.Is(err, repository.ErrAgentNotFound) {
-			return nil, fmt.Errorf("assigned agent not found: %w", err)
-		}
-		return nil, mapTaskRepoErr(err)
-	}
-	return s.taskRepo.GetByID(ctx, taskID)
+
+	s.publishEventsWithTime(ctx, models.RoleUser, updated, from, nil, occurredAt)
+	return updated, nil
 }
 
 func (s *taskService) AddMessage(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.CreateTaskMessageRequest) (*models.TaskMessage, error) {
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+	var (
+		createdMsg *models.TaskMessage
+		task       *models.Task
+	)
+
+	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		t, err := s.taskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return mapTaskRepoErr(err)
+		}
+		task = t
+		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
+			return err
+		}
+		mt := models.MessageType(req.MessageType)
+		if !mt.IsValid() {
+			return ErrTaskMessageInvalidType
+		}
+		meta := req.Metadata
+		if len(meta) == 0 {
+			meta = datatypes.JSON([]byte("{}"))
+		}
+		msg := &models.TaskMessage{
+			TaskID:      task.ID,
+			SenderType:  models.SenderTypeUser,
+			SenderID:    userID,
+			Content:     req.Content,
+			MessageType: mt,
+			Metadata:    meta,
+		}
+		if err := s.taskMsgRepo.Create(txCtx, msg); err != nil {
+			return mapTaskRepoErr(err)
+		}
+		m, err := s.taskMsgRepo.GetByID(txCtx, msg.ID)
+		if err != nil {
+			return mapTaskMessageRepoErr(err)
+		}
+		createdMsg = m
+		return nil
+	})
+
 	if err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
 		return nil, err
 	}
-	mt := models.MessageType(req.MessageType)
-	if !mt.IsValid() {
-		return nil, ErrTaskMessageInvalidType
-	}
-	meta := req.Metadata
-	if len(meta) == 0 {
-		meta = datatypes.JSON([]byte("{}"))
-	}
-	msg := &models.TaskMessage{
-		TaskID:      task.ID,
-		SenderType:  models.SenderTypeUser,
-		SenderID:    userID,
-		Content:     req.Content,
-		MessageType: mt,
-		Metadata:    meta,
-	}
-	if err := s.taskMsgRepo.Create(ctx, msg); err != nil {
-		return nil, mapTaskRepoErr(err)
-	}
-	return s.taskMsgRepo.GetByID(ctx, msg.ID)
+
+	s.publishEvents(ctx, userRole, task, task.Status, createdMsg)
+	return createdMsg, nil
 }
 
 func (s *taskService) ListMessages(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.ListTaskMessagesRequest) ([]models.TaskMessage, int64, error) {

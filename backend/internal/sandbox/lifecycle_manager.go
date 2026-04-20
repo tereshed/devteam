@@ -89,5 +89,9 @@ func (st *instanceState) setCleaned() {
 	st.mu.Lock()
 	st.cleaned = true
 	st.cancelContainerWaitLocked()
+	if st.onCleanup != nil {
+		st.onCleanup()
+		st.onCleanup = nil
+	}
 	st.mu.Unlock()
 }

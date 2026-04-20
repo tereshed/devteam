@@ -91,6 +91,14 @@ func (r *DockerSandboxRunner) StreamLogs(ctx context.Context, sandboxID string) 
 	ch := make(chan LogEntry, bufCap)
 	st.streamMu.Lock()
 	if st.streamActive {
+		// Если стрим уже активен (например, запущен через setupLogPump), 
+		// возвращаем сохраненное плечо tee, если оно есть.
+		if st.externalCh != nil {
+			ch := st.externalCh
+			st.externalCh = nil // отдаем только один раз по контракту
+			st.streamMu.Unlock()
+			return ch, nil
+		}
 		st.streamMu.Unlock()
 		return nil, ErrStreamAlreadyActive
 	}
@@ -110,6 +118,8 @@ func (r *DockerSandboxRunner) runLogStream(streamCtx context.Context, cancel con
 		st.streamMu.Lock()
 		st.streamActive = false
 		st.streamCancel = nil
+		st.streamCh = nil
+		st.externalCh = nil
 		st.streamMu.Unlock()
 	}()
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/devteam/backend/pkg/jwt"
@@ -20,28 +21,53 @@ const (
 	ApiKeyHeader = "X-API-Key"
 )
 
-// AuthMiddleware создает middleware для аутентификации JWT + API Key
-// Поддерживает два способа аутентификации:
+// AuthMiddleware creates middleware for JWT + API Key authentication
+// Supports two authentication methods:
 // 1. JWT: Authorization: Bearer <token>
 // 2. API Key: X-API-Key: wibe_<key>
+// 3. WebSocket subprotocol (fallback): Sec-WebSocket-Protocol: bearer.<token> (only when Upgrade: websocket and other auth methods empty)
 func AuthMiddleware(jwtManager *jwt.Manager, apiKeyService service.ApiKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Пробуем API Key первым (X-API-Key header)
+		// Try API Key first (X-API-Key header)
 		apiKey := c.GetHeader(ApiKeyHeader)
 		if apiKey != "" {
 			authenticateWithApiKey(c, apiKeyService, apiKey)
 			return
 		}
 
-		// Fallback на JWT (Authorization: Bearer <token>)
+		// Fallback on JWT (Authorization: Bearer <token>)
 		authHeader := c.GetHeader(AuthorizationHeader)
 		if authHeader == "" {
+			// WS subprotocol fallback: only trigger when Upgrade: websocket
+			// and both Authorization and X-API-Key are empty
+			if isWebSocketUpgrade(c.Request) {
+				if token := extractBearerSubprotocol(c.Request); token != "" {
+					authenticateWithJWT(c, jwtManager, BearerPrefix+token)
+					return
+				}
+			}
 			apierror.AbortJSON(c, http.StatusUnauthorized, apierror.ErrTokenRequired, "Authorization header or X-API-Key required")
 			return
 		}
 
 		authenticateWithJWT(c, jwtManager, authHeader)
 	}
+}
+
+// isWebSocketUpgrade returns true if the request has Upgrade: websocket header.
+func isWebSocketUpgrade(r *http.Request) bool {
+	return strings.ToLower(r.Header.Get("Upgrade")) == "websocket"
+}
+
+// extractBearerSubprotocol extracts JWT from Sec-WebSocket-Protocol header.
+// Returns the token after "bearer." prefix, or empty string if not found.
+func extractBearerSubprotocol(r *http.Request) string {
+	for _, p := range websocket.Subprotocols(r) {
+		if token, ok := strings.CutPrefix(p, "bearer."); ok && token != "" {
+			return token
+		}
+	}
+	return ""
 }
 
 // authenticateWithJWT аутентификация через JWT токен

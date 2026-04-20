@@ -41,9 +41,14 @@ type instanceState struct {
 	businessTimer           *time.Timer
 	cancelWait              context.CancelFunc
 
+	// onCleanup вызывается при Cleanup (7.6).
+	onCleanup func()
+
 	streamMu     sync.Mutex
 	streamCancel context.CancelFunc
 	streamActive bool
+	streamCh     chan LogEntry // мастер-канал для tee (7.6)
+	externalCh   <-chan LogEntry // второе плечо tee для StreamLogs (7.6)
 }
 
 func newInstanceState(taskID string) *instanceState {

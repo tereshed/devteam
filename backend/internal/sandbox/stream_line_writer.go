@@ -46,6 +46,7 @@ func (w *streamLineWriter) trySend(entry LogEntry) {
 			Timestamp: time.Now(),
 			Line:      logStreamDroppedLine,
 			Stderr:    w.stderr,
+			Truncated: true,
 		}
 		select {
 		case w.ch <- drop:
@@ -78,6 +79,7 @@ func (w *streamLineWriter) emitFragment(data []byte, completesLogicalLine bool) 
 			Timestamp: ts,
 			Line:      string(data[:n]),
 			Stderr:    w.stderr,
+			Truncated: len(data) > n || !completesLogicalLine,
 		})
 		data = data[n:]
 		w.lineStart = false

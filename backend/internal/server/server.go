@@ -13,6 +13,7 @@ import (
 	"github.com/devteam/backend/internal/handler"
 	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/internal/ws"
 	"github.com/devteam/backend/pkg/jwt"
 	"gorm.io/gorm"
 )
@@ -45,6 +46,7 @@ type Dependencies struct {
 	WebhookHandler   *handler.WebhookHandler
 	JWTManager       *jwt.Manager
 	ApiKeyService    service.ApiKeyService
+	WebSocketHandler *ws.WebSocketHandler
 }
 
 // New создает новый экземпляр сервера
@@ -121,6 +123,10 @@ func (s *Server) setupRoutes(deps Dependencies) {
 		{
 			projects.POST("", deps.ProjectHandler.Create)
 			projects.GET("", deps.ProjectHandler.List)
+
+			// WebSocket эндпоинт проекта (Sprint 7)
+			// Должен быть ДО /:id, чтобы Gin не сматчил "ws" как :id
+			projects.GET("/:id/ws", deps.WebSocketHandler.Connect)
 
 			// Вложенный ресурс team — до /:id, иначе Gin сопоставит "team" как :id
 			projects.GET("/:id/team", deps.TeamHandler.GetByProjectID)

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -41,6 +42,9 @@ type DockerSandboxRunner struct {
 
 	// streamLogsEntryBuffer, если > 0, задаёт ёмкость буферизованного канала StreamLogs вместо StreamLogsDefaultBuffer (тесты / конфиг).
 	streamLogsEntryBuffer int
+
+	// publisher — публикатор логов (7.6).
+	publisher LogPublisher
 
 	mu sync.Mutex
 	// instances — полный ID контейнера (64 hex).
@@ -85,6 +89,14 @@ func WithDefaultTaskTimeout(d time.Duration) RunnerOption {
 		if d > 0 {
 			r.defaultTaskTimeout = d
 		}
+	}
+}
+
+// WithEventBus задаёт шину событий для трансляции логов (7.4/7.6).
+// Deprecated: используйте WithLogPublisher с адаптером (7.6).
+func WithEventBus(any) RunnerOption {
+	return func(r *DockerSandboxRunner) {
+		// Оставляем для совместимости, если нужно, но в 7.6 переходим на LogPublisher
 	}
 }
 
@@ -527,6 +539,15 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	r.mu.Unlock()
 
 	r.startWaitLoopIfNeeded(st)
+
+	if r.publisher != nil && opts.ProjectID != "" && opts.TaskID != "" {
+		pID, errP := uuid.Parse(opts.ProjectID)
+		tID, errT := uuid.Parse(opts.TaskID)
+		if errP == nil && errT == nil && pID != uuid.Nil && tID != uuid.Nil {
+			// Запускаем pump только если есть куда и что публиковать
+			r.setupLogPump(ctx, st, pID, tID)
+		}
+	}
 
 	return &SandboxInstance{
 		ID:        containerID,
@@ -980,6 +1001,56 @@ func (r *DockerSandboxRunner) Cleanup(ctx context.Context, sandboxID string) err
 		_ = os.RemoveAll(hostTmp)
 	}
 	return nil
+}
+
+func (r *DockerSandboxRunner) setupLogPump(rootCtx context.Context, st *instanceState, projectID, taskID uuid.UUID) {
+	st.streamMu.Lock()
+	if st.streamActive {
+		st.streamMu.Unlock()
+		return
+	}
+
+	pumpCtx, cancel := context.WithCancel(rootCtx)
+	st.streamCancel = cancel
+	st.streamActive = true
+
+	bufCap := StreamLogsDefaultBuffer
+	if r.streamLogsEntryBuffer > 0 {
+		bufCap = r.streamLogsEntryBuffer
+	}
+
+	// Создаем мастер-канал
+	masterCh := make(chan LogEntry, bufCap)
+	st.streamCh = masterCh
+	st.streamMu.Unlock()
+
+	// Создаем tee на 2 канала: один для пампа, один (потенциально) для внешнего StreamLogs
+	tees := tee(masterCh, 2)
+	pumpLogCh := tees[0]
+	externalLogCh := tees[1]
+
+	// stopCh для сигнализации Cleanup
+	stopCh := make(chan struct{})
+	st.mu.Lock()
+	oldCleanup := st.onCleanup
+	st.onCleanup = func() {
+		close(stopCh)
+		if oldCleanup != nil {
+			oldCleanup()
+		}
+	}
+	st.mu.Unlock()
+
+	// Запускаем сам Docker-стрим
+	go r.runLogStream(pumpCtx, cancel, st, st.containerID, masterCh)
+
+	// Запускаем памп в шину
+	go r.streamLogsToBus(pumpCtx, stopCh, projectID, taskID, st.containerID, pumpLogCh)
+
+	// Сохраняем второе плечо для возможного вызова StreamLogs
+	st.streamMu.Lock()
+	st.externalCh = externalLogCh
+	st.streamMu.Unlock()
 }
 
 var _ SandboxRunner = (*DockerSandboxRunner)(nil)

@@ -23,8 +23,18 @@ type Config struct {
 	Git        GitConfig
 	// Sandbox — лимиты и таймауты sandbox (SANDBOX_*), задача 5.10.
 	Sandbox SandboxConfig
+	// WebSocket — конфигурация WebSocket (WS_*), задача 7.7.
+	WebSocket WebSocketConfig
 	// WorkflowWorkerEnabled — фоновый worker, раз в секунду ищет pending/running executions.
 	WorkflowWorkerEnabled bool
+}
+
+// WebSocketConfig содержит конфигурацию WebSocket
+type WebSocketConfig struct {
+	AllowedOrigins         []string      `env:"WS_ALLOWED_ORIGINS" envSeparator:","`
+	MaxConnsPerUserProject int           `env:"WS_MAX_CONNS_PER_USER_PROJECT" envDefault:"5"`
+	PingPeriod             time.Duration `env:"WS_PING_PERIOD" envDefault:"54s"`
+	PongWait               time.Duration `env:"WS_PONG_WAIT" envDefault:"60s"`
 }
 
 // GitConfig — параметры работы с git при импорте/индексации.
@@ -206,6 +216,22 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_SECRET_KEY must be set in production")
 	}
 
+	cfg.WebSocket = WebSocketConfig{
+		AllowedOrigins:         getSliceEnv("WS_ALLOWED_ORIGINS", ",", nil),
+		MaxConnsPerUserProject: getIntEnv("WS_MAX_CONNS_PER_USER_PROJECT", 5),
+		PingPeriod:             getDurationEnv("WS_PING_PERIOD", 54*time.Second),
+		PongWait:               getDurationEnv("WS_PONG_WAIT", 60*time.Second),
+	}
+
+	// Валидация WebSocket-конфига
+	if len(cfg.WebSocket.AllowedOrigins) == 0 || (len(cfg.WebSocket.AllowedOrigins) == 1 && cfg.WebSocket.AllowedOrigins[0] == "") {
+		if cfg.IsProd() {
+			return nil, fmt.Errorf("WS_ALLOWED_ORIGINS must be set in production")
+		}
+		// Для разработки разрешаем localhost
+		cfg.WebSocket.AllowedOrigins = []string{"http://localhost:8080", "http://localhost:5173"}
+	}
+
 	sandboxCfg, err := loadSandboxConfig()
 	if err != nil {
 		return nil, fmt.Errorf("invalid sandbox config: %w", err)
@@ -249,6 +275,14 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 		if duration, err := time.ParseDuration(value); err == nil {
 			return duration
 		}
+	}
+	return defaultValue
+}
+
+// getSliceEnv получает переменную окружения как слайс строк или возвращает значение по умолчанию
+func getSliceEnv(key, separator string, defaultValue []string) []string {
+	if value := os.Getenv(key); value != "" {
+		return strings.Split(value, separator)
 	}
 	return defaultValue
 }

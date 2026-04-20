@@ -27,10 +27,15 @@ import (
 	"github.com/devteam/backend/pkg/jwt"
 	"github.com/devteam/backend/pkg/llm/factory"
 	"github.com/devteam/backend/pkg/password"
+	"github.com/devteam/backend/internal/domain/events"
+	"github.com/devteam/backend/internal/ws"
+	"github.com/devteam/backend/pkg/secrets"
 	"github.com/devteam/backend/pkg/agentprompts"
 	"github.com/devteam/backend/pkg/agentsloader"
 	"github.com/devteam/backend/pkg/promptsloader"
 	"github.com/devteam/backend/pkg/workflowloader"
+	"log/slog"
+	"sync"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -145,6 +150,36 @@ func main() {
 	// Services
 	modelCatalogService := service.NewModelCatalogService(llmModelRepo, cfg.LLM.OpenRouterAPIKey)
 
+	// --- WebSocket & Event Bus (Sprint 7) ---
+	// rootCtx для long-living компонентов (Hub, Bridge)
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
+
+	var wg sync.WaitGroup
+
+	hub := ws.NewHub()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		hub.Run(rootCtx)
+	}()
+
+	eventBus := events.NewInMemoryBus(events.NewPrometheusMetrics(), slog.Default())
+	defer eventBus.Close()
+
+	hubBridge := ws.NewHubBridge(
+		eventBus,
+		hub,
+		secrets.NewScrubber(),
+		slog.Default(),
+		ws.NewPrometheusBridgeMetrics(),
+	)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		hubBridge.Run(rootCtx)
+	}()
+
 	jwtManager := jwt.NewManager(cfg.JWT.SecretKey, cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager)
 	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
@@ -160,7 +195,7 @@ func main() {
 		cfg.Git.ImportDir,
 	)
 	teamService := service.NewTeamService(teamRepo)
-	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService)
+	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService, txManager, eventBus)
 
 	// Запускаем первичную синхронизацию моделей (в фоне)
 	go func() {
@@ -189,10 +224,11 @@ func main() {
 	// Agent Executors
 	llmAgentExecutor := agent.NewLLMAgentExecutor(llmService)
 	// Sandbox Runner (учитываем лимиты из конфига)
+	sandboxLogAdapter := ws.NewSandboxLogAdapter(eventBus, secrets.NewScrubber())
 	sandboxRunner := sandbox.NewDockerSandboxRunner(dockerCli, []string{
 		"devteam/sandbox-claude:latest",
 		"devteam/sandbox-aider:latest",
-	})
+	}, sandbox.WithLogPublisher(sandboxLogAdapter))
 	sandboxAgentExecutor := agent.NewSandboxAgentExecutor(sandboxRunner, "devteam/sandbox-claude:latest")
 
 	// Orchestrator Components
@@ -264,6 +300,14 @@ func main() {
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
 
+	// WebSocket Handler
+	wsHandler := ws.NewWebSocketHandler(hub, projectService, ws.HandlerConfig{
+		AllowedOrigins:         cfg.WebSocket.AllowedOrigins,
+		MaxConnsPerUserProject: cfg.WebSocket.MaxConnsPerUserProject,
+		ReadBufferSize:         1024,
+		WriteBufferSize:        1024,
+	}, slog.Default())
+
 	// Создаем и запускаем сервер
 	srv := server.New(db, server.ServerConfig{
 		Host:         cfg.Server.Host,
@@ -271,17 +315,18 @@ func main() {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}, server.Dependencies{
-		AuthHandler:     authHandler,
-		ApiKeyHandler:   apiKeyHandler,
-		LLMHandler:      llmHandler,
-		PromptHandler:   promptHandler,
-		ProjectHandler:  projectHandler,
-		TeamHandler:     teamHandler,
-		TaskHandler:     taskHandler,
-		WorkflowHandler: workflowHandler,
-		WebhookHandler:  webhookHandler,
-		JWTManager:      jwtManager,
-		ApiKeyService:   apiKeyService,
+		AuthHandler:      authHandler,
+		ApiKeyHandler:    apiKeyHandler,
+		LLMHandler:       llmHandler,
+		PromptHandler:    promptHandler,
+		ProjectHandler:   projectHandler,
+		TeamHandler:      teamHandler,
+		TaskHandler:      taskHandler,
+		WorkflowHandler:  workflowHandler,
+		WebhookHandler:   webhookHandler,
+		JWTManager:       jwtManager,
+		ApiKeyService:    apiKeyService,
+		WebSocketHandler: wsHandler,
 	})
 
 	go func() {
@@ -367,6 +412,10 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
+
+	// Останавливаем Hub и Bridge
+	rootCancel()
+	wg.Wait()
 
 	log.Println("All servers exited")
 }

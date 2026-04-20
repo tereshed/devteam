@@ -28,6 +28,7 @@ const (
 	ErrAlreadyExists       = "already_exists"
 	ErrConflict            = "conflict"
 	ErrUnprocessable       = "unprocessable"
+	ErrTooManyRequests     = "too_many_requests"
 	// ErrExternalService — сбой внешнего сервиса (GitHub API, git remote и т.д.), HTTP 502.
 	ErrExternalService = "external_service_error"
 )
