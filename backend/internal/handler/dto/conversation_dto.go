@@ -10,12 +10,12 @@ import (
 
 // CreateConversationRequest запрос на создание чата
 type CreateConversationRequest struct {
-	Title string `json:"title"`
+	Title string `json:"title" binding:"required,max=255" example:"Обсуждение архитектуры"`
 }
 
 // SendMessageRequest запрос на отправку сообщения
 type SendMessageRequest struct {
-	Content string `json:"content"`
+	Content string `json:"content" binding:"required,max=4096" example:"Привет, как дела?"`
 }
 
 // ConversationResponse ответ с данными чата
@@ -35,7 +35,7 @@ type MessageResponse struct {
 	Role           string         `json:"role"`
 	Content        string         `json:"content"`
 	LinkedTaskIDs  []uuid.UUID    `json:"linked_task_ids,omitempty"`
-	Metadata       datatypes.JSON `json:"metadata,omitempty" swaggertype:"string"`
+	Metadata       datatypes.JSON `json:"metadata,omitempty" swaggertype:"object"`
 	CreatedAt      time.Time      `json:"created_at"`
 }
 

@@ -246,7 +246,8 @@ User Message
 | 8.3 | Service: `ConversationService` (создание, отправка сообщения → Orchestrator, получение истории) | `backend/internal/service/conversation_service.go` | ⏳ |
 | 8.4 | Handler: `ConversationHandler` | `backend/internal/handler/conversation_handler.go` | ⬜ | [детали](docs/tasks/8.4-handler-conversation.md) |
 | 8.5 | Связка: `ConversationService` → `OrchestratorService` (новое сообщение запускает обработку) | Интеграция | ⬜ |
-| 8.6 | Swagger-аннотации | В handler | ⬜ |
+| 8.6 | Swagger-аннотации для Conversation API | В handler | [docs/tasks/8.6-swagger-annotations.md](docs/tasks/8.6-swagger-annotations.md) | ⬜ |
+| 8.7 | Swagger-аннотации для Task-эндпоинтов (ревизия) | В handler | [docs/tasks/3.7-swagger-annotations-tasks.md](docs/tasks/3.7-swagger-annotations-tasks.md) | ✅ |
 | 8.7 | Unit-тесты | `backend/internal/service/conversation_service_test.go` | ⬜ |
 
 **API эндпоинты:**

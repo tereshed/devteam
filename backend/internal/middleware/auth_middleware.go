@@ -140,7 +140,11 @@ func GetUserID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	id, ok := userID.(uuid.UUID)
-	return id, ok
+	if !ok {
+		// Это критический баг системы, нужно логировать и паниковать/возвращать 500
+		panic("userID in context is not of type uuid.UUID")
+	}
+	return id, true
 }
 
 // GetUserRole извлекает роль пользователя из контекста Gin
@@ -150,7 +154,10 @@ func GetUserRole(c *gin.Context) (string, bool) {
 		return "", false
 	}
 	r, ok := role.(string)
-	return r, ok
+	if !ok {
+		panic("userRole in context is not of type string")
+	}
+	return r, true
 }
 
 // GetAuthMethod извлекает метод аутентификации из контекста Gin

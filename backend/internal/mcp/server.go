@@ -17,6 +17,7 @@ type Dependencies struct {
 	ProjectService  service.ProjectService
 	TeamService     service.TeamService
 	TaskService     service.TaskService
+	ConversationSvc service.ConversationService
 	OrchestratorSvc service.OrchestratorService
 	ApiKeyService   service.ApiKeyService
 }
@@ -35,6 +36,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterProjectTools(server, deps.ProjectService)
 	RegisterTeamTools(server, deps.ProjectService, deps.TeamService)
 	RegisterTaskTools(server, deps.TaskService, deps.OrchestratorSvc)
+	RegisterConversationTools(server, deps.ConversationSvc)
 
 	return server
 }
