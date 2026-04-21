@@ -50,6 +50,9 @@ type ConversationRepository interface {
 	// GetByID требует projectID для защиты от IDOR (Tenant Isolation)
 	GetByID(ctx context.Context, projectID, id uuid.UUID) (*models.Conversation, error)
 
+	// GetOnlyByID возвращает чат по ID без projectID (для сервиса)
+	GetOnlyByID(ctx context.Context, id uuid.UUID) (*models.Conversation, error)
+
 	ListByProjectID(ctx context.Context, projectID uuid.UUID, filter ConversationFilter) ([]*models.Conversation, int64, error)
 
 	// Update использует Patch-семантику (только измененные поля) для предотвращения Race Conditions
@@ -101,6 +104,25 @@ func (r *conversationRepository) GetByID(ctx context.Context, projectID, id uuid
 			return nil, ErrConversationNotFound
 		}
 		return nil, fmt.Errorf("failed to get conversation: %w", err)
+	}
+	return &conv, nil
+}
+
+func (r *conversationRepository) GetOnlyByID(ctx context.Context, id uuid.UUID) (*models.Conversation, error) {
+	if id == uuid.Nil {
+		return nil, ErrInvalidInput
+	}
+
+	db := gormDB(ctx, r.db)
+	var conv models.Conversation
+	err := db.WithContext(ctx).
+		Where("id = ?", id).
+		First(&conv).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrConversationNotFound
+		}
+		return nil, fmt.Errorf("failed to get conversation by id: %w", err)
 	}
 	return &conv, nil
 }

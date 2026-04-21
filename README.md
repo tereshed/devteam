@@ -243,7 +243,7 @@ User Message
 |---|--------|-------|--------|
 | 8.1 | Repository: `ConversationRepository` | `backend/internal/repository/conversation_repository.go` | ✅ | [детали](docs/tasks/8.1-repository-conversation.md) |
 | 8.2 | Repository: `ConversationMessageRepository` | `backend/internal/repository/conversation_message_repository.go` | ✅ | [детали](docs/tasks/8.2-repository-conversation-message.md) |
-| 8.3 | Service: `ConversationService` (создание, отправка сообщения → Orchestrator, получение истории) | `backend/internal/service/conversation_service.go` | ⬜ |
+| 8.3 | Service: `ConversationService` (создание, отправка сообщения → Orchestrator, получение истории) | `backend/internal/service/conversation_service.go` | ⏳ |
 | 8.4 | Handler: `ConversationHandler` | `backend/internal/handler/conversation_handler.go` | ⬜ |
 | 8.5 | Связка: `ConversationService` → `OrchestratorService` (новое сообщение запускает обработку) | Интеграция | ⬜ |
 | 8.6 | Swagger-аннотации | В handler | ⬜ |
