@@ -198,12 +198,12 @@ func TestSendMessage_ValidationError(t *testing.T) {
 	svc := NewConversationService(nil, nil, nil, nil, nil, nil)
 
 	// Пустой контент
-	_, err := svc.SendMessage(ctx, userID, convID, "")
+	_, err := svc.SendMessage(ctx, userID, convID, "", uuid.Nil)
 	require.ErrorIs(t, err, ErrInvalidMessageContent)
 
 	// Слишком длинный контент
 	longContent := strings.Repeat("a", 4097)
-	_, err = svc.SendMessage(ctx, userID, convID, longContent)
+	_, err = svc.SendMessage(ctx, userID, convID, longContent, uuid.Nil)
 	require.ErrorIs(t, err, ErrInvalidMessageContent)
 }
 
@@ -212,6 +212,7 @@ func TestSendMessage_Idempotency(t *testing.T) {
 	userID := uuid.New()
 	convID := uuid.New()
 	content := "Hello"
+	clientMsgID := uuid.New()
 
 	convRepo := new(mockConversationRepository)
 	convRepo.On("GetOnlyByID", ctx, convID).Return(&models.Conversation{ID: convID, UserID: userID, ProjectID: uuid.New()}, nil)
@@ -223,15 +224,18 @@ func TestSendMessage_Idempotency(t *testing.T) {
 	taskSvc := new(mockTaskServiceForConv)
 	taskSvc.On("Create", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&models.Task{ID: uuid.New()}, nil)
 
-	svc := NewConversationService(convRepo, msgRepo, nil, taskSvc, nil, txManager)
+	orchestratorSvc := new(mockOrchestratorServiceForConv)
+	orchestratorSvc.On("ProcessTask", mock.Anything, mock.Anything).Return(nil)
+
+	svc := NewConversationService(convRepo, msgRepo, nil, taskSvc, orchestratorSvc, txManager)
 
 	// Первый вызов
-	_, err := svc.SendMessage(ctx, userID, convID, content)
+	_, err := svc.SendMessage(ctx, userID, convID, content, clientMsgID)
 	require.NoError(t, err)
 
 	// Второй вызов сразу же (дубликат)
-	_, err = svc.SendMessage(ctx, userID, convID, content)
-	require.ErrorIs(t, err, ErrMessageRateLimit)
+	_, err = svc.SendMessage(ctx, userID, convID, content, clientMsgID)
+	require.ErrorIs(t, err, ErrDuplicateMessage)
 }
 
 func TestGetHistory_LimitNormalization(t *testing.T) {
@@ -253,6 +257,78 @@ func TestGetHistory_LimitNormalization(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSendMessage_TriggersOrchestrator(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	convID := uuid.New()
+	projectID := uuid.New()
+	content := "Test message for orchestration"
+
+	convRepo := new(mockConversationRepository)
+	convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{ID: convID, UserID: userID, ProjectID: projectID}, nil)
+
+	msgRepo := new(mockConversationMessageRepository)
+	msgRepo.On("Create", mock.Anything, mock.MatchedBy(func(m *models.ConversationMessage) bool {
+		return m.Content == content && m.ConversationID == convID
+	})).Return(nil)
+
+	taskID := uuid.New()
+	taskSvc := new(mockTaskServiceForConv)
+	taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.MatchedBy(func(req dto.CreateTaskRequest) bool {
+		return strings.Contains(req.Title, "Chat Request") && req.Description == content
+	})).Return(&models.Task{ID: taskID}, nil)
+
+	orchestratorSvc := new(mockOrchestratorServiceForConv)
+	orchestratorSvc.On("ProcessTask", mock.Anything, taskID).Return(nil)
+
+	svc := NewConversationService(convRepo, msgRepo, nil, taskSvc, orchestratorSvc, new(mockTransactionManagerForConv))
+
+	_, err := svc.SendMessage(ctx, userID, convID, content, uuid.Nil)
+	require.NoError(t, err)
+
+	// Ждем завершения горутины
+	err = svc.Shutdown(ctx)
+	require.NoError(t, err)
+
+	orchestratorSvc.AssertExpectations(t)
+	taskSvc.AssertExpectations(t)
+}
+
+func TestSendMessage_UnicodeTruncate(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	convID := uuid.New()
+	projectID := uuid.New()
+	// Эмодзи занимает больше 1 байта. 50 эмодзи = 50 рун.
+	content := strings.Repeat("🚀", 60)
+
+	convRepo := new(mockConversationRepository)
+	convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{ID: convID, UserID: userID, ProjectID: projectID}, nil)
+
+	msgRepo := new(mockConversationMessageRepository)
+	msgRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
+
+	taskSvc := new(mockTaskServiceForConv)
+	taskSvc.On("Create", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(req dto.CreateTaskRequest) bool {
+		// Заголовок должен быть "Chat Request: " + 50 ракет + "..."
+		expectedTitle := "Chat Request: " + strings.Repeat("🚀", 50) + "..."
+		return req.Title == expectedTitle
+	})).Return(&models.Task{ID: uuid.New()}, nil)
+
+	orchestratorSvc := new(mockOrchestratorServiceForConv)
+	orchestratorSvc.On("ProcessTask", mock.Anything, mock.Anything).Return(nil)
+
+	svc := NewConversationService(convRepo, msgRepo, nil, taskSvc, orchestratorSvc, new(mockTransactionManagerForConv))
+
+	_, err := svc.SendMessage(ctx, userID, convID, content, uuid.Nil)
+	require.NoError(t, err)
+
+	err = svc.Shutdown(ctx)
+	require.NoError(t, err)
+
+	taskSvc.AssertExpectations(t)
+}
+
 func TestSendMessage_AsyncPanicRecovery(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
@@ -270,6 +346,7 @@ func TestSendMessage_AsyncPanicRecovery(t *testing.T) {
 		orchestratorSvc: orchestratorSvc,
 		taskSvc:         taskSvc,
 	}
+	svc.wg.Add(1)
 
 	require.NotPanics(t, func() {
 		svc.runOrchestrator(ctx, userID, projectID, convID, content)

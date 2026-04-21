@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -216,10 +217,7 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 
 	// Запуск оркестрации в защищенной горутине с поддержкой Graceful Shutdown
 	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.runOrchestrator(context.Background(), userID, conv.ProjectID, conversationID, content)
-	}()
+	go s.runOrchestrator(context.WithoutCancel(ctx), userID, conv.ProjectID, conversationID, content)
 
 	return msg, nil
 }
@@ -319,19 +317,30 @@ func normalizePagination(limit, offset int) (int, int) {
 }
 
 func (s *conversationService) runOrchestrator(ctx context.Context, userID, projectID, conversationID uuid.UUID, content string) {
+	defer s.wg.Done()
+
+	var success bool
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("Panic in orchestration flow",
 				"userID", userID,
 				"projectID", projectID,
 				"conversationID", conversationID,
-				"error", r)
+				"error", r,
+				"stack", string(debug.Stack()))
+			success = false
+		}
+
+		if !success {
+			// TODO: Обновить статус сообщения/разговора на Failed в БД,
+			// чтобы UI не оставался в состоянии вечного ожидания.
+			// s.markMessageFailed(ctx, conversationID, ...)
 		}
 	}()
 
 	// 1. Создание задачи для оркестратора
 	taskReq := dto.CreateTaskRequest{
-		Title:       fmt.Sprintf("Chat Request: %s", truncateString(content, 50)),
+		Title:       fmt.Sprintf("Chat Request: %s", truncateRunes(content, 50)),
 		Description: content,
 		Priority:    string(models.TaskPriorityMedium),
 	}
@@ -352,13 +361,21 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 			"userID", userID,
 			"projectID", projectID,
 			"taskID", task.ID,
+			"conversationID", conversationID,
 			"error", err)
+		return
 	}
+
+	success = true
 }
 
-func truncateString(s string, n int) string {
-	if len(s) <= n {
-		return s
+func truncateRunes(s string, n int) string {
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i] + "..."
+		}
+		count++
 	}
-	return s[:n] + "..."
+	return s
 }
