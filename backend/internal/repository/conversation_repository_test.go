@@ -150,13 +150,13 @@ func TestConversationRepository_ListByProjectID(t *testing.T) {
 			UserID:    user.ID,
 			Title:     fmt.Sprintf("Conv %d", i),
 			Status:    models.ConversationStatusActive,
+			CreatedAt: time.Now().Add(time.Duration(i) * time.Second),
 		}
 		if i == 4 {
 			conv.Status = models.ConversationStatusArchived
 			conv.Title = "SearchMe"
 		}
 		require.NoError(t, repo.Create(ctx, conv))
-		time.Sleep(10 * time.Millisecond) // Для сортировки по времени
 	}
 
 	t.Run("Pagination", func(t *testing.T) {

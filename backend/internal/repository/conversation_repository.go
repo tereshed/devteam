@@ -257,7 +257,7 @@ func (r *conversationRepository) sanitizeOrder(orderBy, orderDir string) string 
 	if !allowedConversationOrderColumns[orderBy] {
 		orderBy = OrderByCreatedAt
 	}
-	return orderBy + " " + sanitizeOrderDir(orderDir)
+	return orderBy + " " + sanitizeOrderDir(orderDir) + ", id ASC"
 }
 
 func (r *conversationRepository) mapDBError(err error) error {

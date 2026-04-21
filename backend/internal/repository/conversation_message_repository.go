@@ -209,7 +209,7 @@ func (r *conversationMessageRepository) sanitizeOrder(orderBy, orderDir string) 
 	if !allowedMessageOrderColumns[orderBy] {
 		orderBy = OrderByMessageCreatedAt
 	}
-	return orderBy + " " + sanitizeOrderDir(orderDir)
+	return orderBy + " " + sanitizeOrderDir(orderDir) + ", id ASC"
 }
 
 func (r *conversationMessageRepository) mapDBError(err error) error {

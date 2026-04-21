@@ -136,9 +136,9 @@ func TestConversationMessageRepository_ListByConversationID(t *testing.T) {
 			ConversationID: conv.ID,
 			Role:           role,
 			Content:        fmt.Sprintf("Msg %d", i),
+			CreatedAt:      time.Now().Add(time.Duration(i) * time.Second),
 		}
 		require.NoError(t, repo.Create(ctx, msg))
-		time.Sleep(10 * time.Millisecond)
 	}
 
 	t.Run("Pagination", func(t *testing.T) {
