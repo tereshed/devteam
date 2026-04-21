@@ -17,6 +17,10 @@ var (
 	ErrConversationNotFound      = errors.New("conversation not found")
 	ErrInvalidConversationStatus = errors.New("invalid conversation status")
 
+	// Ошибки ConversationMessage
+	ErrMessageNotFound = errors.New("message not found")
+	ErrInvalidMessageRole = errors.New("invalid message role")
+
 	// Ошибки Task
 	ErrTaskNotFound         = errors.New("task not found")
 	ErrTaskConcurrentUpdate = errors.New("task was modified concurrently, please retry")
