@@ -14,12 +14,6 @@ import (
 )
 
 var (
-	ErrTaskNotFound         = errors.New("task not found")
-	ErrTaskConcurrentUpdate = errors.New("task was modified concurrently, please retry")
-	ErrAgentNotFound        = errors.New("agent not found")
-)
-
-const (
 	taskListDefaultLimit = 50
 	taskListMaxLimit     = 200
 )
@@ -37,21 +31,11 @@ func sanitizeTaskOrder(orderBy, orderDir string) string {
 	if !allowedTaskOrderColumns[orderBy] {
 		orderBy = "created_at"
 	}
-	dir := "DESC"
-	if strings.ToUpper(orderDir) == "ASC" {
-		dir = "ASC"
-	}
-	return orderBy + " " + dir
+	return orderBy + " " + sanitizeOrderDir(orderDir)
 }
 
 func normalizeTaskListLimit(limit int) int {
-	if limit <= 0 {
-		return taskListDefaultLimit
-	}
-	if limit > taskListMaxLimit {
-		return taskListMaxLimit
-	}
-	return limit
+	return normalizeLimit(limit, taskListDefaultLimit, taskListMaxLimit)
 }
 
 // TaskFilter фильтры и пагинация для списка задач

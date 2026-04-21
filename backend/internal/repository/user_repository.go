@@ -11,10 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	ErrUserNotFound = errors.New("user not found")
-	ErrUserExists   = errors.New("user already exists")
-)
+// Удаляем определения ошибок, так как они теперь в errors.go
 
 // UserRepository определяет интерфейс для работы с пользователями
 type UserRepository interface {

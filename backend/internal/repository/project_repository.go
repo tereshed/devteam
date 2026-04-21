@@ -13,11 +13,6 @@ import (
 )
 
 var (
-	ErrProjectNotFound   = errors.New("project not found")
-	ErrProjectNameExists = errors.New("project with this name already exists")
-)
-
-const (
 	projectListDefaultLimit = 20
 	projectListMaxLimit     = 100
 )
@@ -29,34 +24,15 @@ var allowedProjectOrderColumns = map[string]bool{
 	"status":     true,
 }
 
-// escapeILIKEWildcards экранирует \, % и _ для ILIKE с ESCAPE '\', чтобы ввод не работал как шаблон.
-func escapeILIKEWildcards(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
-}
-
-// normalizeProjectListLimit защищает от GORM Limit(0) («без лимита») и от слишком больших страниц.
-// Дефолты дублируют контракт сервиса — сервис всё равно должен выставлять лимит; здесь — defense in depth.
-func normalizeProjectListLimit(limit int) int {
-	if limit <= 0 {
-		return projectListDefaultLimit
-	}
-	if limit > projectListMaxLimit {
-		return projectListMaxLimit
-	}
-	return limit
-}
-
 func sanitizeProjectOrder(orderBy, orderDir string) string {
 	if !allowedProjectOrderColumns[orderBy] {
 		orderBy = "created_at"
 	}
-	if orderDir != "ASC" && orderDir != "asc" {
-		orderDir = "DESC"
-	}
-	return orderBy + " " + orderDir
+	return orderBy + " " + sanitizeOrderDir(orderDir)
+}
+
+func normalizeProjectListLimit(limit int) int {
+	return normalizeLimit(limit, projectListDefaultLimit, projectListMaxLimit)
 }
 
 // ProjectFilter фильтры и пагинация для списка проектов
