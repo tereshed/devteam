@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,6 +21,7 @@ var (
 	ErrInvalidConversationTitle = errors.New("conversation title is required and must be less than 255 characters")
 	ErrInvalidMessageContent    = errors.New("message content is required and must be less than 4096 characters")
 	ErrMessageRateLimit         = errors.New("message rate limit exceeded, please wait")
+	ErrDuplicateMessage         = errors.New("duplicate message")
 )
 
 // ConversationService интерфейс для работы с чатами
@@ -41,7 +40,8 @@ type ConversationService interface {
 
 	// SendMessage отправляет сообщение пользователя в чат и запускает процесс оркестрации.
 	// Обязательно проверяет права доступа userID к чату.
-	SendMessage(ctx context.Context, userID, conversationID uuid.UUID, content string) (*models.ConversationMessage, error)
+	// clientMsgID используется для идемпотентности.
+	SendMessage(ctx context.Context, userID, conversationID uuid.UUID, content string, clientMsgID uuid.UUID) (*models.ConversationMessage, error)
 
 	// GetHistory возвращает историю сообщений чата.
 	// Обязательно проверяет права доступа userID к чату.
@@ -63,9 +63,9 @@ type conversationService struct {
 	orchestratorSvc OrchestratorService
 	txManager       repository.TransactionManager
 
-	// Для защиты от двойного клика (идемпотентность за 1 сек)
-	lastMessages   map[uuid.UUID]lastMessageInfo
-	lastMessagesMu sync.Mutex
+	// Для идемпотентности по UUID
+	processedMessages   map[uuid.UUID]*models.ConversationMessage
+	processedMessagesMu sync.RWMutex
 
 	wg       sync.WaitGroup
 	stopChan chan struct{}
@@ -87,18 +87,18 @@ func NewConversationService(
 	txManager repository.TransactionManager,
 ) ConversationService {
 	s := &conversationService{
-		convRepo:        convRepo,
-		msgRepo:         msgRepo,
-		projectSvc:      projectSvc,
-		taskSvc:         taskSvc,
-		orchestratorSvc: orchestratorSvc,
-		txManager:       txManager,
-		lastMessages:    make(map[uuid.UUID]lastMessageInfo),
-		stopChan:        make(chan struct{}),
+		convRepo:          convRepo,
+		msgRepo:           msgRepo,
+		projectSvc:        projectSvc,
+		taskSvc:           taskSvc,
+		orchestratorSvc:   orchestratorSvc,
+		txManager:         txManager,
+		processedMessages: make(map[uuid.UUID]*models.ConversationMessage),
+		stopChan:          make(chan struct{}),
 	}
 
-	// Запуск фоновой очистки lastMessages для предотвращения утечки памяти
-	go s.cleanupLastMessagesLoop()
+	// Запуск фоновой очистки processedMessages для предотвращения утечки памяти
+	go s.cleanupProcessedMessagesLoop()
 
 	return s
 }
@@ -175,7 +175,7 @@ func (s *conversationService) ListConversations(ctx context.Context, userID, pro
 }
 
 // SendMessage отправляет сообщение и запускает оркестрацию
-func (s *conversationService) SendMessage(ctx context.Context, userID, conversationID uuid.UUID, content string) (*models.ConversationMessage, error) {
+func (s *conversationService) SendMessage(ctx context.Context, userID, conversationID uuid.UUID, content string, clientMsgID uuid.UUID) (*models.ConversationMessage, error) {
 	content = strings.TrimSpace(content)
 	if content == "" || len(content) > 4096 {
 		return nil, ErrInvalidMessageContent
@@ -186,9 +186,14 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 		return nil, err
 	}
 
-	// Защита от двойного клика (1 сек) с использованием хэширования
-	if s.isDuplicateMessage(userID, content) {
-		return nil, ErrMessageRateLimit
+	// Идемпотентность по clientMsgID
+	if clientMsgID != uuid.Nil {
+		s.processedMessagesMu.RLock()
+		if msg, ok := s.processedMessages[clientMsgID]; ok {
+			s.processedMessagesMu.RUnlock()
+			return msg, ErrDuplicateMessage
+		}
+		s.processedMessagesMu.RUnlock()
 	}
 
 	msg := &models.ConversationMessage{
@@ -200,6 +205,13 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 	// Убрана лишняя транзакция для одиночного Insert
 	if err := s.msgRepo.Create(ctx, msg); err != nil {
 		return nil, fmt.Errorf("failed to save message: %w", err)
+	}
+
+	// Сохраняем для идемпотентности
+	if clientMsgID != uuid.Nil {
+		s.processedMessagesMu.Lock()
+		s.processedMessages[clientMsgID] = msg
+		s.processedMessagesMu.Unlock()
 	}
 
 	// Запуск оркестрации в защищенной горутине с поддержкой Graceful Shutdown
@@ -272,27 +284,8 @@ func (s *conversationService) checkConversationAccess(ctx context.Context, userI
 	return conv, nil
 }
 
-func (s *conversationService) isDuplicateMessage(userID uuid.UUID, content string) bool {
-	s.lastMessagesMu.Lock()
-	defer s.lastMessagesMu.Unlock()
-
-	hash := sha256.Sum256([]byte(content))
-	contentHash := hex.EncodeToString(hash[:])
-
-	last, ok := s.lastMessages[userID]
-	if ok && last.contentHash == contentHash && time.Since(last.timestamp) < time.Second {
-		return true
-	}
-
-	s.lastMessages[userID] = lastMessageInfo{
-		contentHash: contentHash,
-		timestamp:   time.Now(),
-	}
-	return false
-}
-
-func (s *conversationService) cleanupLastMessagesLoop() {
-	ticker := time.NewTicker(1 * time.Minute)
+func (s *conversationService) cleanupProcessedMessagesLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
@@ -300,14 +293,15 @@ func (s *conversationService) cleanupLastMessagesLoop() {
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
-			s.lastMessagesMu.Lock()
+			s.processedMessagesMu.Lock()
 			now := time.Now()
-			for userID, info := range s.lastMessages {
-				if now.Sub(info.timestamp) > 1*time.Minute {
-					delete(s.lastMessages, userID)
+			for id, msg := range s.processedMessages {
+				// Очищаем через 10 минут
+				if now.Sub(msg.CreatedAt) > 10*time.Minute {
+					delete(s.processedMessages, id)
 				}
 			}
-			s.lastMessagesMu.Unlock()
+			s.processedMessagesMu.Unlock()
 		}
 	}
 }

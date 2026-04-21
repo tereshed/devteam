@@ -4,13 +4,14 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
+	"github.com/devteam/backend/pkg/httputil"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // ProjectHandler HTTP-слой для проектов (тонкий: bind → service → DTO).
@@ -64,9 +65,11 @@ func normalizeListPagination(limit, offset int) (int, int) {
 
 func writeProjectServiceError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, service.ErrProjectNotFound):
+	case errors.Is(err, service.ErrProjectNotFound),
+		errors.Is(err, service.ErrConversationNotFound):
 		apierror.JSON(c, http.StatusNotFound, apierror.ErrNotFound, err.Error())
 	case errors.Is(err, service.ErrProjectForbidden),
+		errors.Is(err, service.ErrConversationForbidden),
 		errors.Is(err, service.ErrGitCredentialForbidden):
 		apierror.JSON(c, http.StatusForbidden, apierror.ErrForbidden, err.Error())
 	case errors.Is(err, service.ErrProjectNameExists):
@@ -79,7 +82,9 @@ func writeProjectServiceError(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "Failed to process credentials")
 	case errors.Is(err, service.ErrGitURLRequired),
 		errors.Is(err, service.ErrGitCredentialRequired),
-		errors.Is(err, service.ErrGitCredentialNotSupportedForLocal):
+		errors.Is(err, service.ErrGitCredentialNotSupportedForLocal),
+		errors.Is(err, service.ErrInvalidConversationTitle),
+		errors.Is(err, service.ErrInvalidMessageContent):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrGitCredentialNotFound),
 		errors.Is(err, service.ErrProjectInvalidName),
@@ -126,7 +131,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 
 	project, err := h.service.Create(c.Request.Context(), uid, req)
 	if err != nil {
-		writeProjectServiceError(c, err)
+		httputil.RespondError(c, err)
 		return
 	}
 
@@ -169,7 +174,7 @@ func (h *ProjectHandler) List(c *gin.Context) {
 
 	projects, total, err := h.service.List(c.Request.Context(), uid, role, req)
 	if err != nil {
-		writeProjectServiceError(c, err)
+		httputil.RespondError(c, err)
 		return
 	}
 
@@ -208,7 +213,7 @@ func (h *ProjectHandler) GetByID(c *gin.Context) {
 
 	project, err := h.service.GetByID(c.Request.Context(), uid, role, projectID)
 	if err != nil {
-		writeProjectServiceError(c, err)
+		httputil.RespondError(c, err)
 		return
 	}
 
@@ -254,7 +259,7 @@ func (h *ProjectHandler) Update(c *gin.Context) {
 
 	project, err := h.service.Update(c.Request.Context(), uid, role, projectID, req)
 	if err != nil {
-		writeProjectServiceError(c, err)
+		httputil.RespondError(c, err)
 		return
 	}
 
@@ -291,7 +296,7 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 	}
 
 	if err := h.service.Delete(c.Request.Context(), uid, role, projectID); err != nil {
-		writeProjectServiceError(c, err)
+		httputil.RespondError(c, err)
 		return
 	}
 
