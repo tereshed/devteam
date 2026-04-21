@@ -1,0 +1,34 @@
+@@ -449,7 +449,7 @@
+ 			name:        "TestSendMessage_Success",
+ 			content:     "Hello",
+ 			clientMsgID: clientMsgID,
+-			setupMocks: func(deps *mockDeps) {
++			setupMocks: func(svc *conversationService, deps *mockDeps) {
+ 				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+ 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
+ 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
+@@ -461,21 +461,21 @@
+ 			name:        "TestSendMessage_InvalidContent",
+ 			content:     "",
+ 			clientMsgID: clientMsgID,
+-			setupMocks:  func(deps *mockDeps) {},
++			setupMocks:  func(svc *conversationService, deps *mockDeps) {},
+ 			expectedErr: ErrInvalidMessageContent,
+ 		},
+ 		{
+ 			name:        "TestSendMessage_InvalidContent_TooLong",
+ 			content:     strings.Repeat("a", 4097),
+ 			clientMsgID: clientMsgID,
+-			setupMocks:  func(deps *mockDeps) {},
++			setupMocks:  func(svc *conversationService, deps *mockDeps) {},
+ 			expectedErr: ErrInvalidMessageContent,
+ 		},
+ 		{
+ 			name:        "TestSendMessage_WhitespaceContent",
+ 			content:     "\n\t ",
+ 			clientMsgID: clientMsgID,
+-			setupMocks:  func(deps *mockDeps) {},
++			setupMocks:  func(svc *conversationService, deps *mockDeps) {},
+ 			expectedErr: ErrInvalidMessageContent,
+ 		},
+ 		{

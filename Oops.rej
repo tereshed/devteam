@@ -1,0 +1,9 @@
+@@ -462,7 +463,7 @@
+ 			name:        "TestSendMessage_InvalidContent",
+ 			content:     "",
+ 			clientMsgID: clientMsgID,
+-			setupMocks:  func(deps *mockDeps) {},
++			setupMocks:  func(svc *conversationService, deps *mockDeps) {},
+ 			expectedErr: ErrInvalidMessageContent,
+ 		},
+ 		{

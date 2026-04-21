@@ -291,15 +291,19 @@ func (s *conversationService) cleanupProcessedMessagesLoop() {
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
-			s.processedMessagesMu.Lock()
-			now := time.Now()
-			for id, msg := range s.processedMessages {
-				// Очищаем через 10 минут
-				if now.Sub(msg.CreatedAt) > 10*time.Minute {
-					delete(s.processedMessages, id)
-				}
-			}
-			s.processedMessagesMu.Unlock()
+			s.cleanupOldMessages()
+		}
+	}
+}
+
+func (s *conversationService) cleanupOldMessages() {
+	s.processedMessagesMu.Lock()
+	defer s.processedMessagesMu.Unlock()
+	now := time.Now()
+	for id, msg := range s.processedMessages {
+		// Очищаем через 10 минут
+		if now.Sub(msg.CreatedAt) > 10*time.Minute {
+			delete(s.processedMessages, id)
 		}
 	}
 }

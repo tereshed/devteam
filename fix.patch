@@ -1,0 +1,154 @@
+--- backend/internal/service/conversation_service_test.go
++++ backend/internal/service/conversation_service_test.go
+@@ -219,6 +219,7 @@
+ func TestCreateConversation(t *testing.T) {
+ 	userID := uuid.New()
+ 	projectID := uuid.New()
++	errDB := errors.New("db error")
+ 
+ 	tests := []struct {
+ 		name        string
+@@ -262,10 +263,10 @@
+ 			title: "Valid Title",
+ 			setupMocks: func(deps *mockDeps) {
+ 				deps.projectSvc.On("HasAccess", mock.Anything, userID, models.RoleUser, projectID).Return(nil)
+-				deps.convRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.Conversation")).Return(errors.New("db error"))
++				deps.convRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.Conversation")).Return(errDB)
+ 			},
+-			expectedErr: errors.New("failed to create conversation: db error"),
++			expectedErr: errDB,
+ 		},
+ 	}
+ 
+@@ -277,9 +278,7 @@
+ 			conv, err := svc.CreateConversation(context.Background(), userID, projectID, tt.title)
+ 			if tt.expectedErr != nil {
+ 				require.Error(t, err)
+-				if tt.expectedErr.Error() != err.Error() {
+-					require.ErrorIs(t, err, tt.expectedErr)
+-				}
++				require.ErrorIs(t, err, tt.expectedErr)
+ 				require.Nil(t, conv)
+ 			} else {
+ 				require.NoError(t, err)
+@@ -443,12 +442,13 @@
+ 	convID := uuid.New()
+ 	projectID := uuid.New()
+ 	clientMsgID := uuid.New()
++	errDB := errors.New("db error")
+ 
+ 	tests := []struct {
+ 		name        string
+ 		content     string
+ 		clientMsgID uuid.UUID
+-		setupMocks  func(deps *mockDeps)
++		setupMocks  func(svc *conversationService, deps *mockDeps)
+ 		expectedErr error
+ 	}{
+ 		{
+@@ -456,7 +456,7 @@
+ 			name:        "TestSendMessage_Success",
+ 			content:     "Hello",
+ 			clientMsgID: clientMsgID,
+-			setupMocks: func(deps *mockDeps) {
++			setupMocks: func(svc *conversationService, deps *mockDeps) {
+ 				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+ 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
+ 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
+@@ -467,25 +467,25 @@
+ 			name:        "TestSendMessage_InvalidContent",
+ 			content:     "",
+ 			clientMsgID: clientMsgID,
+-			setupMocks:  func(deps *mockDeps) {},
++			setupMocks:  func(svc *conversationService, deps *mockDeps) {},
+ 			expectedErr: ErrInvalidMessageContent,
+ 		},
+ 		{
+ 			name:        "TestSendMessage_InvalidContent_TooLong",
+ 			content:     strings.Repeat("a", 4097),
+ 			clientMsgID: clientMsgID,
+-			setupMocks:  func(deps *mockDeps) {},
++			setupMocks:  func(svc *conversationService, deps *mockDeps) {},
+ 			expectedErr: ErrInvalidMessageContent,
+ 		},
+ 		{
+ 			name:        "TestSendMessage_WhitespaceContent",
+ 			content:     "\n\t ",
+ 			clientMsgID: clientMsgID,
+-			setupMocks:  func(deps *mockDeps) {},
++			setupMocks:  func(svc *conversationService, deps *mockDeps) {},
+ 			expectedErr: ErrInvalidMessageContent,
+ 		},
+ 		{
+ 			name:        "TestSendMessage_Forbidden",
+ 			content:     "Hello",
+ 			clientMsgID: clientMsgID,
+-			setupMocks: func(deps *mockDeps) {
++			setupMocks: func(svc *conversationService, deps *mockDeps) {
+ 				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: uuid.New()}, nil)
+ 			},
+ 			expectedErr: ErrConversationForbidden,
+@@ -494,8 +494,11 @@
+ 			name:        "TestSendMessage_Idempotency_Duplicate",
+ 			content:     "Hello",
+ 			clientMsgID: clientMsgID,
+-			setupMocks: func(deps *mockDeps) {
+-				// We'll pre-populate the map in the test body for this case
++			setupMocks: func(svc *conversationService, deps *mockDeps) {
++				svc.processedMessagesMu.Lock()
++				svc.processedMessages[clientMsgID] = &models.ConversationMessage{}
++				svc.processedMessagesMu.Unlock()
++				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+ 			},
+ 			expectedErr: ErrDuplicateMessage,
+ 		},
+@@ -504,7 +507,7 @@
+ 			name:        "TestSendMessage_Idempotency_NilUUID",
+ 			content:     "Hello",
+ 			clientMsgID: uuid.Nil,
+-			setupMocks: func(deps *mockDeps) {
++			setupMocks: func(svc *conversationService, deps *mockDeps) {
+ 				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+ 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
+ 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
+@@ -516,11 +519,11 @@
+ 			name:        "TestSendMessage_RepoError",
+ 			content:     "Hello",
+ 			clientMsgID: clientMsgID,
+-			setupMocks: func(deps *mockDeps) {
++			setupMocks: func(svc *conversationService, deps *mockDeps) {
+ 				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+-				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(errors.New("db error"))
++				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(errDB)
+ 			},
+-			expectedErr: errors.New("failed to save message: db error"),
++			expectedErr: errDB,
+ 		},
+ 	}
+ 
+@@ -529,22 +532,13 @@
+ 			t.Cleanup(func() { goleak.VerifyNone(t) })
+ 
+ 			svc, deps := newTestConversationHarness(t)
+-			
+-			if tt.name == "TestSendMessage_Idempotency_Duplicate" {
+-				svc.processedMessagesMu.Lock()
+-				svc.processedMessages[clientMsgID] = &models.ConversationMessage{}
+-				svc.processedMessagesMu.Unlock()
+-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+-			} else {
+-				tt.setupMocks(deps)
+-			}
++			tt.setupMocks(svc, deps)
+ 
+ 			msg, err := svc.SendMessage(context.Background(), userID, convID, tt.content, tt.clientMsgID)
+ 			
+ 			if tt.expectedErr != nil {
+ 				require.Error(t, err)
+-				if tt.expectedErr.Error() != err.Error() {
+-					require.ErrorIs(t, err, tt.expectedErr)
+-				}
++				require.ErrorIs(t, err, tt.expectedErr)
+ 				if tt.expectedErr != ErrDuplicateMessage { require.Nil(t, msg) } else { require.NotNil(t, msg) }
+ 			} else {
+ 				require.NoError(t, err)
