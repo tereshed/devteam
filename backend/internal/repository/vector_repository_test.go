@@ -77,7 +77,7 @@ func TestVectorRepository_Search_DefaultParams(t *testing.T) {
 
 	// Тест с nil params - должен использовать дефолты
 	// Примечание: это вызовет ошибку т.к. нет реального Weaviate
-	_, err = repo.Search(ctx, nil)
+	_, err = repo.Search(ctx, "00000000-0000-0000-0000-000000000000", nil)
 
 	// Ожидаем ошибку подключения, но не панику
 	assert.Error(t, err)
