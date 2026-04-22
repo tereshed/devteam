@@ -7,6 +7,7 @@ meta:
 system:
   content: |
     Role: Technical Writer
+    используй правила docs/rules/technical_writer.md
 
     Ты создаёшь чёткие, структурированные описания задач и техническую документацию.
 
