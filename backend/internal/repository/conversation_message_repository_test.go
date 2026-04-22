@@ -276,3 +276,39 @@ func TestConversationMessageRepository_Delete_Success(t *testing.T) {
 	_, err = repo.GetByID(ctx, conv.ID, msg.ID)
 	assert.ErrorIs(t, err, ErrMessageNotFound)
 }
+
+func TestConversationMessageRepository_ListByProjectID_Success(t *testing.T) {
+	db := setupTestDB(t)
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	_, project, conv := createMsgTestConv(t, tx, "m9@example.com")
+	repo := NewConversationMessageRepository(tx)
+	ctx := context.Background()
+
+	// Create 5 messages
+	var lastMsgID uuid.UUID
+	for i := 0; i < 5; i++ {
+		msg := &models.ConversationMessage{
+			ConversationID: conv.ID,
+			Role:           models.ConversationRoleUser,
+			Content:        fmt.Sprintf("Msg %d", i),
+		}
+		require.NoError(t, repo.Create(ctx, msg))
+		if i == 1 {
+			lastMsgID = msg.ID
+		}
+	}
+
+	t.Run("All messages", func(t *testing.T) {
+		list, err := repo.ListByProjectID(ctx, project.ID, nil, 10)
+		require.NoError(t, err)
+		assert.Len(t, list, 5)
+	})
+
+	t.Run("With cursor", func(t *testing.T) {
+		list, err := repo.ListByProjectID(ctx, project.ID, &lastMsgID, 10)
+		require.NoError(t, err)
+		assert.Len(t, list, 3) // Messages after the 2nd one (index 1)
+	})
+}

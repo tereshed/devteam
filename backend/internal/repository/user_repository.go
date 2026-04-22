@@ -19,6 +19,7 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
+	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 // userRepository реализация UserRepository
@@ -83,4 +84,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.
 // Update обновляет пользователя
 func (r *userRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Save(user).Error
+}
+
+// Delete удаляет пользователя
+func (r *userRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id).Error
 }

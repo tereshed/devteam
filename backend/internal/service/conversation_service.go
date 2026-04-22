@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -63,6 +64,7 @@ type conversationService struct {
 	taskSvc         TaskService
 	orchestratorSvc OrchestratorService
 	txManager       repository.TransactionManager
+	eventBus        events.EventBus
 
 	// Для идемпотентности по UUID
 	processedMessages   map[uuid.UUID]*models.ConversationMessage
@@ -86,6 +88,7 @@ func NewConversationService(
 	taskSvc TaskService,
 	orchestratorSvc OrchestratorService,
 	txManager repository.TransactionManager,
+	eventBus events.EventBus,
 ) ConversationService {
 	s := &conversationService{
 		convRepo:          convRepo,
@@ -94,6 +97,7 @@ func NewConversationService(
 		taskSvc:           taskSvc,
 		orchestratorSvc:   orchestratorSvc,
 		txManager:         txManager,
+		eventBus:          eventBus,
 		processedMessages: make(map[uuid.UUID]*models.ConversationMessage),
 		stopChan:          make(chan struct{}),
 	}
@@ -151,7 +155,7 @@ func (s *conversationService) CreateConversation(ctx context.Context, userID, pr
 
 // GetConversation возвращает чат
 func (s *conversationService) GetConversation(ctx context.Context, userID, id uuid.UUID) (*models.Conversation, error) {
-	conv, err := s.checkConversationAccess(ctx, userID, id)
+	conv, err := s.checkConversationAccess(ctx, userID, id, false)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +186,7 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 		return nil, ErrInvalidMessageContent
 	}
 
-	conv, err := s.checkConversationAccess(ctx, userID, conversationID)
+	conv, err := s.checkConversationAccess(ctx, userID, conversationID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +212,18 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 		return nil, fmt.Errorf("failed to save message: %w", err)
 	}
 
+	// Публикуем событие создания сообщения
+	s.eventBus.Publish(ctx, events.ConversationMessageCreated{
+		ProjectID:      conv.ProjectID,
+		UserID:         userID,
+		ConversationID: conversationID,
+		MessageID:      msg.ID,
+		Role:           string(msg.Role),
+		Content:        msg.Content,
+		OccurredAt:     time.Now(),
+		TraceID:        getTraceID(ctx),
+	})
+
 	// Сохраняем для идемпотентности
 	if clientMsgID != uuid.Nil {
 		s.processedMessagesMu.Lock()
@@ -224,7 +240,7 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 
 // GetHistory возвращает историю сообщений
 func (s *conversationService) GetHistory(ctx context.Context, userID, conversationID uuid.UUID, limit, offset int) ([]*models.ConversationMessage, int64, error) {
-	if _, err := s.checkConversationAccess(ctx, userID, conversationID); err != nil {
+	if _, err := s.checkConversationAccess(ctx, userID, conversationID, false); err != nil {
 		return nil, 0, err
 	}
 
@@ -240,17 +256,41 @@ func (s *conversationService) GetHistory(ctx context.Context, userID, conversati
 
 // DeleteConversation удаляет чат
 func (s *conversationService) DeleteConversation(ctx context.Context, userID, id uuid.UUID) error {
-	conv, err := s.checkConversationAccess(ctx, userID, id)
+	conv, err := s.checkConversationAccess(ctx, userID, id, true)
 	if err != nil {
 		return err
 	}
 
 	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		return s.convRepo.Delete(txCtx, conv.ProjectID, id)
+		if err := s.convRepo.Delete(txCtx, conv.ProjectID, id); err != nil {
+			return err
+		}
+
+		// Публикуем событие удаления чата
+		s.eventBus.Publish(ctx, events.ConversationDeleted{
+			ProjectID:      conv.ProjectID,
+			ConversationID: id,
+			OccurredAt:     time.Now(),
+			TraceID:        getTraceID(ctx),
+		})
+		return nil
 	})
 }
 
 // Приватные хелперы
+
+func getTraceID(ctx context.Context) string {
+	// Предположим, TraceID лежит в контексте под определенным ключом.
+	// В реальном проекте здесь будет обращение к библиотеке трассировки (например, OpenTelemetry).
+	if traceID, ok := ctx.Value(traceIDKey).(string); ok {
+		return traceID
+	}
+	return ""
+}
+
+type contextKey string
+
+const traceIDKey contextKey = "trace_id"
 
 func (s *conversationService) checkProjectAccess(ctx context.Context, userID, projectID uuid.UUID) error {
 	err := s.projectSvc.HasAccess(ctx, userID, models.RoleUser, projectID)
@@ -266,8 +306,8 @@ func (s *conversationService) checkProjectAccess(ctx context.Context, userID, pr
 	return nil
 }
 
-func (s *conversationService) checkConversationAccess(ctx context.Context, userID, conversationID uuid.UUID) (*models.Conversation, error) {
-	conv, err := s.convRepo.GetOnlyByID(ctx, conversationID)
+func (s *conversationService) checkConversationAccess(ctx context.Context, userID, conversationID uuid.UUID, master bool) (*models.Conversation, error) {
+	conv, err := s.convRepo.GetOnlyByID(ctx, conversationID, master)
 	if err != nil {
 		if errors.Is(err, repository.ErrConversationNotFound) {
 			return nil, ErrConversationNotFound

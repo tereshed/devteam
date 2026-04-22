@@ -73,6 +73,7 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82 // indirect
+	github.com/sony/gobreaker v1.0.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
@@ -88,7 +89,8 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
-	gorm.io/driver/mysql v1.5.6 // indirect
+	gorm.io/driver/mysql v1.5.7 // indirect
+	gorm.io/plugin/dbresolver v1.6.2 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
 

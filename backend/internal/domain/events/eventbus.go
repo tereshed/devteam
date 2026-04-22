@@ -14,6 +14,7 @@ import (
 type DomainEvent interface {
 	domainEvent() // приватный метод-маркер (нельзя реализовать снаружи пакета)
 	GetProjectID() uuid.UUID
+	GetTraceID() string
 }
 
 // TaskStatusChanged — переход статуса задачи (см. 3.6).
@@ -27,10 +28,12 @@ type TaskStatusChanged struct {
 	AgentRole       string
 	ErrorMessage    string // только при Current == failed
 	OccurredAt      time.Time
+	TraceID         string
 }
 
 func (e TaskStatusChanged) domainEvent()          {}
 func (e TaskStatusChanged) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e TaskStatusChanged) GetTraceID() string      { return e.TraceID }
 
 // TaskMessageCreated — новое сообщение в логе задачи (см. 3.2 / main.mdc §2.5).
 type TaskMessageCreated struct {
@@ -44,10 +47,12 @@ type TaskMessageCreated struct {
 	Content     string
 	Metadata    map[string]any // raw, фильтрация — в подписчике
 	OccurredAt  time.Time
+	TraceID     string
 }
 
 func (e TaskMessageCreated) domainEvent()          {}
 func (e TaskMessageCreated) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e TaskMessageCreated) GetTraceID() string      { return e.TraceID }
 
 // SandboxLogEmitted — одна строка лога из контейнера (см. 5.x).
 type SandboxLogEmitted struct {
@@ -59,10 +64,12 @@ type SandboxLogEmitted struct {
 	Seq        int64
 	Truncated  bool
 	OccurredAt time.Time
+	TraceID    string
 }
 
 func (e SandboxLogEmitted) domainEvent()          {}
 func (e SandboxLogEmitted) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e SandboxLogEmitted) GetTraceID() string      { return e.TraceID }
 
 // PipelineErrored — ошибка пайплайна / executor'а / sandbox'а (см. 6.x).
 type PipelineErrored struct {
@@ -71,19 +78,77 @@ type PipelineErrored struct {
 	Code       string // из enum 7.3 error.code
 	Message    string // safe-string из константного перечня
 	OccurredAt time.Time
+	TraceID    string
 }
 
 func (e PipelineErrored) domainEvent()          {}
 func (e PipelineErrored) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e PipelineErrored) GetTraceID() string      { return e.TraceID }
 
 // ProjectDeleted — удаление проекта (см. 9.1).
 type ProjectDeleted struct {
 	ProjectID  uuid.UUID
 	OccurredAt time.Time
+	TraceID    string
 }
 
 func (e ProjectDeleted) domainEvent()          {}
 func (e ProjectDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e ProjectDeleted) GetTraceID() string      { return e.TraceID }
+
+// UserDeleted — удаление пользователя (см. 9.4).
+type UserDeleted struct {
+	UserID     uuid.UUID
+	OccurredAt time.Time
+	TraceID    string
+}
+
+func (e UserDeleted) domainEvent()          {}
+func (e UserDeleted) GetProjectID() uuid.UUID { return uuid.Nil }
+func (e UserDeleted) GetTraceID() string      { return e.TraceID }
+
+func (e UserDeleted) isGlobal() bool { return true }
+
+// ConversationDeleted — удаление чата (см. 9.4).
+type ConversationDeleted struct {
+	ProjectID      uuid.UUID
+	ConversationID uuid.UUID
+	OccurredAt     time.Time
+	TraceID        string
+}
+
+func (e ConversationDeleted) domainEvent()          {}
+func (e ConversationDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e ConversationDeleted) GetTraceID() string      { return e.TraceID }
+
+// ConversationMessageCreated — новое сообщение в чате (см. 9.4).
+type ConversationMessageCreated struct {
+	ProjectID      uuid.UUID
+	UserID         uuid.UUID
+	ConversationID uuid.UUID
+	MessageID      uuid.UUID
+	Role           string
+	Content        string
+	OccurredAt     time.Time
+	TraceID        string
+}
+
+func (e ConversationMessageCreated) domainEvent()          {}
+func (e ConversationMessageCreated) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e ConversationMessageCreated) GetTraceID() string      { return e.TraceID }
+
+// ConversationMessageDeleted — удаление сообщения (см. 9.4).
+type ConversationMessageDeleted struct {
+	ProjectID      uuid.UUID
+	ConversationID uuid.UUID
+	MessageID      uuid.UUID
+	OccurredAt     time.Time
+	TraceID        string
+}
+
+func (e ConversationMessageDeleted) domainEvent()          {}
+func (e ConversationMessageDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e ConversationMessageDeleted) GetTraceID() string      { return e.TraceID }
 
 // EventBus — публикация и подписка на доменные события в одном процессе.
 type EventBus interface {
@@ -147,7 +212,14 @@ func (b *inMemoryBus) Publish(ctx context.Context, ev DomainEvent) {
 		b.log.Warn("eventbus: attempt to publish nil event")
 		return
 	}
-	if ev.GetProjectID() == uuid.Nil {
+	
+	// Check if event is global (e.g. UserDeleted)
+	isGlobal := false
+	if g, ok := ev.(interface{ isGlobal() bool }); ok {
+		isGlobal = g.isGlobal()
+	}
+
+	if !isGlobal && ev.GetProjectID() == uuid.Nil {
 		b.log.Warn("eventbus: event with nil ProjectID dropped", "type", getEventTypeName(ev))
 		return
 	}
@@ -275,6 +347,14 @@ func getEventTypeName(ev DomainEvent) string {
 		return "pipeline_errored"
 	case ProjectDeleted:
 		return "project_deleted"
+	case UserDeleted:
+		return "user_deleted"
+	case ConversationDeleted:
+		return "conversation_deleted"
+	case ConversationMessageCreated:
+		return "conversation_message_created"
+	case ConversationMessageDeleted:
+		return "conversation_message_deleted"
 	default:
 		return "unknown"
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	"gorm.io/plugin/dbresolver"
 )
 
 const (
@@ -38,6 +39,7 @@ type ConversationFilter struct {
 	Offset   int
 	OrderBy  string
 	OrderDir string
+	Master   bool // Force read from master
 }
 
 // ConversationRepository интерфейс для CRUD-операций с таблицей conversations
@@ -48,10 +50,10 @@ type ConversationRepository interface {
 	Create(ctx context.Context, conv *models.Conversation) error
 
 	// GetByID требует projectID для защиты от IDOR (Tenant Isolation)
-	GetByID(ctx context.Context, projectID, id uuid.UUID) (*models.Conversation, error)
+	GetByID(ctx context.Context, projectID, id uuid.UUID, master bool) (*models.Conversation, error)
 
 	// GetOnlyByID возвращает чат по ID без projectID (для сервиса)
-	GetOnlyByID(ctx context.Context, id uuid.UUID) (*models.Conversation, error)
+	GetOnlyByID(ctx context.Context, id uuid.UUID, master bool) (*models.Conversation, error)
 
 	ListByProjectID(ctx context.Context, projectID uuid.UUID, filter ConversationFilter) ([]*models.Conversation, int64, error)
 
@@ -89,12 +91,15 @@ func (r *conversationRepository) Create(ctx context.Context, conv *models.Conver
 	return nil
 }
 
-func (r *conversationRepository) GetByID(ctx context.Context, projectID, id uuid.UUID) (*models.Conversation, error) {
+func (r *conversationRepository) GetByID(ctx context.Context, projectID, id uuid.UUID, master bool) (*models.Conversation, error) {
 	if projectID == uuid.Nil || id == uuid.Nil {
 		return nil, ErrInvalidInput
 	}
 
 	db := gormDB(ctx, r.db)
+	if master {
+		db = db.Clauses(dbresolver.Write)
+	}
 	var conv models.Conversation
 	err := db.WithContext(ctx).
 		Where("id = ? AND project_id = ?", id, projectID).
@@ -108,12 +113,15 @@ func (r *conversationRepository) GetByID(ctx context.Context, projectID, id uuid
 	return &conv, nil
 }
 
-func (r *conversationRepository) GetOnlyByID(ctx context.Context, id uuid.UUID) (*models.Conversation, error) {
+func (r *conversationRepository) GetOnlyByID(ctx context.Context, id uuid.UUID, master bool) (*models.Conversation, error) {
 	if id == uuid.Nil {
 		return nil, ErrInvalidInput
 	}
 
 	db := gormDB(ctx, r.db)
+	if master {
+		db = db.Clauses(dbresolver.Write)
+	}
 	var conv models.Conversation
 	err := db.WithContext(ctx).
 		Where("id = ?", id).
@@ -133,6 +141,9 @@ func (r *conversationRepository) ListByProjectID(ctx context.Context, projectID 
 	}
 
 	db := gormDB(ctx, r.db)
+	if filter.Master {
+		db = db.Clauses(dbresolver.Write)
+	}
 	
 	// TODO: migrate to cursor pagination
 	var count int64

@@ -272,8 +272,8 @@ User Message
 |---|--------|-------|--------|
 | 9.1 | Коллекция Weaviate per project: `DevTeam_Project_{id}` | Конфигурация в `vectordb` | ✅ |
 | 9.2 | Индексатор кода: чанкинг файлов (по файлам для малых, по функциям для больших) | `backend/internal/indexer/code_indexer.go` | ✅ |
-| 9.3 | Индексатор задач: описание + результат + сообщения | `backend/internal/indexer/task_indexer.go` | ⬜ |
-| 9.4 | Индексатор чатов: сообщения пользователя и ассистента | `backend/internal/indexer/conversation_indexer.go` | ⬜ |
+| 9.3 | Индексатор задач: описание + результат + сообщения | `backend/internal/indexer/task_indexer.go` | ⬜ | [docs/tasks/9.3-task-indexer.md](docs/tasks/9.3-task-indexer.md) |
+| 9.4 | Индексатор чатов: сообщения пользователя и ассистента | `backend/internal/indexer/conversation_indexer.go` | ⬜ | [docs/tasks/9.4-conversation-indexer.md](docs/tasks/9.4-conversation-indexer.md) |
 | 9.5 | Service: `IndexerService` (полная индексация проекта, инкрементальное обновление) | `backend/internal/service/indexer_service.go` | ⬜ |
 | 9.6 | Хук: индексация кода при создании проекта (после clone) | В `ProjectService` | ⬜ |
 | 9.7 | Хук: индексация задачи при создании/обновлении | В `TaskService` | ⬜ |

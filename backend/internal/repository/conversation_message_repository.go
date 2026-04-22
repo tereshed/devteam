@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	"gorm.io/plugin/dbresolver"
 )
 
 const (
@@ -42,7 +43,7 @@ type ConversationMessageRepository interface {
 	Create(ctx context.Context, msg *models.ConversationMessage) error
 
 	// GetByID требует conversationID для защиты от IDOR
-	GetByID(ctx context.Context, conversationID, id uuid.UUID) (*models.ConversationMessage, error)
+	GetByID(ctx context.Context, conversationID, id uuid.UUID, master bool) (*models.ConversationMessage, error)
 
 	// ListByConversationID возвращает сообщения конкретного чата с пагинацией
 	ListByConversationID(ctx context.Context, conversationID uuid.UUID, filter MessageFilter) ([]*models.ConversationMessage, int64, error)
@@ -51,6 +52,9 @@ type ConversationMessageRepository interface {
 	Update(ctx context.Context, conversationID, id uuid.UUID, updates map[string]interface{}) error
 
 	Delete(ctx context.Context, conversationID, id uuid.UUID) error
+
+	// ListByProjectID возвращает сообщения всех чатов проекта с поддержкой курсора и Preload чата
+	ListByProjectID(ctx context.Context, projectID uuid.UUID, lastID *uuid.UUID, limit int, master bool) ([]*models.ConversationMessage, error)
 }
 
 type conversationMessageRepository struct {
@@ -81,12 +85,15 @@ func (r *conversationMessageRepository) Create(ctx context.Context, msg *models.
 	return nil
 }
 
-func (r *conversationMessageRepository) GetByID(ctx context.Context, conversationID, id uuid.UUID) (*models.ConversationMessage, error) {
+func (r *conversationMessageRepository) GetByID(ctx context.Context, conversationID, id uuid.UUID, master bool) (*models.ConversationMessage, error) {
 	if conversationID == uuid.Nil || id == uuid.Nil {
 		return nil, ErrInvalidInput
 	}
 
 	db := gormDB(ctx, r.db)
+	if master {
+		db = db.Clauses(dbresolver.Write)
+	}
 	var msg models.ConversationMessage
 	err := db.WithContext(ctx).
 		Where("id = ? AND conversation_id = ?", id, conversationID).
@@ -190,6 +197,33 @@ func (r *conversationMessageRepository) Delete(ctx context.Context, conversation
 	}
 
 	return nil
+}
+
+func (r *conversationMessageRepository) ListByProjectID(ctx context.Context, projectID uuid.UUID, lastID *uuid.UUID, limit int, master bool) ([]*models.ConversationMessage, error) {
+	if projectID == uuid.Nil {
+		return nil, ErrInvalidInput
+	}
+
+	db := gormDB(ctx, r.db)
+	if master {
+		db = db.Clauses(dbresolver.Write)
+	}
+	query := db.WithContext(ctx).
+		Joins("JOIN conversations ON conversations.id = conversation_messages.conversation_id").
+		Where("conversations.project_id = ?", projectID).
+		Preload("Conversation")
+
+	if lastID != nil && *lastID != uuid.Nil {
+		query = query.Where("conversation_messages.id > ?", *lastID)
+	}
+
+	var messages []*models.ConversationMessage
+	err := query.Order("conversation_messages.id ASC").Limit(limit).Find(&messages).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project messages: %w", err)
+	}
+
+	return messages, nil
 }
 
 // Scopes

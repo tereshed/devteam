@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -18,6 +19,7 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrUserAlreadyExists   = errors.New("user already exists")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
+	ErrUserNotFound        = errors.New("user not found")
 )
 
 // AuthService определяет интерфейс для сервиса авторизации
@@ -27,6 +29,7 @@ type AuthService interface {
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	Logout(ctx context.Context, userID uuid.UUID) error
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (*models.User, error)
+	DeleteUser(ctx context.Context, userID uuid.UUID) error
 }
 
 // authService реализация AuthService
@@ -34,6 +37,7 @@ type authService struct {
 	userRepo         repository.UserRepository
 	refreshTokenRepo repository.RefreshTokenRepository
 	jwtManager       *jwt.Manager
+	eventBus         events.EventBus
 }
 
 // NewAuthService создает новый сервис авторизации
@@ -41,11 +45,13 @@ func NewAuthService(
 	userRepo repository.UserRepository,
 	refreshTokenRepo repository.RefreshTokenRepository,
 	jwtManager *jwt.Manager,
+	eventBus events.EventBus,
 ) AuthService {
 	return &authService{
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		jwtManager:       jwtManager,
+		eventBus:         eventBus,
 	}
 }
 
@@ -192,6 +198,31 @@ func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*mo
 		return nil, err
 	}
 	return user, nil
+}
+
+// DeleteUser удаляет пользователя
+func (s *authService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	// 1. Проверяем существование
+	_, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+
+	// 2. Удаляем из БД (каскады удалят проекты, чаты и т.д.)
+	if err := s.userRepo.Delete(ctx, userID); err != nil {
+		return err
+	}
+
+	// 3. Публикуем событие для очистки векторов
+	s.eventBus.Publish(ctx, events.UserDeleted{
+		UserID:     userID,
+		OccurredAt: time.Now(),
+	})
+
+	return nil
 }
 
 // hashToken создает SHA256 хеш токена для хранения в БД
