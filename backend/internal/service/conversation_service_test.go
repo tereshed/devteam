@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -33,14 +34,14 @@ func (m *mockConversationRepo) WithTx(tx *gorm.DB) repository.ConversationReposi
 func (m *mockConversationRepo) Create(ctx context.Context, conv *models.Conversation) error {
 	return m.Called(ctx, conv).Error(0)
 }
-func (m *mockConversationRepo) GetByID(ctx context.Context, projectID, id uuid.UUID) (*models.Conversation, error) {
+func (m *mockConversationRepo) GetByID(ctx context.Context, projectID, id uuid.UUID, master bool) (*models.Conversation, error) {
 	args := m.Called(ctx, projectID, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.Conversation), args.Error(1)
 }
-func (m *mockConversationRepo) GetOnlyByID(ctx context.Context, id uuid.UUID) (*models.Conversation, error) {
+func (m *mockConversationRepo) GetOnlyByID(ctx context.Context, id uuid.UUID, master bool) (*models.Conversation, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -73,7 +74,7 @@ func (m *mockConversationMessageRepo) WithTx(tx *gorm.DB) repository.Conversatio
 func (m *mockConversationMessageRepo) Create(ctx context.Context, msg *models.ConversationMessage) error {
 	return m.Called(ctx, msg).Error(0)
 }
-func (m *mockConversationMessageRepo) GetByID(ctx context.Context, conversationID, id uuid.UUID) (*models.ConversationMessage, error) {
+func (m *mockConversationMessageRepo) GetByID(ctx context.Context, conversationID, id uuid.UUID, master bool) (*models.ConversationMessage, error) {
 	args := m.Called(ctx, conversationID, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -92,6 +93,13 @@ func (m *mockConversationMessageRepo) Update(ctx context.Context, conversationID
 }
 func (m *mockConversationMessageRepo) Delete(ctx context.Context, conversationID, id uuid.UUID) error {
 	return m.Called(ctx, conversationID, id).Error(0)
+}
+func (m *mockConversationMessageRepo) ListByProjectID(ctx context.Context, projectID uuid.UUID, lastID *uuid.UUID, limit int, master bool) ([]*models.ConversationMessage, error) {
+	args := m.Called(ctx, projectID, lastID, limit, master)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.ConversationMessage), args.Error(1)
 }
 
 type mockProjectSvc struct{ mock.Mock }
@@ -173,6 +181,19 @@ func (m *mockTxManager) WithTransaction(ctx context.Context, fn func(ctx context
 	return fn(ctx)
 }
 
+type mockConvEventBus struct{ mock.Mock }
+
+func (m *mockConvEventBus) Publish(ctx context.Context, ev events.DomainEvent) {
+	m.Called(ctx, ev)
+}
+func (m *mockConvEventBus) Subscribe(name string, buffer int) (<-chan events.DomainEvent, func()) {
+	args := m.Called(name, buffer)
+	return args.Get(0).(<-chan events.DomainEvent), args.Get(1).(func())
+}
+func (m *mockConvEventBus) Close() {
+	m.Called()
+}
+
 // --- Harness ---
 
 type mockDeps struct {
@@ -182,6 +203,7 @@ type mockDeps struct {
 	taskSvc         *mockTaskSvc
 	orchestratorSvc *mockOrchestratorSvc
 	txManager       *mockTxManager
+	eventBus        *mockConvEventBus
 }
 
 func newTestConversationHarness(t *testing.T) (*conversationService, *mockDeps) {
@@ -192,6 +214,7 @@ func newTestConversationHarness(t *testing.T) (*conversationService, *mockDeps) 
 		taskSvc:         new(mockTaskSvc),
 		orchestratorSvc: new(mockOrchestratorSvc),
 		txManager:       new(mockTxManager),
+		eventBus:        new(mockConvEventBus),
 	}
 
 	svc := NewConversationService(
@@ -201,6 +224,7 @@ func newTestConversationHarness(t *testing.T) (*conversationService, *mockDeps) 
 		deps.taskSvc,
 		deps.orchestratorSvc,
 		deps.txManager,
+		deps.eventBus,
 	).(*conversationService)
 
 	t.Cleanup(func() {
@@ -454,6 +478,7 @@ func TestSendMessage(t *testing.T) {
 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
 			},
 			expectedErr: nil,
 		},
@@ -508,6 +533,7 @@ func TestSendMessage(t *testing.T) {
 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
 			},
 			expectedErr: nil,
 		},
@@ -563,6 +589,7 @@ func TestSendMessage_ConcurrentAccess(t *testing.T) {
 	deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 	deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 	deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
+	deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
 
 	var wg sync.WaitGroup
 	numGoroutines := 50
@@ -660,6 +687,7 @@ func TestDeleteConversation(t *testing.T) {
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
 				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
 				deps.convRepo.On("Delete", mock.Anything, projectID, convID).Return(nil)
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationDeleted")).Return()
 			},
 			expectedErr: nil,
 		},

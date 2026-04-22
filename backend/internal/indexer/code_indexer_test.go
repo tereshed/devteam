@@ -65,6 +65,46 @@ func (m *MockVectorRepo) DeleteByContentID(ctx context.Context, projectID string
 	return args.Error(0)
 }
 
+func (m *MockVectorRepo) Get(ctx context.Context, projectID string, id string) (*models.VectorDocument, error) {
+	args := m.Called(ctx, projectID, id)
+	return args.Get(0).(*models.VectorDocument), args.Error(1)
+}
+
+func (m *MockVectorRepo) Update(ctx context.Context, projectID string, id string, doc *models.VectorDocument) error {
+	args := m.Called(ctx, projectID, id, doc)
+	return args.Error(0)
+}
+
+func (m *MockVectorRepo) Delete(ctx context.Context, projectID string, id string) error {
+	args := m.Called(ctx, projectID, id)
+	return args.Error(0)
+}
+
+func (m *MockVectorRepo) DeleteByContentType(ctx context.Context, projectID string, contentType models.ContentType, category string) error {
+	args := m.Called(ctx, projectID, contentType, category)
+	return args.Error(0)
+}
+
+func (m *MockVectorRepo) Search(ctx context.Context, projectID string, params *vectordb.SearchParams) ([]*vectordb.SearchResult, error) {
+	args := m.Called(ctx, projectID, params)
+	return args.Get(0).([]*vectordb.SearchResult), args.Error(1)
+}
+
+func (m *MockVectorRepo) SemanticSearch(ctx context.Context, projectID string, query string, category string, limit int) ([]*vectordb.SearchResult, error) {
+	args := m.Called(ctx, projectID, query, category, limit)
+	return args.Get(0).([]*vectordb.SearchResult), args.Error(1)
+}
+
+func (m *MockVectorRepo) KeywordSearch(ctx context.Context, projectID string, query string, category string, limit int) ([]*vectordb.SearchResult, error) {
+	args := m.Called(ctx, projectID, query, category, limit)
+	return args.Get(0).([]*vectordb.SearchResult), args.Error(1)
+}
+
+func (m *MockVectorRepo) CountByContentType(ctx context.Context, projectID string, contentType models.ContentType, category string) (int64, error) {
+	args := m.Called(ctx, projectID, contentType, category)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 // MockParser is a mock of CodeParser
 type MockParser struct {
 	mock.Mock

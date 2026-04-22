@@ -392,15 +392,13 @@ var (
 )
 
 func (i *conversationIndexer) sanitizeText(text string) string {
+	decoded, err := url.PathUnescape(text)
+	if err == nil {
+		text = decoded
+	}
 	result := text
 	for _, pattern := range convSecretPatterns {
 		result = pattern.ReplaceAllStringFunc(result, func(match string) string {
-			// Декодируем только потенциальный секрет, а не весь текст
-			decoded, err := url.PathUnescape(match)
-			if err == nil {
-				match = decoded
-			}
-			
 			groups := pattern.FindStringSubmatch(match)
 			if len(groups) >= 3 {
 				if len(groups) >= 4 {

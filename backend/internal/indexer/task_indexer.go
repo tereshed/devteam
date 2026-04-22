@@ -267,7 +267,7 @@ func (i *taskIndexer) buildTaskDocuments(task *models.Task, messages []models.Ta
 
 var (
 	// Простые регулярки для маскирования секретов
-	secretPatterns = []*regexp.Regexp{
+	taskSecretPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(api[-_]?key|secret|password|token|auth|credential)(["']?\s*[:=]\s*["']?)([a-zA-Z0-9\-_.~]{4,})`),
 		regexp.MustCompile(`(?i)(bearer\s+)([a-zA-Z0-9\-_.~]{15,})`),
 	}
@@ -276,7 +276,7 @@ var (
 // sanitizeText маскирует секреты в тексте
 func (i *taskIndexer) sanitizeText(text string) string {
 	result := text
-	for _, pattern := range secretPatterns {
+	for _, pattern := range taskSecretPatterns {
 		result = pattern.ReplaceAllStringFunc(result, func(match string) string {
 			groups := pattern.FindStringSubmatch(match)
 			if len(groups) >= 3 {

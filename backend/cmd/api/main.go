@@ -181,7 +181,7 @@ func main() {
 	}()
 
 	jwtManager := jwt.NewManager(cfg.JWT.SecretKey, cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
-	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager)
+	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager, eventBus)
 	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
 	promptService := service.NewPromptService(promptRepo)
 	gitFactory := gitprovider.NewFactory()
@@ -192,6 +192,7 @@ func main() {
 		txManager,
 		gitFactory,
 		encryptor,
+		eventBus,
 		cfg.Git.ImportDir,
 	)
 	teamService := service.NewTeamService(teamRepo)

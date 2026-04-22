@@ -11,71 +11,10 @@ import (
 
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
-	"github.com/devteam/backend/pkg/vectordb"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
-
-// MockVectorRepo is a mock of VectorRepository
-type MockVectorRepo struct {
-	mock.Mock
-}
-
-func (m *MockVectorRepo) Create(ctx context.Context, projectID string, doc *models.VectorDocument) (string, error) {
-	args := m.Called(ctx, projectID, doc)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockVectorRepo) Get(ctx context.Context, projectID string, id string) (*models.VectorDocument, error) {
-	args := m.Called(ctx, projectID, id)
-	return args.Get(0).(*models.VectorDocument), args.Error(1)
-}
-
-func (m *MockVectorRepo) Update(ctx context.Context, projectID string, id string, doc *models.VectorDocument) error {
-	args := m.Called(ctx, projectID, id, doc)
-	return args.Error(0)
-}
-
-func (m *MockVectorRepo) Delete(ctx context.Context, projectID string, id string) error {
-	args := m.Called(ctx, projectID, id)
-	return args.Error(0)
-}
-
-func (m *MockVectorRepo) BatchCreate(ctx context.Context, projectID string, docs []*models.VectorDocument) (*vectordb.IndexStats, error) {
-	args := m.Called(ctx, projectID, docs)
-	return args.Get(0).(*vectordb.IndexStats), args.Error(1)
-}
-
-func (m *MockVectorRepo) DeleteByContentID(ctx context.Context, projectID string, contentID string) error {
-	args := m.Called(ctx, projectID, contentID)
-	return args.Error(0)
-}
-
-func (m *MockVectorRepo) DeleteByContentType(ctx context.Context, projectID string, contentType models.ContentType, category string) error {
-	args := m.Called(ctx, projectID, contentType, category)
-	return args.Error(0)
-}
-
-func (m *MockVectorRepo) Search(ctx context.Context, projectID string, params *vectordb.SearchParams) ([]*vectordb.SearchResult, error) {
-	args := m.Called(ctx, projectID, params)
-	return args.Get(0).([]*vectordb.SearchResult), args.Error(1)
-}
-
-func (m *MockVectorRepo) SemanticSearch(ctx context.Context, projectID string, query string, category string, limit int) ([]*vectordb.SearchResult, error) {
-	args := m.Called(ctx, projectID, query, category, limit)
-	return args.Get(0).([]*vectordb.SearchResult), args.Error(1)
-}
-
-func (m *MockVectorRepo) KeywordSearch(ctx context.Context, projectID string, query string, category string, limit int) ([]*vectordb.SearchResult, error) {
-	args := m.Called(ctx, projectID, query, category, limit)
-	return args.Get(0).([]*vectordb.SearchResult), args.Error(1)
-}
-
-func (m *MockVectorRepo) CountByContentType(ctx context.Context, projectID string, contentType models.ContentType, category string) (int64, error) {
-	args := m.Called(ctx, projectID, contentType, category)
-	return args.Get(0).(int64), args.Error(1)
-}
 
 // MockTaskRepo is a mock of TaskRepository
 type MockTaskRepo struct {

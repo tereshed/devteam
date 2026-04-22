@@ -57,6 +57,11 @@ func (m *MockAuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID) 
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
+func (m *MockAuthService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	args := m.Called(ctx, userID)
+	return args.Error(0)
+}
+
 // MockJWTManager мок для JWTManager
 type MockJWTManager struct {
 	mock.Mock

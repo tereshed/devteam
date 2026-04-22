@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -254,6 +255,7 @@ func newProjectServiceWithGitDeps(
 		transactions: txMgr,
 		gitFactory:   gf,
 		encryptor:    enc,
+		eventBus:     events.NewInMemoryBus(nil, nil),
 		importDir:    importDir,
 	}
 }
