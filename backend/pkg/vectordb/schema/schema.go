@@ -8,13 +8,9 @@ import (
 	"github.com/weaviate/weaviate/entities/models"
 )
 
-// ClassName - имя класса в Weaviate
-// Измените на своё имя в конкретном проекте
-const ClassName = "Document"
-
 // CreateSchema создает схему в Weaviate
-func CreateSchema(ctx context.Context, client *weaviate.Client) error {
-	class := getDocumentClass()
+func CreateSchema(ctx context.Context, client *weaviate.Client, className string) error {
+	class := GetDocumentClass(className)
 
 	err := client.Schema().ClassCreator().WithClass(class).Do(ctx)
 	if err != nil {
@@ -25,8 +21,8 @@ func CreateSchema(ctx context.Context, client *weaviate.Client) error {
 }
 
 // EnsureSchemaExists проверяет существование схемы и создает её при необходимости
-func EnsureSchemaExists(ctx context.Context, client *weaviate.Client) error {
-	exists, err := client.Schema().ClassExistenceChecker().WithClassName(ClassName).Do(ctx)
+func EnsureSchemaExists(ctx context.Context, client *weaviate.Client, className string) error {
+	exists, err := client.Schema().ClassExistenceChecker().WithClassName(className).Do(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check schema existence: %w", err)
 	}
@@ -35,23 +31,22 @@ func EnsureSchemaExists(ctx context.Context, client *weaviate.Client) error {
 		return nil // Схема уже существует
 	}
 
-	return CreateSchema(ctx, client)
+	return CreateSchema(ctx, client, className)
 }
 
 // DeleteSchema удаляет схему из Weaviate
-func DeleteSchema(ctx context.Context, client *weaviate.Client) error {
-	err := client.Schema().ClassDeleter().WithClassName(ClassName).Do(ctx)
+func DeleteSchema(ctx context.Context, client *weaviate.Client, className string) error {
+	err := client.Schema().ClassDeleter().WithClassName(className).Do(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to delete schema: %w", err)
 	}
 	return nil
 }
 
-// getDocumentClass возвращает универсальное определение класса Document
-// Настройте под свои нужды
-func getDocumentClass() *models.Class {
+// GetDocumentClass возвращает универсальное определение класса Document с заданным именем
+func GetDocumentClass(className string) *models.Class {
 	return &models.Class{
-		Class:       ClassName,
+		Class:       className,
 		Description: "Generic document for vector search",
 		Vectorizer:  "text2vec-transformers",
 

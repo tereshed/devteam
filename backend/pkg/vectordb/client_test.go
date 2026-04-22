@@ -88,6 +88,51 @@ func TestClient_Close(t *testing.T) {
 }
 
 // ========================================
+// Collection Management Tests
+// ========================================
+
+func TestClient_GetClassName(t *testing.T) {
+	cfg := &Config{Host: "localhost:8080"}
+	client, _ := NewClient(cfg)
+
+	tests := []struct {
+		name      string
+		projectID string
+		want      string
+		wantErr   bool
+	}{
+		{
+			name:      "Valid UUID",
+			projectID: "550e8400-e29b-41d4-a716-446655440000",
+			want:      "DevTeam_Project_550e8400e29b41d4a716446655440000",
+			wantErr:   false,
+		},
+		{
+			name:      "Invalid UUID",
+			projectID: "invalid-uuid",
+			wantErr:   true,
+		},
+		{
+			name:      "Empty ID",
+			projectID: "",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := client.GetClassName(tt.projectID)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+// ========================================
 // Config Tests
 // ========================================
 

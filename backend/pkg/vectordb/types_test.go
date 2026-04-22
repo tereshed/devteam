@@ -132,11 +132,3 @@ func TestConfig_FullData(t *testing.T) {
 	assert.Equal(t, "https", cfg.Scheme)
 }
 
-// ========================================
-// ClassName Tests
-// ========================================
-
-func TestClassName_Value(t *testing.T) {
-	assert.Equal(t, "Document", ClassName)
-}
-

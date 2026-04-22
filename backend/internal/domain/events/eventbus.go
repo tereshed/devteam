@@ -76,6 +76,15 @@ type PipelineErrored struct {
 func (e PipelineErrored) domainEvent()          {}
 func (e PipelineErrored) GetProjectID() uuid.UUID { return e.ProjectID }
 
+// ProjectDeleted — удаление проекта (см. 9.1).
+type ProjectDeleted struct {
+	ProjectID  uuid.UUID
+	OccurredAt time.Time
+}
+
+func (e ProjectDeleted) domainEvent()          {}
+func (e ProjectDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
+
 // EventBus — публикация и подписка на доменные события в одном процессе.
 type EventBus interface {
 	Publish(ctx context.Context, ev DomainEvent)
@@ -264,6 +273,8 @@ func getEventTypeName(ev DomainEvent) string {
 		return "sandbox_log_emitted"
 	case PipelineErrored:
 		return "pipeline_errored"
+	case ProjectDeleted:
+		return "project_deleted"
 	default:
 		return "unknown"
 	}

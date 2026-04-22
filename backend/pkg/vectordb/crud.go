@@ -12,10 +12,15 @@ import (
 	"github.com/devteam/backend/internal/models"
 )
 
-// Create создает документ в векторной базе
-func (c *Client) Create(ctx context.Context, doc *models.VectorDocument) (string, error) {
+// Create создает документ в векторной базе для конкретного проекта
+func (c *Client) Create(ctx context.Context, projectID string, doc *models.VectorDocument) (string, error) {
 	if doc == nil {
 		return "", fmt.Errorf("document cannot be nil")
+	}
+
+	className, err := c.EnsureCollection(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("failed to ensure collection: %w", err)
 	}
 
 	// Валидация обязательных полей
@@ -30,13 +35,9 @@ func (c *Client) Create(ctx context.Context, doc *models.VectorDocument) (string
 	}
 
 	// Сериализуем metadata в JSON string
-	var metadataJSON string
-	if doc.Metadata != nil {
-		metadataBytes, err := json.Marshal(doc.Metadata)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal metadata: %w", err)
-		}
-		metadataJSON = string(metadataBytes)
+	metadataJSON, err := marshalMetadata(doc.Metadata)
+	if err != nil {
+		return "", err
 	}
 
 	// Подготовка данных для Weaviate
@@ -53,7 +54,7 @@ func (c *Client) Create(ctx context.Context, doc *models.VectorDocument) (string
 
 	// Создание объекта
 	result, err := c.weaviate.Data().Creator().
-		WithClassName(ClassName).
+		WithClassName(className).
 		WithProperties(properties).
 		Do(ctx)
 
@@ -69,15 +70,20 @@ func (c *Client) Create(ctx context.Context, doc *models.VectorDocument) (string
 	return "", fmt.Errorf("weaviate returned empty ID")
 }
 
-// Get получает документ по ID
-func (c *Client) Get(ctx context.Context, id string) (*models.VectorDocument, error) {
+// Get получает документ по ID из коллекции проекта
+func (c *Client) Get(ctx context.Context, projectID string, id string) (*models.VectorDocument, error) {
 	if id == "" {
 		return nil, fmt.Errorf("id cannot be empty")
 	}
 
+	className, err := c.GetClassName(projectID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Получаем объект
 	objects, err := c.weaviate.Data().ObjectsGetter().
-		WithClassName(ClassName).
+		WithClassName(className).
 		WithID(id).
 		Do(ctx)
 
@@ -93,8 +99,8 @@ func (c *Client) Get(ctx context.Context, id string) (*models.VectorDocument, er
 	return parseWeaviateObject(objects[0])
 }
 
-// Update обновляет документ
-func (c *Client) Update(ctx context.Context, id string, doc *models.VectorDocument) error {
+// Update обновляет документ в коллекции проекта
+func (c *Client) Update(ctx context.Context, projectID string, id string, doc *models.VectorDocument) error {
 	if id == "" {
 		return fmt.Errorf("id cannot be empty")
 	}
@@ -102,14 +108,15 @@ func (c *Client) Update(ctx context.Context, id string, doc *models.VectorDocume
 		return fmt.Errorf("document cannot be nil")
 	}
 
+	className, err := c.GetClassName(projectID)
+	if err != nil {
+		return err
+	}
+
 	// Сериализуем metadata в JSON string
-	var metadataJSON string
-	if doc.Metadata != nil {
-		metadataBytes, err := json.Marshal(doc.Metadata)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %w", err)
-		}
-		metadataJSON = string(metadataBytes)
+	metadataJSON, err := marshalMetadata(doc.Metadata)
+	if err != nil {
+		return err
 	}
 
 	// Подготовка данных
@@ -124,8 +131,8 @@ func (c *Client) Update(ctx context.Context, id string, doc *models.VectorDocume
 	}
 
 	// Обновление объекта
-	err := c.weaviate.Data().Updater().
-		WithClassName(ClassName).
+	err = c.weaviate.Data().Updater().
+		WithClassName(className).
 		WithID(id).
 		WithProperties(properties).
 		Do(ctx)
@@ -137,14 +144,19 @@ func (c *Client) Update(ctx context.Context, id string, doc *models.VectorDocume
 	return nil
 }
 
-// Delete удаляет документ
-func (c *Client) Delete(ctx context.Context, id string) error {
+// Delete удаляет документ из коллекции проекта
+func (c *Client) Delete(ctx context.Context, projectID string, id string) error {
 	if id == "" {
 		return fmt.Errorf("id cannot be empty")
 	}
 
-	err := c.weaviate.Data().Deleter().
-		WithClassName(ClassName).
+	className, err := c.GetClassName(projectID)
+	if err != nil {
+		return err
+	}
+
+	err = c.weaviate.Data().Deleter().
+		WithClassName(className).
 		WithID(id).
 		Do(ctx)
 
@@ -155,10 +167,15 @@ func (c *Client) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// BatchCreate создает несколько документов за один запрос
-func (c *Client) BatchCreate(ctx context.Context, docs []*models.VectorDocument) (*IndexStats, error) {
+// BatchCreate создает несколько документов в коллекции проекта
+func (c *Client) BatchCreate(ctx context.Context, projectID string, docs []*models.VectorDocument) (*IndexStats, error) {
 	if len(docs) == 0 {
 		return &IndexStats{}, nil
+	}
+
+	className, err := c.EnsureCollection(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure collection: %w", err)
 	}
 
 	stats := &IndexStats{
@@ -170,6 +187,13 @@ func (c *Client) BatchCreate(ctx context.Context, docs []*models.VectorDocument)
 	batch := c.weaviate.Batch().ObjectsBatcher()
 
 	for _, doc := range docs {
+		// Предотвращение паники при nil документе
+		if doc == nil {
+			stats.Failed++
+			stats.Errors = append(stats.Errors, "document is nil")
+			continue
+		}
+
 		// Валидация
 		if doc.ContentID == "" || doc.Content == "" || !doc.ContentType.IsValid() {
 			stats.Failed++
@@ -178,15 +202,11 @@ func (c *Client) BatchCreate(ctx context.Context, docs []*models.VectorDocument)
 		}
 
 		// Сериализуем metadata в JSON string
-		var metadataJSON string
-		if doc.Metadata != nil {
-			metadataBytes, err := json.Marshal(doc.Metadata)
-			if err != nil {
-				stats.Failed++
-				stats.Errors = append(stats.Errors, fmt.Sprintf("failed to marshal metadata for contentID=%s: %v", doc.ContentID, err))
-				continue
-			}
-			metadataJSON = string(metadataBytes)
+		metadataJSON, err := marshalMetadata(doc.Metadata)
+		if err != nil {
+			stats.Failed++
+			stats.Errors = append(stats.Errors, fmt.Sprintf("failed to marshal metadata for contentID=%s: %v", doc.ContentID, err))
+			continue
 		}
 
 		properties := map[string]interface{}{
@@ -201,7 +221,7 @@ func (c *Client) BatchCreate(ctx context.Context, docs []*models.VectorDocument)
 		}
 
 		obj := &weaviateModels.Object{
-			Class:      ClassName,
+			Class:      className,
 			Properties: properties,
 		}
 
@@ -229,15 +249,20 @@ func (c *Client) BatchCreate(ctx context.Context, docs []*models.VectorDocument)
 	return stats, nil
 }
 
-// DeleteByContentID удаляет документы по contentId
-func (c *Client) DeleteByContentID(ctx context.Context, contentID string) error {
+// DeleteByContentID удаляет документы по contentId из коллекции проекта
+func (c *Client) DeleteByContentID(ctx context.Context, projectID string, contentID string) error {
 	if contentID == "" {
 		return fmt.Errorf("contentID cannot be empty")
 	}
 
+	className, err := c.GetClassName(projectID)
+	if err != nil {
+		return err
+	}
+
 	// Используем batch deleter с фильтром
-	_, err := c.weaviate.Batch().ObjectsBatchDeleter().
-		WithClassName(ClassName).
+	_, err = c.weaviate.Batch().ObjectsBatchDeleter().
+		WithClassName(className).
 		WithWhere(filters.Where().
 			WithPath([]string{"contentId"}).
 			WithOperator(filters.Equal).
@@ -251,8 +276,13 @@ func (c *Client) DeleteByContentID(ctx context.Context, contentID string) error 
 	return nil
 }
 
-// DeleteByContentType удаляет все документы определенного типа
-func (c *Client) DeleteByContentType(ctx context.Context, contentType models.ContentType, category string) error {
+// DeleteByContentType удаляет все документы определенного типа из коллекции проекта
+func (c *Client) DeleteByContentType(ctx context.Context, projectID string, contentType models.ContentType, category string) error {
+	className, err := c.GetClassName(projectID)
+	if err != nil {
+		return err
+	}
+
 	// Если contentType пустой - удаляем все документы данной категории
 	var whereBuilder *filters.WhereBuilder
 
@@ -282,11 +312,11 @@ func (c *Client) DeleteByContentType(ctx context.Context, contentType models.Con
 			WithValueString(category)
 	} else {
 		// Удаляем все документы класса
-		return c.deleteAllDocuments(ctx)
+		return c.deleteAllDocuments(ctx, className)
 	}
 
-	_, err := c.weaviate.Batch().ObjectsBatchDeleter().
-		WithClassName(ClassName).
+	_, err = c.weaviate.Batch().ObjectsBatchDeleter().
+		WithClassName(className).
 		WithWhere(whereBuilder).
 		Do(ctx)
 
@@ -297,11 +327,11 @@ func (c *Client) DeleteByContentType(ctx context.Context, contentType models.Con
 	return nil
 }
 
-// deleteAllDocuments удаляет все документы из класса
-func (c *Client) deleteAllDocuments(ctx context.Context) error {
+// deleteAllDocuments удаляет все документы из конкретного класса
+func (c *Client) deleteAllDocuments(ctx context.Context, className string) error {
 	// Удаляем документы где contentId не пустой (т.е. все документы)
 	_, err := c.weaviate.Batch().ObjectsBatchDeleter().
-		WithClassName(ClassName).
+		WithClassName(className).
 		WithWhere(filters.Where().
 			WithPath([]string{"contentId"}).
 			WithOperator(filters.NotEqual).
@@ -315,8 +345,13 @@ func (c *Client) deleteAllDocuments(ctx context.Context) error {
 	return nil
 }
 
-// CountByContentType возвращает количество документов определенного типа и категории
-func (c *Client) CountByContentType(ctx context.Context, contentType models.ContentType, category string) (int64, error) {
+// CountByContentType возвращает количество документов определенного типа и категории в коллекции проекта
+func (c *Client) CountByContentType(ctx context.Context, projectID string, contentType models.ContentType, category string) (int64, error) {
+	className, err := c.GetClassName(projectID)
+	if err != nil {
+		return 0, err
+	}
+
 	// Строим фильтр
 	var whereConditions []*filters.WhereBuilder
 
@@ -338,7 +373,7 @@ func (c *Client) CountByContentType(ctx context.Context, contentType models.Cont
 
 	// Строим запрос
 	builder := c.weaviate.GraphQL().Aggregate().
-		WithClassName(ClassName).
+		WithClassName(className).
 		WithFields(graphql.Field{Name: "meta", Fields: []graphql.Field{{Name: "count"}}})
 
 	// Добавляем фильтр если есть условия
@@ -370,7 +405,7 @@ func (c *Client) CountByContentType(ctx context.Context, contentType models.Cont
 		return 0, nil
 	}
 
-	items, ok := aggregate[ClassName].([]interface{})
+	items, ok := aggregate[className].([]interface{})
 	if !ok || len(items) == 0 {
 		return 0, nil
 	}
@@ -433,8 +468,8 @@ func parseWeaviateObject(obj *weaviateModels.Object) (*models.VectorDocument, er
 
 	// Десериализуем metadata из JSON string
 	if metadataJSON, ok := props["metadata"].(string); ok && metadataJSON != "" {
-		var metadata map[string]interface{}
-		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
+		metadata, err := unmarshalMetadata(metadataJSON)
+		if err == nil {
 			doc.Metadata = metadata
 		}
 	}
@@ -452,4 +487,28 @@ func parseWeaviateObject(obj *weaviateModels.Object) (*models.VectorDocument, er
 	}
 
 	return doc, nil
+}
+
+// marshalMetadata сериализует метаданные в JSON строку
+func marshalMetadata(meta map[string]interface{}) (string, error) {
+	if meta == nil {
+		return "", nil
+	}
+	metadataBytes, err := json.Marshal(meta)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	return string(metadataBytes), nil
+}
+
+// unmarshalMetadata десериализует метаданные из JSON строки
+func unmarshalMetadata(jsonStr string) (map[string]interface{}, error) {
+	if jsonStr == "" {
+		return make(map[string]interface{}), nil
+	}
+	var metadata map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+	return metadata, nil
 }

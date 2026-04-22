@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
@@ -68,6 +69,7 @@ type projectService struct {
 	transactions repository.TransactionManager
 	gitFactory  gitprovider.Factory
 	encryptor   Encryptor
+	eventBus    events.EventBus
 	importDir   string
 }
 
@@ -79,6 +81,7 @@ func NewProjectService(
 	transactions repository.TransactionManager,
 	gitFactory gitprovider.Factory,
 	encryptor Encryptor,
+	eventBus events.EventBus,
 	importDir string,
 ) ProjectService {
 	return &projectService{
@@ -88,6 +91,7 @@ func NewProjectService(
 		transactions: transactions,
 		gitFactory:   gitFactory,
 		encryptor:    encryptor,
+		eventBus:     eventBus,
 		importDir:    importDir,
 	}
 }
@@ -529,7 +533,19 @@ func (s *projectService) Delete(ctx context.Context, userID uuid.UUID, userRole 
 	if err := s.checkProjectAccess(project, userID, userRole); err != nil {
 		return err
 	}
-	return s.projectRepo.Delete(ctx, projectID)
+
+	err = s.projectRepo.Delete(ctx, projectID)
+	if err != nil {
+		return mapProjectRepoErr(err)
+	}
+
+	// Публикуем событие удаления проекта для очистки Weaviate и других ресурсов
+	s.eventBus.Publish(ctx, events.ProjectDeleted{
+		ProjectID:  projectID,
+		OccurredAt: time.Now(),
+	})
+
+	return nil
 }
 
 // HasAccess проверяет доступ пользователя к проекту.

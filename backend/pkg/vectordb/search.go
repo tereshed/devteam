@@ -2,7 +2,6 @@ package vectordb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/weaviate/weaviate-go-client/v4/weaviate/filters"
@@ -11,10 +10,19 @@ import (
 	"github.com/devteam/backend/internal/models"
 )
 
-// Search выполняет гибридный поиск в Weaviate
+// Search выполняет гибридный поиск в Weaviate в коллекции проекта
 func (c *Client) Search(ctx context.Context, params SearchParams) ([]*SearchResult, error) {
+	if params.ProjectID == "" {
+		return nil, fmt.Errorf("projectID is required for search")
+	}
+
 	if params.Query == "" {
 		return nil, fmt.Errorf("search query cannot be empty")
+	}
+
+	className, err := c.GetClassName(params.ProjectID)
+	if err != nil {
+		return nil, err
 	}
 
 	if params.Limit <= 0 {
@@ -31,7 +39,7 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]*SearchResu
 	hybridBuilder.WithAlpha(params.Alpha)
 
 	builder := c.weaviate.GraphQL().Get().
-		WithClassName(ClassName).
+		WithClassName(className).
 		WithHybrid(&hybridBuilder).
 		WithLimit(params.Limit).
 		WithFields(
@@ -66,26 +74,28 @@ func (c *Client) Search(ctx context.Context, params SearchParams) ([]*SearchResu
 	}
 
 	// Парсинг результатов
-	return parseSearchResults(result)
+	return parseSearchResults(result, className)
 }
 
-// SemanticSearch выполняет только векторный поиск (Alpha = 1.0)
-func (c *Client) SemanticSearch(ctx context.Context, query string, category string, limit int) ([]*SearchResult, error) {
+// SemanticSearch выполняет только векторный поиск (Alpha = 1.0) в коллекции проекта
+func (c *Client) SemanticSearch(ctx context.Context, projectID string, query string, category string, limit int) ([]*SearchResult, error) {
 	return c.Search(ctx, SearchParams{
-		Query:    query,
-		Category: category,
-		Limit:    limit,
-		Alpha:    1.0, // Только векторный поиск
+		ProjectID: projectID,
+		Query:     query,
+		Category:  category,
+		Limit:     limit,
+		Alpha:     1.0, // Только векторный поиск
 	})
 }
 
-// KeywordSearch выполняет только BM25 поиск (Alpha = 0.0)
-func (c *Client) KeywordSearch(ctx context.Context, query string, category string, limit int) ([]*SearchResult, error) {
+// KeywordSearch выполняет только BM25 поиск (Alpha = 0.0) в коллекции проекта
+func (c *Client) KeywordSearch(ctx context.Context, projectID string, query string, category string, limit int) ([]*SearchResult, error) {
 	return c.Search(ctx, SearchParams{
-		Query:    query,
-		Category: category,
-		Limit:    limit,
-		Alpha:    0.0, // Только keyword поиск
+		ProjectID: projectID,
+		Query:     query,
+		Category:  category,
+		Limit:     limit,
+		Alpha:     0.0, // Только keyword поиск
 	})
 }
 
@@ -100,7 +110,7 @@ func buildWhereFilter(params SearchParams) *filters.WhereBuilder {
 			conditions = append(conditions, filters.Where().
 				WithPath([]string{"contentType"}).
 				WithOperator(filters.Equal).
-				WithValueText(string(params.ContentTypes[0])))
+				WithValueString(string(params.ContentTypes[0])))
 		} else {
 			// Несколько значений - OR
 			typeConditions := make([]*filters.WhereBuilder, len(params.ContentTypes))
@@ -108,7 +118,7 @@ func buildWhereFilter(params SearchParams) *filters.WhereBuilder {
 				typeConditions[i] = filters.Where().
 					WithPath([]string{"contentType"}).
 					WithOperator(filters.Equal).
-					WithValueText(string(ct))
+					WithValueString(string(ct))
 			}
 			conditions = append(conditions, filters.Where().
 				WithOperator(filters.Or).
@@ -121,7 +131,7 @@ func buildWhereFilter(params SearchParams) *filters.WhereBuilder {
 		conditions = append(conditions, filters.Where().
 			WithPath([]string{"category"}).
 			WithOperator(filters.Equal).
-			WithValueText(params.Category))
+			WithValueString(params.Category))
 	}
 
 	// Фильтр по тегам (ContainsAny)
@@ -129,7 +139,7 @@ func buildWhereFilter(params SearchParams) *filters.WhereBuilder {
 		conditions = append(conditions, filters.Where().
 			WithPath([]string{"tags"}).
 			WithOperator(filters.ContainsAny).
-			WithValueText(params.Tags...))
+			WithValueString(params.Tags...))
 	}
 
 	// Фильтр по конкретным ID контента
@@ -138,14 +148,14 @@ func buildWhereFilter(params SearchParams) *filters.WhereBuilder {
 			conditions = append(conditions, filters.Where().
 				WithPath([]string{"contentId"}).
 				WithOperator(filters.Equal).
-				WithValueText(params.ContentIDs[0]))
+				WithValueString(params.ContentIDs[0]))
 		} else {
 			idConditions := make([]*filters.WhereBuilder, len(params.ContentIDs))
 			for i, id := range params.ContentIDs {
 				idConditions[i] = filters.Where().
 					WithPath([]string{"contentId"}).
 					WithOperator(filters.Equal).
-					WithValueText(id)
+					WithValueString(id)
 			}
 			conditions = append(conditions, filters.Where().
 				WithOperator(filters.Or).
@@ -168,7 +178,7 @@ func buildWhereFilter(params SearchParams) *filters.WhereBuilder {
 }
 
 // parseSearchResults парсит результаты из Weaviate GraphQL ответа
-func parseSearchResults(result *weaviateModels.GraphQLResponse) ([]*SearchResult, error) {
+func parseSearchResults(result *weaviateModels.GraphQLResponse, className string) ([]*SearchResult, error) {
 	if result.Errors != nil && len(result.Errors) > 0 {
 		return nil, fmt.Errorf("weaviate returned errors: %v", result.Errors)
 	}
@@ -178,7 +188,7 @@ func parseSearchResults(result *weaviateModels.GraphQLResponse) ([]*SearchResult
 		return nil, fmt.Errorf("invalid response format: missing Get")
 	}
 
-	items, ok := data[ClassName].([]interface{})
+	items, ok := data[className].([]interface{})
 	if !ok {
 		return []*SearchResult{}, nil // Пустой результат
 	}
@@ -214,8 +224,8 @@ func parseSearchResults(result *weaviateModels.GraphQLResponse) ([]*SearchResult
 
 		// Десериализуем metadata из JSON string
 		if metadataJSON, ok := itemMap["metadata"].(string); ok && metadataJSON != "" {
-			var metadata map[string]interface{}
-			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
+			metadata, err := unmarshalMetadata(metadataJSON)
+			if err == nil {
 				searchResult.Metadata = metadata
 			}
 		}

@@ -10,6 +10,9 @@ type Config struct {
 
 // SearchParams определяет параметры поиска в векторной базе
 type SearchParams struct {
+	// ProjectID - ID проекта (обязательно для изоляции коллекций)
+	ProjectID string
+
 	// Query - поисковый запрос
 	Query string
 
@@ -77,7 +80,3 @@ type IndexStats struct {
 	// Errors - список ошибок (если есть)
 	Errors []string `json:"errors,omitempty"`
 }
-
-// ClassName - имя класса в Weaviate
-// Измените на своё имя в конкретном проекте
-const ClassName = "Document"
