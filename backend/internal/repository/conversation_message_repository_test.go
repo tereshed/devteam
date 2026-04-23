@@ -49,7 +49,7 @@ func TestConversationMessageRepository_Create_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, msg.ID)
 
-	got, err := repo.GetByID(ctx, conv.ID, msg.ID)
+	got, err := repo.GetByID(ctx, conv.ID, msg.ID, false)
 	require.NoError(t, err)
 	assert.Equal(t, models.ConversationRoleUser, got.Role)
 	assert.Equal(t, "Hello, AI!", got.Content)
@@ -103,7 +103,7 @@ func TestConversationMessageRepository_GetByID_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Random ID
-	_, err := repo.GetByID(ctx, conv.ID, uuid.New())
+	_, err := repo.GetByID(ctx, conv.ID, uuid.New(), false)
 	assert.ErrorIs(t, err, ErrMessageNotFound)
 
 	// Wrong ConversationID
@@ -114,7 +114,7 @@ func TestConversationMessageRepository_GetByID_NotFound(t *testing.T) {
 	}
 	require.NoError(t, repo.Create(ctx, msg))
 
-	_, err = repo.GetByID(ctx, uuid.New(), msg.ID)
+	_, err = repo.GetByID(ctx, uuid.New(), msg.ID, false)
 	assert.ErrorIs(t, err, ErrMessageNotFound)
 }
 
@@ -195,7 +195,7 @@ func TestConversationMessageRepository_Update_Success(t *testing.T) {
 	err := repo.Update(ctx, conv.ID, msg.ID, updates)
 	require.NoError(t, err)
 
-	got, err := repo.GetByID(ctx, conv.ID, msg.ID)
+	got, err := repo.GetByID(ctx, conv.ID, msg.ID, false)
 	require.NoError(t, err)
 	assert.Equal(t, "New Content", got.Content)
 }
@@ -248,7 +248,7 @@ func TestConversationMessageRepository_Update_ProtectedFields(t *testing.T) {
 	err := repo.Update(ctx, conv.ID, msg.ID, updates)
 	require.NoError(t, err)
 
-	got, err := repo.GetByID(ctx, conv.ID, msg.ID)
+	got, err := repo.GetByID(ctx, conv.ID, msg.ID, false)
 	require.NoError(t, err)
 	assert.Equal(t, conv.ID, got.ConversationID) // Should NOT change
 	assert.Equal(t, "Updated Content", got.Content)
@@ -273,7 +273,7 @@ func TestConversationMessageRepository_Delete_Success(t *testing.T) {
 	err := repo.Delete(ctx, conv.ID, msg.ID)
 	require.NoError(t, err)
 
-	_, err = repo.GetByID(ctx, conv.ID, msg.ID)
+	_, err = repo.GetByID(ctx, conv.ID, msg.ID, false)
 	assert.ErrorIs(t, err, ErrMessageNotFound)
 }
 
@@ -298,16 +298,17 @@ func TestConversationMessageRepository_ListByProjectID_Success(t *testing.T) {
 		if i == 1 {
 			lastMsgID = msg.ID
 		}
+		time.Sleep(10 * time.Millisecond) // Ensure different timestamps
 	}
 
 	t.Run("All messages", func(t *testing.T) {
-		list, err := repo.ListByProjectID(ctx, project.ID, nil, 10)
+		list, err := repo.ListByProjectID(ctx, project.ID, nil, 10, false)
 		require.NoError(t, err)
 		assert.Len(t, list, 5)
 	})
 
 	t.Run("With cursor", func(t *testing.T) {
-		list, err := repo.ListByProjectID(ctx, project.ID, &lastMsgID, 10)
+		list, err := repo.ListByProjectID(ctx, project.ID, &lastMsgID, 10, false)
 		require.NoError(t, err)
 		assert.Len(t, list, 3) // Messages after the 2nd one (index 1)
 	})

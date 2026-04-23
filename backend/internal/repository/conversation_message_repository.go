@@ -214,7 +214,14 @@ func (r *conversationMessageRepository) ListByProjectID(ctx context.Context, pro
 		Preload("Conversation")
 
 	if lastID != nil && *lastID != uuid.Nil {
-		query = query.Where("conversation_messages.id > ?", *lastID)
+		// Get the created_at of the cursor message
+		var cursorMsg models.ConversationMessage
+		// Need to specify the table name for id to avoid ambiguity
+		if err := db.WithContext(ctx).Where("conversation_messages.id = ?", *lastID).First(&cursorMsg).Error; err == nil {
+			query = query.Where("conversation_messages.created_at > ? OR (conversation_messages.created_at = ? AND conversation_messages.id > ?)", cursorMsg.CreatedAt, cursorMsg.CreatedAt, *lastID)
+		} else {
+			query = query.Where("conversation_messages.id > ?", *lastID)
+		}
 	}
 
 	var messages []*models.ConversationMessage

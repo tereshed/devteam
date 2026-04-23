@@ -61,7 +61,7 @@ func TestConversationRepository_Create_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, conv.ID)
 
-	got, err := repo.GetByID(ctx, project.ID, conv.ID)
+	got, err := repo.GetByID(ctx, project.ID, conv.ID, false)
 	require.NoError(t, err)
 	assert.Equal(t, "Test Conversation", got.Title)
 	assert.Equal(t, models.ConversationStatusActive, got.Status)
@@ -119,7 +119,7 @@ func TestConversationRepository_GetByID_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Случайный ID
-	_, err := repo.GetByID(ctx, project.ID, uuid.New())
+	_, err := repo.GetByID(ctx, project.ID, uuid.New(), false)
 	assert.ErrorIs(t, err, ErrConversationNotFound)
 
 	// Чужой ProjectID
@@ -130,7 +130,7 @@ func TestConversationRepository_GetByID_NotFound(t *testing.T) {
 	}
 	require.NoError(t, repo.Create(ctx, conv))
 
-	_, err = repo.GetByID(ctx, uuid.New(), conv.ID)
+	_, err = repo.GetByID(ctx, uuid.New(), conv.ID, false)
 	assert.ErrorIs(t, err, ErrConversationNotFound)
 }
 
@@ -228,7 +228,7 @@ func TestConversationRepository_Update_Success(t *testing.T) {
 	err := repo.Update(ctx, project.ID, conv.ID, updates)
 	require.NoError(t, err)
 
-	got, err := repo.GetByID(ctx, project.ID, conv.ID)
+	got, err := repo.GetByID(ctx, project.ID, conv.ID, false)
 	require.NoError(t, err)
 	assert.Equal(t, "New Title", got.Title)
 	assert.Equal(t, models.ConversationStatusCompleted, got.Status)
@@ -268,7 +268,7 @@ func TestConversationRepository_Delete_Success(t *testing.T) {
 	err := repo.Delete(ctx, project.ID, conv.ID)
 	require.NoError(t, err)
 
-	_, err = repo.GetByID(ctx, project.ID, conv.ID)
+	_, err = repo.GetByID(ctx, project.ID, conv.ID, false)
 	assert.ErrorIs(t, err, ErrConversationNotFound)
 }
 
