@@ -32,15 +32,19 @@ func (gp GitProvider) IsValid() bool {
 type ProjectStatus string
 
 const (
-	ProjectStatusActive   ProjectStatus = "active"
-	ProjectStatusPaused   ProjectStatus = "paused"
-	ProjectStatusArchived ProjectStatus = "archived"
+	ProjectStatusActive         ProjectStatus = "active"
+	ProjectStatusPaused         ProjectStatus = "paused"
+	ProjectStatusArchived       ProjectStatus = "archived"
+	ProjectStatusIndexing       ProjectStatus = "indexing"
+	ProjectStatusIndexingFailed ProjectStatus = "indexing_failed"
+	ProjectStatusReady          ProjectStatus = "ready"
 )
 
 // IsValid проверяет валидность статуса
 func (ps ProjectStatus) IsValid() bool {
 	switch ps {
-	case ProjectStatusActive, ProjectStatusPaused, ProjectStatusArchived:
+	case ProjectStatusActive, ProjectStatusPaused, ProjectStatusArchived,
+		ProjectStatusIndexing, ProjectStatusIndexingFailed, ProjectStatusReady:
 		return true
 	default:
 		return false

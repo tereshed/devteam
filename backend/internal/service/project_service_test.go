@@ -5,17 +5,19 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/devteam/backend/internal/domain/events"
+	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/gitprovider"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/devteam/backend/internal/handler/dto"
-	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/internal/repository"
-	"github.com/devteam/backend/pkg/gitprovider"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -60,6 +62,15 @@ func (m *MockProjectRepository) ListByUserID(ctx context.Context, userID uuid.UU
 func (m *MockProjectRepository) Update(ctx context.Context, project *models.Project) error {
 	args := m.Called(ctx, project)
 	return args.Error(0)
+}
+
+func (m *MockProjectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error {
+	args := m.Called(ctx, id, oldStatus, newStatus)
+	return args.Error(0)
+}
+
+func (m *MockProjectRepository) UpdateStatusMaybe(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error {
+	return nil
 }
 
 func (m *MockProjectRepository) Delete(ctx context.Context, id uuid.UUID) error {
@@ -193,6 +204,19 @@ type MockEncryptor struct {
 	mock.Mock
 }
 
+type MockCodeIndexer struct {
+	mock.Mock
+}
+
+func (m *MockCodeIndexer) IndexProject(ctx context.Context, req indexer.IndexingRequest) error {
+	args := m.Called(ctx, req)
+	return args.Error(0)
+}
+
+func (m *MockCodeIndexer) IndexProjectMaybe(ctx context.Context, req indexer.IndexingRequest) error {
+	return nil
+}
+
 func (m *MockEncryptor) Encrypt(plaintext []byte, associatedData []byte) ([]byte, error) {
 	args := m.Called(plaintext, associatedData)
 	if err := args.Error(1); err != nil {
@@ -242,11 +266,27 @@ func newProjectServiceWithGitDeps(
 	enc Encryptor,
 	importDir string,
 ) ProjectService {
+	return newProjectServiceWithIndexer(&SilentProjectRepo{pr}, tr, gr, txMgr, gf, enc, &SilentIndexer{new(MockCodeIndexer)}, importDir)
+}
+
+func newProjectServiceWithIndexer(
+	pr repository.ProjectRepository,
+	tr repository.TeamRepository,
+	gr repository.GitCredentialRepository,
+	txMgr repository.TransactionManager,
+	gf gitprovider.Factory,
+	enc Encryptor,
+	idx indexer.CodeIndexer,
+	importDir string,
+) ProjectService {
 	if enc == nil {
 		enc = NoopEncryptor{}
 	}
 	if gf == nil {
 		gf = new(MockFactory)
+	}
+	if idx == nil {
+		idx = new(MockCodeIndexer)
 	}
 	return &projectService{
 		projectRepo:  pr,
@@ -256,8 +296,25 @@ func newProjectServiceWithGitDeps(
 		gitFactory:   gf,
 		encryptor:    enc,
 		eventBus:     events.NewInMemoryBus(nil, nil),
+		indexer:      idx,
 		importDir:    importDir,
 	}
+}
+
+type SilentProjectRepo struct {
+	*MockProjectRepository
+}
+
+func (r *SilentProjectRepo) UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error {
+	return nil
+}
+
+type SilentIndexer struct {
+	*MockCodeIndexer
+}
+
+func (i *SilentIndexer) IndexProject(ctx context.Context, req indexer.IndexingRequest) error {
+	return nil
 }
 
 func assignProjectIDOnCreate(args mock.Arguments) {
@@ -1274,4 +1331,97 @@ func TestUpdate_UsesDbTransaction(t *testing.T) {
 	_, err := svc.Update(ctx, userID, models.RoleUser, pid, dto.UpdateProjectRequest{Description: &desc})
 	require.NoError(t, err)
 	pr.AssertExpectations(t)
+}
+
+func TestProjectService_IndexingPipeline_Success(t *testing.T) {
+	projectID := uuid.New()
+	gitURL := "https://github.com/user:token@github.com/repo"
+	branch := "main"
+	importDir := t.TempDir()
+
+	pr := new(MockProjectRepository)
+	idx := new(MockCodeIndexer)
+	mp := new(MockGitProvider)
+	// Используем Mock напрямую, не Silent версии
+	svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, idx, importDir)
+
+	// Ожидаем обновление статуса на Ready
+	pr.On("UpdateStatus", mock.Anything, projectID, models.ProjectStatusIndexing, models.ProjectStatusReady).Return(nil)
+	// Ожидаем клон
+	mp.On("Clone", mock.Anything, gitURL, mock.MatchedBy(func(opts gitprovider.CloneOptions) bool {
+		return opts.Branch == branch
+	})).Return(nil)
+	// Ожидаем индексацию
+	idx.On("IndexProject", mock.Anything, mock.MatchedBy(func(req indexer.IndexingRequest) bool {
+		return req.ProjectID == projectID && strings.Contains(req.RepoPath, "project-"+projectID.String())
+	})).Return(nil)
+
+	// Запускаем пайплайн (синхронно для теста, вызывая внутренний метод)
+	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, branch)
+
+	pr.AssertExpectations(t)
+	mp.AssertExpectations(t)
+	idx.AssertExpectations(t)
+
+	// Проверяем, что временная директория удалена
+	files, _ := os.ReadDir(importDir)
+	assert.Empty(t, files, "temp directory should be cleaned up")
+}
+
+func TestProjectService_IndexingPipeline_CloneError(t *testing.T) {
+	projectID := uuid.New()
+	gitURL := "https://github.com/repo"
+	importDir := t.TempDir()
+
+	pr := new(MockProjectRepository)
+	mp := new(MockGitProvider)
+	svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, nil, importDir)
+
+	// Ожидаем обновление статуса на IndexingFailed
+	pr.On("UpdateStatus", mock.Anything, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed).Return(nil)
+	// Ожидаем ошибку клона
+	mp.On("Clone", mock.Anything, gitURL, mock.Anything).Return(errors.New("clone failed"))
+
+	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, "main")
+
+	pr.AssertExpectations(t)
+}
+
+func TestProjectService_IndexingPipeline_PanicRecovery(t *testing.T) {
+	projectID := uuid.New()
+	importDir := t.TempDir()
+
+	pr := new(MockProjectRepository)
+	mp := new(MockGitProvider)
+	svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, nil, importDir)
+
+	// Ожидаем обновление статуса на IndexingFailed при панике
+	pr.On("UpdateStatus", mock.Anything, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed).Return(nil)
+	// Имитируем панику при клонировании
+	mp.On("Clone", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		panic("something went wrong")
+	})
+
+	// runIndexingPipeline должен восстановиться после паники
+	assert.NotPanics(t, func() {
+		svc.(*projectService).runIndexingPipeline(mp, projectID, "url", "main")
+	})
+
+	pr.AssertExpectations(t)
+}
+
+func TestMaskGitURL(t *testing.T) {
+	tests := []struct {
+		url      string
+		expected string
+	}{
+		{"https://github.com/org/repo", "https://github.com/org/repo"},
+		{"https://user:token@github.com/repo", "https://user:***@github.com/repo"},
+		{"https://token@github.com/repo", "https://***@github.com/repo"},
+		{"git@github.com:org/repo", "git@github.com:org/repo"},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.expected, maskGitURL(tt.url))
+	}
 }

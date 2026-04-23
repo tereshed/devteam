@@ -185,6 +185,12 @@ func main() {
 	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
 	promptService := service.NewPromptService(promptRepo)
 	gitFactory := gitprovider.NewFactory()
+
+	// --- Indexer (Sprint 9) ---
+	syncRepo := repository.NewSyncStateRepository(db)
+	vectorRepo := repository.NewVectorRepository(nil) // TODO: pass Weaviate client
+	codeIndexer, _ := indexer.NewCodeIndexer(syncRepo, vectorRepo, nil, 4)
+
 	projectService := service.NewProjectService(
 		projectRepo,
 		teamRepo,
@@ -193,6 +199,7 @@ func main() {
 		gitFactory,
 		encryptor,
 		eventBus,
+		codeIndexer,
 		cfg.Git.ImportDir,
 	)
 	teamService := service.NewTeamService(teamRepo)

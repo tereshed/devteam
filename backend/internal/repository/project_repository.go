@@ -53,6 +53,7 @@ type ProjectRepository interface {
 	List(ctx context.Context, filter ProjectFilter) ([]models.Project, int64, error)
 	ListByUserID(ctx context.Context, userID uuid.UUID, filter ProjectFilter) ([]models.Project, int64, error)
 	Update(ctx context.Context, project *models.Project) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -161,6 +162,22 @@ func (r *projectRepository) Update(ctx context.Context, project *models.Project)
 			return ErrProjectNameExists
 		}
 		return fmt.Errorf("failed to update project: %w", err)
+	}
+	return nil
+}
+
+// UpdateStatus безопасно обновляет статус проекта с проверкой текущего статуса (CAS).
+func (r *projectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error {
+	db := gormDB(ctx, r.db)
+	result := db.WithContext(ctx).Model(&models.Project{}).
+		Where("id = ? AND status = ?", id, oldStatus).
+		Update("status", newStatus)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update project status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("project status update failed: project not found or status changed (expected %s)", oldStatus)
 	}
 	return nil
 }

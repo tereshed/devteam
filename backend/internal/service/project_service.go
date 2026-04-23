@@ -4,24 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/devteam/backend/internal/domain/events"
-	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/gitprovider"
+	"github.com/google/uuid"
 	"gorm.io/datatypes"
+	"log/slog"
 )
 
 const devTeamDefaultName = "Development Team"
 
 const cloneTimeout = 10 * time.Minute
+const indexingTimeout = 15 * time.Minute
 
 var (
 	ErrProjectNotFound        = errors.New("project not found")
@@ -67,10 +69,11 @@ type projectService struct {
 	teamRepo     repository.TeamRepository
 	gitCredRepo  repository.GitCredentialRepository
 	transactions repository.TransactionManager
-	gitFactory  gitprovider.Factory
-	encryptor   Encryptor
-	eventBus    events.EventBus
-	importDir   string
+	gitFactory   gitprovider.Factory
+	encryptor    Encryptor
+	eventBus     events.EventBus
+	indexer      indexer.CodeIndexer
+	importDir    string
 }
 
 // NewProjectService создаёт сервис проектов.
@@ -82,6 +85,7 @@ func NewProjectService(
 	gitFactory gitprovider.Factory,
 	encryptor Encryptor,
 	eventBus events.EventBus,
+	indexer indexer.CodeIndexer,
 	importDir string,
 ) ProjectService {
 	return &projectService{
@@ -92,6 +96,7 @@ func NewProjectService(
 		gitFactory:   gitFactory,
 		encryptor:    encryptor,
 		eventBus:     eventBus,
+		indexer:      indexer,
 		importDir:    importDir,
 	}
 }
@@ -320,6 +325,10 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 		UserID:           userID,
 	}
 
+	if provider != nil && s.importDir != "" {
+		project.Status = models.ProjectStatusIndexing
+	}
+
 	err = s.transactions.WithTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.projectRepo.Create(txCtx, project); err != nil {
 			return mapProjectRepoErr(err)
@@ -336,44 +345,128 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 	}
 
 	if provider != nil && s.importDir != "" {
-		go s.cloneForIndexing(provider, project.ID, gitURL, branch)
+		go s.runIndexingPipeline(provider, project.ID, gitURL, branch)
 	}
 
 	return project, nil
 }
 
-// cloneForIndexing клонирует репозиторий для будущей индексации (Sprint 6+).
-func (s *projectService) cloneForIndexing(
+func (s *projectService) runIndexingPipeline(
 	provider gitprovider.GitProvider,
 	projectID uuid.UUID,
 	gitURL string,
 	branch string,
 ) {
+	maskedURL := maskGitURL(gitURL)
+
+	// 1. Panic Recovery
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[project:%s] panic in cloneForIndexing: %v", projectID, r)
+			slog.Error("PANIC in runIndexingPipeline",
+				slog.String("project_id", projectID.String()),
+				slog.Any("recover", r),
+			)
+			// Пытаемся перевести статус в ошибку при панике
+			if err := s.projectRepo.UpdateStatus(context.Background(), projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
+				slog.Error("failed to update project status after panic",
+					slog.String("project_id", projectID.String()),
+					slog.String("error", err.Error()),
+				)
+			}
 		}
 	}()
 
-	// TODO(Sprint 6+): привязать к shutdown-контексту приложения, чтобы отменять долгие Clone при SIGTERM.
-	cloneCtx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
+	// 2. Context with timeout (detached from request)
+	ctx, cancel := context.WithTimeout(context.Background(), indexingTimeout)
 	defer cancel()
 
-	workDir := filepath.Join(s.importDir, projectID.String())
-
-	if err := provider.Clone(cloneCtx, gitURL, gitprovider.CloneOptions{
-		Branch:   branch,
-		DestPath: workDir,
-		Depth:    0,
-	}); err != nil {
-		log.Printf("[project:%s] clone for indexing failed: %v", projectID, err)
-		if rmErr := os.RemoveAll(workDir); rmErr != nil {
-			log.Printf("[project:%s] failed to remove workdir after clone error: %v", projectID, rmErr)
+	// 3. Secure WorkDir
+	workDir, err := os.MkdirTemp(s.importDir, fmt.Sprintf("project-%s-*", projectID))
+	if err != nil {
+		slog.Error("failed to create temp workdir",
+			slog.String("project_id", projectID.String()),
+			slog.String("error", err.Error()),
+		)
+		if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
+			slog.Error("failed to update project status after workdir error",
+				slog.String("project_id", projectID.String()),
+				slog.String("error", err.Error()),
+			)
 		}
 		return
 	}
 
-	log.Printf("[project:%s] clone for indexing completed: %s", projectID, workDir)
+	// 4. Cleanup Logic (guaranteed removal)
+	defer func() {
+		if rmErr := os.RemoveAll(workDir); rmErr != nil {
+			slog.Error("failed to remove workdir",
+				slog.String("project_id", projectID.String()),
+				slog.String("work_dir", workDir),
+				slog.String("error", rmErr.Error()),
+			)
+		}
+	}()
+
+	// 5. Clone
+	slog.Info("starting clone for indexing",
+		slog.String("project_id", projectID.String()),
+		slog.String("url", maskedURL),
+	)
+
+	if err := provider.Clone(ctx, gitURL, gitprovider.CloneOptions{
+		Branch:   branch,
+		DestPath: workDir,
+		Depth:    0,
+	}); err != nil {
+		safeErr := strings.ReplaceAll(err.Error(), gitURL, maskedURL)
+		slog.Error("clone failed",
+			slog.String("project_id", projectID.String()),
+			slog.String("error", safeErr),
+		)
+		if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
+			slog.Error("failed to update project status after clone error",
+				slog.String("project_id", projectID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+		return
+	}
+
+	// 6. Indexing
+	slog.Info("starting code indexing",
+		slog.String("project_id", projectID.String()),
+		slog.String("work_dir", workDir),
+	)
+	err = s.indexer.IndexProject(ctx, indexer.IndexingRequest{
+		ProjectID: projectID,
+		RepoPath:  workDir,
+	})
+
+	if err != nil {
+		slog.Error("indexing failed",
+			slog.String("project_id", projectID.String()),
+			slog.String("error", err.Error()),
+		)
+		if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
+			slog.Error("failed to update project status after indexing error",
+				slog.String("project_id", projectID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+		return
+	}
+
+	// 7. Success Status Update
+	if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusReady); err != nil {
+		slog.Error("failed to update status to Ready",
+			slog.String("project_id", projectID.String()),
+			slog.String("error", err.Error()),
+		)
+	}
+
+	slog.Info("indexing pipeline completed successfully",
+		slog.String("project_id", projectID.String()),
+	)
 }
 
 func (s *projectService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.Project, error) {
@@ -514,11 +607,22 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 	if needsCloneRefresh {
 		oldWorkDir := filepath.Join(s.importDir, project.ID.String())
 		if rmErr := os.RemoveAll(oldWorkDir); rmErr != nil {
-			log.Printf("[project:%s] failed to remove import workdir: %v", project.ID, rmErr)
+			slog.Error("failed to remove import workdir",
+				slog.String("project_id", project.ID.String()),
+				slog.String("error", rmErr.Error()),
+			)
 		}
 
 		if provider != nil && project.GitURL != "" {
-			go s.cloneForIndexing(provider, project.ID, project.GitURL, project.GitDefaultBranch)
+			if err := s.projectRepo.UpdateStatus(ctx, project.ID, models.ProjectStatusActive, models.ProjectStatusIndexing); err != nil {
+				slog.Error("failed to update status to Indexing",
+					slog.String("project_id", project.ID.String()),
+					slog.String("error", err.Error()),
+				)
+			} else {
+				project.Status = models.ProjectStatusIndexing
+				go s.runIndexingPipeline(provider, project.ID, project.GitURL, project.GitDefaultBranch)
+			}
 		}
 	}
 
@@ -558,4 +662,30 @@ func (s *projectService) HasAccess(ctx context.Context, userID uuid.UUID, userRo
 		return mapProjectRepoErr(err)
 	}
 	return s.checkProjectAccess(project, userID, userRole)
+}
+
+// maskGitURL маскирует токены/пароли в URL.
+func maskGitURL(url string) string {
+	if !strings.Contains(url, "://") {
+		return url
+	}
+	// Простейшая маскировка: https://user:token@github.com -> https://user:***@github.com
+	parts := strings.SplitN(url, "://", 2)
+	scheme := parts[0]
+	rest := parts[1]
+
+	atIndex := strings.LastIndex(rest, "@")
+	if atIndex == -1 {
+		return url
+	}
+
+	credentials := rest[:atIndex]
+	hostPath := rest[atIndex:]
+
+	if strings.Contains(credentials, ":") {
+		credParts := strings.SplitN(credentials, ":", 2)
+		return fmt.Sprintf("%s://%s:***%s", scheme, credParts[0], hostPath)
+	}
+
+	return fmt.Sprintf("%s://***%s", scheme, hostPath)
 }
