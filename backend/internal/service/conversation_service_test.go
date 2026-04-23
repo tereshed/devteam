@@ -122,6 +122,9 @@ func (m *mockProjectSvc) Delete(ctx context.Context, userID uuid.UUID, userRole 
 func (m *mockProjectSvc) HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
 	return m.Called(ctx, userID, userRole, projectID).Error(0)
 }
+func (m *mockProjectSvc) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	return m.Called(ctx, userID, userRole, projectID).Error(0)
+}
 
 type mockTaskSvc struct{ mock.Mock }
 

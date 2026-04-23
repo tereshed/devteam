@@ -138,6 +138,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			projects.GET("/:id", deps.ProjectHandler.GetByID)
 			projects.PUT("/:id", deps.ProjectHandler.Update)
 			projects.DELETE("/:id", deps.ProjectHandler.Delete)
+			projects.POST("/:id/reindex", deps.ProjectHandler.Reindex)
 		}
 
 		tasks := api.Group("/tasks")

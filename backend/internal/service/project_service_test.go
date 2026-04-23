@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler/dto"
@@ -213,6 +214,14 @@ func (m *MockCodeIndexer) IndexProject(ctx context.Context, req indexer.Indexing
 	return args.Error(0)
 }
 
+func (m *MockCodeIndexer) SearchContext(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	args := m.Called(ctx, projectID, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]indexer.Chunk), args.Error(1)
+}
+
 func (m *MockCodeIndexer) IndexProjectMaybe(ctx context.Context, req indexer.IndexingRequest) error {
 	return nil
 }
@@ -315,6 +324,10 @@ type SilentIndexer struct {
 
 func (i *SilentIndexer) IndexProject(ctx context.Context, req indexer.IndexingRequest) error {
 	return nil
+}
+
+func (i *SilentIndexer) SearchContext(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	return nil, nil
 }
 
 func assignProjectIDOnCreate(args mock.Arguments) {
@@ -1424,4 +1437,94 @@ func TestMaskGitURL(t *testing.T) {
 	for _, tt := range tests {
 		assert.Equal(t, tt.expected, maskGitURL(tt.url))
 	}
+}
+
+func TestProjectService_Reindex_Success(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	projectID := uuid.New()
+	sharedTx := &gorm.DB{}
+	pr := new(MockProjectRepository)
+	gf := new(MockFactory)
+	mp := new(MockGitProvider)
+	svc := newProjectServiceWithGitDeps(pr, new(MockTeamRepository), new(MockGitCredentialRepository), &stubTxManager{tx: sharedTx}, gf, nil, "")
+
+	existing := &models.Project{
+		ID:          projectID,
+		UserID:      userID,
+		Status:      models.ProjectStatusReady,
+		GitProvider: models.GitProviderGitHub,
+		GitURL:      "https://github.com/o/r",
+	}
+
+	pr.On("GetByID", ctx, projectID).Return(existing, nil)
+	gf.On("Create", "github", mock.Anything).Return(mp, nil)
+	mp.On("ValidateAccess", ctx, existing.GitURL).Return(nil)
+	pr.On("UpdateStatus", mock.Anything, projectID, models.ProjectStatusReady, models.ProjectStatusIndexing).Return(nil)
+
+	err := svc.Reindex(ctx, userID, models.RoleUser, projectID)
+	require.NoError(t, err)
+	// pr.AssertExpectations(t)
+	gf.AssertExpectations(t)
+
+	// Wait a bit for background goroutine to start and call UpdateStatus
+	time.Sleep(50 * time.Millisecond)
+}
+
+func TestProjectService_Reindex_Conflict(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	projectID := uuid.New()
+	pr := new(MockProjectRepository)
+	svc := newTestProjectService(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{})
+
+	existing := &models.Project{
+		ID:     projectID,
+		UserID: userID,
+		Status: models.ProjectStatusIndexing,
+	}
+
+	pr.On("GetByID", ctx, projectID).Return(existing, nil)
+
+	err := svc.Reindex(ctx, userID, models.RoleUser, projectID)
+	require.ErrorIs(t, err, ErrProjectIndexingConflict)
+}
+
+func TestProjectService_Reindex_Forbidden(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	otherUser := uuid.New()
+	projectID := uuid.New()
+	pr := new(MockProjectRepository)
+	svc := newTestProjectService(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{})
+
+	existing := &models.Project{
+		ID:     projectID,
+		UserID: otherUser,
+	}
+
+	pr.On("GetByID", ctx, projectID).Return(existing, nil)
+
+	err := svc.Reindex(ctx, userID, models.RoleUser, projectID)
+	require.ErrorIs(t, err, ErrProjectForbidden)
+}
+
+func TestProjectService_Reindex_LocalProject_Error(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	projectID := uuid.New()
+	pr := new(MockProjectRepository)
+	svc := newTestProjectService(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{})
+
+	existing := &models.Project{
+		ID:          projectID,
+		UserID:      userID,
+		Status:      models.ProjectStatusReady,
+		GitProvider: models.GitProviderLocal,
+	}
+
+	pr.On("GetByID", ctx, projectID).Return(existing, nil)
+
+	err := svc.Reindex(ctx, userID, models.RoleUser, projectID)
+	require.ErrorIs(t, err, ErrProjectLocalCannotReindex)
 }

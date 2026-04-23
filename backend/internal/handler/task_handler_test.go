@@ -134,6 +134,11 @@ func (m *MockTaskService) ListMessages(ctx context.Context, userID uuid.UUID, us
 	return msgs, total, args.Error(2)
 }
 
+func (m *MockTaskService) Close() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
 func setupTaskRouter(mockSvc *MockTaskService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

@@ -278,9 +278,9 @@ User Message
 | 9.6 | Хук: индексация кода при создании проекта (после clone) | В `ProjectService` | ⬜ |
 | 9.7 | Хук: индексация задачи при создании/обновлении | В `TaskService` | ⬜ |
 | 9.8 | Хук: индексация сообщения при создании | В `ConversationService` | ⬜ |
-| 9.9 | API: `POST /api/v1/projects/:id/reindex` (полная переиндексация) | Handler + Service | ⬜ |
-| 9.10 | Контекстный поиск: `SearchContext(projectID, query)` → релевантные чанки | В `IndexerService` | ⬜ |
-| 9.11 | Интеграция с Orchestrator: перед запуском агента — vector search для контекста | В `OrchestratorService` | ⬜ |
+| 9.9 | API: `POST /api/v1/projects/:id/reindex` (полная переиндексация) | Handler + Service | ⏳ |
+| 9.10 | Контекстный поиск: `SearchContext(projectID, query)` → релевантные чанки | В `IndexerService` | ⏳ |
+| 9.11 | Интеграция с Orchestrator: перед запуском агента — vector search для контекста | В `OrchestratorService` | [docs/tasks/9.11-orchestrator-vector-search.md](docs/tasks/9.11-orchestrator-vector-search.md) | ⬜ |
 | 9.12 | Unit-тесты | `backend/internal/service/indexer_service_test.go` | ⬜ |
 
 **Зависимости:** Sprint 2, Sprint 3, Sprint 8

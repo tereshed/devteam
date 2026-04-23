@@ -34,6 +34,8 @@ var (
 	ErrProjectInvalidName     = errors.New("project name is required")
 	ErrProjectInvalidProvider = errors.New("invalid git provider")
 	ErrProjectInvalidStatus   = errors.New("invalid project status")
+	ErrProjectIndexingConflict = errors.New("project is already being indexed")
+	ErrProjectLocalCannotReindex = errors.New("local projects cannot be reindexed via this API")
 
 	ErrUpdateProjectGitCredentialConflict = errors.New("cannot use git_credential_id together with remove_git_credential")
 	ErrUpdateProjectTechStackConflict     = errors.New("cannot use tech_stack together with clear_tech_stack")
@@ -62,6 +64,8 @@ type ProjectService interface {
 	// ErrProjectNotFound если проект не существует (или это скрыто намеренно),
 	// ErrProjectForbidden если доступ запрещен.
 	HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
+	// Reindex запускает переиндексацию проекта в фоновом режиме.
+	Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
 }
 
 type projectService struct {
@@ -357,22 +361,37 @@ func (s *projectService) runIndexingPipeline(
 	gitURL string,
 	branch string,
 ) {
+	var pipelineErr error
 	maskedURL := maskGitURL(gitURL)
 
-	// 1. Panic Recovery
+	// 1. Final Status Update & Panic Recovery
 	defer func() {
 		if r := recover(); r != nil {
+			pipelineErr = fmt.Errorf("panic: %v", r)
 			slog.Error("PANIC in runIndexingPipeline",
 				slog.String("project_id", projectID.String()),
 				slog.Any("recover", r),
 			)
-			// Пытаемся перевести статус в ошибку при панике
-			if err := s.projectRepo.UpdateStatus(context.Background(), projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
-				slog.Error("failed to update project status after panic",
-					slog.String("project_id", projectID.String()),
-					slog.String("error", err.Error()),
-				)
-			}
+		}
+
+		finalStatus := models.ProjectStatusReady
+		if pipelineErr != nil {
+			finalStatus = models.ProjectStatusIndexingFailed
+		}
+
+		if err := s.projectRepo.UpdateStatus(context.Background(), projectID, models.ProjectStatusIndexing, finalStatus); err != nil {
+			slog.Error("failed to update final project status",
+				slog.String("project_id", projectID.String()),
+				slog.String("from", string(models.ProjectStatusIndexing)),
+				slog.String("to", string(finalStatus)),
+				slog.String("error", err.Error()),
+			)
+		}
+
+		if pipelineErr == nil {
+			slog.Info("indexing pipeline completed successfully",
+				slog.String("project_id", projectID.String()),
+			)
 		}
 	}()
 
@@ -383,16 +402,11 @@ func (s *projectService) runIndexingPipeline(
 	// 3. Secure WorkDir
 	workDir, err := os.MkdirTemp(s.importDir, fmt.Sprintf("project-%s-*", projectID))
 	if err != nil {
+		pipelineErr = fmt.Errorf("failed to create temp workdir: %w", err)
 		slog.Error("failed to create temp workdir",
 			slog.String("project_id", projectID.String()),
 			slog.String("error", err.Error()),
 		)
-		if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
-			slog.Error("failed to update project status after workdir error",
-				slog.String("project_id", projectID.String()),
-				slog.String("error", err.Error()),
-			)
-		}
 		return
 	}
 
@@ -413,22 +427,16 @@ func (s *projectService) runIndexingPipeline(
 		slog.String("url", maskedURL),
 	)
 
-	if err := provider.Clone(ctx, gitURL, gitprovider.CloneOptions{
+	if pipelineErr = provider.Clone(ctx, gitURL, gitprovider.CloneOptions{
 		Branch:   branch,
 		DestPath: workDir,
 		Depth:    0,
-	}); err != nil {
-		safeErr := strings.ReplaceAll(err.Error(), gitURL, maskedURL)
+	}); pipelineErr != nil {
+		safeErr := strings.ReplaceAll(pipelineErr.Error(), gitURL, maskedURL)
 		slog.Error("clone failed",
 			slog.String("project_id", projectID.String()),
 			slog.String("error", safeErr),
 		)
-		if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
-			slog.Error("failed to update project status after clone error",
-				slog.String("project_id", projectID.String()),
-				slog.String("error", err.Error()),
-			)
-		}
 		return
 	}
 
@@ -437,36 +445,16 @@ func (s *projectService) runIndexingPipeline(
 		slog.String("project_id", projectID.String()),
 		slog.String("work_dir", workDir),
 	)
-	err = s.indexer.IndexProject(ctx, indexer.IndexingRequest{
+	if pipelineErr = s.indexer.IndexProject(ctx, indexer.IndexingRequest{
 		ProjectID: projectID,
 		RepoPath:  workDir,
-	})
-
-	if err != nil {
+	}); pipelineErr != nil {
 		slog.Error("indexing failed",
 			slog.String("project_id", projectID.String()),
-			slog.String("error", err.Error()),
+			slog.String("error", pipelineErr.Error()),
 		)
-		if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed); err != nil {
-			slog.Error("failed to update project status after indexing error",
-				slog.String("project_id", projectID.String()),
-				slog.String("error", err.Error()),
-			)
-		}
 		return
 	}
-
-	// 7. Success Status Update
-	if err := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, models.ProjectStatusReady); err != nil {
-		slog.Error("failed to update status to Ready",
-			slog.String("project_id", projectID.String()),
-			slog.String("error", err.Error()),
-		)
-	}
-
-	slog.Info("indexing pipeline completed successfully",
-		slog.String("project_id", projectID.String()),
-	)
 }
 
 func (s *projectService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.Project, error) {
@@ -662,6 +650,45 @@ func (s *projectService) HasAccess(ctx context.Context, userID uuid.UUID, userRo
 		return mapProjectRepoErr(err)
 	}
 	return s.checkProjectAccess(project, userID, userRole)
+}
+
+func (s *projectService) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return mapProjectRepoErr(err)
+	}
+	if err := s.checkProjectAccess(project, userID, userRole); err != nil {
+		return err
+	}
+
+	if project.Status == models.ProjectStatusIndexing {
+		return ErrProjectIndexingConflict
+	}
+
+	if project.GitProvider == models.GitProviderLocal || project.GitURL == "" {
+		return ErrProjectLocalCannotReindex
+	}
+
+	// Для remote-проектов нужен провайдер
+	var provider gitprovider.GitProvider
+	provider, err = s.buildGitProvider(ctx, project.GitProvider, project.GitCredentialsID, userID)
+	if err != nil {
+		return err
+	}
+	if err := provider.ValidateAccess(ctx, project.GitURL); err != nil {
+		return mapGitProviderErr(err)
+	}
+
+	// Обновляем статус на Indexing (CAS)
+	if err := s.projectRepo.UpdateStatus(ctx, projectID, project.Status, models.ProjectStatusIndexing); err != nil {
+		// Если не удалось обновить, возможно статус уже изменился
+		return ErrProjectIndexingConflict
+	}
+
+	// Запускаем пайплайн в фоне
+	go s.runIndexingPipeline(provider, project.ID, project.GitURL, project.GitDefaultBranch)
+
+	return nil
 }
 
 // maskGitURL маскирует токены/пароли в URL.

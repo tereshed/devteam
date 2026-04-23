@@ -74,6 +74,11 @@ func (m *MockProjectService) HasAccess(ctx context.Context, userID uuid.UUID, us
 	return args.Error(0)
 }
 
+func (m *MockProjectService) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	args := m.Called(ctx, userID, userRole, projectID)
+	return args.Error(0)
+}
+
 func setupProjectRouter(mockSvc *MockProjectService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -92,6 +97,7 @@ func setupProjectRouter(mockSvc *MockProjectService, withAuth bool) *gin.Engine 
 	projects.GET("/:id", h.GetByID)
 	projects.PUT("/:id", h.Update)
 	projects.DELETE("/:id", h.Delete)
+	projects.POST("/:id/reindex", h.Reindex)
 	return r
 }
 
@@ -398,5 +404,64 @@ func TestProject_Delete_Forbidden(t *testing.T) {
 	setupProjectRouter(mockSvc, true).ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
+	mockSvc.AssertExpectations(t)
+}
+
+func TestProject_Reindex_Success(t *testing.T) {
+	mockSvc := new(MockProjectService)
+	id := uuid.New()
+	mockSvc.On("Reindex", mock.Anything, testProjectUserID, models.RoleUser, id).
+		Return(nil)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/projects/"+id.String()+"/reindex", nil)
+	setupProjectRouter(mockSvc, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code)
+	var got map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Equal(t, "reindexing started", got["message"])
+	mockSvc.AssertExpectations(t)
+}
+
+func TestProject_Reindex_Conflict(t *testing.T) {
+	mockSvc := new(MockProjectService)
+	id := uuid.New()
+	mockSvc.On("Reindex", mock.Anything, testProjectUserID, models.RoleUser, id).
+		Return(service.ErrProjectIndexingConflict)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/projects/"+id.String()+"/reindex", nil)
+	setupProjectRouter(mockSvc, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	mockSvc.AssertExpectations(t)
+}
+
+func TestProject_Reindex_NotFound(t *testing.T) {
+	mockSvc := new(MockProjectService)
+	id := uuid.New()
+	mockSvc.On("Reindex", mock.Anything, testProjectUserID, models.RoleUser, id).
+		Return(service.ErrProjectNotFound)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/projects/"+id.String()+"/reindex", nil)
+	setupProjectRouter(mockSvc, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mockSvc.AssertExpectations(t)
+}
+
+func TestProject_Reindex_LocalProject_BadRequest(t *testing.T) {
+	mockSvc := new(MockProjectService)
+	id := uuid.New()
+	mockSvc.On("Reindex", mock.Anything, testProjectUserID, models.RoleUser, id).
+		Return(service.ErrProjectLocalCannotReindex)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/projects/"+id.String()+"/reindex", nil)
+	setupProjectRouter(mockSvc, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 	mockSvc.AssertExpectations(t)
 }

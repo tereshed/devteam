@@ -29,6 +29,36 @@ import (
 
 // --- Моки (имена из задачи 6.10: mockLLMAgentExecutor / mockSandboxAgentExecutor — один тип, два экземпляра) ---
 
+type mockOrchestratorProjectService struct{ mock.Mock }
+
+func (m *mockOrchestratorProjectService) Create(ctx context.Context, userID uuid.UUID, req dto.CreateProjectRequest) (*models.Project, error) {
+	return nil, nil
+}
+func (m *mockOrchestratorProjectService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.Project, error) {
+	args := m.Called(ctx, userID, userRole, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Project), args.Error(1)
+}
+func (m *mockOrchestratorProjectService) List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, req dto.ListProjectsRequest) ([]models.Project, int64, error) {
+	return nil, 0, nil
+}
+func (m *mockOrchestratorProjectService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.UpdateProjectRequest) (*models.Project, error) {
+	return nil, nil
+}
+func (m *mockOrchestratorProjectService) Delete(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	return nil
+}
+func (m *mockOrchestratorProjectService) HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	args := m.Called(ctx, userID, userRole, projectID)
+	return args.Error(0)
+}
+func (m *mockOrchestratorProjectService) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	args := m.Called(ctx, userID, userRole, projectID)
+	return args.Error(0)
+}
+
 type mockLLMAgentExecutor struct{ mock.Mock }
 
 func (m *mockLLMAgentExecutor) Execute(ctx context.Context, in agent.ExecutionInput) (*agent.ExecutionResult, error) {
@@ -269,7 +299,7 @@ type mockAgents struct {
 	TaskRepo *mockTaskRepository
 	TMR      *mockOrchestratorTaskMessageRepository
 	WR       *mockOrchestratorWorkflowRepository
-	PS       *mockTaskProjectService
+	PS       *mockOrchestratorProjectService
 	TS       *mockTaskService
 }
 
@@ -287,7 +317,7 @@ func newTestOrchestratorHarness(t *testing.T, cfg orchestratorHarnessConfig) (Or
 	tr := new(mockTaskRepository)
 	tmr := new(mockOrchestratorTaskMessageRepository)
 	wr := new(mockOrchestratorWorkflowRepository)
-	ps := new(mockTaskProjectService)
+	ps := new(mockOrchestratorProjectService)
 	tx := new(mockOrchestratorTransactionManager)
 	le := new(mockLLMAgentExecutor)
 	se := new(mockSandboxAgentExecutor)
@@ -529,7 +559,7 @@ func okSandboxResult() *agent.ExecutionResult {
 	}
 }
 
-func wireFullPipelineMocks(t *testing.T, tr *mockTaskRepository, tmr *mockOrchestratorTaskMessageRepository, wr *mockOrchestratorWorkflowRepository, ps *mockTaskProjectService, ts *mockTaskService, taskID, projectID, orch, planner, dev, rev, tester uuid.UUID) {
+func wireFullPipelineMocks(t *testing.T, tr *mockTaskRepository, tmr *mockOrchestratorTaskMessageRepository, wr *mockOrchestratorWorkflowRepository, ps *mockOrchestratorProjectService, ts *mockTaskService, taskID, projectID, orch, planner, dev, rev, tester uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	branch := "main"
@@ -571,7 +601,7 @@ func wireFullPipelineMocks(t *testing.T, tr *mockTaskRepository, tmr *mockOrches
 }
 
 // wireFullPipelineMocksFromPlanning — первый GetByID уже planning + planner (сценарий после Resume); дальше planner→developer→reviewer→tester→completed.
-func wireFullPipelineMocksFromPlanning(t *testing.T, tr *mockTaskRepository, tmr *mockOrchestratorTaskMessageRepository, wr *mockOrchestratorWorkflowRepository, ps *mockTaskProjectService, ts *mockTaskService, taskID, projectID, planner, dev, rev, tester uuid.UUID) {
+func wireFullPipelineMocksFromPlanning(t *testing.T, tr *mockTaskRepository, tmr *mockOrchestratorTaskMessageRepository, wr *mockOrchestratorWorkflowRepository, ps *mockOrchestratorProjectService, ts *mockTaskService, taskID, projectID, planner, dev, rev, tester uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	branch := "main"

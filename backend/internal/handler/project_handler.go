@@ -302,3 +302,41 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "project deleted successfully"})
 }
+
+// Reindex запускает полную переиндексацию проекта
+// @Summary Переиндексация проекта
+// @Description Запускает процесс полной переиндексации проекта в фоновом режиме
+// @Tags projects
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
+// @Accept json
+// @Produce json
+// @Param id path string true "Project ID"
+// @Success 202 {object} map[string]string
+// @Failure 400 {object} apierror.ErrorResponse
+// @Failure 401 {object} apierror.ErrorResponse
+// @Failure 403 {object} apierror.ErrorResponse
+// @Failure 404 {object} apierror.ErrorResponse
+// @Failure 409 {object} apierror.ErrorResponse
+// @Failure 500 {object} apierror.ErrorResponse
+// @Router /projects/{id}/reindex [post]
+func (h *ProjectHandler) Reindex(c *gin.Context) {
+	uid, role, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid ID format")
+		return
+	}
+
+	if err := h.service.Reindex(c.Request.Context(), uid, role, projectID); err != nil {
+		httputil.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"message": "reindexing started"})
+}

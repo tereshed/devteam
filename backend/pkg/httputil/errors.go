@@ -30,6 +30,8 @@ func RespondError(c *gin.Context, err error) {
 	// Ошибки конфликта (409)
 	case errors.Is(err, service.ErrProjectNameExists):
 		apierror.JSON(c, http.StatusConflict, apierror.ErrAlreadyExists, err.Error())
+	case errors.Is(err, service.ErrProjectIndexingConflict):
+		apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, err.Error())
 
 	// Ошибки внешних сервисов (502)
 	case errors.Is(err, service.ErrGitValidationFailed),
@@ -50,6 +52,7 @@ func RespondError(c *gin.Context, err error) {
 		errors.Is(err, service.ErrProjectInvalidName),
 		errors.Is(err, service.ErrProjectInvalidProvider),
 		errors.Is(err, service.ErrProjectInvalidStatus),
+		errors.Is(err, service.ErrProjectLocalCannotReindex),
 		errors.Is(err, service.ErrUpdateProjectGitCredentialConflict),
 		errors.Is(err, service.ErrUpdateProjectTechStackConflict),
 		errors.Is(err, service.ErrUpdateProjectSettingsConflict):

@@ -181,6 +181,9 @@ func (m *mockTaskProjectService) Update(ctx context.Context, userID uuid.UUID, u
 func (m *mockTaskProjectService) Delete(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
 	return m.Called(ctx, userID, userRole, projectID).Error(0)
 }
+func (m *mockTaskProjectService) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+	return m.Called(ctx, userID, userRole, projectID).Error(0)
+}
 
 type mockTaskTeamService struct{ mock.Mock }
 

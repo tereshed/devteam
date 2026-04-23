@@ -72,6 +72,11 @@ func (m *MockConversationService) DeleteConversation(ctx context.Context, userID
 	return args.Error(0)
 }
 
+func (m *MockConversationService) DeleteMessage(ctx context.Context, userID, conversationID, messageID uuid.UUID) error {
+	args := m.Called(ctx, userID, conversationID, messageID)
+	return args.Error(0)
+}
+
 func (m *MockConversationService) Shutdown(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
