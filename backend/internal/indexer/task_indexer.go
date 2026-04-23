@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/sanitizer"
 	"github.com/google/uuid"
 )
 
@@ -18,6 +18,10 @@ import (
 type TaskIndexer interface {
 	// IndexTask индексирует одну задачу
 	IndexTask(ctx context.Context, taskID uuid.UUID) error
+	// IndexTaskFromModel индексирует задачу, используя переданную модель (сообщения загружаются автоматически)
+	IndexTaskFromModel(ctx context.Context, task *models.Task) error
+	// IndexTaskWithData индексирует задачу с уже загруженными данными
+	IndexTaskWithData(ctx context.Context, task *models.Task, messages []models.TaskMessage) error
 	// DeleteTask удаляет задачу из индекса
 	DeleteTask(ctx context.Context, taskID uuid.UUID) error
 	// DeleteProjectTasks удаляет все задачи проекта из индекса
@@ -54,19 +58,23 @@ func (i *taskIndexer) IndexTask(ctx context.Context, taskID uuid.UUID) error {
 		return fmt.Errorf("failed to get task: %w", err)
 	}
 
+	return i.IndexTaskFromModel(ctx, task)
+}
+
+func (i *taskIndexer) IndexTaskFromModel(ctx context.Context, task *models.Task) error {
 	// Получаем сообщения задачи
-	messages, _, err := i.messageRepo.ListByTaskID(ctx, taskID, repository.TaskMessageFilter{
+	messages, _, err := i.messageRepo.ListByTaskID(ctx, task.ID, repository.TaskMessageFilter{
 		Limit: 100, // Лимит сообщений для индексации
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get task messages: %w", err)
 	}
 
-	return i.indexTaskWithData(ctx, task, messages)
+	return i.IndexTaskWithData(ctx, task, messages)
 }
 
-// indexTaskWithData выполняет индексацию задачи с уже загруженными данными
-func (i *taskIndexer) indexTaskWithData(ctx context.Context, task *models.Task, messages []models.TaskMessage) error {
+// IndexTaskWithData выполняет индексацию задачи с уже загруженными данными
+func (i *taskIndexer) IndexTaskWithData(ctx context.Context, task *models.Task, messages []models.TaskMessage) error {
 	// Собираем документ
 	contents := i.buildTaskDocuments(task, messages)
 	if len(contents) == 0 {
@@ -177,7 +185,7 @@ func (i *taskIndexer) IndexProjectTasks(ctx context.Context, projectID uuid.UUID
 				continue
 			}
 
-			if err := i.indexTaskWithData(ctx, &task, messages); err != nil {
+			if err := i.IndexTaskWithData(ctx, &task, messages); err != nil {
 				i.logger.Error("failed to index task", "task_id", task.ID, "error", err)
 			}
 		}
@@ -210,14 +218,14 @@ func (i *taskIndexer) buildTaskDocuments(task *models.Task, messages []models.Ta
 	// Prompt/Description
 	if task.Description != "" {
 		sb.WriteString("--- TASK PROMPT ---\n")
-		sb.WriteString(i.sanitizeText(task.Description))
+		sb.WriteString(sanitizer.MaskSecrets(task.Description))
 		sb.WriteString("\n\n")
 	}
 
 	// Result
 	if task.Result != nil && *task.Result != "" {
 		sb.WriteString("--- AGENT RESULT ---\n")
-		sb.WriteString(i.sanitizeText(*task.Result))
+		sb.WriteString(sanitizer.MaskSecrets(*task.Result))
 		sb.WriteString("\n\n")
 	}
 
@@ -229,7 +237,7 @@ func (i *taskIndexer) buildTaskDocuments(task *models.Task, messages []models.Ta
 			if msg.SenderType == models.SenderTypeAgent {
 				role = "Agent"
 			}
-			msgContent := i.sanitizeText(msg.Content)
+			msgContent := sanitizer.MaskSecrets(msg.Content)
 			
 			// Если одно сообщение слишком длинное, обрезаем его
 			if len(msgContent) > maxChunkChars {
@@ -263,34 +271,4 @@ func (i *taskIndexer) buildTaskDocuments(task *models.Task, messages []models.Ta
 	}
 
 	return chunks
-}
-
-var (
-	// Простые регулярки для маскирования секретов
-	taskSecretPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(api[-_]?key|secret|password|token|auth|credential)(["']?\s*[:=]\s*["']?)([a-zA-Z0-9\-_.~]{4,})`),
-		regexp.MustCompile(`(?i)(bearer\s+)([a-zA-Z0-9\-_.~]{15,})`),
-	}
-)
-
-// sanitizeText маскирует секреты в тексте
-func (i *taskIndexer) sanitizeText(text string) string {
-	result := text
-	for _, pattern := range taskSecretPatterns {
-		result = pattern.ReplaceAllStringFunc(result, func(match string) string {
-			groups := pattern.FindStringSubmatch(match)
-			if len(groups) >= 3 {
-				// groups[0] - full match
-				// groups[1] - key name / prefix
-				// groups[2] - separator / secret value
-				// groups[3] - secret value (if exists)
-				if len(groups) >= 4 {
-					return groups[1] + groups[2] + "********"
-				}
-				return groups[1] + "********"
-			}
-			return "********"
-		})
-	}
-	return result
 }

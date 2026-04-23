@@ -48,19 +48,3 @@ type CodeIndexer interface {
 	// IndexProject запускает процесс индексации всего проекта
 	IndexProject(ctx context.Context, req IndexingRequest) error
 }
-
-// ConversationIndexer интерфейс для индексации сообщений чатов
-type ConversationIndexer interface {
-	// Start запускает прослушивание событий
-	Start(ctx context.Context) error
-	// IndexMessage индексирует одно сообщение
-	IndexMessage(ctx context.Context, projectID, conversationID, messageID uuid.UUID) error
-	// DeleteMessage удаляет сообщение из индекса
-	DeleteMessage(ctx context.Context, projectID, messageID uuid.UUID) error
-	// DeleteConversation удаляет весь чат из индекса
-	DeleteConversation(ctx context.Context, projectID, conversationID uuid.UUID) error
-	// IndexProjectConversations индексирует все чаты проекта
-	IndexProjectConversations(ctx context.Context, projectID uuid.UUID) error
-	// Stop останавливает прослушивание событий и дожидается завершения текущих задач
-	Stop()
-}

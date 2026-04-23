@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +11,7 @@ import (
 	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/sanitizer"
 	"github.com/google/uuid"
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/sony/gobreaker"
@@ -22,7 +21,29 @@ const (
 	ConversationMaxTokensPerChunk   = 512
 	ConversationChunkOverlap        = 50
 	ConversationMaxUserPromptTokens = 200 // Лимит на контекст вопроса пользователя в чанке ответа
+	// Smart Truncate: UTF-8 safe обрезка текста до лимита.
+	// Используется tiktoken для подсчета токенов, что является более точным для LLM.
+	// Но для Weaviate мы также ограничиваем длину текста в символах для безопасности.
+	ConversationMaxChars = 30000
 )
+
+// ConversationIndexer интерфейс для индексации сообщений чата в векторной БД
+type ConversationIndexer interface {
+	// Start запускает обработку событий индексации
+	Start(ctx context.Context) error
+	// Stop останавливает обработку событий и дожидается завершения активных задач
+	Stop()
+	// IndexMessage индексирует одно сообщение (с запросом к БД)
+	IndexMessage(ctx context.Context, projectID, conversationID, messageID uuid.UUID) error
+	// IndexMessageFromModel индексирует сообщение, используя уже загруженные модели (N+1 protection)
+	IndexMessageFromModel(ctx context.Context, conv *models.Conversation, msg *models.ConversationMessage, userPrompt string) error
+	// DeleteMessage удаляет сообщение из индекса
+	DeleteMessage(ctx context.Context, projectID, messageID uuid.UUID) error
+	// DeleteConversation удаляет все сообщения чата из индекса
+	DeleteConversation(ctx context.Context, projectID, conversationID uuid.UUID) error
+	// IndexProjectConversations индексирует все сообщения проекта (массовая индексация)
+	IndexProjectConversations(ctx context.Context, projectID uuid.UUID) error
+}
 
 type contextKey string
 
@@ -161,11 +182,16 @@ func (i *conversationIndexer) IndexMessage(ctx context.Context, projectID, conve
 		return fmt.Errorf("failed to get message: %w", err)
 	}
 
-	// Если это ответ ассистента, нам нужен контекст вопроса пользователя
-	var userPrompt string
-	if msg.Role == models.ConversationRoleAssistant {
+	// При прямой индексации по ID мы не знаем userPrompt,
+	// поэтому IndexMessageFromModel сам попытается его найти (fallback).
+	return i.IndexMessageFromModel(ctx, conv, msg, "")
+}
+
+func (i *conversationIndexer) IndexMessageFromModel(ctx context.Context, conv *models.Conversation, msg *models.ConversationMessage, userPrompt string) error {
+	// Если userPrompt не передан и это ответ ассистента, пытаемся найти его в БД (fallback)
+	if userPrompt == "" && msg.Role == models.ConversationRoleAssistant {
 		// Ищем последнее сообщение пользователя перед этим
-		messages, _, err := i.msgRepo.ListByConversationID(ctx, conversationID, repository.MessageFilter{
+		messages, _, err := i.msgRepo.ListByConversationID(ctx, msg.ConversationID, repository.MessageFilter{
 			Limit:    10,
 			OrderBy:  "created_at",
 			OrderDir: "desc",
@@ -184,8 +210,8 @@ func (i *conversationIndexer) IndexMessage(ctx context.Context, projectID, conve
 }
 
 func (i *conversationIndexer) indexMessageWithData(ctx context.Context, conv *models.Conversation, msg *models.ConversationMessage, userPrompt string) error {
-	// Санитаризация
-	content := i.sanitizeText(msg.Content)
+	// Санитаризация через общий пакет
+	content := sanitizer.MaskSecrets(msg.Content)
 	if strings.TrimSpace(content) == "" {
 		return nil
 	}
@@ -341,6 +367,17 @@ func (i *conversationIndexer) IndexProjectConversations(ctx context.Context, pro
 }
 
 func (i *conversationIndexer) buildChunks(content string, role models.ConversationRole, userPrompt string) []string {
+	// Early Return: Игнорируем пустые сообщения
+	if strings.TrimSpace(content) == "" {
+		return nil
+	}
+
+	// Smart Truncate: UTF-8 safe обрезка по рунам (символам)
+	runes := []rune(content)
+	if len(runes) > ConversationMaxChars {
+		content = string(runes[:ConversationMaxChars]) + "... [TRUNCATED]"
+	}
+
 	tokens := i.tokenizer.Encode(content, nil, nil)
 	
 	if len(tokens) <= ConversationMaxTokensPerChunk {
@@ -382,32 +419,4 @@ func (i *conversationIndexer) formatChunk(content string, role models.Conversati
 
 	sb.WriteString(content)
 	return sb.String()
-}
-
-var (
-	convSecretPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(api[-_]?key|secret|password|token|auth|credential)(["']?\s*[:=]\s*["']?)([a-zA-Z0-9\-_.~]{4,})`),
-		regexp.MustCompile(`(?i)(bearer\s+)([a-zA-Z0-9\-_.~]{15,})`),
-	}
-)
-
-func (i *conversationIndexer) sanitizeText(text string) string {
-	decoded, err := url.PathUnescape(text)
-	if err == nil {
-		text = decoded
-	}
-	result := text
-	for _, pattern := range convSecretPatterns {
-		result = pattern.ReplaceAllStringFunc(result, func(match string) string {
-			groups := pattern.FindStringSubmatch(match)
-			if len(groups) >= 3 {
-				if len(groups) >= 4 {
-					return groups[1] + groups[2] + "********"
-				}
-				return groups[1] + "********"
-			}
-			return "********"
-		})
-	}
-	return strings.TrimSpace(result)
 }

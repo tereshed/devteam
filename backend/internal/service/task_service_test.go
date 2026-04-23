@@ -13,9 +13,39 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"log/slog"
+	"os"
 	"gorm.io/datatypes"
 	"errors"
 )
+
+type mockTaskIndexer struct {
+	mock.Mock
+}
+
+func (m *mockTaskIndexer) IndexTask(ctx context.Context, taskID uuid.UUID) error {
+	return m.Called(ctx, taskID).Error(0)
+}
+
+func (m *mockTaskIndexer) IndexTaskFromModel(ctx context.Context, task *models.Task) error {
+	return m.Called(ctx, task).Error(0)
+}
+
+func (m *mockTaskIndexer) IndexTaskWithData(ctx context.Context, task *models.Task, messages []models.TaskMessage) error {
+	return m.Called(ctx, task, messages).Error(0)
+}
+
+func (m *mockTaskIndexer) DeleteTask(ctx context.Context, taskID uuid.UUID) error {
+	return m.Called(ctx, taskID).Error(0)
+}
+
+func (m *mockTaskIndexer) DeleteProjectTasks(ctx context.Context, projectID uuid.UUID) error {
+	return m.Called(ctx, projectID).Error(0)
+}
+
+func (m *mockTaskIndexer) IndexProjectTasks(ctx context.Context, projectID uuid.UUID) error {
+	return m.Called(ctx, projectID).Error(0)
+}
 
 type mockEventBus struct {
 	mock.Mock
@@ -180,15 +210,28 @@ func (m *mockTransactionManager) WithTransaction(ctx context.Context, fn func(ct
 }
 
 func newTaskServiceHarness() (*mockTaskRepository, *mockTaskMessageRepository, *mockTaskProjectService, *mockTaskTeamService, *mockTransactionManager, TaskService) {
+	tr, tmr, ps, tms, txm, _, svc := newTaskServiceHarnessWithBus()
+	return tr, tmr, ps, tms, txm, svc
+}
+
+func newTaskServiceHarnessWithBus() (*mockTaskRepository, *mockTaskMessageRepository, *mockTaskProjectService, *mockTaskTeamService, *mockTransactionManager, *mockEventBus, TaskService) {
+	tr, tmr, ps, tms, txm, bus, _, svc := newTaskServiceHarnessFull()
+	return tr, tmr, ps, tms, txm, bus, svc
+}
+
+func newTaskServiceHarnessFull() (*mockTaskRepository, *mockTaskMessageRepository, *mockTaskProjectService, *mockTaskTeamService, *mockTransactionManager, *mockEventBus, *mockTaskIndexer, TaskService) {
 	tr := new(mockTaskRepository)
 	tmr := new(mockTaskMessageRepository)
 	ps := new(mockTaskProjectService)
 	tms := new(mockTaskTeamService)
 	txm := new(mockTransactionManager)
 	bus := new(mockEventBus)
-	bus.On("Publish", mock.Anything, mock.Anything).Return().Maybe()
+	idx := new(mockTaskIndexer)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	txm.On("WithTransaction", mock.Anything, mock.Anything).Return(nil).Maybe()
-	return tr, tmr, ps, tms, txm, NewTaskService(tr, tmr, ps, tms, txm, bus)
+	bus.On("Publish", mock.Anything, mock.Anything).Return().Maybe()
+	svc := NewTaskService(tr, tmr, ps, tms, txm, bus, idx, logger)
+	return tr, tmr, ps, tms, txm, bus, idx, svc
 }
 
 func ownedProject() *models.Project {
@@ -196,7 +239,7 @@ func ownedProject() *models.Project {
 }
 
 func TestTaskCreate_Success(t *testing.T) {
-	tr, _, ps, _, _, svc := newTaskServiceHarness()
+	tr, _, ps, _, _, _, idx, svc := newTaskServiceHarnessFull()
 	ctx := context.Background()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Create", ctx, mock.Anything).Run(func(args mock.Arguments) {
@@ -204,16 +247,21 @@ func TestTaskCreate_Success(t *testing.T) {
 		task.ID = tsTaskID
 	}).Return(nil)
 
+	idx.On("IndexTaskFromModel", mock.Anything, mock.Anything).Return(nil)
+
 	got, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{Title: "Hello"})
 	require.NoError(t, err)
 	assert.Equal(t, models.TaskStatusPending, got.Status)
 	assert.Equal(t, models.CreatedByUser, got.CreatedByType)
 	assert.Equal(t, tsUserID, got.CreatedByID)
+
+	svc.Close()
 	tr.AssertExpectations(t)
+	idx.AssertExpectations(t)
 }
 
 func TestTaskEvents_Create(t *testing.T) {
-	tr, _, ps, _, _, bus, svc := newTaskServiceHarnessWithBus()
+	tr, _, ps, _, _, bus, idx, svc := newTaskServiceHarnessFull()
 	ctx := context.Background()
 
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
@@ -227,14 +275,18 @@ func TestTaskEvents_Create(t *testing.T) {
 		return ok && e.TaskID == tsTaskID && e.Current == string(models.TaskStatusPending) && e.Previous == ""
 	})).Return()
 
+	idx.On("IndexTaskFromModel", mock.Anything, mock.Anything).Return(nil)
+
 	_, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{Title: "Task 1"})
 	require.NoError(t, err)
 
+	svc.Close()
 	bus.AssertExpectations(t)
+	idx.AssertExpectations(t)
 }
 
 func TestTaskEvents_Cancel(t *testing.T) {
-	tr, _, ps, _, _, bus, svc := newTaskServiceHarnessWithBus()
+	tr, _, ps, _, _, bus, idx, svc := newTaskServiceHarnessFull()
 	ctx := context.Background()
 
 	task := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress, UpdatedAt: time.Now()}
@@ -248,14 +300,18 @@ func TestTaskEvents_Cancel(t *testing.T) {
 		return ok && e.TaskID == tsTaskID && e.Current == string(models.TaskStatusCancelled) && e.Previous == string(models.TaskStatusInProgress)
 	})).Return()
 
+	idx.On("IndexTaskFromModel", mock.Anything, mock.Anything).Return(nil)
+
 	_, err := svc.Cancel(ctx, tsUserID, models.RoleUser, tsTaskID)
 	require.NoError(t, err)
 
+	svc.Close()
 	bus.AssertExpectations(t)
+	idx.AssertExpectations(t)
 }
 
 func TestTaskEvents_AddMessage(t *testing.T) {
-	tr, tmr, ps, _, _, bus, svc := newTaskServiceHarnessWithBus()
+	tr, tmr, ps, _, _, bus, idx, svc := newTaskServiceHarnessFull()
 	ctx := context.Background()
 
 	task := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress}
@@ -280,11 +336,13 @@ func TestTaskEvents_AddMessage(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	svc.Close()
 	bus.AssertExpectations(t)
+	idx.AssertNotCalled(t, "IndexTask", mock.Anything, mock.Anything)
 }
 
 func TestTaskEvents_NoPublishOnRepositoryError(t *testing.T) {
-	tr, _, ps, _, _, bus, svc := newTaskServiceHarnessWithBus()
+	tr, _, ps, _, _, bus, _, svc := newTaskServiceHarnessFull()
 	ctx := context.Background()
 
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
@@ -296,15 +354,19 @@ func TestTaskEvents_NoPublishOnRepositoryError(t *testing.T) {
 	bus.AssertNotCalled(t, "Publish", mock.Anything, mock.Anything)
 }
 
-func newTaskServiceHarnessWithBus() (*mockTaskRepository, *mockTaskMessageRepository, *mockTaskProjectService, *mockTaskTeamService, *mockTransactionManager, *mockEventBus, TaskService) {
-	tr := new(mockTaskRepository)
-	tmr := new(mockTaskMessageRepository)
-	ps := new(mockTaskProjectService)
-	tms := new(mockTaskTeamService)
-	txm := new(mockTransactionManager)
-	bus := new(mockEventBus)
-	txm.On("WithTransaction", mock.Anything, mock.Anything).Return(nil).Maybe()
-	return tr, tmr, ps, tms, txm, bus, NewTaskService(tr, tmr, ps, tms, txm, bus)
+func TestTaskDelete_Indexer(t *testing.T) {
+	tr, _, ps, _, _, _, idx, svc := newTaskServiceHarnessFull()
+	ctx := context.Background()
+	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID}, nil)
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+	tr.On("Delete", ctx, tsTaskID).Return(nil)
+	idx.On("DeleteTask", mock.Anything, tsTaskID).Return(nil)
+
+	err := svc.Delete(ctx, tsUserID, models.RoleUser, tsTaskID)
+	require.NoError(t, err)
+
+	svc.Close()
+	idx.AssertExpectations(t)
 }
 
 func TestTaskCreate_ProjectForbidden(t *testing.T) {

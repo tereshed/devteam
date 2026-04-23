@@ -12,8 +12,11 @@ import (
 
 	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/metrics"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/async"
 	"github.com/google/uuid"
 )
 
@@ -53,6 +56,10 @@ type ConversationService interface {
 	// Обязательно проверяет права доступа userID к чату.
 	DeleteConversation(ctx context.Context, userID, id uuid.UUID) error
 
+	// DeleteMessage удаляет сообщение из чата.
+	// Обязательно проверяет права доступа userID к чату.
+	DeleteMessage(ctx context.Context, userID, conversationID, messageID uuid.UUID) error
+
 	// Shutdown дожидается завершения всех активных процессов оркестрации.
 	Shutdown(ctx context.Context) error
 }
@@ -63,6 +70,7 @@ type conversationService struct {
 	projectSvc      ProjectService
 	taskSvc         TaskService
 	orchestratorSvc OrchestratorService
+	indexer         indexer.ConversationIndexer
 	txManager       repository.TransactionManager
 	eventBus        events.EventBus
 
@@ -87,6 +95,7 @@ func NewConversationService(
 	projectSvc ProjectService,
 	taskSvc TaskService,
 	orchestratorSvc OrchestratorService,
+	indexer indexer.ConversationIndexer,
 	txManager repository.TransactionManager,
 	eventBus events.EventBus,
 ) ConversationService {
@@ -96,6 +105,7 @@ func NewConversationService(
 		projectSvc:        projectSvc,
 		taskSvc:           taskSvc,
 		orchestratorSvc:   orchestratorSvc,
+		indexer:           indexer,
 		txManager:         txManager,
 		eventBus:          eventBus,
 		processedMessages: make(map[uuid.UUID]*models.ConversationMessage),
@@ -231,6 +241,9 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 		s.processedMessagesMu.Unlock()
 	}
 
+	// Индексируем сообщение пользователя
+	s.indexMessageAsync(ctx, conv, msg, "")
+
 	// Запуск оркестрации в защищенной горутине с поддержкой Graceful Shutdown
 	s.wg.Add(1)
 	go s.runOrchestrator(context.WithoutCancel(ctx), userID, conv.ProjectID, conversationID, content)
@@ -275,6 +288,44 @@ func (s *conversationService) DeleteConversation(ctx context.Context, userID, id
 		})
 		return nil
 	})
+
+	// Удаляем из индекса после успешного коммита
+	s.deleteConversationAsync(ctx, conv.ProjectID, id)
+
+	return nil
+}
+
+// DeleteMessage удаляет сообщение
+func (s *conversationService) DeleteMessage(ctx context.Context, userID, conversationID, messageID uuid.UUID) error {
+	conv, err := s.checkConversationAccess(ctx, userID, conversationID, true)
+	if err != nil {
+		return err
+	}
+
+	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.msgRepo.Delete(txCtx, conversationID, messageID); err != nil {
+			return err
+		}
+
+		// Публикуем событие удаления сообщения
+		s.eventBus.Publish(ctx, events.ConversationMessageDeleted{
+			ProjectID:      conv.ProjectID,
+			ConversationID: conversationID,
+			MessageID:      messageID,
+			OccurredAt:     time.Now(),
+			TraceID:        getTraceID(ctx),
+		})
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Удаляем из индекса после успешного коммита
+	s.deleteMessageAsync(ctx, conv.ProjectID, messageID)
+
+	return nil
 }
 
 // Приватные хелперы
@@ -364,6 +415,8 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 	defer s.wg.Done()
 
 	var success bool
+	var assistantMsg *models.ConversationMessage
+
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("Panic in orchestration flow",
@@ -379,6 +432,13 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 			// TODO: Обновить статус сообщения/разговора на Failed в БД,
 			// чтобы UI не оставался в состоянии вечного ожидания.
 			// s.markMessageFailed(ctx, conversationID, ...)
+		} else if assistantMsg != nil {
+			// Индексируем ответ ассистента после успешного завершения оркестрации
+			// Загружаем Conversation для передачи в индексатор (N+1 protection)
+			conv, err := s.convRepo.GetOnlyByID(ctx, conversationID, true)
+			if err == nil {
+				s.indexMessageAsync(ctx, conv, assistantMsg, content)
+			}
 		}
 	}()
 
@@ -410,7 +470,86 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 		return
 	}
 
+	// 3. Получаем созданный ассистентом ответ
+	messages, _, err := s.msgRepo.ListByConversationID(ctx, conversationID, repository.MessageFilter{
+		Limit:    1,
+		OrderBy:  "created_at",
+		OrderDir: "desc",
+	})
+	if err == nil && len(messages) > 0 && messages[0].Role == models.ConversationRoleAssistant {
+		assistantMsg = messages[0]
+	}
+
 	success = true
+}
+
+func (s *conversationService) indexMessageAsync(ctx context.Context, conv *models.Conversation, msg *models.ConversationMessage, userPrompt string) {
+	if conv == nil || msg == nil {
+		return
+	}
+
+	// Глубокое копирование моделей для предотвращения data race
+	convCopy := *conv
+	msgCopy := *msg
+
+	async.ExecuteWithRetry(ctx, &s.wg, async.TaskOptions{
+		Timeout: 1 * time.Minute,
+		Retries: 3,
+		LogTags: map[string]any{
+			"project_id":      convCopy.ProjectID,
+			"conversation_id": convCopy.ID,
+			"message_id":      msgCopy.ID,
+			"action":          "index_message",
+		},
+		OnSuccess: func() {
+			metrics.IncAsyncTask("index_message", "success")
+		},
+		OnFailure: func(err error) {
+			metrics.IncAsyncTask("index_message", "error")
+		},
+	}, func(idxCtx context.Context) error {
+		return s.indexer.IndexMessageFromModel(idxCtx, &convCopy, &msgCopy, userPrompt)
+	})
+}
+
+func (s *conversationService) deleteMessageAsync(ctx context.Context, projectID, messageID uuid.UUID) {
+	async.ExecuteWithRetry(ctx, &s.wg, async.TaskOptions{
+		Timeout: 1 * time.Minute,
+		Retries: 3,
+		LogTags: map[string]any{
+			"project_id": projectID,
+			"message_id": messageID,
+			"action":     "delete_message",
+		},
+		OnSuccess: func() {
+			metrics.IncAsyncTask("delete_message", "success")
+		},
+		OnFailure: func(err error) {
+			metrics.IncAsyncTask("delete_message", "error")
+		},
+	}, func(idxCtx context.Context) error {
+		return s.indexer.DeleteMessage(idxCtx, projectID, messageID)
+	})
+}
+
+func (s *conversationService) deleteConversationAsync(ctx context.Context, projectID, conversationID uuid.UUID) {
+	async.ExecuteWithRetry(ctx, &s.wg, async.TaskOptions{
+		Timeout: 2 * time.Minute,
+		Retries: 3,
+		LogTags: map[string]any{
+			"project_id":      projectID,
+			"conversation_id": conversationID,
+			"action":          "delete_conversation",
+		},
+		OnSuccess: func() {
+			metrics.IncAsyncTask("delete_conversation", "success")
+		},
+		OnFailure: func(err error) {
+			metrics.IncAsyncTask("delete_conversation", "error")
+		},
+	}, func(idxCtx context.Context) error {
+		return s.indexer.DeleteConversation(idxCtx, projectID, conversationID)
+	})
 }
 
 func truncateRunes(s string, n int) string {

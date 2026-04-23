@@ -5,14 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devteam/backend/internal/domain/events"
+	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/metrics"
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/async"
 	"github.com/tidwall/sjson"
 	"gorm.io/datatypes"
 )
@@ -78,6 +83,8 @@ type TaskService interface {
 
 	AddMessage(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.CreateTaskMessageRequest) (*models.TaskMessage, error)
 	ListMessages(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.ListTaskMessagesRequest) ([]models.TaskMessage, int64, error)
+
+	Close() error
 }
 
 type taskService struct {
@@ -87,6 +94,9 @@ type taskService struct {
 	teamSvc     TeamService
 	txManager   repository.TransactionManager
 	bus         events.EventBus
+	indexer     indexer.TaskIndexer
+	logger      *slog.Logger
+	wg          sync.WaitGroup
 }
 
 // NewTaskService создаёт сервис задач.
@@ -97,6 +107,8 @@ func NewTaskService(
 	teamSvc TeamService,
 	txManager repository.TransactionManager,
 	bus events.EventBus,
+	indexer indexer.TaskIndexer,
+	logger *slog.Logger,
 ) TaskService {
 	return &taskService{
 		taskRepo:    taskRepo,
@@ -105,7 +117,14 @@ func NewTaskService(
 		teamSvc:     teamSvc,
 		txManager:   txManager,
 		bus:         bus,
+		indexer:     indexer,
+		logger:      logger,
 	}
+}
+
+func (s *taskService) Close() error {
+	s.wg.Wait()
+	return nil
 }
 
 func canTransition(from, to models.TaskStatus) bool {
@@ -295,16 +314,16 @@ func getSafeErrorMessage(task *models.Task) string {
 func (s *taskService) listRequestToFilter(projectID uuid.UUID, req dto.ListTasksRequest) (repository.TaskFilter, error) {
 	limit, offset := normalizeTaskServicePagination(req.Limit, req.Offset)
 	f := repository.TaskFilter{
-		ProjectID:    &projectID,
-		Limit:        limit,
-		Offset:       offset,
-		OrderBy:      req.OrderBy,
-		OrderDir:     req.OrderDir,
-		RootOnly:     req.RootOnly,
-		BranchName:   req.BranchName,
-		Search:       req.Search,
+		ProjectID:       &projectID,
+		Limit:           limit,
+		Offset:          offset,
+		OrderBy:         req.OrderBy,
+		OrderDir:        req.OrderDir,
+		RootOnly:        req.RootOnly,
+		BranchName:      req.BranchName,
+		Search:          req.Search,
 		AssignedAgentID: req.AssignedAgentID,
-		ParentTaskID: req.ParentTaskID,
+		ParentTaskID:    req.ParentTaskID,
 	}
 	if req.Status != nil && *req.Status != "" {
 		st, err := parseTaskStatus(*req.Status)
@@ -339,6 +358,81 @@ func (s *taskService) listRequestToFilter(projectID uuid.UUID, req dto.ListTasks
 		}
 	}
 	return f, nil
+}
+
+func (s *taskService) indexTaskAsync(ctx context.Context, task *models.Task) {
+	if task == nil {
+		return
+	}
+
+	// Глубокое копирование задачи для предотвращения data race
+	taskCopy := *task
+	if task.Result != nil {
+		res := *task.Result
+		taskCopy.Result = &res
+	}
+	if task.ErrorMessage != nil {
+		errStr := *task.ErrorMessage
+		taskCopy.ErrorMessage = &errStr
+	}
+	if task.BranchName != nil {
+		bn := *task.BranchName
+		taskCopy.BranchName = &bn
+	}
+	if task.StartedAt != nil {
+		sa := *task.StartedAt
+		taskCopy.StartedAt = &sa
+	}
+	if task.CompletedAt != nil {
+		ca := *task.CompletedAt
+		taskCopy.CompletedAt = &ca
+	}
+	// Context и Artifacts (datatypes.JSON — это []byte)
+	if task.Context != nil {
+		taskCopy.Context = make(datatypes.JSON, len(task.Context))
+		copy(taskCopy.Context, task.Context)
+	}
+	if task.Artifacts != nil {
+		taskCopy.Artifacts = make(datatypes.JSON, len(task.Artifacts))
+		copy(taskCopy.Artifacts, task.Artifacts)
+	}
+
+	async.ExecuteWithRetry(ctx, &s.wg, async.TaskOptions{
+		Timeout: 2 * time.Minute,
+		Retries: 3,
+		LogTags: map[string]any{
+			"task_id":    taskCopy.ID,
+			"project_id": taskCopy.ProjectID,
+			"action":     "index_task",
+		},
+		OnSuccess: func() {
+			metrics.IncAsyncTask("index_task", "success")
+		},
+		OnFailure: func(err error) {
+			metrics.IncAsyncTask("index_task", "error")
+		},
+	}, func(idxCtx context.Context) error {
+		return s.indexer.IndexTaskFromModel(idxCtx, &taskCopy)
+	})
+}
+
+func (s *taskService) deleteTaskAsync(ctx context.Context, taskID uuid.UUID) {
+	async.ExecuteWithRetry(ctx, &s.wg, async.TaskOptions{
+		Timeout: 1 * time.Minute,
+		Retries: 3,
+		LogTags: map[string]any{
+			"task_id": taskID,
+			"action":  "delete_task",
+		},
+		OnSuccess: func() {
+			metrics.IncAsyncTask("delete_task", "success")
+		},
+		OnFailure: func(err error) {
+			metrics.IncAsyncTask("delete_task", "error")
+		},
+	}, func(idxCtx context.Context) error {
+		return s.indexer.DeleteTask(idxCtx, taskID)
+	})
 }
 
 func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.CreateTaskRequest) (*models.Task, error) {
@@ -404,6 +498,7 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 	}
 
 	s.publishEvents(ctx, userRole, created, "", nil)
+	s.indexTaskAsync(ctx, created)
 	return created, nil
 }
 
@@ -513,6 +608,9 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 	}
 
 	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	if isTerminalTaskStatus(updated.Status) {
+		s.indexTaskAsync(ctx, updated)
+	}
 	return updated, nil
 }
 
@@ -524,7 +622,11 @@ func (s *taskService) Delete(ctx context.Context, userID uuid.UUID, userRole mod
 	if err := s.checkTaskAccess(ctx, userID, userRole, task); err != nil {
 		return err
 	}
-	return s.taskRepo.Delete(ctx, taskID)
+	if err := s.taskRepo.Delete(ctx, taskID); err != nil {
+		return err
+	}
+	s.deleteTaskAsync(ctx, taskID)
+	return nil
 }
 
 func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
@@ -562,6 +664,9 @@ func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole mode
 	}
 
 	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	if isTerminalTaskStatus(updated.Status) {
+		s.indexTaskAsync(ctx, updated)
+	}
 	return updated, nil
 }
 
@@ -601,6 +706,9 @@ func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole mod
 	}
 
 	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	if isTerminalTaskStatus(updated.Status) {
+		s.indexTaskAsync(ctx, updated)
+	}
 	return updated, nil
 }
 
@@ -643,6 +751,9 @@ func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 	}
 
 	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
+	if isTerminalTaskStatus(updated.Status) {
+		s.indexTaskAsync(ctx, updated)
+	}
 	return updated, nil
 }
 
@@ -726,6 +837,7 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 	}
 
 	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, msg, occurredAt)
+	s.indexTaskAsync(ctx, updated)
 	return updated, nil
 }
 
@@ -796,6 +908,9 @@ func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newStatu
 	}
 
 	s.publishEventsWithTime(ctx, models.RoleUser, updated, from, nil, occurredAt)
+	if isTerminalTaskStatus(updated.Status) {
+		s.indexTaskAsync(ctx, updated)
+	}
 	return updated, nil
 }
 
@@ -846,6 +961,13 @@ func (s *taskService) AddMessage(ctx context.Context, userID uuid.UUID, userRole
 	}
 
 	s.publishEvents(ctx, userRole, task, task.Status, createdMsg)
+
+	// Индексируем только важные типы сообщений
+	mt := createdMsg.MessageType
+	if mt == models.MessageTypeResult || mt == models.MessageTypeSummary || mt == models.MessageTypeFeedback {
+		s.indexTaskAsync(ctx, task)
+	}
+
 	return createdMsg, nil
 }
 

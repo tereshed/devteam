@@ -35,14 +35,14 @@ func (m *mockConversationRepo) Create(ctx context.Context, conv *models.Conversa
 	return m.Called(ctx, conv).Error(0)
 }
 func (m *mockConversationRepo) GetByID(ctx context.Context, projectID, id uuid.UUID, master bool) (*models.Conversation, error) {
-	args := m.Called(ctx, projectID, id)
+	args := m.Called(ctx, projectID, id, master)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.Conversation), args.Error(1)
 }
 func (m *mockConversationRepo) GetOnlyByID(ctx context.Context, id uuid.UUID, master bool) (*models.Conversation, error) {
-	args := m.Called(ctx, id)
+	args := m.Called(ctx, id, master)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -75,7 +75,7 @@ func (m *mockConversationMessageRepo) Create(ctx context.Context, msg *models.Co
 	return m.Called(ctx, msg).Error(0)
 }
 func (m *mockConversationMessageRepo) GetByID(ctx context.Context, conversationID, id uuid.UUID, master bool) (*models.ConversationMessage, error) {
-	args := m.Called(ctx, conversationID, id)
+	args := m.Called(ctx, conversationID, id, master)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -165,6 +165,9 @@ func (m *mockTaskSvc) AddMessage(ctx context.Context, userID uuid.UUID, userRole
 func (m *mockTaskSvc) ListMessages(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.ListTaskMessagesRequest) ([]models.TaskMessage, int64, error) {
 	return nil, 0, nil
 }
+func (m *mockTaskSvc) Close() error {
+	return nil
+}
 
 type mockOrchestratorSvc struct{ mock.Mock }
 
@@ -194,6 +197,30 @@ func (m *mockConvEventBus) Close() {
 	m.Called()
 }
 
+type mockConversationIndexer struct{ mock.Mock }
+
+func (m *mockConversationIndexer) Start(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
+func (m *mockConversationIndexer) Stop() {
+	m.Called()
+}
+func (m *mockConversationIndexer) IndexMessage(ctx context.Context, projectID, conversationID, messageID uuid.UUID) error {
+	return m.Called(ctx, projectID, conversationID, messageID).Error(0)
+}
+func (m *mockConversationIndexer) IndexMessageFromModel(ctx context.Context, conv *models.Conversation, msg *models.ConversationMessage, userPrompt string) error {
+	return m.Called(ctx, conv, msg, userPrompt).Error(0)
+}
+func (m *mockConversationIndexer) DeleteMessage(ctx context.Context, projectID, messageID uuid.UUID) error {
+	return m.Called(ctx, projectID, messageID).Error(0)
+}
+func (m *mockConversationIndexer) DeleteConversation(ctx context.Context, projectID, conversationID uuid.UUID) error {
+	return m.Called(ctx, projectID, conversationID).Error(0)
+}
+func (m *mockConversationIndexer) IndexProjectConversations(ctx context.Context, projectID uuid.UUID) error {
+	return m.Called(ctx, projectID).Error(0)
+}
+
 // --- Harness ---
 
 type mockDeps struct {
@@ -202,6 +229,7 @@ type mockDeps struct {
 	projectSvc      *mockProjectSvc
 	taskSvc         *mockTaskSvc
 	orchestratorSvc *mockOrchestratorSvc
+	indexer         *mockConversationIndexer
 	txManager       *mockTxManager
 	eventBus        *mockConvEventBus
 }
@@ -213,6 +241,7 @@ func newTestConversationHarness(t *testing.T) (*conversationService, *mockDeps) 
 		projectSvc:      new(mockProjectSvc),
 		taskSvc:         new(mockTaskSvc),
 		orchestratorSvc: new(mockOrchestratorSvc),
+		indexer:         new(mockConversationIndexer),
 		txManager:       new(mockTxManager),
 		eventBus:        new(mockConvEventBus),
 	}
@@ -223,6 +252,7 @@ func newTestConversationHarness(t *testing.T) (*conversationService, *mockDeps) 
 		deps.projectSvc,
 		deps.taskSvc,
 		deps.orchestratorSvc,
+		deps.indexer,
 		deps.txManager,
 		deps.eventBus,
 	).(*conversationService)
@@ -336,7 +366,7 @@ func TestGetConversation(t *testing.T) {
 			name:   "TestGetConversation_Success",
 			userID: userID,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, false).Return(&models.Conversation{UserID: userID}, nil)
 			},
 			expectedErr: nil,
 		},
@@ -344,7 +374,7 @@ func TestGetConversation(t *testing.T) {
 			name:   "TestGetConversation_Forbidden",
 			userID: otherUserID,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, false).Return(&models.Conversation{UserID: userID}, nil)
 			},
 			expectedErr: ErrConversationForbidden,
 		},
@@ -352,7 +382,7 @@ func TestGetConversation(t *testing.T) {
 			name:   "TestGetConversation_EmptyUserID",
 			userID: uuid.Nil,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, false).Return(&models.Conversation{UserID: userID}, nil)
 			},
 			expectedErr: ErrConversationForbidden,
 		},
@@ -360,7 +390,7 @@ func TestGetConversation(t *testing.T) {
 			name:   "TestGetConversation_NotFound",
 			userID: userID,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(nil, repository.ErrConversationNotFound)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, false).Return(nil, repository.ErrConversationNotFound)
 			},
 			expectedErr: ErrConversationNotFound,
 		},
@@ -474,11 +504,13 @@ func TestSendMessage(t *testing.T) {
 			content:     "Hello",
 			clientMsgID: clientMsgID,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
+				deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{}, int64(0), nil)
 				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
+				deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "").Return(nil)
 			},
 			expectedErr: nil,
 		},
@@ -508,7 +540,7 @@ func TestSendMessage(t *testing.T) {
 			content:     "Hello",
 			clientMsgID: clientMsgID,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: uuid.New()}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: uuid.New()}, nil)
 			},
 			expectedErr: ErrConversationForbidden,
 		},
@@ -520,7 +552,7 @@ func TestSendMessage(t *testing.T) {
 				svc.processedMessagesMu.Lock()
 				svc.processedMessages[clientMsgID] = &models.ConversationMessage{}
 				svc.processedMessagesMu.Unlock()
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
 			},
 			expectedErr: ErrDuplicateMessage,
 		},
@@ -529,11 +561,13 @@ func TestSendMessage(t *testing.T) {
 			content:     "Hello",
 			clientMsgID: uuid.Nil,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
+				deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{}, int64(0), nil)
 				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
+				deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "").Return(nil)
 			},
 			expectedErr: nil,
 		},
@@ -542,7 +576,7 @@ func TestSendMessage(t *testing.T) {
 			content:     "Hello",
 			clientMsgID: clientMsgID,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(errDB)
 			},
 			expectedErr: errDB,
@@ -585,11 +619,14 @@ func TestSendMessage_ConcurrentAccess(t *testing.T) {
 	convID := uuid.New()
 	projectID := uuid.New()
 
-	deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+	deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
 	deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 	deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 	deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
+	deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{}, int64(0), nil)
 	deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
+	deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "").Return(nil)
+	deps.indexer.On("IndexMessage", mock.Anything, projectID, convID, mock.AnythingOfType("uuid.UUID")).Return(nil)
 
 	var wg sync.WaitGroup
 	numGoroutines := 50
@@ -634,7 +671,7 @@ func TestGetHistory(t *testing.T) {
 			expectedLimit:  10,
 			expectedOffset: 5,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, false).Return(&models.Conversation{UserID: userID}, nil)
 				deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.MatchedBy(func(f repository.MessageFilter) bool {
 					return f.Limit == 10 && f.Offset == 5
 				})).Return([]*models.ConversationMessage{}, int64(0), nil)
@@ -648,7 +685,7 @@ func TestGetHistory(t *testing.T) {
 			expectedLimit:  10,
 			expectedOffset: 0,
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: uuid.New()}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, false).Return(&models.Conversation{UserID: uuid.New()}, nil)
 			},
 			expectedErr: ErrConversationForbidden,
 		},
@@ -685,16 +722,17 @@ func TestDeleteConversation(t *testing.T) {
 		{
 			name: "TestDeleteConversation_Success",
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
 				deps.convRepo.On("Delete", mock.Anything, projectID, convID).Return(nil)
 				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationDeleted")).Return()
+				deps.indexer.On("DeleteConversation", mock.Anything, projectID, convID).Return(nil)
 			},
 			expectedErr: nil,
 		},
 		{
 			name: "TestDeleteConversation_Forbidden",
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID).Return(&models.Conversation{UserID: uuid.New(), ProjectID: projectID}, nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: uuid.New(), ProjectID: projectID}, nil)
 			},
 			expectedErr: ErrConversationForbidden,
 		},
@@ -730,6 +768,9 @@ func TestRunOrchestrator(t *testing.T) {
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
+				deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{{ID: uuid.New(), Role: models.ConversationRoleAssistant}}, int64(1), nil)
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{ID: convID, ProjectID: projectID}, nil)
+				deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), content).Return(nil)
 			},
 		},
 		{
@@ -780,6 +821,51 @@ func TestRunOrchestrator(t *testing.T) {
 				// Success
 			case <-time.After(1 * time.Second):
 				t.Fatal("wg.Wait() timed out, wg.Done() was not called")
+			}
+		})
+	}
+}
+
+func TestDeleteMessage(t *testing.T) {
+	userID := uuid.New()
+	convID := uuid.New()
+	projectID := uuid.New()
+	msgID := uuid.New()
+
+	tests := []struct {
+		name        string
+		setupMocks  func(svc *conversationService, deps *mockDeps)
+		expectedErr error
+	}{
+		{
+			name: "TestDeleteMessage_Success",
+			setupMocks: func(svc *conversationService, deps *mockDeps) {
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+				deps.msgRepo.On("Delete", mock.Anything, convID, msgID).Return(nil)
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageDeleted")).Return()
+				deps.indexer.On("DeleteMessage", mock.Anything, projectID, msgID).Return(nil)
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "TestDeleteMessage_Forbidden",
+			setupMocks: func(svc *conversationService, deps *mockDeps) {
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{UserID: uuid.New(), ProjectID: projectID}, nil)
+			},
+			expectedErr: ErrConversationForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, deps := newTestConversationHarness(t)
+			tt.setupMocks(svc, deps)
+
+			err := svc.DeleteMessage(context.Background(), userID, convID, msgID)
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}

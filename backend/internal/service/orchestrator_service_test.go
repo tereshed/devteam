@@ -235,6 +235,9 @@ func (m *mockTaskService) ListMessages(ctx context.Context, userID uuid.UUID, us
 	args := m.Called(ctx, userID, userRole, taskID, req)
 	return args.Get(0).([]models.TaskMessage), args.Get(1).(int64), args.Error(2)
 }
+func (m *mockTaskService) Close() error {
+	return nil
+}
 
 type mockOrchestratorTaskMessageRepository struct{ mock.Mock }
 

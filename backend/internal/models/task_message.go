@@ -36,13 +36,14 @@ const (
 	MessageTypeFeedback    MessageType = "feedback"
 	MessageTypeError       MessageType = "error"
 	MessageTypeComment     MessageType = "comment"
+	MessageTypeSummary     MessageType = "summary"
 )
 
 // IsValid проверяет валидность типа сообщения
 func (m MessageType) IsValid() bool {
 	switch m {
 	case MessageTypeInstruction, MessageTypeResult, MessageTypeQuestion,
-		MessageTypeFeedback, MessageTypeError, MessageTypeComment:
+		MessageTypeFeedback, MessageTypeError, MessageTypeComment, MessageTypeSummary:
 		return true
 	default:
 		return false
