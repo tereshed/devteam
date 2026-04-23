@@ -189,7 +189,7 @@ func main() {
 	// --- Indexer (Sprint 9) ---
 	syncRepo := repository.NewSyncStateRepository(db)
 	vectorRepo := repository.NewVectorRepository(nil) // TODO: pass Weaviate client
-	codeIndexer, _ := indexer.NewCodeIndexer(syncRepo, vectorRepo, nil, 4)
+	codeIndexer, _ := indexer.NewCodeIndexer(syncRepo, vectorRepo, nil, 4, slog.Default())
 
 	projectService := service.NewProjectService(
 		projectRepo,

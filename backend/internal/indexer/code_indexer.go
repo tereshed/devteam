@@ -17,8 +17,10 @@ import (
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/parser"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/vectordb"
 	"github.com/google/uuid"
 	"github.com/pkoukk/tiktoken-go"
+	"log/slog"
 )
 
 const (
@@ -31,6 +33,10 @@ const (
 	MaxLineLength     = 10240 // 10KB
 	MaxErrorsPerProject = 100
 	LargeFileThreshold  = 1024 * 1024 // 1MB
+	MaxSearchQueryLen   = 4096
+	MaxSearchLimit      = 50
+	DefaultSearchLimit  = 10
+	RelevanceThreshold  = 0.7 // Минимальная уверенность (certainty) для результатов
 )
 
 var secretPatterns = []*regexp.Regexp{
@@ -46,6 +52,7 @@ type codeIndexer struct {
 	parserPool  *sync.Pool
 	numWorkers  int
 	tokenizer   *tiktoken.Tiktoken
+	logger      *slog.Logger
 	errorCounts map[uuid.UUID]int
 	errorMu     sync.Mutex
 }
@@ -55,6 +62,7 @@ func NewCodeIndexer(
 	vectorRepo repository.VectorRepository,
 	parserFactory func() parser.CodeParser,
 	numWorkers int,
+	logger *slog.Logger,
 ) (CodeIndexer, error) {
 	if numWorkers <= 0 {
 		numWorkers = 4
@@ -75,6 +83,7 @@ func NewCodeIndexer(
 		},
 		numWorkers:  numWorkers,
 		tokenizer:   tkm,
+		logger:      logger,
 		errorCounts: make(map[uuid.UUID]int),
 	}, nil
 }
@@ -588,6 +597,97 @@ func (idx *codeIndexer) splitByTokens(ctx context.Context, p parser.CodeParser, 
 	return chunks
 }
 
-// simpleTokenSplit больше не нужен, так как splitByTokens теперь универсален
-// и оптимизирован. Удаляем его и обновляем вызовы.
+// mapSearchResultToChunk преобразует результат поиска из VectorDB в структуру Chunk
+func mapSearchResultToChunk(res *vectordb.SearchResult) Chunk {
+	chunk := Chunk{
+		Content: res.Content,
+	}
+
+	if res.Metadata != nil {
+		if val, ok := res.Metadata["file_path"].(string); ok {
+			chunk.FilePath = val
+		}
+		if val, ok := res.Metadata["language"].(string); ok {
+			chunk.Language = val
+		}
+		if val, ok := res.Metadata["symbol"].(string); ok {
+			chunk.Symbol = val
+		}
+		if val, ok := res.Metadata["content_hash"].(string); ok {
+			chunk.Hash = val
+		}
+		if startLine, ok := res.Metadata["start_line"].(float64); ok {
+			chunk.StartLine = int(startLine)
+		}
+		if endLine, ok := res.Metadata["end_line"].(float64); ok {
+			chunk.EndLine = int(endLine)
+		}
+	}
+
+	return chunk
+}
+
+// SearchContext выполняет контекстный поиск по проиндексированному коду проекта
+func (idx *codeIndexer) SearchContext(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]Chunk, error) {
+	// 1. Валидация
+	if query == "" {
+		return []Chunk{}, nil
+	}
+	if len(query) > MaxSearchQueryLen {
+		return nil, ErrQueryTooLong
+	}
+	if limit <= 0 || limit > MaxSearchLimit {
+		limit = DefaultSearchLimit
+	}
+
+	// 2. Поиск
+	start := time.Now()
+
+	// Используем гибридный поиск через VectorRepository
+	// Мы хотим семантический поиск, поэтому Alpha ближе к 1.0, но оставим немного для ключевых слов
+	params := &vectordb.SearchParams{
+		ProjectID: projectID.String(),
+		Query:     query,
+		Category:  "project_code",
+		Limit:     limit,
+		Alpha:     0.7, // Смещение в сторону семантики
+	}
+
+	results, err := idx.vectorRepo.Search(ctx, projectID.String(), params)
+	duration := time.Since(start)
+
+	if err != nil {
+		return nil, fmt.Errorf("vector search failed: %w", err)
+	}
+
+	// 3. Фильтрация по релевантности и маппинг
+	chunks := make([]Chunk, 0, len(results))
+	for _, res := range results {
+		// Weaviate distance: 0 - идентичны, 2 - противоположны (для косинусного расстояния)
+		// Certainty обычно 1 - distance/2
+		certainty := 1 - (res.Distance / 2)
+
+		if certainty < RelevanceThreshold {
+			continue
+		}
+
+		chunks = append(chunks, mapSearchResultToChunk(res))
+	}
+
+	// 4. Логирование
+	if idx.logger != nil {
+		idx.logger.Info("SearchContext completed",
+			"project_id", projectID,
+			"query_len", len(query),
+			"limit", limit,
+			"results_count", len(chunks),
+			"total_found", len(results),
+			"latency", duration.String(),
+		)
+	}
+
+	return chunks, nil
+}
+
+// simpleTokenSplit больше не нужен
 

@@ -2,8 +2,13 @@ package indexer
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
+)
+
+var (
+	ErrQueryTooLong = errors.New("search query is too long")
 )
 
 // IndexingRequest запрос на индексацию проекта
@@ -47,4 +52,7 @@ type FileResult struct {
 type CodeIndexer interface {
 	// IndexProject запускает процесс индексации всего проекта
 	IndexProject(ctx context.Context, req IndexingRequest) error
+
+	// SearchContext выполняет контекстный поиск по проиндексированному коду проекта
+	SearchContext(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]Chunk, error)
 }

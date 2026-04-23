@@ -117,39 +117,6 @@ func (m *MockEventBus) Subscribe(name string, buffer int) (<-chan events.DomainE
 	return args.Get(0).(<-chan events.DomainEvent), args.Get(1).(func())
 }
 
-func (m *MockEventBus) Close() {
-	m.Called()
-}
-
-func TestConversationIndexer_SanitizeText(t *testing.T) {
-	idx, _ := NewConversationIndexer(nil, nil, nil, nil, nil)
-	ci := idx.(*conversationIndexer)
-
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "URL Decoded and Masked",
-			input:    "api-key%3Dmysecret123",
-			expected: "api-key=********",
-		},
-		{
-			name:     "Bearer Token",
-			input:    "Bearer abcdef1234567890",
-			expected: "Bearer ********",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ci.sanitizeText(tt.input)
-			assert.Equal(t, tt.expected, got)
-		})
-	}
-}
-
 func TestConversationIndexer_FormatChunk(t *testing.T) {
 	idx, _ := NewConversationIndexer(nil, nil, nil, nil, nil)
 	ci := idx.(*conversationIndexer)

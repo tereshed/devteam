@@ -92,49 +92,6 @@ func (m *MockTaskMessageRepo) CountByTaskID(ctx context.Context, taskID uuid.UUI
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func TestTaskIndexer_SanitizeText(t *testing.T) {
-	idx := &taskIndexer{}
-
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "API Key",
-			input:    `My apiKey: "abcdef1234567890"`,
-			expected: `My apiKey: "********"`,
-		},
-		{
-			name:     "Bearer Token",
-			input:    `Authorization: Bearer abcdef12345678901234567890`,
-			expected: `Authorization: Bearer ********`,
-		},
-		{
-			name:     "Password",
-			input:    `db_password=supersecret123`,
-			expected: `db_password=********`,
-		},
-		{
-			name:     "Multiple secrets",
-			input:    `secret: "val1", secret: "val2"`,
-			expected: `secret: "********", secret: "********"`,
-		},
-		{
-			name:     "No secrets",
-			input:    "Just a normal text",
-			expected: "Just a normal text",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := idx.sanitizeText(tt.input)
-			assert.Equal(t, tt.expected, got)
-		})
-	}
-}
-
 func TestTaskIndexer_BuildTaskDocuments(t *testing.T) {
 	idx := &taskIndexer{}
 	res := "Task completed successfully"

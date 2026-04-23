@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,7 +207,7 @@ func TestCodeIndexer_ProcessFile_LongLines(t *testing.T) {
 
 func TestCodeIndexer_SplitByTokens(t *testing.T) {
 	// Инициализируем реальный тиктокена для теста
-	indexerObj, _ := NewCodeIndexer(nil, nil, func() parser.CodeParser { return nil }, 1)
+	indexerObj, _ := NewCodeIndexer(nil, nil, func() parser.CodeParser { return nil }, 1, nil)
 	idx := indexerObj.(*codeIndexer)
 	
 	content := "This is a test content that should be small enough."
@@ -229,7 +230,7 @@ func TestCodeIndexer_SplitByTokens(t *testing.T) {
 
 func TestCodeIndexer_RecursiveChunking(t *testing.T) {
 	mockParser := new(MockParser)
-	indexerObj, _ := NewCodeIndexer(nil, nil, func() parser.CodeParser { return mockParser }, 1)
+	indexerObj, _ := NewCodeIndexer(nil, nil, func() parser.CodeParser { return mockParser }, 1, nil)
 	idx := indexerObj.(*codeIndexer)
 
 	// Создадим контент, который точно больше 512 токенов
@@ -261,6 +262,122 @@ func TestCodeIndexer_RecursiveChunking(t *testing.T) {
 	chunks := idx.splitByTokens(context.Background(), mockParser, largeContent, "main.go", "go", 1, "main", 0)
 	
 	assert.True(t, len(chunks) >= 2)
+}
+
+func TestCodeIndexer_SearchContext(t *testing.T) {
+	mockVectorRepo := new(MockVectorRepo)
+	indexerObj, _ := NewCodeIndexer(nil, mockVectorRepo, func() parser.CodeParser { return nil }, 1, nil)
+	idx := indexerObj.(*codeIndexer)
+	ctx := context.Background()
+	projectID := uuid.New()
+
+	t.Run("Empty query", func(t *testing.T) {
+		chunks, err := idx.SearchContext(ctx, projectID, "", 10)
+		assert.NoError(t, err)
+		assert.Empty(t, chunks)
+	})
+
+	t.Run("Query too long", func(t *testing.T) {
+		longQuery := strings.Repeat("a", MaxSearchQueryLen+1)
+		chunks, err := idx.SearchContext(ctx, projectID, longQuery, 10)
+		assert.ErrorIs(t, err, ErrQueryTooLong)
+		assert.Nil(t, chunks)
+	})
+
+	t.Run("Successful search", func(t *testing.T) {
+		query := "how to use this"
+		limit := 5
+
+		mockResults := []*vectordb.SearchResult{
+			{
+				Content:  "chunk 1",
+				Distance: 0.1, // Certainty 0.95
+				Metadata: map[string]interface{}{
+					"file_path":    "test.go",
+					"language":     "go",
+					"symbol":       "Func1",
+					"content_hash": "hash1",
+					"start_line":   10.0,
+					"end_line":     20.0,
+				},
+			},
+			{
+				Content:  "chunk 2",
+				Distance: 0.5, // Certainty 0.75
+				Metadata: map[string]interface{}{
+					"file_path":    "other.go",
+					"language":     "go",
+					"symbol":       "Func2",
+					"content_hash": "hash2",
+					"start_line":   30.0,
+					"end_line":     40.0,
+				},
+			},
+			{
+				Content:  "noise",
+				Distance: 0.8, // Certainty 0.6 - should be filtered out
+				Metadata: map[string]interface{}{
+					"file_path":    "noise.go",
+					"language":     "go",
+					"symbol":       "Noise",
+					"content_hash": "hash3",
+					"start_line":   1.0,
+					"end_line":     5.0,
+				},
+			},
+		}
+
+		mockVectorRepo.On("Search", ctx, projectID.String(), mock.MatchedBy(func(p *vectordb.SearchParams) bool {
+			return p.Query == query && p.Limit == limit && p.ProjectID == projectID.String()
+		})).Return(mockResults, nil)
+
+		chunks, err := idx.SearchContext(ctx, projectID, query, limit)
+		assert.NoError(t, err)
+		assert.Len(t, chunks, 2)
+		assert.Equal(t, "chunk 1", chunks[0].Content)
+		assert.Equal(t, "test.go", chunks[0].FilePath)
+		assert.Equal(t, 10, chunks[0].StartLine)
+		assert.Equal(t, "chunk 2", chunks[1].Content)
+		assert.Equal(t, 30, chunks[1].StartLine)
+	})
+
+	t.Run("Missing metadata fields", func(t *testing.T) {
+		query := "missing metadata"
+		mockResults := []*vectordb.SearchResult{
+			{
+				Content:  "partial chunk",
+				Distance: 0.1,
+				Metadata: map[string]interface{}{
+					"file_path": "test.go",
+					// language, symbol, hash missing
+				},
+			},
+			{
+				Content:  "no metadata",
+				Distance: 0.1,
+				Metadata: nil,
+			},
+		}
+
+		mockVectorRepo.On("Search", ctx, projectID.String(), mock.Anything).Return(mockResults, nil).Once()
+
+		chunks, err := idx.SearchContext(ctx, projectID, query, 10)
+		assert.NoError(t, err)
+		assert.Len(t, chunks, 2)
+		assert.Equal(t, "test.go", chunks[0].FilePath)
+		assert.Equal(t, "", chunks[0].Language)
+		assert.Equal(t, "", chunks[1].FilePath)
+	})
+
+	t.Run("Vector DB error", func(t *testing.T) {
+		mockVectorRepo.On("Search", ctx, projectID.String(), mock.Anything).
+			Return([]*vectordb.SearchResult{}, fmt.Errorf("db error")).Once()
+
+		chunks, err := idx.SearchContext(ctx, projectID, "query", 10)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "vector search failed")
+		assert.Nil(t, chunks)
+	})
 }
 
 func TestCodeIndexer_MaskSecrets_ReDoS(t *testing.T) {
