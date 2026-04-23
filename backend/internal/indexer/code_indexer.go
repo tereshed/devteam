@@ -601,6 +601,8 @@ func (idx *codeIndexer) splitByTokens(ctx context.Context, p parser.CodeParser, 
 func mapSearchResultToChunk(res *vectordb.SearchResult) Chunk {
 	chunk := Chunk{
 		Content: res.Content,
+		// Certainty обычно 1 - distance/2
+		Score: float32(1 - (res.Distance / 2)),
 	}
 
 	if res.Metadata != nil {

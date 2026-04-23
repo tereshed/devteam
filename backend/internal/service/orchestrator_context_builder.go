@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/devteam/backend/internal/agent"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/pkg/agentsloader"
 	"github.com/devteam/backend/pkg/llm"
@@ -17,6 +18,8 @@ import (
 // ContextBuilder собирает и фильтрует контекст для выполнения задачи агентом.
 type ContextBuilder interface {
 	Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project) (*agent.ExecutionInput, error)
+	// WithCodeChunks добавляет найденные фрагменты кода в контекст (Задача 9.11).
+	WithCodeChunks(input *agent.ExecutionInput, chunks []indexer.Chunk) error
 }
 
 // PipelinePromptComposer merges base + role system prompts from disk (task 6.8).
@@ -200,4 +203,66 @@ func (b *contextBuilder) scrub(s string) string {
 		})
 	}
 	return s
+}
+
+// WithCodeChunks реализует добавление фрагментов кода в промпт.
+// Использует быструю аппроксимацию токенов (1 токен ≈ 4 символа).
+func (b *contextBuilder) WithCodeChunks(input *agent.ExecutionInput, chunks []indexer.Chunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	// Лимит контекста для чанков (аппроксимация). 
+	// Допустим, мы хотим выделить под чанки не более 4000 токенов (~16000 символов).
+	const maxChars = 16000
+	const minScore = 0.7
+	
+	var sb strings.Builder
+	firstChunk := true
+
+	currentChars := 0
+	addedCount := 0
+
+	for _, chunk := range chunks {
+		// 1. Similarity Threshold (Порог релевантности)
+		if chunk.Score < minScore {
+			continue
+		}
+
+		// 2. Fast Token Approximation & Performance optimization
+		// Сначала проверяем примерный размер, чтобы избежать лишних аллокаций
+		approxLen := len(chunk.FilePath) + len(chunk.Symbol) + len(chunk.Content) + 150
+		if currentChars+approxLen > maxChars {
+			break
+		}
+
+		if firstChunk {
+			sb.WriteString("\n\n--- CODE CONTEXT ---\n")
+			sb.WriteString("The following code snippets are retrieved automatically via vector search. They might be incomplete or slightly outdated. Use them as a reference.\n\n")
+			currentChars = sb.Len()
+			firstChunk = false
+		}
+
+		// 3. XML-теги для защиты от Prompt Injection
+		sb.WriteString("<code_chunk file=\"")
+		sb.WriteString(chunk.FilePath)
+		if chunk.Symbol != "" {
+			sb.WriteString("\" symbol=\"")
+			sb.WriteString(chunk.Symbol)
+		}
+		sb.WriteString("\" lines=\"")
+		sb.WriteString(fmt.Sprintf("%d-%d", chunk.StartLine, chunk.EndLine))
+		sb.WriteString("\">\n")
+		sb.WriteString(chunk.Content)
+		sb.WriteString("\n</code_chunk>\n\n")
+		
+		currentChars = sb.Len()
+		addedCount++
+	}
+
+	if addedCount > 0 {
+		input.PromptUser += sb.String()
+	}
+
+	return nil
 }

@@ -66,8 +66,9 @@ type Agent struct {
 	CodeBackend *CodeBackend   `gorm:"type:varchar(50)" json:"code_backend"`
 	Settings    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
 	ModelConfig datatypes.JSON `gorm:"type:jsonb" json:"model_config"`
-	IsActive    bool           `gorm:"default:true" json:"is_active"`
-	CreatedAt   time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
+	IsActive            bool           `gorm:"default:true" json:"is_active"`
+	RequiresCodeContext bool           `gorm:"default:false" json:"requires_code_context"`
+	CreatedAt           time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
 	UpdatedAt   time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
 
 	ToolBindings []AgentToolBinding `gorm:"foreignKey:AgentID" json:"tool_bindings,omitempty"`

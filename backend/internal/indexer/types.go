@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	ErrQueryTooLong = errors.New("search query is too long")
+	ErrQueryTooLong   = errors.New("search query is too long")
+	ErrIndexNotReady  = errors.New("code index is not ready")
 )
 
 // IndexingRequest запрос на индексацию проекта
@@ -35,7 +36,8 @@ type Chunk struct {
 	EndLine   int
 	Symbol    string
 	Hash      string
-	FileHash  string // Хеш всего файла для обновления SyncState
+	FileHash  string  // Хеш всего файла для обновления SyncState
+	Score     float32 // Релевантность чанка (0.0 - 1.0)
 }
 
 // FileResult результат обработки файла воркером

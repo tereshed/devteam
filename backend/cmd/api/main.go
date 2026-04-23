@@ -16,6 +16,7 @@ import (
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/handler"
+	"github.com/devteam/backend/internal/indexer"
 	mcpserver "github.com/devteam/backend/internal/mcp"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -203,7 +204,8 @@ func main() {
 		cfg.Git.ImportDir,
 	)
 	teamService := service.NewTeamService(teamRepo)
-	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService, txManager, eventBus)
+	taskIndexer := indexer.NewTaskIndexer(taskRepo, taskMsgRepo, vectorRepo, slog.Default())
+	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService, txManager, eventBus, taskIndexer, slog.Default())
 
 	// Запускаем первичную синхронизацию моделей (в фоне)
 	go func() {
@@ -274,6 +276,7 @@ func main() {
 		taskService,
 		orchestratorPipeline,
 		orchestratorContextBuilder,
+		codeIndexer,
 		sandboxRunner,
 		taskControlBus,
 	)

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -112,4 +113,37 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 		t.ID = uuid.New()
 	}
 	return nil
+}
+
+// GetSearchQuery формирует поисковый запрос для векторного поиска.
+// Возвращает пустую строку, если заголовок и описание пусты.
+// Description обрезается до 2000 символов UTF-8 safe способом.
+func (t *Task) GetSearchQuery() string {
+	title := strings.TrimSpace(t.Title)
+	desc := strings.TrimSpace(t.Description)
+
+	if title == "" && desc == "" {
+		return ""
+	}
+
+	const maxDescLen = 2000
+	if len(desc) > maxDescLen {
+		// UTF-8 safe truncation
+		count := 0
+		for i := range desc {
+			if count == maxDescLen {
+				desc = desc[:i]
+				break
+			}
+			count++
+		}
+	}
+
+	if title != "" && desc != "" {
+		return title + " " + desc
+	}
+	if title != "" {
+		return title
+	}
+	return desc
 }

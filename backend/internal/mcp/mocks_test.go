@@ -321,3 +321,11 @@ func (m *mockWorkflowEngine) GetExecutionSteps(ctx context.Context, id uuid.UUID
 func (m *mockWorkflowEngine) RunWorker(ctx context.Context) {
 	m.Called(ctx)
 }
+
+func (m *mockProjectService) Reindex(ctx context.Context, projectID uuid.UUID, role models.UserRole, userID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockTaskService) Close() error {
+	return nil
+}

@@ -393,3 +393,7 @@ func TestHubRegisterIfUnderLimit_MultipleProjects(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	assert.Equal(t, 2, hub.CountUserConnections("user1", "project1"))
 }
+
+func (m *mockProjectService) Reindex(ctx context.Context, projectID uuid.UUID, role models.UserRole, userID uuid.UUID) error {
+	return nil
+}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devteam/backend/internal/agent"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
@@ -72,6 +73,7 @@ type orchestratorService struct {
 	taskSvc         TaskService
 	pipeline        PipelineEngine
 	contextBuilder  ContextBuilder
+	codeIndexer     indexer.CodeIndexer
 
 	sandboxStop TaskSandboxStopper
 	controlBus  *UserTaskControlBus
@@ -97,6 +99,7 @@ func NewOrchestratorService(
 	taskSvc TaskService,
 	pipeline PipelineEngine,
 	contextBuilder ContextBuilder,
+	codeIndexer indexer.CodeIndexer,
 	sandboxStop TaskSandboxStopper,
 	controlBus *UserTaskControlBus,
 	opts ...OrchestratorOption,
@@ -112,6 +115,7 @@ func NewOrchestratorService(
 		taskSvc:              taskSvc,
 		pipeline:             pipeline,
 		contextBuilder:       contextBuilder,
+		codeIndexer:          codeIndexer,
 		sandboxStop:          sandboxStop,
 		controlBus:           controlBus,
 		zombieTimeout:        1 * time.Hour,
@@ -573,6 +577,33 @@ func (s *orchestratorService) prepareExecution(ctx context.Context, task *models
 	input, err := s.contextBuilder.Build(ctx, task, assignedAgent, project)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Векторный поиск для контекста кода (Задача 9.11)
+	if assignedAgent.RequiresCodeContext && s.codeIndexer != nil {
+		query := task.GetSearchQuery()
+		if query != "" {
+			searchCtx, cancelSearch := context.WithTimeout(ctx, 5*time.Second)
+			defer cancelSearch()
+
+			chunks, err := s.codeIndexer.SearchContext(searchCtx, project.ID, query, 15)
+			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, indexer.ErrIndexNotReady) {
+					slog.Warn("SearchContext skipped", "task_id", task.ID, "project_id", project.ID, "reason", err)
+				} else {
+					slog.Error("SearchContext failed", "task_id", task.ID, "project_id", project.ID, "error", err)
+				}
+			} else if len(chunks) > 0 {
+				// Передаем чанки в ContextBuilder для финальной обработки и вставки в промпт
+				if cb, ok := s.contextBuilder.(interface {
+					WithCodeChunks(input *agent.ExecutionInput, chunks []indexer.Chunk) error
+				}); ok {
+					if err := cb.WithCodeChunks(input, chunks); err != nil {
+						slog.Error("Failed to add code chunks to context", "task_id", task.ID, "error", err)
+					}
+				}
+			}
+		}
 	}
 
 	return executor, input, nil

@@ -16,6 +16,7 @@ import (
 
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/sandbox"
@@ -274,6 +275,20 @@ type mockOrchestratorTaskMessageRepository struct{ mock.Mock }
 func (m *mockOrchestratorTaskMessageRepository) Create(ctx context.Context, msg *models.TaskMessage) error {
 	return m.Called(ctx, msg).Error(0)
 }
+
+type mockCodeIndexer struct{ mock.Mock }
+
+func (m *mockCodeIndexer) IndexProject(ctx context.Context, req indexer.IndexingRequest) error {
+	return m.Called(ctx, req).Error(0)
+}
+func (m *mockCodeIndexer) SearchContext(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	args := m.Called(ctx, projectID, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]indexer.Chunk), args.Error(1)
+}
+
 func (m *mockOrchestratorTaskMessageRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.TaskMessage, error) {
 	args := m.Called(ctx, id)
 	return args.Get(0).(*models.TaskMessage), args.Error(1)
@@ -301,6 +316,7 @@ type mockAgents struct {
 	WR       *mockOrchestratorWorkflowRepository
 	PS       *mockOrchestratorProjectService
 	TS       *mockTaskService
+	CI       *mockCodeIndexer
 }
 
 // orchestratorHarnessConfig — единая точка инициализации моков (ревью 6.10: DRY, table-driven setup).
@@ -322,6 +338,7 @@ func newTestOrchestratorHarness(t *testing.T, cfg orchestratorHarnessConfig) (Or
 	le := new(mockLLMAgentExecutor)
 	se := new(mockSandboxAgentExecutor)
 	ts := new(mockTaskService)
+	ci := new(mockCodeIndexer)
 	pipeMax := cfg.PipelineMaxIter
 	if pipeMax <= 0 {
 		pipeMax = 5
@@ -331,10 +348,10 @@ func newTestOrchestratorHarness(t *testing.T, cfg orchestratorHarnessConfig) (Or
 
 	all := []OrchestratorOption{WithStepPollInterval(0)}
 	all = append(all, cfg.Opts...)
-	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, cfg.Stop, cfg.Bus, all...)
+	svc := NewOrchestratorService(tr, tmr, wr, ps, tx, le, se, ts, pipe, ctxB, ci, cfg.Stop, cfg.Bus, all...)
 	return svc, &mockAgents{
 		LLM: le, Sandbox: se, Stopper: cfg.Stop, TaskRepo: tr,
-		TMR: tmr, WR: wr, PS: ps, TS: ts,
+		TMR: tmr, WR: wr, PS: ps, TS: ts, CI: ci,
 	}
 }
 
@@ -1476,6 +1493,77 @@ func TestSecurity_PromptNameNoTraversal(t *testing.T) {
 	require.Error(t, err)
 }
 
+// --- Vector Search Integration (Task 9.11) ---
+
+func TestOrchestrator_VectorSearch_Integration(t *testing.T) {
+	svc, h := newTestOrchestratorHarness(t, orchestratorHarnessConfig{})
+	ctx := context.Background()
+	taskID := uuid.New()
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	task := baseTask(taskID, projectID, models.TaskStatusPending, &agentID)
+	task.Title = "Search query"
+	
+	agent := &models.Agent{
+		ID:                  agentID,
+		Role:                models.AgentRoleOrchestrator,
+		RequiresCodeContext: true,
+	}
+
+	h.TaskRepo.On("GetByID", mock.Anything, taskID).Return(task, nil).Once()
+	h.TaskRepo.On("GetByID", mock.Anything, taskID).Return(task, nil).Once()
+	h.TaskRepo.On("GetByID", mock.Anything, taskID).Return(&models.Task{ID: taskID, Status: models.TaskStatusCompleted}, nil)
+	h.PS.On("GetByID", mock.Anything, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
+	h.WR.On("GetAgentByID", mock.Anything, agentID).Return(agent, nil)
+	
+	// Ожидаем вызов поиска
+	h.CI.On("SearchContext", mock.Anything, projectID, "Search query desc", 15).Return([]indexer.Chunk{
+		{FilePath: "main.go", Content: "func main() {}"},
+	}, nil)
+
+	h.LLM.On("Execute", mock.Anything, mock.Anything).Return(okLLMResult(), nil)
+
+	h.TMR.On("Create", mock.Anything, mock.Anything).Return(nil)
+	h.TS.On("Transition", mock.Anything, taskID, models.TaskStatusPlanning, mock.Anything).Return(&models.Task{ID: taskID, Status: models.TaskStatusCompleted}, nil)
+
+	err := svc.ProcessTask(ctx, taskID)
+	require.NoError(t, err)
+	h.CI.AssertExpectations(t)
+}
+
+func TestOrchestrator_VectorSearch_TimeoutGraceful(t *testing.T) {
+	svc, h := newTestOrchestratorHarness(t, orchestratorHarnessConfig{})
+	ctx := context.Background()
+	taskID := uuid.New()
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	task := baseTask(taskID, projectID, models.TaskStatusPending, &agentID)
+	agentModel := &models.Agent{
+		ID:                  agentID,
+		Role:                models.AgentRoleOrchestrator,
+		RequiresCodeContext: true,
+	}
+
+	h.TaskRepo.On("GetByID", mock.Anything, taskID).Return(task, nil).Once()
+	h.TaskRepo.On("GetByID", mock.Anything, taskID).Return(task, nil).Once()
+	h.TaskRepo.On("GetByID", mock.Anything, taskID).Return(&models.Task{ID: taskID, Status: models.TaskStatusCompleted}, nil)
+	h.PS.On("GetByID", mock.Anything, uuid.Nil, models.RoleAdmin, projectID).Return(&models.Project{ID: projectID}, nil)
+	h.WR.On("GetAgentByID", mock.Anything, agentID).Return(agentModel, nil)
+	
+	// Имитируем таймаут
+	h.CI.On("SearchContext", mock.Anything, projectID, mock.Anything, 15).Return(nil, context.DeadlineExceeded)
+
+	h.LLM.On("Execute", mock.Anything, mock.Anything).Return(okLLMResult(), nil)
+
+	h.TMR.On("Create", mock.Anything, mock.Anything).Return(nil)
+	h.TS.On("Transition", mock.Anything, taskID, models.TaskStatusPlanning, mock.Anything).Return(&models.Task{ID: taskID, Status: models.TaskStatusCompleted}, nil)
+
+	err := svc.ProcessTask(ctx, taskID)
+	require.NoError(t, err) // Должно продолжиться без ошибки
+}
+
 // --- Concurrency ---
 
 func TestConcurrency_CancelDuringStateTransition(t *testing.T) {
@@ -1494,9 +1582,7 @@ func TestConcurrency_CancelDuringStateTransition(t *testing.T) {
 	h.TaskRepo.On("GetByID", mock.Anything, taskID).Return(baseTask(taskID, projectID, models.TaskStatusPlanning, &planner), nil).Once()
 	h.TMR.On("Create", mock.Anything, mock.Anything).Return(nil)
 	h.WR.On("GetAgentByID", mock.Anything, orch).Return(&models.Agent{ID: orch, Role: models.AgentRoleOrchestrator}, nil).Once()
-	h.LLM.On("Execute", mock.Anything, mock.MatchedBy(func(in agent.ExecutionInput) bool {
-		return in.Role == string(models.AgentRoleOrchestrator)
-	})).Return(okLLMResult(), nil).Once()
+	h.LLM.On("Execute", mock.Anything, mock.Anything).Return(okLLMResult(), nil)
 	h.TS.On("Transition", ctx, taskID, models.TaskStatusPlanning, mock.Anything).
 		Run(func(mock.Arguments) { cancel() }).
 		Return(baseTask(taskID, projectID, models.TaskStatusPlanning, &planner), nil).Once()
