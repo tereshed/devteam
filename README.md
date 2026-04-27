@@ -272,16 +272,16 @@ User Message
 |---|--------|-------|--------|
 | 9.1 | Коллекция Weaviate per project: `DevTeam_Project_{id}` | Конфигурация в `vectordb` | ✅ |
 | 9.2 | Индексатор кода: чанкинг файлов (по файлам для малых, по функциям для больших) | `backend/internal/indexer/code_indexer.go` | ✅ |
-| 9.3 | Индексатор задач: описание + результат + сообщения | `backend/internal/indexer/task_indexer.go` | ⬜ | [docs/tasks/9.3-task-indexer.md](docs/tasks/9.3-task-indexer.md) |
-| 9.4 | Индексатор чатов: сообщения пользователя и ассистента | `backend/internal/indexer/conversation_indexer.go` | ⬜ | [docs/tasks/9.4-conversation-indexer.md](docs/tasks/9.4-conversation-indexer.md) |
-| 9.5 | Service: `IndexerService` (полная индексация проекта, инкрементальное обновление) | `backend/internal/service/indexer_service.go` | ⬜ |
-| 9.6 | Хук: индексация кода при создании проекта (после clone) | В `ProjectService` | ⬜ |
-| 9.7 | Хук: индексация задачи при создании/обновлении | В `TaskService` | ⬜ |
-| 9.8 | Хук: индексация сообщения при создании | В `ConversationService` | ⬜ |
-| 9.9 | API: `POST /api/v1/projects/:id/reindex` (полная переиндексация) | Handler + Service | ⏳ |
-| 9.10 | Контекстный поиск: `SearchContext(projectID, query)` → релевантные чанки | В `IndexerService` | ⏳ |
-| 9.11 | Интеграция с Orchestrator: перед запуском агента — vector search для контекста | В `OrchestratorService` | [docs/tasks/9.11-orchestrator-vector-search.md](docs/tasks/9.11-orchestrator-vector-search.md) | ⬜ |
-| 9.12 | Unit-тесты | `backend/internal/service/indexer_service_test.go` | ⬜ |
+| 9.3 | Индексатор задач: описание + результат + сообщения | `backend/internal/indexer/task_indexer.go` | ✅ |
+| 9.4 | Индексатор чатов: сообщения пользователя и ассистента | `backend/internal/indexer/conversation_indexer.go` | ✅ |
+| 9.5 | Service: `IndexerService` (полная индексация проекта, инкрементальное обновление) | `backend/internal/service/indexer_service.go` | ⏳ |
+| 9.6 | Хук: индексация кода при создании проекта (после clone) | В `ProjectService` | ✅ |
+| 9.7 | Хук: индексация задачи при создании/обновлении | В `TaskService` | ✅ |
+| 9.8 | Хук: индексация сообщения при создании | В `ConversationService` | ✅ |
+| 9.9 | API: `POST /api/v1/projects/:id/reindex` (полная переиндексация) | Handler + Service | ✅ |
+| 9.10 | Контекстный поиск: `SearchContext(projectID, query)` → релевантные чанки | В `CodeIndexer` | ✅ |
+| 9.11 | Интеграция с Orchestrator: перед запуском агента — vector search для контекста | В `OrchestratorService` | ✅ |
+| 9.12 | Unit-тесты | `backend/internal/service/indexer_service_test.go` | ✅ |
 
 **Зависимости:** Sprint 2, Sprint 3, Sprint 8
 

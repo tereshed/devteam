@@ -207,6 +207,31 @@ func main() {
 	taskIndexer := indexer.NewTaskIndexer(taskRepo, taskMsgRepo, vectorRepo, slog.Default())
 	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService, txManager, eventBus, taskIndexer, slog.Default())
 
+	// --- IndexerService координатор (Sprint 9.5) ---
+	// Конструируем все зависимости даже если часть из них пока не активна
+	// (vectordb.Client не сконфигурирован → используем NoopVectorDeleter).
+	conversationRepo := repository.NewConversationRepository(db)
+	conversationMsgRepo := repository.NewConversationMessageRepository(db)
+	conversationIndexer, err := indexer.NewConversationIndexer(conversationRepo, conversationMsgRepo, vectorRepo, eventBus, slog.Default())
+	if err != nil {
+		log.Fatalf("failed to construct conversation indexer: %v", err)
+	}
+	indexerLocker := service.NewInMemoryLocker()
+	indexerService := service.NewIndexerService(
+		slog.Default(),
+		service.NoopVectorDeleter{}, // TODO: заменить на *vectordb.Client когда он будет сконфигурирован
+		codeIndexer,
+		taskIndexer,
+		conversationIndexer,
+		projectService,
+		syncRepo,
+		indexerLocker,
+	)
+	// TODO(Sprint 9.5): мигрировать хуки 9.6/9.7/9.8 и ProjectService.Reindex на indexerService.
+	// На текущий момент существующие хуки используют под-индексаторы напрямую (см. project_service.go,
+	// task_service.go, conversation_service.go); IndexerService инстанцирован, но не подключен к ним.
+	_ = indexerService
+
 	// Запускаем первичную синхронизацию моделей (в фоне)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

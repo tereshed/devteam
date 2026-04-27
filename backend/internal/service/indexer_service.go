@@ -14,7 +14,6 @@ import (
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
-	"github.com/devteam/backend/pkg/vectordb"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -44,14 +43,32 @@ const (
 	StateIdle     = "idle"
 	StateIndexing = "indexing"
 	StateFailed   = "failed"
+)
 
+// Параметры таймингов вынесены как var, чтобы тесты могли их переопределять.
+var (
 	LockTTL              = 2 * time.Minute
 	LockWatchdogInterval = 1 * time.Minute
 
-	MaxRetries         = 3
-	InitialRetryDelay  = 1 * time.Second
-	MaxRetryDelay      = 30 * time.Second
+	MaxRetries        = 3
+	InitialRetryDelay = 1 * time.Second
+	MaxRetryDelay     = 30 * time.Second
 )
+
+// VectorDeleter абстрагирует операции удаления из векторной БД.
+// *vectordb.Client удовлетворяет этому интерфейсу неявно — позволяет подменять в тестах
+// и пробрасывать NoopVectorDeleter, пока реальный Weaviate-клиент не сконфигурирован.
+type VectorDeleter interface {
+	DeleteByContentID(ctx context.Context, projectID string, contentID string) error
+}
+
+// NoopVectorDeleter — заглушка для случаев, когда vectordb.Client ещё не сконфигурирован
+// (например, до завершения wiring Weaviate). Все вызовы возвращают nil.
+type NoopVectorDeleter struct{}
+
+func (NoopVectorDeleter) DeleteByContentID(_ context.Context, _ string, _ string) error {
+	return nil
+}
 
 // Locker определяет интерфейс распределенного лока для предотвращения параллельной индексации одного проекта.
 type Locker interface {
@@ -99,7 +116,7 @@ type IndexerService interface {
 
 type indexerService struct {
 	logger     *slog.Logger
-	vectorDB   *vectordb.Client
+	vectorDB   VectorDeleter
 	codeIdx    indexer.CodeIndexer
 	taskIdx    indexer.TaskIndexer
 	convIdx    indexer.ConversationIndexer
@@ -110,7 +127,7 @@ type indexerService struct {
 
 func NewIndexerService(
 	logger *slog.Logger,
-	vectorDB *vectordb.Client,
+	vectorDB VectorDeleter,
 	codeIdx indexer.CodeIndexer,
 	taskIdx indexer.TaskIndexer,
 	convIdx indexer.ConversationIndexer,
@@ -118,6 +135,12 @@ func NewIndexerService(
 	syncRepo repository.SyncStateRepository,
 	locker Locker,
 ) IndexerService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if vectorDB == nil {
+		vectorDB = NoopVectorDeleter{}
+	}
 	return &indexerService{
 		logger:     logger,
 		vectorDB:   vectorDB,
