@@ -73,18 +73,7 @@ class ProjectRepository {
         cancelToken: cancelToken,
       );
 
-      final data = response.data as Map<String, dynamic>;
-      final projects = (data['projects'] as List<dynamic>?)
-              ?.map((p) => ProjectModel.fromJson(p as Map<String, dynamic>))
-              .toList() ??
-          [];
-
-      return ProjectListResponse(
-        projects: projects,
-        total: data['total'] as int? ?? 0,
-        limit: data['limit'] as int? ?? normalizedLimit,
-        offset: data['offset'] as int? ?? normalizedOffset,
-      );
+      return ProjectListResponse.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
@@ -135,11 +124,9 @@ class ProjectRepository {
     }
 
     try {
-      final json = request.toJson();
-      json.removeWhere((_, value) => value == null);
       final response = await _dio.put(
         '/projects/$id',
-        data: json,
+        data: request.toJson(),
         cancelToken: cancelToken,
       );
       return ProjectModel.fromJson(response.data as Map<String, dynamic>);

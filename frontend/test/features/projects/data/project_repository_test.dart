@@ -1,297 +1,19 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
-import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
 
-class MockDio implements Dio {
-  final Map<String, dynamic> _responses = {};
-  final Map<String, Exception> _errors = {};
+import 'project_repository_test.mocks.dart';
 
-  void setResponse(String key, dynamic response) {
-    _responses[key] = response;
-  }
-
-  void setError(String key, Exception error) {
-    _errors[key] = error;
-  }
-
-  @override
-  String get baseUrl => 'http://127.0.0.1:8080/api/v1';
-
-  @override
-  set baseUrl(String url) {}
-
-  @override
-  Future<Response<T>> get<T>(
-    String path, {
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-    CancelToken? cancelToken,
-    ProgressCallback? onReceiveProgress,
-  }) async {
-    if (_errors.containsKey(path)) {
-      throw _errors[path]!;
-    }
-    if (_responses.containsKey(path)) {
-      return Response<T>(
-        data: _responses[path],
-        statusCode: 200,
-        requestOptions: RequestOptions(path: path),
-      );
-    }
-    return Response<T>(
-      data: {} as T,
-      statusCode: 200,
-      requestOptions: RequestOptions(path: path),
-    );
-  }
-
-  @override
-  Future<Response<T>> post<T>(
-    String path, {
-    dynamic data,
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-    CancelToken? cancelToken,
-    ProgressCallback? onSendProgress,
-    ProgressCallback? onReceiveProgress,
-  }) async {
-    if (_errors.containsKey(path)) {
-      throw _errors[path]!;
-    }
-    if (_responses.containsKey(path)) {
-      return Response<T>(
-        data: _responses[path],
-        statusCode: 201,
-        requestOptions: RequestOptions(path: path, method: 'POST'),
-      );
-    }
-    return Response<T>(
-      data: {} as T,
-      statusCode: 201,
-      requestOptions: RequestOptions(path: path, method: 'POST'),
-    );
-  }
-
-  @override
-  Future<Response<T>> put<T>(
-    String path, {
-    dynamic data,
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-    CancelToken? cancelToken,
-    ProgressCallback? onSendProgress,
-    ProgressCallback? onReceiveProgress,
-  }) async {
-    if (_errors.containsKey(path)) {
-      throw _errors[path]!;
-    }
-    if (_responses.containsKey(path)) {
-      return Response<T>(
-        data: _responses[path],
-        statusCode: 200,
-        requestOptions: RequestOptions(path: path, method: 'PUT'),
-      );
-    }
-    return Response<T>(
-      data: {} as T,
-      statusCode: 200,
-      requestOptions: RequestOptions(path: path, method: 'PUT'),
-    );
-  }
-
-  @override
-  Future<Response<T>> delete<T>(
-    String path, {
-    dynamic data,
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-    CancelToken? cancelToken,
-  }) async {
-    if (_errors.containsKey(path)) {
-      throw _errors[path]!;
-    }
-    return Response<T>(
-      data: null as T,
-      statusCode: 204,
-      requestOptions: RequestOptions(path: path, method: 'DELETE'),
-    );
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-
-  @override
-  Future<Response<dynamic>> getUri(Uri uri,
-      {Options? options, CancelToken? cancelToken}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> postUri(Uri uri,
-      {dynamic data,
-      Options? options,
-      CancelToken? cancelToken,
-      ProgressCallback? onSendProgress,
-      ProgressCallback? onReceiveProgress}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> putUri(Uri uri,
-      {dynamic data,
-      Options? options,
-      CancelToken? cancelToken,
-      ProgressCallback? onSendProgress,
-      ProgressCallback? onReceiveProgress}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> deleteUri(Uri uri,
-      {dynamic data,
-      Options? options,
-      CancelToken? cancelToken}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  HttpClientAdapter get httpClientAdapter => throw UnimplementedError();
-
-  @override
-  set httpClientAdapter(HttpClientAdapter value) {}
-
-  @override
-  Transformer get transformer => throw UnimplementedError();
-
-  @override
-  set transformer(Transformer value) {}
-
-  @override
-  int get connectTimeout => 0;
-
-  @override
-  set connectTimeout(int ms) {}
-
-  @override
-  int get receiveTimeout => 0;
-
-  @override
-  set receiveTimeout(int ms) {}
-
-  @override
-  int get sendTimeout => 0;
-
-  @override
-  set sendTimeout(int ms) {}
-
-  @override
-  Interceptors get interceptors => throw UnimplementedError();
-
-  @override
-  Future<Response<dynamic>> patch(String path,
-      {dynamic data,
-      Map<String, dynamic>? queryParameters,
-      Options? options,
-      CancelToken? cancelToken,
-      ProgressCallback? onSendProgress,
-      ProgressCallback? onReceiveProgress}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> patchUri(Uri uri,
-      {dynamic data,
-      Options? options,
-      CancelToken? cancelToken,
-      ProgressCallback? onSendProgress,
-      ProgressCallback? onReceiveProgress}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> head(String path,
-      {Options? options, CancelToken? cancelToken}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> headUri(Uri uri,
-      {Options? options, CancelToken? cancelToken}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> download(String urlPath, savePath,
-      {ProgressCallback? onReceiveProgress,
-      Map<String, dynamic>? queryParameters,
-      CancelToken? cancelToken,
-      bool deleteOnError = true,
-      String lengthHeader = 'content-length',
-      dynamic data,
-      Options? options}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> downloadUri(Uri uri, savePath,
-      {ProgressCallback? onReceiveProgress,
-      CancelToken? cancelToken,
-      bool deleteOnError = true,
-      String lengthHeader = 'content-length',
-      dynamic data,
-      Options? options}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> uploadMultiple(String urlPath, requests,
-      {CancelToken? cancelToken,
-      ProgressCallback? onSendProgress,
-      Options? options}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> uploadMultipleUri(Uri uri, requests,
-      {CancelToken? cancelToken,
-      ProgressCallback? onSendProgress,
-      Options? options}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> uploadStream(String urlPath,
-      Stream<List<int>> fileStream, int length,
-      {String? filename,
-      Map<String, dynamic>? queryParameters,
-      Options? options,
-      CancelToken? cancelToken,
-      ProgressCallback? onSendProgress}) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<Response<dynamic>> uploadStreamUri(Uri uri,
-      Stream<List<int>> fileStream, int length,
-      {String? filename,
-      Options? options,
-      CancelToken? cancelToken,
-      ProgressCallback? onSendProgress}) {
-    throw UnimplementedError();
-  }
-}
-
+@GenerateNiceMocks([MockSpec<Dio>()])
 void main() {
   late MockDio mockDio;
   late ProjectRepository repository;
 
-  const projectJson = {
+  final projectJson = {
     'id': '123e4567-e89b-12d3-a456-426614174000',
     'name': 'Test Project',
     'description': 'A test project',
@@ -317,14 +39,13 @@ void main() {
       when(mockDio.get(
         '/projects/123e4567-e89b-12d3-a456-426614174000',
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async =>
-          Response(
-            data: projectJson,
+      )).thenAnswer((_) async => Response<dynamic>(
+            data: Map<String, dynamic>.from(projectJson),
             statusCode: 200,
             requestOptions: RequestOptions(
               path: '/projects/123e4567-e89b-12d3-a456-426614174000',
             ),
-          ) as Response<Map<String, dynamic>>);
+          ));
 
       final result =
           await repository.getProject('123e4567-e89b-12d3-a456-426614174000');

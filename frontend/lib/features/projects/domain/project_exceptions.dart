@@ -13,6 +13,8 @@ class ProjectNotFoundException extends ProjectRepositoryException {
 }
 
 /// Не авторизован (401)
+/// TODO(10.X): вынести в lib/core/api/api_exceptions.dart, единый для всех репозиториев.
+/// AuthRepository кидает InvalidCredentialsException на 401 — нужна унификация.
 class UnauthorizedException extends ProjectRepositoryException {
   UnauthorizedException(String message) : super('Unauthorized: $message');
 }

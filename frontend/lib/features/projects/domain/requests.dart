@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:frontend/features/projects/domain/models/project_model.dart';
 
 part 'requests.freezed.dart';
 part 'requests.g.dart';
@@ -32,7 +33,7 @@ abstract class ProjectListFilter with _$ProjectListFilter {
 @freezed
 abstract class ProjectListResponse with _$ProjectListResponse {
   const factory ProjectListResponse({
-    @Default([]) List<dynamic> projects,
+    @Default([]) List<ProjectModel> projects,
     @Default(0) int total,
     @Default(20) int limit,
     @Default(0) int offset,
@@ -77,6 +78,7 @@ abstract class CreateProjectRequest with _$CreateProjectRequest {
 /// Request для обновления проекта (partial update)
 @freezed
 abstract class UpdateProjectRequest with _$UpdateProjectRequest {
+  @JsonSerializable(includeIfNull: false)
   const factory UpdateProjectRequest({
     String? name,
     String? description,
