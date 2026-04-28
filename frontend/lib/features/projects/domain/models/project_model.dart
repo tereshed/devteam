@@ -37,13 +37,15 @@ abstract class ProjectModel with _$ProjectModel {
 
     /// Технологический стек (JSON объект: {"backend": "Go", "frontend": "Flutter"})
     @JsonKey(name: 'tech_stack')
-    required Map<String, dynamic> techStack,
+    @Default(<String, dynamic>{})
+    Map<String, dynamic> techStack,
 
     /// Статус проекта: 'active', 'paused', 'archived', 'indexing', 'indexing_failed', 'ready'
     required String status,
 
     /// Дополнительные настройки (JSON объект)
-    required Map<String, dynamic> settings,
+    @Default(<String, dynamic>{})
+    Map<String, dynamic> settings,
 
     /// Дата создания
     @JsonKey(name: 'created_at')
@@ -63,11 +65,18 @@ abstract class ProjectModel with _$ProjectModel {
 @freezed
 abstract class GitCredentialModel with _$GitCredentialModel {
   const factory GitCredentialModel({
+    /// ID кредентиала
     required String id,
-    required String provider,        // 'github' | 'gitlab' | 'bitbucket'
+
+    /// Провайдер: 'github' | 'gitlab' | 'bitbucket'
+    required String provider,
+
+    /// Тип аутентификации: 'token' | 'ssh_key' | 'oauth'
     @JsonKey(name: 'auth_type')
-    required String authType,        // 'token' | 'ssh_key' | 'oauth'
-    required String label,           // Метка для UI
+    required String authType,
+
+    /// Метка для UI
+    required String label,
   }) = _GitCredentialModel;
 
   const GitCredentialModel._();

@@ -293,7 +293,7 @@ User Message
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 10.1 | Модели (Freezed): `ProjectModel`, `TeamModel`, `AgentModel` | `frontend/lib/features/projects/domain/` | ⬜ |
+| 10.1 | Модели (Freezed): `ProjectModel`, `TeamModel`, `AgentModel` | `frontend/lib/features/projects/domain/` | ⬜ | [детали](docs/tasks/10.1-models-freezed.md) |
 | 10.2 | Repository: `ProjectRepository` (Dio → backend API) | `frontend/lib/features/projects/data/project_repository.dart` | ⬜ |
 | 10.3 | Providers: `projectListProvider`, `projectProvider` | `frontend/lib/features/projects/data/project_providers.dart` | ⬜ |
 | 10.4 | Экран: Список проектов (карточки, статусы, поиск) | `frontend/lib/features/projects/presentation/screens/projects_list_screen.dart` | ⬜ |

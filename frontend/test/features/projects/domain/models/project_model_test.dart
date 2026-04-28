@@ -105,6 +105,23 @@ void main() {
       expect(updated.status, 'paused');
       expect(original.status, 'active');
     });
+
+    test('fromJson обрабатывает tech_stack = null (от gorm с пустой JSON)',
+        () {
+      final jsonWithNullTechStack = <String, dynamic>{...validJson};
+      jsonWithNullTechStack['tech_stack'] = null;
+
+      final project = ProjectModel.fromJson(jsonWithNullTechStack);
+      expect(project.techStack, <String, dynamic>{});
+    });
+
+    test('fromJson обрабатывает settings = null (от gorm с пустой JSON)', () {
+      final jsonWithNullSettings = <String, dynamic>{...validJson};
+      jsonWithNullSettings['settings'] = null;
+
+      final project = ProjectModel.fromJson(jsonWithNullSettings);
+      expect(project.settings, <String, dynamic>{});
+    });
   });
 
   group('GitCredentialModel', () {

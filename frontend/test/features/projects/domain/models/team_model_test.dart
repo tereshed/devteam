@@ -105,5 +105,13 @@ void main() {
       expect(team.agents[1].role, 'reviewer');
       expect(team.agents[1].codeBackend, isNull);
     });
+
+    test('fromJson обрабатывает agents = null как пустой список', () {
+      final jsonWithNullAgents = <String, dynamic>{...validJson};
+      jsonWithNullAgents['agents'] = null;
+
+      final team = TeamModel.fromJson(jsonWithNullAgents);
+      expect(team.agents, <AgentModel>[]);
+    });
   });
 }

@@ -21,7 +21,8 @@ abstract class TeamModel with _$TeamModel {
     required String type,
 
     /// Список агентов в команде
-    required List<AgentModel> agents,
+    @Default(<AgentModel>[])
+    List<AgentModel> agents,
 
     /// Дата создания
     @JsonKey(name: 'created_at')
