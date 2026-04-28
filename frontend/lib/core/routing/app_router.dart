@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/routing/auth_guard.dart';
-import 'package:frontend/features/admin/logs/presentation/screens/llm_logs_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompt_edit_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompts_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/execution_detail_screen.dart';
@@ -130,13 +129,6 @@ class AppRouter {
             },
           ),
         ],
-      ),
-      GoRoute(
-        path: '/admin/logs',
-        name: 'admin_logs',
-        redirect: authGuard,
-        pageBuilder: (context, state) =>
-            MaterialPage(key: state.pageKey, child: const LLMLogsScreen()),
       ),
     ],
     // Обработка ошибок роутинга

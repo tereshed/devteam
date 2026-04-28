@@ -5,7 +5,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/auth/data/auth_repository.dart';
-import 'package:frontend/features/auth/domain/user_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:mocktail/mocktail.dart';
 
 // Моки для Dio

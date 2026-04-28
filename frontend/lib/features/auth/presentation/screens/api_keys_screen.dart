@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/auth/data/api_key_providers.dart';
-import 'package:frontend/features/auth/domain/api_key_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:frontend/features/auth/presentation/controllers/api_key_controller.dart';
 import 'package:frontend/features/auth/presentation/widgets/logout_button.dart';
 import 'package:frontend/l10n/app_localizations.dart';

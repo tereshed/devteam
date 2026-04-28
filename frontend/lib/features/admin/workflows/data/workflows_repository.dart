@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:frontend/features/admin/workflows/domain/execution_model.dart';
-import 'package:frontend/features/admin/workflows/domain/workflow_model.dart';
+import 'package:frontend/features/admin/workflows/domain/models.dart';
 import 'package:retrofit/retrofit.dart';
 
 part 'workflows_repository.g.dart';

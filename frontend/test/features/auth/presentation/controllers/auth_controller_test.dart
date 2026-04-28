@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/storage/token_storage.dart';
 import 'package:frontend/features/auth/data/auth_providers.dart';
 import 'package:frontend/features/auth/data/auth_repository.dart';
-import 'package:frontend/features/auth/domain/user_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:mocktail/mocktail.dart';
 

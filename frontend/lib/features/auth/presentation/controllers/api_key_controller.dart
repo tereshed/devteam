@@ -1,5 +1,5 @@
 import 'package:frontend/features/auth/data/api_key_providers.dart';
-import 'package:frontend/features/auth/domain/api_key_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'api_key_controller.g.dart';

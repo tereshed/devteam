@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:frontend/features/auth/domain/api_key_model.dart';
 import 'package:frontend/features/auth/domain/auth_exceptions.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 
 /// ApiKeyRepository отвечает за работу с API API-ключей
 class ApiKeyRepository {

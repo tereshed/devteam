@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:frontend/features/auth/domain/auth_exceptions.dart';
-import 'package:frontend/features/auth/domain/user_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 
 /// AuthRepository отвечает за работу с API авторизации
 ///
