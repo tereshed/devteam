@@ -5,8 +5,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/auth/data/api_key_repository.dart';
-import 'package:frontend/features/auth/domain/api_key_model.dart';
 import 'package:frontend/features/auth/domain/auth_exceptions.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockDio extends Mock implements Dio {}

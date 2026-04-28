@@ -7,7 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/auth/data/auth_providers.dart';
 import 'package:frontend/features/auth/data/auth_repository.dart';
-import 'package:frontend/features/auth/domain/user_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:mocktail/mocktail.dart';

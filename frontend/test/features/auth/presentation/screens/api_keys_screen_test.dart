@@ -11,7 +11,7 @@ import 'package:frontend/features/auth/data/api_key_providers.dart';
 import 'package:frontend/features/auth/data/api_key_repository.dart';
 import 'package:frontend/features/auth/data/auth_providers.dart';
 import 'package:frontend/features/auth/data/auth_repository.dart';
-import 'package:frontend/features/auth/domain/api_key_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:frontend/features/auth/presentation/screens/api_keys_screen.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:mocktail/mocktail.dart';

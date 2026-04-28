@@ -1,7 +1,7 @@
 import 'package:frontend/core/storage/token_provider.dart';
 import 'package:frontend/core/storage/token_storage.dart';
 import 'package:frontend/features/auth/data/auth_providers.dart';
-import 'package:frontend/features/auth/domain/user_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'auth_controller.g.dart';
