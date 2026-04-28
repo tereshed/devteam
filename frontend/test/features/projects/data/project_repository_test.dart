@@ -13,21 +13,23 @@ void main() {
   late MockDio mockDio;
   late ProjectRepository repository;
 
-  final projectJson = {
-    'id': '123e4567-e89b-12d3-a456-426614174000',
-    'name': 'Test Project',
-    'description': 'A test project',
-    'git_provider': 'github',
-    'git_url': 'https://github.com/user/repo.git',
-    'git_default_branch': 'main',
-    'git_credential': null,
-    'vector_collection': 'test_project',
-    'tech_stack': {'backend': 'Go'},
-    'status': 'active',
-    'settings': {},
-    'created_at': '2026-04-28T10:00:00Z',
-    'updated_at': '2026-04-28T10:00:00Z',
-  };
+  Map<String, dynamic> getProjectJson() {
+    return <String, dynamic>{
+      'id': '123e4567-e89b-12d3-a456-426614174000',
+      'name': 'Test Project',
+      'description': 'A test project',
+      'git_provider': 'github',
+      'git_url': 'https://github.com/user/repo.git',
+      'git_default_branch': 'main',
+      'git_credential': null,
+      'vector_collection': 'test_project',
+      'tech_stack': <String, dynamic>{'backend': 'Go'},
+      'status': 'active',
+      'settings': <String, dynamic>{},
+      'created_at': '2026-04-28T10:00:00Z',
+      'updated_at': '2026-04-28T10:00:00Z',
+    };
+  }
 
   setUp(() {
     mockDio = MockDio();
@@ -39,13 +41,19 @@ void main() {
       when(mockDio.get(
         '/projects/123e4567-e89b-12d3-a456-426614174000',
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async => Response<dynamic>(
-            data: Map<String, dynamic>.from(projectJson),
-            statusCode: 200,
-            requestOptions: RequestOptions(
-              path: '/projects/123e4567-e89b-12d3-a456-426614174000',
-            ),
-          ));
+      )).thenAnswer((_) async {
+        final responseData = <String, dynamic>{};
+        getProjectJson().forEach((key, value) {
+          responseData[key] = value;
+        });
+        return Response<dynamic>(
+          data: responseData,
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/123e4567-e89b-12d3-a456-426614174000',
+          ),
+        );
+      });
 
       final result =
           await repository.getProject('123e4567-e89b-12d3-a456-426614174000');
@@ -132,8 +140,8 @@ void main() {
 
   group('listProjects', () {
     test('test_listProjects_success', () async {
-      final listJson = {
-        'projects': [projectJson],
+      final listJson = <String, dynamic>{
+        'projects': [getProjectJson()],
         'total': 1,
         'limit': 20,
         'offset': 0,
@@ -143,11 +151,17 @@ void main() {
         '/projects',
         queryParameters: anyNamed('queryParameters'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: listJson,
-            statusCode: 200,
-            requestOptions: RequestOptions(path: '/projects'),
-          ));
+      )).thenAnswer((_) async {
+        final responseData = <String, dynamic>{};
+        listJson.forEach((key, value) {
+          responseData[key] = value;
+        });
+        return Response<Map<String, dynamic>>(
+          data: responseData,
+          statusCode: 200,
+          requestOptions: RequestOptions(path: '/projects'),
+        );
+      });
 
       final result = await repository.listProjects();
 
@@ -174,11 +188,17 @@ void main() {
         '/projects',
         queryParameters: anyNamed('queryParameters'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: listJson,
-            statusCode: 200,
-            requestOptions: RequestOptions(path: '/projects'),
-          ));
+      )).thenAnswer((_) async {
+        final responseData = <String, dynamic>{};
+        listJson.forEach((key, value) {
+          responseData[key] = value;
+        });
+        return Response<Map<String, dynamic>>(
+          data: responseData,
+          statusCode: 200,
+          requestOptions: RequestOptions(path: '/projects'),
+        );
+      });
 
       final result = await repository.listProjects();
 
@@ -205,7 +225,7 @@ void main() {
         ),
         cancelToken: anyNamed('cancelToken'),
       )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: listJson,
+            data: Map<String, dynamic>.from(listJson),
             statusCode: 200,
             requestOptions: RequestOptions(path: '/projects'),
           ));
@@ -246,7 +266,7 @@ void main() {
         ),
         cancelToken: anyNamed('cancelToken'),
       )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: listJson,
+            data: Map<String, dynamic>.from(listJson),
             statusCode: 200,
             requestOptions: RequestOptions(path: '/projects'),
           ));
@@ -279,7 +299,7 @@ void main() {
         ),
         cancelToken: anyNamed('cancelToken'),
       )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: listJson,
+            data: Map<String, dynamic>.from(listJson),
             statusCode: 200,
             requestOptions: RequestOptions(path: '/projects'),
           ));
@@ -312,7 +332,7 @@ void main() {
         ),
         cancelToken: anyNamed('cancelToken'),
       )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: listJson,
+            data: Map<String, dynamic>.from(listJson),
             statusCode: 200,
             requestOptions: RequestOptions(path: '/projects'),
           ));
@@ -343,11 +363,17 @@ void main() {
         '/projects',
         data: anyNamed('data'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: projectJson,
-            statusCode: 201,
-            requestOptions: RequestOptions(path: '/projects', method: 'POST'),
-          ));
+      )).thenAnswer((_) async {
+        final responseData = <String, dynamic>{};
+        getProjectJson().forEach((key, value) {
+          responseData[key] = value;
+        });
+        return Response<Map<String, dynamic>>(
+          data: responseData,
+          statusCode: 201,
+          requestOptions: RequestOptions(path: '/projects', method: 'POST'),
+        );
+      });
 
       final result = await repository.createProject(request);
 
@@ -462,14 +488,22 @@ void main() {
         '/projects/123e4567-e89b-12d3-a456-426614174000',
         data: anyNamed('data'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: {...projectJson, 'name': 'Updated Name'},
-            statusCode: 200,
-            requestOptions: RequestOptions(
-              path: '/projects/123e4567-e89b-12d3-a456-426614174000',
-              method: 'PUT',
-            ),
-          ));
+      )).thenAnswer((_) async {
+        final baseData = getProjectJson();
+        final responseData = <String, dynamic>{};
+        baseData.forEach((key, value) {
+          responseData[key] = value;
+        });
+        responseData['name'] = 'Updated Name';
+        return Response<Map<String, dynamic>>(
+          data: responseData,
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/123e4567-e89b-12d3-a456-426614174000',
+            method: 'PUT',
+          ),
+        );
+      });
 
       final result = await repository.updateProject(
         '123e4567-e89b-12d3-a456-426614174000',
@@ -626,14 +660,20 @@ void main() {
           named: 'data',
         ),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
-            data: projectJson,
-            statusCode: 200,
-            requestOptions: RequestOptions(
-              path: '/projects/123e4567-e89b-12d3-a456-426614174000',
-              method: 'PUT',
-            ),
-          ));
+      )).thenAnswer((_) async {
+        final responseData = <String, dynamic>{};
+        getProjectJson().forEach((key, value) {
+          responseData[key] = value;
+        });
+        return Response<Map<String, dynamic>>(
+          data: responseData,
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/123e4567-e89b-12d3-a456-426614174000',
+            method: 'PUT',
+          ),
+        );
+      });
 
       await repository.updateProject(
         '123e4567-e89b-12d3-a456-426614174000',
