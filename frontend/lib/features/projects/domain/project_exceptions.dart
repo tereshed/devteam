@@ -35,8 +35,8 @@ class ProjectApiException extends ProjectRepositoryException {
   final Object? originalError;
 
   ProjectApiException(
-    String message, {
+    super.message, {
     this.statusCode,
     this.originalError,
-  }) : super(message);
+  });
 }

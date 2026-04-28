@@ -56,9 +56,15 @@ class ProjectRepository {
     var normalizedLimit = limit;
     var normalizedOffset = offset;
 
-    if (normalizedLimit <= 0) normalizedLimit = 20;
-    if (normalizedLimit > 100) normalizedLimit = 100;
-    if (normalizedOffset < 0) normalizedOffset = 0;
+    if (normalizedLimit <= 0) {
+      normalizedLimit = 20;
+    }
+    if (normalizedLimit > 100) {
+      normalizedLimit = 100;
+    }
+    if (normalizedOffset < 0) {
+      normalizedOffset = 0;
+    }
 
     try {
       final queryParams = {

@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/annotations.dart';
-import 'package:mockito/mockito.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
+import 'package:mockito/annotations.dart';
+import 'package:mockito/mockito.dart';
 
 import 'project_repository_test.mocks.dart';
 
@@ -41,19 +41,13 @@ void main() {
       when(mockDio.get(
         '/projects/123e4567-e89b-12d3-a456-426614174000',
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async {
-        final responseData = <String, dynamic>{};
-        getProjectJson().forEach((key, value) {
-          responseData[key] = value;
-        });
-        return Response<dynamic>(
-          data: responseData,
-          statusCode: 200,
-          requestOptions: RequestOptions(
-            path: '/projects/123e4567-e89b-12d3-a456-426614174000',
-          ),
-        );
-      });
+      )).thenAnswer((_) async => Response<dynamic>(
+            data: Map<String, dynamic>.from(getProjectJson()),
+            statusCode: 200,
+            requestOptions: RequestOptions(
+              path: '/projects/123e4567-e89b-12d3-a456-426614174000',
+            ),
+          ));
 
       final result =
           await repository.getProject('123e4567-e89b-12d3-a456-426614174000');
@@ -151,17 +145,11 @@ void main() {
         '/projects',
         queryParameters: anyNamed('queryParameters'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async {
-        final responseData = <String, dynamic>{};
-        listJson.forEach((key, value) {
-          responseData[key] = value;
-        });
-        return Response<Map<String, dynamic>>(
-          data: responseData,
-          statusCode: 200,
-          requestOptions: RequestOptions(path: '/projects'),
-        );
-      });
+      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+            data: Map<String, dynamic>.from(listJson),
+            statusCode: 200,
+            requestOptions: RequestOptions(path: '/projects'),
+          ));
 
       final result = await repository.listProjects();
 
@@ -188,17 +176,11 @@ void main() {
         '/projects',
         queryParameters: anyNamed('queryParameters'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async {
-        final responseData = <String, dynamic>{};
-        listJson.forEach((key, value) {
-          responseData[key] = value;
-        });
-        return Response<Map<String, dynamic>>(
-          data: responseData,
-          statusCode: 200,
-          requestOptions: RequestOptions(path: '/projects'),
-        );
-      });
+      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+            data: Map<String, dynamic>.from(listJson),
+            statusCode: 200,
+            requestOptions: RequestOptions(path: '/projects'),
+          ));
 
       final result = await repository.listProjects();
 
@@ -230,7 +212,7 @@ void main() {
             requestOptions: RequestOptions(path: '/projects'),
           ));
 
-      final filter = ProjectListFilter(
+      const filter = ProjectListFilter(
         status: 'active',
         gitProvider: 'github',
       );
@@ -352,7 +334,7 @@ void main() {
 
   group('createProject', () {
     test('test_createProject_success', () async {
-      final request = CreateProjectRequest(
+      const request = CreateProjectRequest(
         name: 'New Project',
         gitProvider: 'github',
         gitUrl: 'https://github.com/user/repo.git',
@@ -363,17 +345,11 @@ void main() {
         '/projects',
         data: anyNamed('data'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async {
-        final responseData = <String, dynamic>{};
-        getProjectJson().forEach((key, value) {
-          responseData[key] = value;
-        });
-        return Response<Map<String, dynamic>>(
-          data: responseData,
-          statusCode: 201,
-          requestOptions: RequestOptions(path: '/projects', method: 'POST'),
-        );
-      });
+      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+            data: Map<String, dynamic>.from(getProjectJson()),
+            statusCode: 201,
+            requestOptions: RequestOptions(path: '/projects', method: 'POST'),
+          ));
 
       final result = await repository.createProject(request);
 
@@ -387,7 +363,7 @@ void main() {
     });
 
     test('test_createProject_badRequest', () async {
-      final request = CreateProjectRequest(
+      const request = CreateProjectRequest(
         name: 'Invalid',
         gitProvider: 'github',
         gitUrl: 'invalid-url',
@@ -415,7 +391,7 @@ void main() {
     });
 
     test('test_createProject_conflict', () async {
-      final request = CreateProjectRequest(
+      const request = CreateProjectRequest(
         name: 'Duplicate Name',
         gitProvider: 'github',
         gitUrl: 'https://github.com/user/repo.git',
@@ -449,7 +425,7 @@ void main() {
     });
 
     test('test_createProject_forbidden', () async {
-      final request = CreateProjectRequest(
+      const request = CreateProjectRequest(
         name: 'Test',
         gitProvider: 'github',
         gitUrl: 'https://github.com/user/repo.git',
@@ -479,7 +455,7 @@ void main() {
 
   group('updateProject', () {
     test('test_updateProject_success', () async {
-      final request = UpdateProjectRequest(
+      const request = UpdateProjectRequest(
         name: 'Updated Name',
         description: 'Updated description',
       );
@@ -488,22 +464,14 @@ void main() {
         '/projects/123e4567-e89b-12d3-a456-426614174000',
         data: anyNamed('data'),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async {
-        final baseData = getProjectJson();
-        final responseData = <String, dynamic>{};
-        baseData.forEach((key, value) {
-          responseData[key] = value;
-        });
-        responseData['name'] = 'Updated Name';
-        return Response<Map<String, dynamic>>(
-          data: responseData,
-          statusCode: 200,
-          requestOptions: RequestOptions(
-            path: '/projects/123e4567-e89b-12d3-a456-426614174000',
-            method: 'PUT',
-          ),
-        );
-      });
+      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+            data: <String, dynamic>{...Map<String, dynamic>.from(getProjectJson()), 'name': 'Updated Name'},
+            statusCode: 200,
+            requestOptions: RequestOptions(
+              path: '/projects/123e4567-e89b-12d3-a456-426614174000',
+              method: 'PUT',
+            ),
+          ));
 
       final result = await repository.updateProject(
         '123e4567-e89b-12d3-a456-426614174000',
@@ -514,7 +482,7 @@ void main() {
     });
 
     test('test_updateProject_badRequest', () async {
-      final request = UpdateProjectRequest(gitUrl: 'invalid-url');
+      const request = UpdateProjectRequest(gitUrl: 'invalid-url');
 
       when(mockDio.put(
         '/projects/123e4567-e89b-12d3-a456-426614174000',
@@ -544,7 +512,7 @@ void main() {
     });
 
     test('test_updateProject_notFound', () async {
-      final request = UpdateProjectRequest(name: 'Updated');
+      const request = UpdateProjectRequest(name: 'Updated');
 
       when(mockDio.put(
         '/projects/nonexistent',
@@ -567,7 +535,7 @@ void main() {
     });
 
     test('test_updateProject_conflict', () async {
-      final request = UpdateProjectRequest(name: 'Duplicate Name');
+      const request = UpdateProjectRequest(name: 'Duplicate Name');
 
       when(mockDio.put(
         '/projects/123e4567-e89b-12d3-a456-426614174000',
@@ -597,7 +565,7 @@ void main() {
     });
 
     test('test_updateProject_forbidden', () async {
-      final request = UpdateProjectRequest(name: 'Updated');
+      const request = UpdateProjectRequest(name: 'Updated');
 
       when(mockDio.put(
         '/projects/other-user-id',
@@ -621,7 +589,7 @@ void main() {
     });
 
     test('test_updateProject_emptyId', () {
-      final request = UpdateProjectRequest(name: 'Updated');
+      const request = UpdateProjectRequest(name: 'Updated');
 
       expect(
         () => repository.updateProject('', request),
@@ -630,7 +598,7 @@ void main() {
     });
 
     test('test_updateProject_conflictingFlags', () {
-      final request = UpdateProjectRequest(
+      const request = UpdateProjectRequest(
         gitCredentialId: 'some-id',
         removeGitCredential: true,
       );
@@ -642,7 +610,7 @@ void main() {
     });
 
     test('test_updateProject_partialUpdate', () async {
-      final request = UpdateProjectRequest(
+      const request = UpdateProjectRequest(
         name: 'New Name',
         description: 'New Description',
       );
@@ -660,20 +628,14 @@ void main() {
           named: 'data',
         ),
         cancelToken: anyNamed('cancelToken'),
-      )).thenAnswer((_) async {
-        final responseData = <String, dynamic>{};
-        getProjectJson().forEach((key, value) {
-          responseData[key] = value;
-        });
-        return Response<Map<String, dynamic>>(
-          data: responseData,
-          statusCode: 200,
-          requestOptions: RequestOptions(
-            path: '/projects/123e4567-e89b-12d3-a456-426614174000',
-            method: 'PUT',
-          ),
-        );
-      });
+      )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+            data: Map<String, dynamic>.from(getProjectJson()),
+            statusCode: 200,
+            requestOptions: RequestOptions(
+              path: '/projects/123e4567-e89b-12d3-a456-426614174000',
+              method: 'PUT',
+            ),
+          ));
 
       await repository.updateProject(
         '123e4567-e89b-12d3-a456-426614174000',
