@@ -295,7 +295,7 @@ User Message
 |---|--------|-------|--------|
 | 10.1 | Модели (Freezed): `ProjectModel`, `TeamModel`, `AgentModel` | `frontend/lib/features/projects/domain/` | ⬜ | [детали](docs/tasks/10.1-models-freezed.md) |
 | 10.2 | Repository: `ProjectRepository` (Dio → backend API) | `frontend/lib/features/projects/data/project_repository.dart` | ⬜ | [детали](docs/tasks/10.2-repository-project.md) |
-| 10.3 | Providers: `projectListProvider`, `projectProvider` | `frontend/lib/features/projects/data/project_providers.dart` | ⬜ |
+| 10.3 | Providers: `projectListProvider`, `projectProvider` | `frontend/lib/features/projects/data/project_providers.dart` | ⬜ | [детали](docs/tasks/10.3-providers-project.md) |
 | 10.4 | Экран: Список проектов (карточки, статусы, поиск) | `frontend/lib/features/projects/presentation/screens/projects_list_screen.dart` | ⬜ |
 | 10.5 | Экран: Создание проекта (форма: имя, описание, git URL, провайдер) | `frontend/lib/features/projects/presentation/screens/create_project_screen.dart` | ⬜ |
 | 10.6 | Экран: Дашборд проекта (hub → чат, задачи, команда, настройки) | `frontend/lib/features/projects/presentation/screens/project_dashboard_screen.dart` | ⬜ |
