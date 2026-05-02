@@ -384,4 +384,70 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get mcpConfigDisabled => 'MCP-сервер выключен';
+
+  @override
+  String get projectsTitle => 'Проекты';
+
+  @override
+  String get createProject => 'Создать проект';
+
+  @override
+  String get searchProjectsHint => 'Поиск проектов...';
+
+  @override
+  String get filterAll => 'Все';
+
+  @override
+  String get statusActive => 'Активный';
+
+  @override
+  String get statusPaused => 'Приостановлен';
+
+  @override
+  String get statusArchived => 'Архив';
+
+  @override
+  String get statusIndexing => 'Индексация';
+
+  @override
+  String get statusIndexingFailed => 'Ошибка индексации';
+
+  @override
+  String get statusReady => 'Готов';
+
+  @override
+  String get statusUnknown => 'Неизвестно';
+
+  @override
+  String get noProjectsYet => 'Проектов пока нет';
+
+  @override
+  String get noProjectsMatchFilter => 'Ничего не найдено';
+
+  @override
+  String get clearFilters => 'Очистить фильтры';
+
+  @override
+  String get errorLoadingProjects => 'Не удалось загрузить проекты';
+
+  @override
+  String get errorUnauthorized => 'Сессия истекла. Войдите снова';
+
+  @override
+  String get errorForbidden => 'Нет доступа к проектам';
+
+  @override
+  String get gitProviderGithub => 'GitHub';
+
+  @override
+  String get gitProviderGitlab => 'GitLab';
+
+  @override
+  String get gitProviderBitbucket => 'Bitbucket';
+
+  @override
+  String get gitProviderLocal => 'Локально';
+
+  @override
+  String get gitProviderUnknown => 'Git';
 }

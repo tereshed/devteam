@@ -817,6 +817,138 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'MCP-сервер выключен'**
   String get mcpConfigDisabled;
+
+  /// Заголовок экрана списка проектов
+  ///
+  /// In ru, this message translates to:
+  /// **'Проекты'**
+  String get projectsTitle;
+
+  /// Кнопка создания проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Создать проект'**
+  String get createProject;
+
+  /// Подсказка поля поиска проектов
+  ///
+  /// In ru, this message translates to:
+  /// **'Поиск проектов...'**
+  String get searchProjectsHint;
+
+  /// Фильтр: все статусы
+  ///
+  /// In ru, this message translates to:
+  /// **'Все'**
+  String get filterAll;
+
+  /// Статус проекта: активный
+  ///
+  /// In ru, this message translates to:
+  /// **'Активный'**
+  String get statusActive;
+
+  /// Статус проекта: приостановлен
+  ///
+  /// In ru, this message translates to:
+  /// **'Приостановлен'**
+  String get statusPaused;
+
+  /// Статус проекта: архив
+  ///
+  /// In ru, this message translates to:
+  /// **'Архив'**
+  String get statusArchived;
+
+  /// Статус проекта: индексация
+  ///
+  /// In ru, this message translates to:
+  /// **'Индексация'**
+  String get statusIndexing;
+
+  /// Статус проекта: ошибка индексации
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка индексации'**
+  String get statusIndexingFailed;
+
+  /// Статус проекта: готов
+  ///
+  /// In ru, this message translates to:
+  /// **'Готов'**
+  String get statusReady;
+
+  /// Статус проекта: неизвестный
+  ///
+  /// In ru, this message translates to:
+  /// **'Неизвестно'**
+  String get statusUnknown;
+
+  /// Пустой список: нет проектов
+  ///
+  /// In ru, this message translates to:
+  /// **'Проектов пока нет'**
+  String get noProjectsYet;
+
+  /// Пустой список: нет совпадений с фильтром
+  ///
+  /// In ru, this message translates to:
+  /// **'Ничего не найдено'**
+  String get noProjectsMatchFilter;
+
+  /// Кнопка сброса фильтров
+  ///
+  /// In ru, this message translates to:
+  /// **'Очистить фильтры'**
+  String get clearFilters;
+
+  /// Ошибка загрузки списка проектов
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить проекты'**
+  String get errorLoadingProjects;
+
+  /// Ошибка: сессия истекла
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия истекла. Войдите снова'**
+  String get errorUnauthorized;
+
+  /// Ошибка: нет доступа
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет доступа к проектам'**
+  String get errorForbidden;
+
+  /// Провайдер репозитория: GitHub
+  ///
+  /// In ru, this message translates to:
+  /// **'GitHub'**
+  String get gitProviderGithub;
+
+  /// Провайдер репозитория: GitLab
+  ///
+  /// In ru, this message translates to:
+  /// **'GitLab'**
+  String get gitProviderGitlab;
+
+  /// Провайдер репозитория: Bitbucket
+  ///
+  /// In ru, this message translates to:
+  /// **'Bitbucket'**
+  String get gitProviderBitbucket;
+
+  /// Провайдер репозитория: локальный git
+  ///
+  /// In ru, this message translates to:
+  /// **'Локально'**
+  String get gitProviderLocal;
+
+  /// Неизвестный git-провайдер
+  ///
+  /// In ru, this message translates to:
+  /// **'Git'**
+  String get gitProviderUnknown;
 }
 
 class _AppLocalizationsDelegate

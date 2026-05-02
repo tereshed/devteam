@@ -16,7 +16,7 @@
 - **Swagger**: Обновляй аннотации и запускай `make swagger`.
 
 **Frontend (Flutter):**
-- **Архитектура**: Feature-First + Riverpod 2.0.
+- **Архитектура**: Feature-First + Riverpod 3.x (`flutter_riverpod` ^3).
 - **Freezed**: Обязательно используй `abstract class` (напр. `abstract class UserModel`).
 - **Импорты**: Только абсолютные (`package:frontend/...`), НИКАКИХ `../`.
 - **Локализация**: ЗАПРЕЩЕН хардкод строк в UI. Используй `.arb` и `flutter gen-l10n`.

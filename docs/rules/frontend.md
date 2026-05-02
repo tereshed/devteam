@@ -110,7 +110,7 @@ cd frontend && flutter gen-l10n
 
 Для обеспечения масштабируемости, тестируемости и соблюдения вышеуказанных правил, мы выбираем следующий подход:
 
-### Выбор: Riverpod 2.0 (с `riverpod_generator`)
+### Выбор: Riverpod 3.x (с `riverpod_generator`, `flutter_riverpod` ^3)
 
 **Альтернатива:** BLoC / Cubit (если команда более знакома с ним).
 

@@ -385,4 +385,70 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mcpConfigDisabled => 'MCP server is disabled';
+
+  @override
+  String get projectsTitle => 'Projects';
+
+  @override
+  String get createProject => 'Create project';
+
+  @override
+  String get searchProjectsHint => 'Search projects...';
+
+  @override
+  String get filterAll => 'All';
+
+  @override
+  String get statusActive => 'Active';
+
+  @override
+  String get statusPaused => 'Paused';
+
+  @override
+  String get statusArchived => 'Archived';
+
+  @override
+  String get statusIndexing => 'Indexing';
+
+  @override
+  String get statusIndexingFailed => 'Indexing failed';
+
+  @override
+  String get statusReady => 'Ready';
+
+  @override
+  String get statusUnknown => 'Unknown';
+
+  @override
+  String get noProjectsYet => 'No projects yet';
+
+  @override
+  String get noProjectsMatchFilter => 'No projects match your filter';
+
+  @override
+  String get clearFilters => 'Clear filters';
+
+  @override
+  String get errorLoadingProjects => 'Failed to load projects';
+
+  @override
+  String get errorUnauthorized => 'Session expired. Please sign in again';
+
+  @override
+  String get errorForbidden => 'No access to projects';
+
+  @override
+  String get gitProviderGithub => 'GitHub';
+
+  @override
+  String get gitProviderGitlab => 'GitLab';
+
+  @override
+  String get gitProviderBitbucket => 'Bitbucket';
+
+  @override
+  String get gitProviderLocal => 'Local';
+
+  @override
+  String get gitProviderUnknown => 'Git';
 }

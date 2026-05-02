@@ -138,6 +138,29 @@
   "mcpConfigStep3Claude": "   - Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json",
   "mcpConfigStep4": "3. Paste the configuration and restart the client",
   "mcpConfigLoadError": "Failed to load MCP configuration",
-  "mcpConfigDisabled": "MCP server is disabled"
+  "mcpConfigDisabled": "MCP server is disabled",
+
+  "projectsTitle": "Projects",
+  "createProject": "Create project",
+  "searchProjectsHint": "Search projects...",
+  "filterAll": "All",
+  "statusActive": "Active",
+  "statusPaused": "Paused",
+  "statusArchived": "Archived",
+  "statusIndexing": "Indexing",
+  "statusIndexingFailed": "Indexing failed",
+  "statusReady": "Ready",
+  "statusUnknown": "Unknown",
+  "noProjectsYet": "No projects yet",
+  "noProjectsMatchFilter": "No projects match your filter",
+  "clearFilters": "Clear filters",
+  "errorLoadingProjects": "Failed to load projects",
+  "errorUnauthorized": "Session expired. Please sign in again",
+  "errorForbidden": "No access to projects",
+  "gitProviderGithub": "GitHub",
+  "gitProviderGitlab": "GitLab",
+  "gitProviderBitbucket": "Bitbucket",
+  "gitProviderLocal": "Local",
+  "gitProviderUnknown": "Git"
 }
 
