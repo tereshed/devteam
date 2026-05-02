@@ -450,4 +450,48 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get gitProviderUnknown => 'Git';
+
+  @override
+  String get createProjectScreenTitle => 'Новый проект';
+
+  @override
+  String get projectNameFieldLabel => 'Название';
+
+  @override
+  String get projectNameFieldHint => 'Мой проект';
+
+  @override
+  String get projectNameRequired => 'Введите название';
+
+  @override
+  String projectNameMaxLength(int max) {
+    return 'Не более $max символов';
+  }
+
+  @override
+  String get projectDescriptionFieldLabel => 'Описание';
+
+  @override
+  String get projectDescriptionFieldHint => 'Для чего этот проект?';
+
+  @override
+  String get gitUrlFieldLabel => 'URL репозитория';
+
+  @override
+  String get gitUrlFieldHint => 'https://...';
+
+  @override
+  String get gitUrlRequiredForRemote => 'Укажите URL репозитория';
+
+  @override
+  String get gitUrlInvalid => 'Введите корректный http(s) URL';
+
+  @override
+  String get gitProviderFieldLabel => 'Провайдер Git';
+
+  @override
+  String get createProjectErrorConflict => 'Такое имя уже занято';
+
+  @override
+  String get createProjectErrorGeneric => 'Не удалось создать проект';
 }

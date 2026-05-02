@@ -96,9 +96,11 @@ const projectStatuses = [
 ];
 
 /// Git-провайдеры (GitProvider в backend)
+const kLocalGitProvider = 'local';
+
 const gitProviders = [
   'github',
   'gitlab',
   'bitbucket',
-  'local',  // Локальный git (без API провайдера)
+  kLocalGitProvider, // Локальный git (без API провайдера)
 ];

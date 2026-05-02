@@ -414,6 +414,39 @@
   "gitProviderLocal": "Локально",
   "@gitProviderLocal": { "description": "Провайдер репозитория: локальный git" },
   "gitProviderUnknown": "Git",
-  "@gitProviderUnknown": { "description": "Неизвестный git-провайдер" }
+  "@gitProviderUnknown": { "description": "Неизвестный git-провайдер" },
+  "createProjectScreenTitle": "Новый проект",
+  "@createProjectScreenTitle": { "description": "Заголовок экрана создания проекта" },
+  "projectNameFieldLabel": "Название",
+  "@projectNameFieldLabel": { "description": "Подпись поля имени проекта" },
+  "projectNameFieldHint": "Мой проект",
+  "@projectNameFieldHint": { "description": "Подсказка поля имени" },
+  "projectNameRequired": "Введите название",
+  "@projectNameRequired": { "description": "Ошибка: пустое имя" },
+  "projectNameMaxLength": "Не более {max} символов",
+  "@projectNameMaxLength": {
+    "description": "Ошибка: длина имени",
+    "placeholders": {
+      "max": { "type": "int" }
+    }
+  },
+  "projectDescriptionFieldLabel": "Описание",
+  "@projectDescriptionFieldLabel": { "description": "Подпись поля описания" },
+  "projectDescriptionFieldHint": "Для чего этот проект?",
+  "@projectDescriptionFieldHint": { "description": "Подсказка описания" },
+  "gitUrlFieldLabel": "URL репозитория",
+  "@gitUrlFieldLabel": { "description": "Подпись поля URL git" },
+  "gitUrlFieldHint": "https://...",
+  "@gitUrlFieldHint": { "description": "Подсказка URL" },
+  "gitUrlRequiredForRemote": "Укажите URL репозитория",
+  "@gitUrlRequiredForRemote": { "description": "Ошибка: пустой URL для remote" },
+  "gitUrlInvalid": "Введите корректный http(s) URL",
+  "@gitUrlInvalid": { "description": "Ошибка: неверный URL" },
+  "gitProviderFieldLabel": "Провайдер Git",
+  "@gitProviderFieldLabel": { "description": "Подпись выбора провайдера" },
+  "createProjectErrorConflict": "Такое имя уже занято",
+  "@createProjectErrorConflict": { "description": "Ошибка 409 при создании проекта" },
+  "createProjectErrorGeneric": "Не удалось создать проект",
+  "@createProjectErrorGeneric": { "description": "Общая ошибка создания проекта" }
 }
 

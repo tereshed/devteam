@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:frontend/core/utils/sanitize_user_facing_message.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
@@ -166,6 +167,16 @@ class ProjectRepository {
     }
   }
 
+  /// Текст из JSON ответа API: только непустая строка, иначе `null` (чтобы не брать `''` вместо fallback).
+  String? _firstNonEmptyApiString(Map<String, dynamic> data, String key) {
+    final v = data[key];
+    if (v is! String) {
+      return null;
+    }
+    final t = v.trim();
+    return t.isEmpty ? null : t;
+  }
+
   /// Обработка ошибок Dio
   ProjectRepositoryException _handleDioError(DioException error) {
     switch (error.type) {
@@ -175,9 +186,11 @@ class ProjectRepository {
 
         String? message;
         if (data is Map<String, dynamic>) {
-          message = data['message'] as String? ?? data['error'] as String?;
+          message = _firstNonEmptyApiString(data, 'message') ??
+              _firstNonEmptyApiString(data, 'error');
         }
-        final errorMsg = message ?? data.toString();
+        final rawMsg = message ?? data.toString();
+        final errorMsg = sanitizeUserFacingMessage(rawMsg);
 
         switch (statusCode) {
           case 401:
@@ -190,7 +203,7 @@ class ProjectRepository {
             return ProjectConflictException(errorMsg);
           default:
             return ProjectApiException(
-              '$statusCode: $errorMsg',
+              errorMsg,
               statusCode: statusCode,
               originalError: error,
             );
@@ -206,7 +219,7 @@ class ProjectRepository {
 
       default:
         return ProjectApiException(
-          error.message ?? 'Unknown error',
+          sanitizeUserFacingMessage(error.message ?? 'Unknown error'),
           originalError: error,
         );
     }

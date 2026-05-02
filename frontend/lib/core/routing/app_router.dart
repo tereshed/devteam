@@ -11,6 +11,9 @@ import 'package:frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/profile_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/register_screen.dart';
 import 'package:frontend/features/landing/presentation/screens/landing_screen.dart';
+import 'package:frontend/features/projects/presentation/screens/create_project_screen.dart';
+import 'package:frontend/features/projects/presentation/screens/project_placeholder_screen.dart';
+import 'package:frontend/features/projects/presentation/screens/projects_list_screen.dart';
 import 'package:go_router/go_router.dart';
 
 /// AppRouter настраивает маршрутизацию приложения
@@ -76,6 +79,37 @@ class AppRouter {
         redirect: authGuard,
         pageBuilder: (context, state) =>
             MaterialPage(key: state.pageKey, child: const ApiKeysScreen()),
+      ),
+
+      GoRoute(
+        path: '/projects',
+        name: 'projects',
+        redirect: authGuard,
+        pageBuilder: (context, state) => MaterialPage(
+          key: state.pageKey,
+          child: const ProjectsListScreen(),
+        ),
+        routes: [
+          GoRoute(
+            path: 'new',
+            name: 'projects_new',
+            pageBuilder: (context, state) => MaterialPage(
+              key: state.pageKey,
+              child: const CreateProjectScreen(),
+            ),
+          ),
+          GoRoute(
+            path: ':id',
+            name: 'projects_detail',
+            pageBuilder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return MaterialPage(
+                key: state.pageKey,
+                child: ProjectPlaceholderScreen(projectId: id),
+              );
+            },
+          ),
+        ],
       ),
 
       // Admin Routes (в реальном проекте нужен отдельный adminGuard)

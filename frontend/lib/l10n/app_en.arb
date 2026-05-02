@@ -161,6 +161,25 @@
   "gitProviderGitlab": "GitLab",
   "gitProviderBitbucket": "Bitbucket",
   "gitProviderLocal": "Local",
-  "gitProviderUnknown": "Git"
+  "gitProviderUnknown": "Git",
+  "createProjectScreenTitle": "New project",
+  "projectNameFieldLabel": "Name",
+  "projectNameFieldHint": "My project",
+  "projectNameRequired": "Enter a name",
+  "projectNameMaxLength": "Name must be at most {max} characters",
+  "@projectNameMaxLength": {
+    "placeholders": {
+      "max": { "type": "int" }
+    }
+  },
+  "projectDescriptionFieldLabel": "Description",
+  "projectDescriptionFieldHint": "What is this project for?",
+  "gitUrlFieldLabel": "Repository URL",
+  "gitUrlFieldHint": "https://...",
+  "gitUrlRequiredForRemote": "Enter a repository URL",
+  "gitUrlInvalid": "Enter a valid http or https URL",
+  "gitProviderFieldLabel": "Git provider",
+  "createProjectErrorConflict": "This name is already in use",
+  "createProjectErrorGeneric": "Could not create the project"
 }
 

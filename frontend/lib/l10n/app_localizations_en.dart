@@ -451,4 +451,48 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gitProviderUnknown => 'Git';
+
+  @override
+  String get createProjectScreenTitle => 'New project';
+
+  @override
+  String get projectNameFieldLabel => 'Name';
+
+  @override
+  String get projectNameFieldHint => 'My project';
+
+  @override
+  String get projectNameRequired => 'Enter a name';
+
+  @override
+  String projectNameMaxLength(int max) {
+    return 'Name must be at most $max characters';
+  }
+
+  @override
+  String get projectDescriptionFieldLabel => 'Description';
+
+  @override
+  String get projectDescriptionFieldHint => 'What is this project for?';
+
+  @override
+  String get gitUrlFieldLabel => 'Repository URL';
+
+  @override
+  String get gitUrlFieldHint => 'https://...';
+
+  @override
+  String get gitUrlRequiredForRemote => 'Enter a repository URL';
+
+  @override
+  String get gitUrlInvalid => 'Enter a valid http or https URL';
+
+  @override
+  String get gitProviderFieldLabel => 'Git provider';
+
+  @override
+  String get createProjectErrorConflict => 'This name is already in use';
+
+  @override
+  String get createProjectErrorGeneric => 'Could not create the project';
 }

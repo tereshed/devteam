@@ -949,6 +949,90 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Git'**
   String get gitProviderUnknown;
+
+  /// Заголовок экрана создания проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый проект'**
+  String get createProjectScreenTitle;
+
+  /// Подпись поля имени проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Название'**
+  String get projectNameFieldLabel;
+
+  /// Подсказка поля имени
+  ///
+  /// In ru, this message translates to:
+  /// **'Мой проект'**
+  String get projectNameFieldHint;
+
+  /// Ошибка: пустое имя
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите название'**
+  String get projectNameRequired;
+
+  /// Ошибка: длина имени
+  ///
+  /// In ru, this message translates to:
+  /// **'Не более {max} символов'**
+  String projectNameMaxLength(int max);
+
+  /// Подпись поля описания
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание'**
+  String get projectDescriptionFieldLabel;
+
+  /// Подсказка описания
+  ///
+  /// In ru, this message translates to:
+  /// **'Для чего этот проект?'**
+  String get projectDescriptionFieldHint;
+
+  /// Подпись поля URL git
+  ///
+  /// In ru, this message translates to:
+  /// **'URL репозитория'**
+  String get gitUrlFieldLabel;
+
+  /// Подсказка URL
+  ///
+  /// In ru, this message translates to:
+  /// **'https://...'**
+  String get gitUrlFieldHint;
+
+  /// Ошибка: пустой URL для remote
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите URL репозитория'**
+  String get gitUrlRequiredForRemote;
+
+  /// Ошибка: неверный URL
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите корректный http(s) URL'**
+  String get gitUrlInvalid;
+
+  /// Подпись выбора провайдера
+  ///
+  /// In ru, this message translates to:
+  /// **'Провайдер Git'**
+  String get gitProviderFieldLabel;
+
+  /// Ошибка 409 при создании проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Такое имя уже занято'**
+  String get createProjectErrorConflict;
+
+  /// Общая ошибка создания проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось создать проект'**
+  String get createProjectErrorGeneric;
 }
 
 class _AppLocalizationsDelegate

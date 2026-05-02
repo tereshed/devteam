@@ -451,6 +451,43 @@ void main() {
         throwsA(isA<ProjectForbiddenException>()),
       );
     });
+
+    test('test_createProject_error_message_sanitizes_url_userinfo', () async {
+      const request = CreateProjectRequest(
+        name: 'Test',
+        gitProvider: 'github',
+        gitUrl: 'https://github.com/user/repo.git',
+        vectorCollection: '',
+      );
+
+      when(mockDio.post(
+        '/projects',
+        data: anyNamed('data'),
+        cancelToken: anyNamed('cancelToken'),
+      )).thenThrow(DioException(
+        requestOptions: RequestOptions(path: '/projects', method: 'POST'),
+        response: Response<Map<String, dynamic>>(
+          data: {
+            'message':
+                'clone failed https://u:sekrettoken@git.example/a.git extra',
+          },
+          statusCode: 400,
+          requestOptions: RequestOptions(path: '/projects'),
+        ),
+        type: DioExceptionType.badResponse,
+      ));
+
+      expect(
+        () => repository.createProject(request),
+        throwsA(
+          predicate<ProjectApiException>((e) {
+            expect(e.message, isNot(contains('sekrettoken')));
+            expect(e.message, isNot(contains('u:sekrettoken')));
+            return true;
+          }),
+        ),
+      );
+    });
   });
 
   group('updateProject', () {
