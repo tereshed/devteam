@@ -8,7 +8,8 @@ import 'package:frontend/features/projects/presentation/utils/git_remote_url.dar
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
-const int _kProjectNameMaxLength = 255;
+/// Максимальная длина имени проекта в форме (совпадает с бэкендом; для тестов — §10.9).
+const int kProjectNameFieldMaxLength = 255;
 
 class CreateProjectScreen extends ConsumerStatefulWidget {
   const CreateProjectScreen({super.key});
@@ -88,10 +89,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title),
-                    Text(
-                      detail,
-                      style: theme.textTheme.bodySmall,
-                    ),
+                    Text(detail, style: theme.textTheme.bodySmall),
                   ],
                 )
               : Text(title),
@@ -143,15 +141,17 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                       labelText: l10n.projectNameFieldLabel,
                       hintText: l10n.projectNameFieldHint,
                     ),
-                    maxLength: _kProjectNameMaxLength,
+                    maxLength: kProjectNameFieldMaxLength,
                     textInputAction: TextInputAction.next,
                     validator: (v) {
                       final t = v?.trim() ?? '';
                       if (t.isEmpty) {
                         return l10n.projectNameRequired;
                       }
-                      if (t.length > _kProjectNameMaxLength) {
-                        return l10n.projectNameMaxLength(_kProjectNameMaxLength);
+                      if (t.length > kProjectNameFieldMaxLength) {
+                        return l10n.projectNameMaxLength(
+                          kProjectNameFieldMaxLength,
+                        );
                       }
                       return null;
                     },

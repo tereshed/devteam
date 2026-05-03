@@ -85,6 +85,7 @@ cd frontend && flutter gen-l10n
   * Файлы **`frontend/lib/l10n/app_localizations.dart`**, **`app_localizations_ru.dart`**, **`app_localizations_en.dart`** генерируются **`flutter gen-l10n`** и в этом репозитории **коммитятся в git** (в `frontend/.gitignore` исключён каталог **`lib/generated/`**, а не `lib/l10n/`). После любых правок `.arb` обязательно выполните **`make frontend-codegen`** (или `flutter gen-l10n` в корректном порядке с `build_runner`) и **закоммитьте обновлённый триплет** `app_localizations*.dart`, иначе CI и другие клоны соберутся со старыми геттерами.
   * Перед первым запуском выполнить: `make frontend-setup`
   * Автопроверка паритета ключей и зеркала плейсхолдеров (ru→en и en→ru): **`make frontend-l10n-check`** (исполняемый скрипт **`./scripts/check_l10n_parity.sh`**).
+  * **Mockito (`*.mocks.dart`):** файлы, сгенерированные `build_runner` из `@GenerateNiceMocks` рядом с тестами (например `create_project_screen_test.mocks.dart`), **коммитятся в git** вместе с тестами — как и артефакты `build_runner` для приложения (`*.g.dart`, `*.freezed.dart` в `lib/`): без них `flutter test` на чистом клоне не соберётся. Порядок регенерации — тот же, что в абзаце выше (`build_runner` → `gen-l10n`). В `analysis_options.yaml` `*.mocks.dart` **не** исключены из анализа (в отличие от `*.g.dart` / `*.freezed.dart` в `exclude`), поэтому `flutter analyze` проверяет и тесты.
 
 ### 2.4. Управление контентом (Data Flow)
 

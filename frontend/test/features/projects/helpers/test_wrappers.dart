@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -14,14 +13,14 @@ void useViewSize(WidgetTester tester, Size size) {
 }
 
 // Для виджетов без GoRouter (ProjectStatusChip)
-Widget wrapSimple(Widget child) => MaterialApp(
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
+Widget wrapSimple(
+  Widget child, {
+  Locale locale = const Locale('en'),
+}) =>
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      locale: const Locale('en'),
+      locale: locale,
       home: Scaffold(body: child),
     );
 
@@ -29,19 +28,16 @@ Widget wrapSimple(Widget child) => MaterialApp(
 Widget wrapRouter({
   required Widget Function(BuildContext, GoRouterState) builder,
   List<Override> overrides = const [],
+  Locale locale = const Locale('en'),
 }) =>
     ProviderScope(
       // Без retry ошибки AsyncNotifier не «залипают» в бесконечных повторах в тестах.
       retry: (_, _) => null,
       overrides: overrides,
       child: MaterialApp.router(
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
+        locale: locale,
         routerConfig: GoRouter(
           routes: [
             GoRoute(path: '/', builder: builder),

@@ -301,7 +301,7 @@ User Message
 | 10.6 | Экран: Дашборд проекта (hub → чат, задачи, команда, настройки) | `frontend/lib/features/projects/presentation/screens/project_dashboard_screen.dart` | ⬜ | [детали](docs/tasks/10.6-project-dashboard-screen.md) |
 | 10.7 | Обновить GoRouter: новые роуты `/projects`, `/projects/:id`, `/projects/:id/*` | `frontend/lib/core/routing/app_router.dart` | ⬜ | [детали](docs/tasks/10.7-gorouter-projects-routes.md) |
 | 10.8 | Локализация / аудит l10n для Sprint 10 (ru, en) | `frontend/lib/l10n/app_ru.arb`, `app_en.arb` | ✅ | [детали](docs/tasks/10.8-l10n-projects-strings.md) |
-| 10.9 | Widget-тесты: ProjectCard, CreateProjectForm | `frontend/test/features/projects/` | ⬜ | [детали](docs/tasks/10.9-projects-widget-tests.md) |
+| 10.9 | Widget-тесты: ProjectCard, CreateProjectForm и сопутствующие экраны | `frontend/test/features/projects/` | ✅ | [детали](docs/tasks/10.9-projects-widget-tests.md) |
 
 **Зависимости:** Sprint 2
 

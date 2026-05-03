@@ -11,6 +11,10 @@ import 'package:frontend/features/projects/presentation/widgets/project_card.dar
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
+/// Дебаунс поля поиска на списке проектов. Публичная константа — единый источник
+/// правды для виджет-тестов (см. `docs/tasks/10.9-projects-widget-tests.md`).
+const Duration kProjectsListSearchDebounce = Duration(milliseconds: 400);
+
 class ProjectsListScreen extends ConsumerStatefulWidget {
   const ProjectsListScreen({super.key});
 
@@ -20,7 +24,6 @@ class ProjectsListScreen extends ConsumerStatefulWidget {
 
 class _ProjectsListScreenState extends ConsumerState<ProjectsListScreen> {
   static const _kLimit = 50;
-  static const Duration _kSearchDebounce = Duration(milliseconds: 400);
   static const Duration _kRefreshTimeout = Duration(seconds: 30);
 
   final _searchController = TextEditingController();
@@ -46,7 +49,7 @@ class _ProjectsListScreenState extends ConsumerState<ProjectsListScreen> {
       _showClearButton = value.isNotEmpty;
     });
     _debounce?.cancel();
-    _debounce = Timer(_kSearchDebounce, () {
+    _debounce = Timer(kProjectsListSearchDebounce, () {
       if (mounted) {
         setState(() {
           _searchQuery = value.trim();

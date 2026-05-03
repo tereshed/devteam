@@ -8,6 +8,7 @@ import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
 import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
+import 'package:frontend/features/projects/presentation/screens/project_dashboard_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -38,8 +39,10 @@ void main() {
           retry: (_, _) => null,
           overrides: [
             projectProvider(kTestProjectUuid).overrideWith(
-              (ref) async =>
-                  makeProject(id: kTestProjectUuid, name: 'Fixture Alpha'),
+              (ref) async => makeProject(
+                id: kTestProjectUuid,
+                name: kTestDashboardProjectNameFixtureAlpha,
+              ),
             ),
           ],
           child: MaterialApp.router(
@@ -51,7 +54,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Fixture Alpha'), findsOneWidget);
+      expect(find.text(kTestDashboardProjectNameFixtureAlpha), findsOneWidget);
     });
 
     testWidgets('загрузка: до ответа виден CircularProgressIndicator', (
@@ -65,9 +68,9 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
-            projectProvider(kTestProjectUuid).overrideWith(
-              (ref) => completer.future,
-            ),
+            projectProvider(
+              kTestProjectUuid,
+            ).overrideWith((ref) => completer.future),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -80,10 +83,13 @@ void main() {
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       completer.complete(
-        makeProject(id: kTestProjectUuid, name: 'After loading'),
+        makeProject(
+          id: kTestProjectUuid,
+          name: kTestDashboardProjectNameAfterLoading,
+        ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('After loading'), findsOneWidget);
+      expect(find.text(kTestDashboardProjectNameAfterLoading), findsOneWidget);
     });
 
     testWidgets(
@@ -102,7 +108,10 @@ void main() {
                 if (attempt == 1) {
                   throw ProjectApiException('fail', statusCode: 500);
                 }
-                return makeProject(id: kTestProjectUuid, name: 'After retry');
+                return makeProject(
+                  id: kTestProjectUuid,
+                  name: kTestDashboardProjectNameAfterRetry,
+                );
               }),
             ],
             child: MaterialApp.router(
@@ -114,18 +123,20 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text("Couldn't load project"), findsNothing);
+        final l10n = AppLocalizations.of(
+          tester.element(find.byType(ProjectDashboardScreen)),
+        )!;
         expect(
           find.descendant(
             of: find.byType(AppBar),
-            matching: find.text('Project'),
+            matching: find.text(l10n.projectDashboardFallbackTitle),
           ),
           findsOneWidget,
         );
-        expect(find.text('Error loading data'), findsOneWidget);
-        await tester.tap(find.text('Retry'));
+        expect(find.text(l10n.dataLoadError), findsOneWidget);
+        await tester.tap(find.text(l10n.retry));
         await tester.pumpAndSettle();
-        expect(find.text('After retry'), findsOneWidget);
+        expect(find.text(kTestDashboardProjectNameAfterRetry), findsOneWidget);
         expect(attempt, 2);
       },
     );
@@ -154,53 +165,57 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Error loading data'), findsNothing);
+        final l10n = AppLocalizations.of(
+          tester.element(find.byType(ProjectDashboardScreen)),
+        )!;
+        expect(find.text(l10n.dataLoadError), findsNothing);
         expect(find.byType(NavigationBar), findsNothing);
         expect(find.byType(NavigationRail), findsNothing);
-        expect(find.text('Project not found'), findsOneWidget);
+        expect(find.text(l10n.projectDashboardNotFoundTitle), findsOneWidget);
         expect(
           find.descendant(
             of: find.byType(AppBar),
-            matching: find.text('Project'),
+            matching: find.text(l10n.projectDashboardFallbackTitle),
           ),
           findsOneWidget,
         );
-        await tester.tap(find.text('Back to projects'));
+        await tester.tap(find.text(l10n.projectDashboardNotFoundBackToList));
         await tester.pumpAndSettle();
         expect(router.state.uri.path, '/projects');
         expect(find.text('__TEST_PROJECTS_LIST__'), findsOneWidget);
       },
     );
 
-    testWidgets('404: стрелка в AppBar ведёт на /projects (как кнопка в body)', (
-      tester,
-    ) async {
-      late GoRouter router;
-      router = buildProjectDashboardTestRouter(
-        initialLocation: '/projects/$kTestProjectUuid/chat',
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
-          overrides: [
-            projectProvider(kTestProjectUuid).overrideWith(
-              (ref) async => throw ProjectNotFoundException('missing'),
+    testWidgets(
+      '404: стрелка в AppBar ведёт на /projects (как кнопка в body)',
+      (tester) async {
+        late GoRouter router;
+        router = buildProjectDashboardTestRouter(
+          initialLocation: '/projects/$kTestProjectUuid/chat',
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            retry: (_, _) => null,
+            overrides: [
+              projectProvider(kTestProjectUuid).overrideWith(
+                (ref) async => throw ProjectNotFoundException('missing'),
+              ),
+            ],
+            child: MaterialApp.router(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('en'),
+              routerConfig: router,
             ),
-          ],
-          child: MaterialApp.router(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            locale: const Locale('en'),
-            routerConfig: router,
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-      expect(router.state.uri.path, '/projects');
-      expect(find.text('__TEST_PROJECTS_LIST__'), findsOneWidget);
-    });
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pumpAndSettle();
+        expect(router.state.uri.path, '/projects');
+        expect(find.text('__TEST_PROJECTS_LIST__'), findsOneWidget);
+      },
+    );
 
     testWidgets('Назад: canPop — после push выполняется pop (не go)', (
       tester,
@@ -225,8 +240,10 @@ void main() {
           retry: (_, _) => null,
           overrides: [
             projectProvider(kTestProjectUuid).overrideWith(
-              (ref) async =>
-                  makeProject(id: kTestProjectUuid, name: 'Popped Project'),
+              (ref) async => makeProject(
+                id: kTestProjectUuid,
+                name: kTestDashboardProjectNamePopped,
+              ),
             ),
           ],
           child: MaterialApp.router(
@@ -240,7 +257,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('__OPEN_PROJECT__'));
       await tester.pumpAndSettle();
-      expect(find.text('Popped Project'), findsOneWidget);
+      expect(find.text(kTestDashboardProjectNamePopped), findsOneWidget);
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
       expect(find.text('__OPEN_PROJECT__'), findsOneWidget);
@@ -315,7 +332,9 @@ void main() {
       expect(find.text('__TEST_PROJECTS_LIST__'), findsOneWidget);
     });
 
-    testWidgets('редирект: неизвестный сегмент после id → chat', (tester) async {
+    testWidgets('редирект: неизвестный сегмент после id → chat', (
+      tester,
+    ) async {
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTestProjectUuid/typo',
       );
@@ -363,10 +382,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(ProjectDashboardScreen)),
+      )!;
       await tester.tap(
         find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.text('Tasks'),
+          matching: find.text(l10n.projectDashboardTasks),
         ),
       );
       await tester.pumpAndSettle();
@@ -374,7 +396,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(ProjectDestinationPlaceholder),
-          matching: find.text('Tasks'),
+          matching: find.text(l10n.projectDashboardTasks),
         ),
         findsOneWidget,
       );
@@ -411,6 +433,78 @@ void main() {
       await tester.pump();
       expect(captured, isNotNull);
       expect(captured!.isCancelled, isTrue);
+    });
+
+    testWidgets('ru: 404 — notFound title и кнопка списка через l10n', (
+      tester,
+    ) async {
+      late GoRouter router;
+      router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/chat',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => throw ProjectNotFoundException('missing'),
+            ),
+          ],
+          child: MaterialApp.router(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('ru'),
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(ProjectDashboardScreen)),
+      )!;
+      expect(find.text(l10n.projectDashboardNotFoundTitle), findsOneWidget);
+      expect(
+        find.text(l10n.projectDashboardNotFoundBackToList),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('go на другой projectId перезагружает данные', (tester) async {
+      late GoRouter router;
+      router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/chat',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(
+                id: kTestProjectUuid,
+                name: kTestDashboardNavProjectNameA,
+              ),
+            ),
+            projectProvider(kTestProjectUuidNavB).overrideWith(
+              (ref) async => makeProject(
+                id: kTestProjectUuidNavB,
+                name: kTestDashboardNavProjectNameB,
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(kTestDashboardNavProjectNameA), findsOneWidget);
+
+      router.go('/projects/$kTestProjectUuidNavB/chat');
+      await tester.pumpAndSettle();
+      expect(find.text(kTestDashboardNavProjectNameB), findsOneWidget);
     });
   });
 }

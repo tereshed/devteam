@@ -6,6 +6,7 @@ import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
 import 'package:frontend/features/projects/presentation/screens/projects_list_screen.dart';
+import 'package:frontend/l10n/app_localizations.dart';
 
 import '../../helpers/project_fixtures.dart';
 import '../../helpers/test_wrappers.dart';
@@ -71,10 +72,8 @@ void main() {
       'показывает error state при первой ошибке (error_outline + FilledButton retry)',
       (tester) async {
         final override = projectListProvider.overrideWith(
-          (ref, args) async => throw ProjectApiException(
-            'server error',
-            statusCode: 500,
-          ),
+          (ref, args) async =>
+              throw ProjectApiException('server error', statusCode: 500),
         );
         await tester.pumpWidget(
           wrapRouter(
@@ -90,8 +89,9 @@ void main() {
       },
     );
 
-    testWidgets('статус-фильтр: тап активирует, повторный тап снимает',
-        (tester) async {
+    testWidgets('статус-фильтр: тап активирует, повторный тап снимает', (
+      tester,
+    ) async {
       final override = projectListProvider.overrideWith(
         (ref, args) async => makeResponse([]),
       );
@@ -121,8 +121,9 @@ void main() {
       expect(find.byIcon(Icons.folder_open), findsOneWidget);
     });
 
-    testWidgets('empty state с фильтром: search_off + TextButton очистки',
-        (tester) async {
+    testWidgets('empty state с фильтром: search_off + TextButton очистки', (
+      tester,
+    ) async {
       final override = projectListProvider.overrideWith(
         (ref, args) async => makeResponse([]),
       );
@@ -146,60 +147,72 @@ void main() {
       expect(find.byIcon(Icons.folder_open), findsOneWidget);
     });
 
-    testWidgets('кнопка очистки поиска: появляется при вводе, исчезает по тапу',
-        (tester) async {
-      final override = projectListProvider.overrideWith(
-        (ref, args) async => makeResponse([]),
-      );
-      await tester.pumpWidget(
-        wrapRouter(
-          overrides: [override],
-          builder: (context, state) => const ProjectsListScreen(),
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-      await tester.pumpAndSettle();
+    testWidgets(
+      'кнопка очистки поиска: появляется при вводе, исчезает по тапу',
+      (tester) async {
+        final override = projectListProvider.overrideWith(
+          (ref, args) async => makeResponse([]),
+        );
+        await tester.pumpWidget(
+          wrapRouter(
+            overrides: [override],
+            builder: (context, state) => const ProjectsListScreen(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.clear), findsNothing);
+        expect(find.byIcon(Icons.clear), findsNothing);
 
-      await tester.enterText(find.byType(TextField), 'test');
-      await tester.pump();
-      expect(find.byIcon(Icons.clear), findsOneWidget);
+        await tester.enterText(find.byType(TextField), 'test');
+        await tester.pump();
+        expect(find.byIcon(Icons.clear), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.clear));
-      await tester.pump();
-      expect(find.byIcon(Icons.clear), findsNothing);
-    });
+        await tester.tap(find.byIcon(Icons.clear));
+        await tester.pump();
+        expect(find.byIcon(Icons.clear), findsNothing);
+      },
+    );
 
-    testWidgets('дебаунс: запрос не отправляется до 400 мс, отправляется после',
-        (tester) async {
-      final override = projectListProvider.overrideWith(
-        (ref, args) async => makeResponse([]),
-      );
-      await tester.pumpWidget(
-        wrapRouter(
-          overrides: [override],
-          builder: (context, state) => const ProjectsListScreen(),
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-      await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.folder_open), findsOneWidget);
+    testWidgets(
+      'дебаунс: запрос не отправляется до 400 мс, отправляется после',
+      (tester) async {
+        final override = projectListProvider.overrideWith(
+          (ref, args) async => makeResponse([]),
+        );
+        await tester.pumpWidget(
+          wrapRouter(
+            overrides: [override],
+            builder: (context, state) => const ProjectsListScreen(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.folder_open), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'abc');
-      await tester.pump();
-      expect(find.byIcon(Icons.clear), findsOneWidget);
+        await tester.enterText(find.byType(TextField), 'abc');
+        await tester.pump();
+        expect(find.byIcon(Icons.clear), findsOneWidget);
 
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(find.byIcon(Icons.folder_open), findsOneWidget);
+        await tester.pump(
+          Duration(
+            milliseconds: kProjectsListSearchDebounce.inMilliseconds ~/ 2,
+          ),
+        );
+        expect(find.byIcon(Icons.folder_open), findsOneWidget);
 
-      await tester.pump(const Duration(milliseconds: 200));
-      await tester.pump();
-      await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.search_off), findsOneWidget);
-    });
+        await tester.pump(
+          Duration(
+            milliseconds: kProjectsListSearchDebounce.inMilliseconds ~/ 2,
+          ),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.search_off), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'pull-to-refresh: после settle карточка на месте, список перезагружен',
@@ -240,8 +253,9 @@ void main() {
       },
     );
 
-    testWidgets('ошибка при refresh: SnackBar и список остаётся на экране',
-        (tester) async {
+    testWidgets('ошибка при refresh: SnackBar и список остаётся на экране', (
+      tester,
+    ) async {
       useViewSize(tester, const Size(400, 800));
 
       var n = 0;
@@ -304,8 +318,9 @@ void main() {
       expect(find.byIcon(Icons.error_outline), findsNothing);
     });
 
-    testWidgets('дебаунс: после dispose таймер не бросает исключение',
-        (tester) async {
+    testWidgets('дебаунс: после dispose таймер не бросает исключение', (
+      tester,
+    ) async {
       final override = projectListProvider.overrideWith(
         (ref, args) async => makeResponse([]),
       );
@@ -322,13 +337,14 @@ void main() {
       await tester.enterText(find.byType(TextField), 'x');
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(kProjectsListSearchDebounce);
       expect(tester.takeException(), isNull);
     });
 
     group('адаптивная верстка', () {
-      testWidgets('mobile (400×800): рендерит ListView, не GridView',
-          (tester) async {
+      testWidgets('mobile (400×800): рендерит ListView, не GridView', (
+        tester,
+      ) async {
         useViewSize(tester, const Size(400, 800));
 
         final projects = [makeProject(id: 'p1', name: 'Alpha')];
@@ -349,8 +365,9 @@ void main() {
         expect(find.byType(ListView), findsWidgets);
       });
 
-      testWidgets('desktop (1400×900): рендерит GridView, не plain ListView',
-          (tester) async {
+      testWidgets('desktop (1400×900): рендерит GridView, не plain ListView', (
+        tester,
+      ) async {
         useViewSize(tester, const Size(1400, 900));
 
         final projects = [makeProject(id: 'p1', name: 'Alpha')];
@@ -370,8 +387,9 @@ void main() {
         expect(find.byType(GridView), findsOneWidget);
       });
 
-      testWidgets('GridView карточка не overflow при textScaleFactor 1.5',
-          (tester) async {
+      testWidgets('GridView карточка не overflow при textScaleFactor 1.5', (
+        tester,
+      ) async {
         useViewSize(tester, const Size(1400, 900));
 
         final override = projectListProvider.overrideWith(
@@ -396,6 +414,108 @@ void main() {
               'RenderFlex overflow при textScaleFactor 1.5 — увеличьте mainAxisExtent',
         );
       });
+    });
+
+    testWidgets('ru: пустой список и заголовок AppBar через l10n', (
+      tester,
+    ) async {
+      final override = projectListProvider.overrideWith(
+        (ref, args) async => makeResponse([]),
+      );
+      await tester.pumpWidget(
+        wrapRouter(
+          locale: const Locale('ru'),
+          overrides: [override],
+          builder: (context, state) => const ProjectsListScreen(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(ProjectsListScreen)),
+      )!;
+      expect(find.text(l10n.noProjectsYet), findsOneWidget);
+      expect(find.text(l10n.projectsTitle), findsOneWidget);
+    });
+
+    testWidgets('комбинация статуса и поиска передаётся в фильтр', (
+      tester,
+    ) async {
+      final seen = <ProjectListFilter?>[];
+      final override = projectListProvider.overrideWith((ref, args) async {
+        seen.add(args.filter);
+        return makeResponse([]);
+      });
+      await tester.pumpWidget(
+        wrapRouter(
+          overrides: [override],
+          builder: (context, state) => const ProjectsListScreen(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(ProjectsListScreen)),
+      )!;
+      await tester.tap(find.text(l10n.statusActive));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'q');
+      await tester.pump();
+      await tester.pump(
+        kProjectsListSearchDebounce + const Duration(milliseconds: 1),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(seen.last?.status, 'active');
+      expect(seen.last?.search, 'q');
+    });
+
+    testWidgets('после SnackBar ошибки refresh поиск снова доступен', (
+      tester,
+    ) async {
+      useViewSize(tester, const Size(400, 800));
+
+      var n = 0;
+      final projects = [makeProject(id: 'p1', name: 'Alpha')];
+      final override = projectListProvider.overrideWith((ref, args) async {
+        n++;
+        if (n == 1) {
+          return makeResponse(projects);
+        }
+        throw ProjectApiException('e', statusCode: 500);
+      });
+      await tester.pumpWidget(
+        wrapRouter(
+          overrides: [override],
+          builder: (context, state) => const ProjectsListScreen(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.text('Alpha'), findsOneWidget);
+
+      final refreshFuture = tester
+          .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+          .show();
+      // RefreshIndicator.show() / onRefresh цепляются к vsync и async; ждём стабилизацию.
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await refreshFuture;
+
+      expect(find.byType(SnackBar), findsOneWidget);
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'z');
+      await tester.pump(kProjectsListSearchDebounce);
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.clear), findsOneWidget);
     });
   });
 }
