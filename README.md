@@ -313,7 +313,7 @@ User Message
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 11.1 | Модели (Freezed): `ConversationModel`, `ConversationMessageModel` | `frontend/lib/features/chat/domain/` | ⬜ |
+| 11.1 | Модели (Freezed): сущности чата + пагинационные обёртки (`ConversationModel`, `ConversationMessageModel`, `ConversationListResponse`, `MessageListResponse`) | `frontend/lib/features/chat/domain/` | ✅ | [детали](docs/tasks/11.1-models-freezed-chat.md) |
 | 11.2 | WebSocket Service: подключение, реконнект, парсинг событий | `frontend/lib/core/api/websocket_service.dart` | ⬜ |
 | 11.3 | Repository: `ConversationRepository` | `frontend/lib/features/chat/data/conversation_repository.dart` | ⬜ |
 | 11.4 | Controller: `ChatController` (AsyncNotifier — загрузка, отправка, стрим) | `frontend/lib/features/chat/presentation/controllers/chat_controller.dart` | ⬜ |
