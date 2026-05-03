@@ -1,14 +1,11 @@
 {
   "@@locale": "en",
   "appTitle": "Wibe Flutter Gin Template",
-  
-  "welcome": "Welcome",
   "login": "Login",
   "logout": "Logout",
   "register": "Register",
   "email": "Email",
   "password": "Password",
-  "confirmPassword": "Confirm Password",
   "emailHint": "example@mail.com",
   "enterEmail": "Enter email",
   "enterValidEmail": "Enter a valid email",
@@ -30,8 +27,6 @@
   "loginTitle": "Login",
   "registerTitle": "Register",
   "createAccount": "Create Account",
-  "alreadyHaveAccount": "Already have an account?",
-  "dontHaveAccount": "Don't have an account?",
   "dashboard": "Dashboard",
   "profile": "Profile",
   "userInfo": "User Information",
@@ -64,9 +59,6 @@
   "errorServer": "Server error. Please try again later.",
   "errorUnknown": "An unknown error occurred.",
   "routerNavigationError": "We couldn't open this page.",
-  "@routerNavigationError": {
-    "description": "GoRouter errorBuilder when no route matches (invalid deep link)"
-  },
 
   "landingTitle": "Build Faster with Wibe",
   "landingSubtitle": "The ultimate Flutter + Gin template for your next big idea.\nProduction-ready, scalable, and beautiful.",
@@ -186,17 +178,11 @@
   "createProjectErrorConflict": "This name is already in use",
   "createProjectErrorGeneric": "Could not create the project",
   "projectDashboardFallbackTitle": "Project",
-  "@projectDashboardFallbackTitle": {
-    "description": "Neutral AppBar title until project name is known (loading, non-404 error, or 404 not-found screen)"
-  },
   "projectDashboardChat": "Chat",
   "projectDashboardTasks": "Tasks",
   "projectDashboardTeam": "Team",
   "projectDashboardSettings": "Settings",
   "projectDashboardNotFoundTitle": "Project not found",
-  "@projectDashboardNotFoundTitle": {
-    "description": "404 only: main message in body (AppBar uses projectDashboardFallbackTitle)"
-  },
   "projectDashboardNotFoundBackToList": "Back to projects"
 }
 

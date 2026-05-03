@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
+// TODO (follow-up): вынести тело CLAUDE.md / .windsurfrules / copilot-instructions в docs/rules/_claude_md.tmpl.md
+// или подставлять версии из pubspec — сейчас краткий шаблон ниже должен вручную совпадать с docs/rules/frontend.md.
+
 const DOCS_DIR = path.join(__dirname, '../docs/rules');
 const CURSOR_DIR = path.join(__dirname, '../.cursor/rules');
 const ROOT_DIR = path.join(__dirname, '..');
@@ -49,7 +52,7 @@ const claudeContent = `# DevTeam — AI Agent Orchestrator
 - **Swagger**: Обновляй аннотации и запускай \`make swagger\`.
 
 **Frontend (Flutter):**
-- **Архитектура**: Feature-First + Riverpod 2.0.
+- **Архитектура**: Feature-First + Riverpod 3.x (\`flutter_riverpod\` ^3).
 - **Freezed**: Обязательно используй \`abstract class\` (напр. \`abstract class UserModel\`).
 - **Импорты**: Только абсолютные (\`package:frontend/...\`), НИКАКИХ \`../\`.
 - **Локализация**: ЗАПРЕЩЕН хардкод строк в UI. Используй \`.arb\` и \`flutter gen-l10n\`.

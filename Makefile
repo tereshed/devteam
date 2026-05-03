@@ -9,7 +9,7 @@ SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
 	migrate-create migrate-up migrate-down migrate-status \
 	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration \
-	frontend-analyze frontend-codegen frontend-codegen-watch \
+	frontend-analyze frontend-codegen frontend-codegen-watch frontend-l10n-check \
 	frontend-run-web frontend-run-android frontend-run-ios \
 	frontend-build-web frontend-build-android frontend-build-ios \
 	swagger rules
@@ -68,14 +68,14 @@ test-all: test-integration
 
 # === Тестирование (Frontend) ===
 frontend-test:
-	cd frontend && flutter pub get && flutter gen-l10n && flutter pub run build_runner build --delete-conflicting-outputs && flutter test
+	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n && flutter test
 
 # Упростим - все тесты в test/ считаются unit/widget
 frontend-test-unit: frontend-test
 frontend-test-widget: frontend-test
 
 frontend-test-integration:
-	cd frontend && flutter pub get && flutter gen-l10n && flutter test integration_test/
+	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n && flutter test integration_test/
 
 # === Миграции Базы Данных (YugabyteDB) ===
 migrate-create:
@@ -93,7 +93,7 @@ migrate-status:
 
 # === Frontend: Подготовка окружения ===
 frontend-setup:
-	cd frontend && flutter pub get && flutter pub run build_runner build --delete-conflicting-outputs && flutter gen-l10n
+	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n
 
 # === Frontend: Анализ и Проверки ===
 frontend-analyze:
@@ -101,10 +101,14 @@ frontend-analyze:
 
 # === Frontend: Кодогенерация ===
 frontend-codegen:
-	cd frontend && flutter pub get && flutter pub run build_runner build --delete-conflicting-outputs && flutter gen-l10n 
+	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n 
 
 frontend-codegen-watch:
-	cd frontend && flutter pub run build_runner watch --delete-conflicting-outputs
+	cd frontend && dart run build_runner watch --delete-conflicting-outputs
+
+# Паритет ключей ARB (ru/en) и зеркало плейсхолдеров; для CI / перед PR.
+frontend-l10n-check:
+	./scripts/check_l10n_parity.sh
 
 # === Frontend: Сборка (Build) ===
 frontend-build-web:
@@ -167,6 +171,7 @@ help:
 	@echo "  make frontend-analyze        - Run Flutter analyze"
 	@echo "  make frontend-codegen        - Run code generation (build_runner)"
 	@echo "  make frontend-codegen-watch   - Watch mode for code generation"
+	@echo "  make frontend-l10n-check     - Verify ARB key parity (ru/en) and placeholder mirrors"
 	@echo "  make frontend-run-web        - Run frontend on Chrome (with auto-setup)"
 	@echo "  make frontend-run-android    - Run frontend on Android (with auto-setup)"
 	@echo "  make frontend-run-ios        - Run frontend on iOS (with auto-setup)"

@@ -76,7 +76,7 @@ alwaysApply: true
     # ВАЖНО: build_runner ДОЛЖЕН выполняться ДО flutter gen-l10n
     # Причина: флаг --delete-conflicting-outputs удаляет файлы, созданные gen-l10n
     frontend-setup:
-    	cd frontend && flutter pub get && flutter pub run build_runner build --delete-conflicting-outputs && flutter gen-l10n
+    	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n
 
     # === Frontend: Анализ и Проверки ===
     frontend-analyze:
@@ -85,10 +85,10 @@ alwaysApply: true
     # === Frontend: Кодогенерация ===
     # (Запускает build_runner / riverpod_generator, затем локализацию)
     frontend-codegen:
-        cd frontend && flutter pub get && flutter pub run build_runner build --delete-conflicting-outputs && flutter gen-l10n
+        cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n
 
     frontend-codegen-watch:
-        cd frontend && flutter pub run build_runner watch --delete-conflicting-outputs
+        cd frontend && dart run build_runner watch --delete-conflicting-outputs
 
     # === Frontend: Запуск ===
     # ВАЖНО: build_runner НЕ запускается автоматически.

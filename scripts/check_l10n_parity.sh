@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Паритет ключей app_en.arb / app_ru.arb и зеркало @*.placeholders для строк с {placeholder} в обе стороны (ru↔en).
+# Запуск из корня репозитория: ./scripts/check_l10n_parity.sh  или  make frontend-l10n-check
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+L10N="$ROOT/frontend/lib/l10n"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "check_l10n_parity: требуется jq в PATH" >&2
+  exit 1
+fi
+
+echo "check_l10n_parity: сравнение множеств ключей сообщений…"
+if ! diff -q \
+  <(jq -r 'keys[] | select(test("^@") | not)' "$L10N/app_en.arb" | sort) \
+  <(jq -r 'keys[] | select(test("^@") | not)' "$L10N/app_ru.arb" | sort) \
+  >/dev/null; then
+  echo "ARB: множества ключей в app_en.arb и app_ru.arb различаются:" >&2
+  diff \
+    <(jq -r 'keys[] | select(test("^@") | not)' "$L10N/app_en.arb" | sort) \
+    <(jq -r 'keys[] | select(test("^@") | not)' "$L10N/app_ru.arb" | sort) \
+    >&2 || true
+  exit 1
+fi
+
+cd "$L10N"
+bad=0
+
+echo "check_l10n_parity: плейсхолдеры ru → en…"
+while IFS= read -r k; do
+  if ! jq -e --arg key "$k" '.["@" + $key].placeholders' app_en.arb >/dev/null 2>&1; then
+    echo "missing @${k}.placeholders in app_en.arb (ключ есть в app_ru.arb со строкой с {…})" >&2
+    bad=1
+  fi
+done < <(jq -r '
+  to_entries[]
+  | select(.key | test("^@") | not)
+  | select(.value | type == "string")
+  | select(.value | test("\\{[a-zA-Z_]"))
+  | .key
+' app_ru.arb)
+
+echo "check_l10n_parity: плейсхолдеры en → ru…"
+while IFS= read -r k; do
+  if ! jq -e --arg key "$k" '.["@" + $key].placeholders' app_ru.arb >/dev/null 2>&1; then
+    echo "missing @${k}.placeholders in app_ru.arb (ключ есть в app_en.arb со строкой с {…})" >&2
+    bad=1
+  fi
+done < <(jq -r '
+  to_entries[]
+  | select(.key | test("^@") | not)
+  | select(.value | type == "string")
+  | select(.value | test("\\{[a-zA-Z_]"))
+  | .key
+' app_en.arb)
+
+exit "$bad"

@@ -62,16 +62,16 @@ alwaysApply: true
 ```bash
 # ✅ ПРАВИЛЬНО:
 flutter pub get
-flutter pub run build_runner build --delete-conflicting-outputs
+dart run build_runner build --delete-conflicting-outputs
 flutter gen-l10n
 
 # ❌ НЕПРАВИЛЬНО:
 flutter pub get
 flutter gen-l10n
-flutter pub run build_runner build --delete-conflicting-outputs  # Удалит файлы локализации!
+dart run build_runner build --delete-conflicting-outputs  # Удалит файлы локализации!
 ```
 
-**Причина:** Флаг `--delete-conflicting-outputs` в `build_runner` удаляет файлы, созданные `flutter gen-l10n`, считая их "конфликтующими". Запуск `build_runner` ДО `gen-l10n` решает эту проблему.
+**Причина:** Флаг `--delete-conflicting-outputs` в `build_runner` удаляет файлы, созданные `flutter gen-l10n`, считая их "конфликтующими". Запуск `build_runner` ДО `gen-l10n` решает эту проблему. Тот же порядок обязан соблюдать **`make frontend-test`** в корневом **`Makefile`** (`dart run build_runner …`, затем `flutter gen-l10n`, затем тесты).
 
 **⚠️ ИЗВЕСТНАЯ ПРОБЛЕМА:** `flutter run` может автоматически запускать `build_runner`, который удаляет файлы локализации, даже если они исключены в `build.yaml`. 
 
@@ -80,10 +80,11 @@ flutter pub run build_runner build --delete-conflicting-outputs  # Удалит 
 cd frontend && flutter gen-l10n
 ```
 
-**Файлы локализации в .gitignore:**
-  * Сгенерированные файлы (`app_localizations*.dart`) **ДОЛЖНЫ** быть в `.gitignore`
-  * Исходные файлы (`.arb`) **ДОЛЖНЫ** быть в git
+**Генерация и git (важно, без двусмысленности):**
+  * Исходники **`frontend/lib/l10n/*.arb`** — в git; **`template-arb-file`** в `l10n.yaml` — обычно `app_ru.arb`.
+  * Файлы **`frontend/lib/l10n/app_localizations.dart`**, **`app_localizations_ru.dart`**, **`app_localizations_en.dart`** генерируются **`flutter gen-l10n`** и в этом репозитории **коммитятся в git** (в `frontend/.gitignore` исключён каталог **`lib/generated/`**, а не `lib/l10n/`). После любых правок `.arb` обязательно выполните **`make frontend-codegen`** (или `flutter gen-l10n` в корректном порядке с `build_runner`) и **закоммитьте обновлённый триплет** `app_localizations*.dart`, иначе CI и другие клоны соберутся со старыми геттерами.
   * Перед первым запуском выполнить: `make frontend-setup`
+  * Автопроверка паритета ключей и зеркала плейсхолдеров (ru→en и en→ru): **`make frontend-l10n-check`** (исполняемый скрипт **`./scripts/check_l10n_parity.sh`**).
 
 ### 2.4. Управление контентом (Data Flow)
 

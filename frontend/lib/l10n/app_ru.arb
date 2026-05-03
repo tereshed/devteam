@@ -5,11 +5,6 @@
     "description": "Название приложения"
   },
   
-  "welcome": "Добро пожаловать",
-  "@welcome": {
-    "description": "Приветствие на главной странице"
-  },
-  
   "login": "Войти",
   "@login": {
     "description": "Кнопка входа"
@@ -33,11 +28,6 @@
   "password": "Пароль",
   "@password": {
     "description": "Поле пароля"
-  },
-  
-  "confirmPassword": "Подтвердите пароль",
-  "@confirmPassword": {
-    "description": "Поле подтверждения пароля"
   },
   
   "emailHint": "example@mail.com",
@@ -113,16 +103,6 @@
   "createAccount": "Создать аккаунт",
   "@createAccount": {
     "description": "Кнопка создания аккаунта"
-  },
-  
-  "alreadyHaveAccount": "Уже есть аккаунт?",
-  "@alreadyHaveAccount": {
-    "description": "Текст перед ссылкой на вход"
-  },
-  
-  "dontHaveAccount": "Нет аккаунта?",
-  "@dontHaveAccount": {
-    "description": "Текст перед ссылкой на регистрацию"
   },
   
   "dashboard": "Dashboard",

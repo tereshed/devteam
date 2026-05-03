@@ -12,9 +12,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'Wibe Flutter Gin Template';
 
   @override
-  String get welcome => 'Welcome';
-
-  @override
   String get login => 'Login';
 
   @override
@@ -28,9 +25,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get password => 'Password';
-
-  @override
-  String get confirmPassword => 'Confirm Password';
 
   @override
   String get emailHint => 'example@mail.com';
@@ -75,12 +69,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get createAccount => 'Create Account';
-
-  @override
-  String get alreadyHaveAccount => 'Already have an account?';
-
-  @override
-  String get dontHaveAccount => 'Don\'t have an account?';
 
   @override
   String get dashboard => 'Dashboard';

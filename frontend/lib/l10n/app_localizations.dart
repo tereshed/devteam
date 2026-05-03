@@ -104,12 +104,6 @@ abstract class AppLocalizations {
   /// **'Wibe Flutter Gin Template'**
   String get appTitle;
 
-  /// Приветствие на главной странице
-  ///
-  /// In ru, this message translates to:
-  /// **'Добро пожаловать'**
-  String get welcome;
-
   /// Кнопка входа
   ///
   /// In ru, this message translates to:
@@ -139,12 +133,6 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Пароль'**
   String get password;
-
-  /// Поле подтверждения пароля
-  ///
-  /// In ru, this message translates to:
-  /// **'Подтвердите пароль'**
-  String get confirmPassword;
 
   /// Подсказка для поля email
   ///
@@ -229,18 +217,6 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Создать аккаунт'**
   String get createAccount;
-
-  /// Текст перед ссылкой на вход
-  ///
-  /// In ru, this message translates to:
-  /// **'Уже есть аккаунт?'**
-  String get alreadyHaveAccount;
-
-  /// Текст перед ссылкой на регистрацию
-  ///
-  /// In ru, this message translates to:
-  /// **'Нет аккаунта?'**
-  String get dontHaveAccount;
 
   /// Заголовок экрана dashboard
   ///
