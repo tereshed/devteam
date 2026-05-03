@@ -495,4 +495,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get createProjectErrorGeneric => 'Could not create the project';
+
+  @override
+  String get projectDashboardFallbackTitle => 'Project';
+
+  @override
+  String get projectDashboardChat => 'Chat';
+
+  @override
+  String get projectDashboardTasks => 'Tasks';
+
+  @override
+  String get projectDashboardTeam => 'Team';
+
+  @override
+  String get projectDashboardSettings => 'Settings';
+
+  @override
+  String get projectDashboardNotFoundTitle => 'Project not found';
+
+  @override
+  String get projectDashboardNotFoundBackToList => 'Back to projects';
 }

@@ -494,4 +494,25 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get createProjectErrorGeneric => 'Не удалось создать проект';
+
+  @override
+  String get projectDashboardFallbackTitle => 'Проект';
+
+  @override
+  String get projectDashboardChat => 'Чат';
+
+  @override
+  String get projectDashboardTasks => 'Задачи';
+
+  @override
+  String get projectDashboardTeam => 'Команда';
+
+  @override
+  String get projectDashboardSettings => 'Настройки';
+
+  @override
+  String get projectDashboardNotFoundTitle => 'Проект не найден';
+
+  @override
+  String get projectDashboardNotFoundBackToList => 'К списку проектов';
 }

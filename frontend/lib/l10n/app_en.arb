@@ -180,6 +180,19 @@
   "gitUrlInvalid": "Enter a valid http or https URL",
   "gitProviderFieldLabel": "Git provider",
   "createProjectErrorConflict": "This name is already in use",
-  "createProjectErrorGeneric": "Could not create the project"
+  "createProjectErrorGeneric": "Could not create the project",
+  "projectDashboardFallbackTitle": "Project",
+  "@projectDashboardFallbackTitle": {
+    "description": "Neutral AppBar title until project name is known (loading, non-404 error, or 404 not-found screen)"
+  },
+  "projectDashboardChat": "Chat",
+  "projectDashboardTasks": "Tasks",
+  "projectDashboardTeam": "Team",
+  "projectDashboardSettings": "Settings",
+  "projectDashboardNotFoundTitle": "Project not found",
+  "@projectDashboardNotFoundTitle": {
+    "description": "404 only: main message in body (AppBar uses projectDashboardFallbackTitle)"
+  },
+  "projectDashboardNotFoundBackToList": "Back to projects"
 }
 

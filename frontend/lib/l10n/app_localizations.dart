@@ -1033,6 +1033,48 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось создать проект'**
   String get createProjectErrorGeneric;
+
+  /// Нейтральный заголовок AppBar, пока нет имени (загрузка или ошибка, кроме 404)
+  ///
+  /// In ru, this message translates to:
+  /// **'Проект'**
+  String get projectDashboardFallbackTitle;
+
+  /// Раздел дашборда: чат
+  ///
+  /// In ru, this message translates to:
+  /// **'Чат'**
+  String get projectDashboardChat;
+
+  /// Раздел дашборда: задачи
+  ///
+  /// In ru, this message translates to:
+  /// **'Задачи'**
+  String get projectDashboardTasks;
+
+  /// Раздел дашборда: команда
+  ///
+  /// In ru, this message translates to:
+  /// **'Команда'**
+  String get projectDashboardTeam;
+
+  /// Раздел дашборда: настройки
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки'**
+  String get projectDashboardSettings;
+
+  /// 404: проект не существует
+  ///
+  /// In ru, this message translates to:
+  /// **'Проект не найден'**
+  String get projectDashboardNotFoundTitle;
+
+  /// Кнопка: вернуться к списку
+  ///
+  /// In ru, this message translates to:
+  /// **'К списку проектов'**
+  String get projectDashboardNotFoundBackToList;
 }
 
 class _AppLocalizationsDelegate

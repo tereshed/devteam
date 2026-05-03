@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/routing/auth_guard.dart';
+import 'package:frontend/core/routing/project_dashboard_routes.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompt_edit_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompts_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/execution_detail_screen.dart';
@@ -12,9 +13,19 @@ import 'package:frontend/features/auth/presentation/screens/profile_screen.dart'
 import 'package:frontend/features/auth/presentation/screens/register_screen.dart';
 import 'package:frontend/features/landing/presentation/screens/landing_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/create_project_screen.dart';
-import 'package:frontend/features/projects/presentation/screens/project_placeholder_screen.dart';
+import 'package:frontend/features/projects/presentation/screens/project_dashboard_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/projects_list_screen.dart';
 import 'package:go_router/go_router.dart';
+
+/// Ключи вложенных [Navigator] для веток дашборда проекта (StatefulShellRoute).
+final GlobalKey<NavigatorState> _projectShellChatNavKey =
+    GlobalKey<NavigatorState>(debugLabel: 'projectShellChat');
+final GlobalKey<NavigatorState> _projectShellTasksNavKey =
+    GlobalKey<NavigatorState>(debugLabel: 'projectShellTasks');
+final GlobalKey<NavigatorState> _projectShellTeamNavKey =
+    GlobalKey<NavigatorState>(debugLabel: 'projectShellTeam');
+final GlobalKey<NavigatorState> _projectShellSettingsNavKey =
+    GlobalKey<NavigatorState>(debugLabel: 'projectShellSettings');
 
 /// AppRouter настраивает маршрутизацию приложения
 ///
@@ -27,6 +38,8 @@ import 'package:go_router/go_router.dart';
 class AppRouter {
   static final GoRouter router = GoRouter(
     initialLocation: '/',
+    redirect: (_, GoRouterState state) =>
+        projectDashboardUnknownShellBranchRedirect(state),
     routes: [
       // Public routes
       GoRoute(
@@ -101,13 +114,33 @@ class AppRouter {
           GoRoute(
             path: ':id',
             name: 'projects_detail',
-            pageBuilder: (context, state) {
-              final id = state.pathParameters['id']!;
-              return MaterialPage(
-                key: state.pageKey,
-                child: ProjectPlaceholderScreen(projectId: id),
-              );
-            },
+            redirect: projectDashboardDetailRedirect,
+            routes: [
+              StatefulShellRoute(
+                builder: (context, state, navigationShell) {
+                  final id = state.pathParameters['id']!;
+                  return ProjectDashboardScreen(
+                    projectId: id,
+                    navigationShell: navigationShell,
+                  );
+                },
+                navigatorContainerBuilder: (
+                  BuildContext context,
+                  StatefulNavigationShell navigationShell,
+                  List<Widget> children,
+                ) {
+                  // Только активная ветка в дереве: на неактивных вкладках не остаётся
+                  // фоновых WebSocket и т.п. (см. задачу 10.6, «Производительность»).
+                  return children[navigationShell.currentIndex];
+                },
+                branches: buildProjectDashboardShellBranches(
+                  chatNavigatorKey: _projectShellChatNavKey,
+                  tasksNavigatorKey: _projectShellTasksNavKey,
+                  teamNavigatorKey: _projectShellTeamNavKey,
+                  settingsNavigatorKey: _projectShellSettingsNavKey,
+                ),
+              ),
+            ],
           ),
         ],
       ),

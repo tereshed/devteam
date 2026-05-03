@@ -447,6 +447,24 @@
   "createProjectErrorConflict": "Такое имя уже занято",
   "@createProjectErrorConflict": { "description": "Ошибка 409 при создании проекта" },
   "createProjectErrorGeneric": "Не удалось создать проект",
-  "@createProjectErrorGeneric": { "description": "Общая ошибка создания проекта" }
+  "@createProjectErrorGeneric": { "description": "Общая ошибка создания проекта" },
+  "projectDashboardFallbackTitle": "Проект",
+  "@projectDashboardFallbackTitle": {
+    "description": "Нейтральный заголовок AppBar, пока нет имени (загрузка, ошибка, 404)"
+  },
+  "projectDashboardChat": "Чат",
+  "@projectDashboardChat": { "description": "Раздел дашборда: чат" },
+  "projectDashboardTasks": "Задачи",
+  "@projectDashboardTasks": { "description": "Раздел дашборда: задачи" },
+  "projectDashboardTeam": "Команда",
+  "@projectDashboardTeam": { "description": "Раздел дашборда: команда" },
+  "projectDashboardSettings": "Настройки",
+  "@projectDashboardSettings": { "description": "Раздел дашборда: настройки" },
+  "projectDashboardNotFoundTitle": "Проект не найден",
+  "@projectDashboardNotFoundTitle": {
+    "description": "Только 404: основной текст в body (в AppBar — projectDashboardFallbackTitle)"
+  },
+  "projectDashboardNotFoundBackToList": "К списку проектов",
+  "@projectDashboardNotFoundBackToList": { "description": "Кнопка: вернуться к списку" }
 }
 
