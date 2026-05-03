@@ -386,6 +386,12 @@ abstract class AppLocalizations {
   /// **'Произошла неизвестная ошибка.'**
   String get errorUnknown;
 
+  /// Ошибка маршрутизации: маршрут не найден (GoRouter errorBuilder)
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось открыть эту страницу.'**
+  String get routerNavigationError;
+
   /// Заголовок лендинга
   ///
   /// In ru, this message translates to:
@@ -1034,7 +1040,7 @@ abstract class AppLocalizations {
   /// **'Не удалось создать проект'**
   String get createProjectErrorGeneric;
 
-  /// Нейтральный заголовок AppBar, пока нет имени (загрузка или ошибка, кроме 404)
+  /// Нейтральный заголовок AppBar, пока нет имени (загрузка, ошибка, 404)
   ///
   /// In ru, this message translates to:
   /// **'Проект'**
@@ -1064,7 +1070,7 @@ abstract class AppLocalizations {
   /// **'Настройки'**
   String get projectDashboardSettings;
 
-  /// 404: проект не существует
+  /// Только 404: основной текст в body (в AppBar — projectDashboardFallbackTitle)
   ///
   /// In ru, this message translates to:
   /// **'Проект не найден'**

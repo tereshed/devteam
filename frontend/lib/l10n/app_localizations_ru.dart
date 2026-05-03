@@ -157,6 +157,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get errorUnknown => 'Произошла неизвестная ошибка.';
 
   @override
+  String get routerNavigationError => 'Не удалось открыть эту страницу.';
+
+  @override
   String get landingTitle => 'Создавайте быстрее с Wibe';
 
   @override

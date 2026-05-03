@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/routing/auth_guard.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
+import 'package:frontend/core/routing/root_router_redirect.dart';
+import 'package:frontend/core/routing/router_error_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompt_edit_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompts_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/execution_detail_screen.dart';
@@ -38,8 +40,7 @@ final GlobalKey<NavigatorState> _projectShellSettingsNavKey =
 class AppRouter {
   static final GoRouter router = GoRouter(
     initialLocation: '/',
-    redirect: (_, GoRouterState state) =>
-        projectDashboardUnknownShellBranchRedirect(state),
+    redirect: rootRouterRedirect,
     routes: [
       // Public routes
       GoRoute(
@@ -96,8 +97,7 @@ class AppRouter {
 
       GoRoute(
         path: '/projects',
-        name: 'projects',
-        redirect: authGuard,
+        name: ProjectRouteNames.projects,
         pageBuilder: (context, state) => MaterialPage(
           key: state.pageKey,
           child: const ProjectsListScreen(),
@@ -105,7 +105,7 @@ class AppRouter {
         routes: [
           GoRoute(
             path: 'new',
-            name: 'projects_new',
+            name: ProjectRouteNames.projectsNew,
             pageBuilder: (context, state) => MaterialPage(
               key: state.pageKey,
               child: const CreateProjectScreen(),
@@ -113,7 +113,7 @@ class AppRouter {
           ),
           GoRoute(
             path: ':id',
-            name: 'projects_detail',
+            name: ProjectRouteNames.projectsDetail,
             redirect: projectDashboardDetailRedirect,
             routes: [
               StatefulShellRoute(
@@ -129,8 +129,8 @@ class AppRouter {
                   StatefulNavigationShell navigationShell,
                   List<Widget> children,
                 ) {
-                  // Только активная ветка в дереве: на неактивных вкладках не остаётся
-                  // фоновых WebSocket и т.п. (см. задачу 10.6, «Производительность»).
+                  // Только активная ветка: компромисс по state вкладок — см.
+                  // docs/tasks/10.7-gorouter-projects-routes.md, «StatefulShellRoute и сохранение state».
                   return children[navigationShell.currentIndex];
                 },
                 branches: buildProjectDashboardShellBranches(
@@ -198,11 +198,7 @@ class AppRouter {
         ],
       ),
     ],
-    // Обработка ошибок роутинга
-    errorBuilder: (context, state) {
-      // Для ошибок роутинга используем простой текст без локализации,
-      // так как это техническая ошибка, не видимая пользователю
-      return Scaffold(body: Center(child: Text('Error: ${state.error}')));
-    },
+    // Текст ошибки — [buildRouterErrorScreen] / ключ routerNavigationError в app_*.arb.
+    errorBuilder: buildRouterErrorScreen,
   );
 }

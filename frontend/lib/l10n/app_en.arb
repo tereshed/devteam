@@ -63,7 +63,11 @@
   "errorNetwork": "Network error. Please check your internet connection.",
   "errorServer": "Server error. Please try again later.",
   "errorUnknown": "An unknown error occurred.",
-  
+  "routerNavigationError": "We couldn't open this page.",
+  "@routerNavigationError": {
+    "description": "GoRouter errorBuilder when no route matches (invalid deep link)"
+  },
+
   "landingTitle": "Build Faster with Wibe",
   "landingSubtitle": "The ultimate Flutter + Gin template for your next big idea.\nProduction-ready, scalable, and beautiful.",
   "startForFree": "Start for Free",

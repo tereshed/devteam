@@ -242,7 +242,11 @@
   "@errorUnknown": {
     "description": "Ошибка: неизвестная ошибка"
   },
-  
+  "routerNavigationError": "Не удалось открыть эту страницу.",
+  "@routerNavigationError": {
+    "description": "Ошибка маршрутизации: маршрут не найден (GoRouter errorBuilder)"
+  },
+
   "landingTitle": "Создавайте быстрее с Wibe",
   "@landingTitle": { "description": "Заголовок лендинга" },
   "landingSubtitle": "Идеальный шаблон Flutter + Gin для вашей следующей идеи.\nГотов к продакшену, масштабируемый и красивый.",

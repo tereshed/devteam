@@ -25,10 +25,9 @@ class ProjectCard extends StatelessWidget {
         label: '${project.name}, $statusLabel',
         child: InkWell(
           key: Key('project-card-${project.id}'),
-          // Uri.encodeComponent — защита от спецсимволов в ID.
-          // UUID содержит только [a-z0-9-], encoding здесь no-op, но явное требование
-          // на случай если бэкенд сменит формат ID.
-          onTap: () => context.push('/projects/${Uri.encodeComponent(project.id)}'),
+          // ID — UUID с API (hex, допускает A–F); [isValidProjectUuid] в роутере отсекает
+          // несовместимые форматы. encodeComponent не используем — не та же мотивация, что у валидации.
+          onTap: () => context.push('/projects/${project.id}'),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(

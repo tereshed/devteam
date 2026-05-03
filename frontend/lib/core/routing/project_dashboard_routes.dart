@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
 import 'package:frontend/l10n/app_localizations.dart';
@@ -13,8 +14,35 @@ const List<String> projectDashboardShellBranchPaths = [
   'settings',
 ];
 
-/// Редирект с корня [GoRouter]: при `/projects/:id/<неизвестно>` дочерний матч не строится,
-/// [projectDashboardDetailRedirect] на `:id` не вызывается — без этого пользователь попадает в [GoRouter.errorBuilder].
+/// Дефолтная ветка после `/projects/:id` (редирект с корня дашборда и «неизвестного» сегмента).
+///
+/// **Инвариант:** всегда совпадает с [projectDashboardShellBranchPaths.first] — проверяется в тестах.
+const String projectDashboardDefaultBranch = 'chat';
+
+/// Имена маршрутов GoRouter для сегмента `/projects` (без дублирования литералов).
+abstract final class ProjectRouteNames {
+  static const projects = 'projects';
+  static const projectsNew = 'projects_new';
+  static const projectsDetail = 'projects_detail';
+}
+
+/// Редирект на [newPath] с сохранением query и fragment из [state] ([Uri.replace] оставляет непереданные компоненты).
+String projectDashboardRedirectPreservingQuery(
+  GoRouterState state,
+  String newPath,
+) {
+  return state.uri.replace(path: newPath).toString();
+}
+
+/// Редирект с корня [GoRouter]: при пути `/projects/:id/<x>`, где `<x>` не входит в
+/// [projectDashboardShellBranchPaths], дочерний [GoRoute] под `:id` не матчится целиком —
+/// route-level [projectDashboardDetailRedirect] для такого URL не выполняется. Без перехвата на
+/// уровне [GoRouter.redirect] пользователь попадает в [GoRouter.errorBuilder]. См. задачу
+/// **10.7** (`docs/tasks/10.7-gorouter-projects-routes.md`, «Обоснование глобального redirect»).
+///
+/// **Краевой случай (Sprint 10):** путь `/projects/:id/<branch>/<extra>` при известном `<branch>`
+/// здесь **не** обрабатывается (вложенных маршрутов у веток shell ещё нет) — возможен
+/// [GoRouter.errorBuilder]. Под-маршруты веток — Sprint 11+.
 String? projectDashboardUnknownShellBranchRedirect(GoRouterState state) {
   final segs = state.uri.pathSegments;
   if (segs.length < 3 || segs[0] != 'projects') {
@@ -25,12 +53,15 @@ String? projectDashboardUnknownShellBranchRedirect(GoRouterState state) {
     return null;
   }
   if (!projectDashboardShellBranchPaths.contains(segs[2])) {
-    return '/projects/$id/chat';
+    return projectDashboardRedirectPreservingQuery(
+      state,
+      '/projects/$id/$projectDashboardDefaultBranch',
+    );
   }
   return null;
 }
 
-/// Редирект под `/projects/:id`: невалидный id → список; голый id → ветка chat.
+/// Редирект под `/projects/:id`: невалидный id → список; голый id → [projectDashboardDefaultBranch].
 String? projectDashboardDetailRedirect(
   BuildContext context,
   GoRouterState state,
@@ -42,14 +73,19 @@ String? projectDashboardDetailRedirect(
   if (!isValidProjectUuid(id)) {
     return '/projects';
   }
-  final path = _stripSingleTrailingSlash(state.uri.path);
-  if (path == '/projects/$id') {
-    return '/projects/$id/chat';
+  // Корень дашборда: `/projects/:id` и `/projects/:id/` — через нормализацию пути
+  // (pathSegments для trailing slash даёт лишний пустой сегмент в некоторых Uri).
+  final normalizedPath = _stripSingleTrailingSlash(state.uri.path);
+  if (normalizedPath == '/projects/$id') {
+    return projectDashboardRedirectPreservingQuery(
+      state,
+      '/projects/$id/$projectDashboardDefaultBranch',
+    );
   }
   return null;
 }
 
-/// Нормализация для сравнения корня дашборда: `/projects/:id` и `/projects/:id/` считаются одним путём.
+/// Нормализация для сравнения корня дашборда: `/projects/:id` и `/projects/:id/` — один путь.
 String _stripSingleTrailingSlash(String path) {
   if (path.length > 1 && path.endsWith('/')) {
     return path.substring(0, path.length - 1);
@@ -89,10 +125,13 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
         ),
       ];
 
-  assert(
-    entries.length == projectDashboardShellBranchPaths.length,
-    'ветки shell и projectDashboardShellBranchPaths должны совпадать по длине',
-  );
+  if (entries.length != projectDashboardShellBranchPaths.length) {
+    throw StateError(
+      'buildProjectDashboardShellBranches: entries.length (${entries.length}) must '
+      'equal projectDashboardShellBranchPaths.length '
+      '(${projectDashboardShellBranchPaths.length})',
+    );
+  }
 
   return [
     for (var i = 0; i < entries.length; i++)
@@ -104,7 +143,9 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
             pageBuilder: (context, state) => NoTransitionPage(
               key: state.pageKey,
               child: ProjectDestinationPlaceholder(
-                title: entries[i].title(AppLocalizations.of(context)!),
+                title: entries[i].title(
+                  requireAppLocalizations(context, where: 'project_dashboard_shell'),
+                ),
               ),
             ),
           ),

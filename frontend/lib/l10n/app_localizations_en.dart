@@ -158,6 +158,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errorUnknown => 'An unknown error occurred.';
 
   @override
+  String get routerNavigationError => 'We couldn\'t open this page.';
+
+  @override
   String get landingTitle => 'Build Faster with Wibe';
 
   @override

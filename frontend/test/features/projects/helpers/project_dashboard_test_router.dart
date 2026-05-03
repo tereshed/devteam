@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
+import 'package:frontend/core/routing/router_error_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/project_dashboard_screen.dart';
 import 'package:go_router/go_router.dart';
 
-/// Тот же контракт, что [AppRouter]: валидация id, редирект, ветки из [buildProjectDashboardShellBranches].
+/// Матчинг и redirect’ы shell такие же, как в [AppRouter], кроме **auth**: здесь только
+/// [projectDashboardUnknownShellBranchRedirect], чтобы виджет-тесты не обязаны были
+/// оборачивать дерево в [ProviderScope]. Защита **`/projects/**`** через [authGuard] +
+/// [rootRouterRedirect] — в **`frontend/test/core/routing/root_router_redirect_test.dart`**.
 const String kTestProjectUuid = '550e8400-e29b-41d4-a716-446655440000';
 
 final GlobalKey<NavigatorState> kTestShellChatKey =
@@ -33,6 +37,12 @@ GoRouter buildProjectDashboardTestRouter({
         ),
         routes: [
           GoRoute(
+            path: 'new',
+            builder: (context, state) => const Scaffold(
+              body: Text('__TEST_PROJECTS_NEW__'),
+            ),
+          ),
+          GoRoute(
             path: ':id',
             redirect: projectDashboardDetailRedirect,
             routes: [
@@ -49,8 +59,7 @@ GoRouter buildProjectDashboardTestRouter({
                   StatefulNavigationShell navigationShell,
                   List<Widget> children,
                 ) {
-                  // Синхронно с [AppRouter]: см. комментарий в app_router.dart
-                  // (navigatorContainerBuilder у StatefulShellRoute).
+                  // См. docs/tasks/10.7-gorouter-projects-routes.md, «StatefulShellRoute и сохранение state».
                   return children[navigationShell.currentIndex];
                 },
                 branches: buildProjectDashboardShellBranches(
@@ -65,5 +74,6 @@ GoRouter buildProjectDashboardTestRouter({
         ],
       ),
     ],
+    errorBuilder: buildRouterErrorScreen,
   );
 }
