@@ -1,3 +1,4 @@
+import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/core/storage/token_provider.dart';
 import 'package:frontend/core/storage/token_storage.dart';
 import 'package:frontend/features/auth/data/auth_providers.dart';

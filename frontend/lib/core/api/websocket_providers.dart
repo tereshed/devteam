@@ -1,7 +1,7 @@
+import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_service.dart';
 import 'package:frontend/core/storage/token_provider.dart';
-import 'package:frontend/features/auth/data/auth_providers.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 

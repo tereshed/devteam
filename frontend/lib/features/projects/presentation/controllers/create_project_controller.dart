@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
@@ -16,6 +17,7 @@ String createProjectErrorTitle(AppLocalizations l10n, Object error) {
     ProjectConflictException _ => l10n.createProjectErrorConflict,
     UnauthorizedException _ => l10n.errorUnauthorized,
     ProjectForbiddenException _ => l10n.errorForbidden,
+    ProjectCancelledException _ => l10n.errorRequestCancelled,
     final ProjectApiException e => _createProjectApiErrorTitle(l10n, e),
     _ => l10n.createProjectErrorGeneric,
   };
@@ -37,6 +39,9 @@ String _createProjectApiErrorTitle(
 
 /// Короткий безопасный хвост из [ProjectApiException.message] (уже санитизирован в репозитории).
 String? createProjectErrorDetail(Object error) {
+  if (error is ProjectCancelledException) {
+    return null;
+  }
   if (error is! ProjectApiException) {
     return null;
   }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
 import 'package:frontend/features/projects/domain/models.dart';
+import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
 import 'package:mocktail/mocktail.dart';

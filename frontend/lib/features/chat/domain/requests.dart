@@ -40,3 +40,23 @@ abstract class MessageListResponse with _$MessageListResponse {
   factory MessageListResponse.fromJson(Map<String, dynamic> json) =>
       _$MessageListResponseFromJson(json);
 }
+
+@freezed
+abstract class CreateConversationRequest with _$CreateConversationRequest {
+  const factory CreateConversationRequest({
+    required String title,
+  }) = _CreateConversationRequest;
+
+  factory CreateConversationRequest.fromJson(Map<String, dynamic> json) =>
+      _$CreateConversationRequestFromJson(json);
+}
+
+@freezed
+abstract class SendMessageRequest with _$SendMessageRequest {
+  const factory SendMessageRequest({
+    required String content,
+  }) = _SendMessageRequest;
+
+  factory SendMessageRequest.fromJson(Map<String, dynamic> json) =>
+      _$SendMessageRequestFromJson(json);
+}

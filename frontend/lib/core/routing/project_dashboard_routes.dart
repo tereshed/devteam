@@ -49,7 +49,7 @@ String? projectDashboardUnknownShellBranchRedirect(GoRouterState state) {
     return null;
   }
   final id = segs[1];
-  if (!isValidProjectUuid(id)) {
+  if (!isValidUuid(id)) {
     return null;
   }
   if (!projectDashboardShellBranchPaths.contains(segs[2])) {
@@ -70,7 +70,7 @@ String? projectDashboardDetailRedirect(
   if (id == null) {
     return null;
   }
-  if (!isValidProjectUuid(id)) {
+  if (!isValidUuid(id)) {
     return '/projects';
   }
   // Корень дашборда: `/projects/:id` и `/projects/:id/` — через нормализацию пути

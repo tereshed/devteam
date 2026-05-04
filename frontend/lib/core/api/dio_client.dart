@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:frontend/core/api/dio_message_path.dart';
+
 /// DioClient настраивает HTTP клиент для работы с API
 ///
 /// Используется для всех запросов к backend API.
@@ -12,7 +14,6 @@ class DioClient {
 
   DioClient({
     required String baseUrl,
-    String? accessToken,
     String? Function()? getToken,
   }) : _dio = Dio(
          BaseOptions(
@@ -51,14 +52,10 @@ class DioClient {
       ),
     );
 
-    // Добавляем логгер для отладки
-    _dio.interceptors.add(
-      LogInterceptor(
-        requestBody: true,
-        responseBody: true,
-        logPrint: (object) => debugPrint('DIO: $object'),
-      ),
-    );
+    // Логи только в debug; тела запросов/ответов для `/conversations/.../messages` не пишем (PII).
+    if (kDebugMode) {
+      _dio.interceptors.add(_DebugDioLogInterceptor());
+    }
   }
 
   /// Получить экземпляр Dio для использования в репозиториях
@@ -72,5 +69,52 @@ class DioClient {
     } else {
       _dio.options.headers.remove('Authorization');
     }
+  }
+}
+
+class _DebugDioLogInterceptor extends Interceptor {
+  void _log(String line) => debugPrint('DIO: $line');
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    final omit = isConversationMessagesApiPath(options.path);
+    _log('--> ${options.method} ${options.uri}');
+    if (omit) {
+      _log('request body: [omitted: conversation messages]');
+    } else if (options.data != null) {
+      _log('request body: ${options.data}');
+    }
+    handler.next(options);
+  }
+
+  @override
+  void onResponse(
+    Response<dynamic> response,
+    ResponseInterceptorHandler handler,
+  ) {
+    final omit = isConversationMessagesApiPath(response.requestOptions.path);
+    _log('<-- ${response.statusCode} ${response.requestOptions.uri}');
+    if (omit) {
+      _log('response body: [omitted: conversation messages]');
+    } else {
+      _log('response body: ${response.data}');
+    }
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    final ro = err.requestOptions;
+    final omit = isConversationMessagesApiPath(ro.path);
+    _log('*** ERROR ${err.response?.statusCode} ${ro.uri} (${err.type})');
+    if (omit) {
+      _log('error response body: [omitted: conversation messages]');
+    } else {
+      final data = err.response?.data;
+      if (data != null) {
+        _log('error response body: $data');
+      }
+    }
+    handler.next(err);
   }
 }

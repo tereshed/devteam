@@ -56,6 +56,10 @@
   "errorUserAlreadyExists": "User already exists",
   "errorAccessDenied": "Access denied",
   "errorNetwork": "Network error. Please check your internet connection.",
+  "errorRequestCancelled": "The request was cancelled.",
+  "@errorRequestCancelled": {
+    "description": "In-flight HTTP request was cancelled (e.g. dispose, user abort)"
+  },
   "errorServer": "Server error. Please try again later.",
   "errorUnknown": "An unknown error occurred.",
   "routerNavigationError": "We couldn't open this page.",

@@ -192,7 +192,7 @@ class WebSocketService {
     if (_paused) {
       throw StateError('WebSocketService.pause: вызовите resume() перед connect()');
     }
-    if (!isValidProjectUuid(projectId)) {
+    if (!isValidUuid(projectId)) {
       throw ArgumentError.value(projectId, 'projectId', 'Ожидался UUID проекта');
     }
 

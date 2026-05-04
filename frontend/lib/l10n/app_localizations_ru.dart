@@ -139,6 +139,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get errorNetwork => 'Ошибка сети. Проверьте подключение к интернету.';
 
   @override
+  String get errorRequestCancelled => 'Запрос отменён.';
+
+  @override
   String get errorServer => 'Ошибка сервера. Попробуйте позже.';
 
   @override

@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:frontend/features/auth/data/auth_providers.dart';
+import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_repository.dart';
 import 'package:frontend/features/admin/prompts/domain/prompt_model.dart';
 

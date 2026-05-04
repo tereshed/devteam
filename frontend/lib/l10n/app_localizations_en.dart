@@ -140,6 +140,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Network error. Please check your internet connection.';
 
   @override
+  String get errorRequestCancelled => 'The request was cancelled.';
+
+  @override
   String get errorServer => 'Server error. Please try again later.';
 
   @override

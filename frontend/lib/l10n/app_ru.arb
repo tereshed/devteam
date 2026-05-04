@@ -214,6 +214,10 @@
   "@errorNetwork": {
     "description": "Ошибка: проблемы с сетью"
   },
+  "errorRequestCancelled": "Запрос отменён.",
+  "@errorRequestCancelled": {
+    "description": "HTTP-запрос отменён (dispose, отмена пользователем и т.п.)"
+  },
   "errorServer": "Ошибка сервера. Попробуйте позже.",
   "@errorServer": {
     "description": "Ошибка: проблема на сервере"

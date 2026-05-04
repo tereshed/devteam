@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
@@ -60,6 +61,32 @@ void main() {
       )).called(1);
     });
 
+    test('test_getProject_emptyJsonBody_throwsProjectApiException', () async {
+      when(mockDio.get(
+        '/projects/123e4567-e89b-12d3-a456-426614174000',
+        cancelToken: anyNamed('cancelToken'),
+      )).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: null,
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/123e4567-e89b-12d3-a456-426614174000',
+          ),
+        ),
+      );
+
+      expect(
+        () => repository.getProject('123e4567-e89b-12d3-a456-426614174000'),
+        throwsA(
+          isA<ProjectApiException>().having(
+            (e) => e.message,
+            'message',
+            'Empty response body',
+          ),
+        ),
+      );
+    });
+
     test('test_getProject_unauthorized', () async {
       when(mockDio.get(
         '/projects/123e4567-e89b-12d3-a456-426614174000',
@@ -80,7 +107,13 @@ void main() {
 
       expect(
         () => repository.getProject('123e4567-e89b-12d3-a456-426614174000'),
-        throwsA(isA<UnauthorizedException>()),
+        throwsA(
+          isA<UnauthorizedException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'unauthorized',
+          ),
+        ),
       );
     });
 
@@ -100,7 +133,13 @@ void main() {
 
       expect(
         () => repository.getProject('other-user-id'),
-        throwsA(isA<ProjectForbiddenException>()),
+        throwsA(
+          isA<ProjectForbiddenException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'forbidden',
+          ),
+        ),
       );
     });
 
@@ -120,7 +159,13 @@ void main() {
 
       expect(
         () => repository.getProject('nonexistent'),
-        throwsA(isA<ProjectNotFoundException>()),
+        throwsA(
+          isA<ProjectNotFoundException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'not_found',
+          ),
+        ),
       );
     });
 
@@ -420,7 +465,13 @@ void main() {
 
       expect(
         () => repository.createProject(request),
-        throwsA(isA<ProjectConflictException>()),
+        throwsA(
+          isA<ProjectConflictException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'duplicate',
+          ),
+        ),
       );
     });
 
@@ -448,7 +499,13 @@ void main() {
 
       expect(
         () => repository.createProject(request),
-        throwsA(isA<ProjectForbiddenException>()),
+        throwsA(
+          isA<ProjectForbiddenException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'forbidden',
+          ),
+        ),
       );
     });
 
@@ -567,7 +624,13 @@ void main() {
 
       expect(
         () => repository.updateProject('nonexistent', request),
-        throwsA(isA<ProjectNotFoundException>()),
+        throwsA(
+          isA<ProjectNotFoundException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'not_found',
+          ),
+        ),
       );
     });
 
@@ -597,7 +660,13 @@ void main() {
           '123e4567-e89b-12d3-a456-426614174000',
           request,
         ),
-        throwsA(isA<ProjectConflictException>()),
+        throwsA(
+          isA<ProjectConflictException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'conflict',
+          ),
+        ),
       );
     });
 
@@ -621,7 +690,13 @@ void main() {
 
       expect(
         () => repository.updateProject('other-user-id', request),
-        throwsA(isA<ProjectForbiddenException>()),
+        throwsA(
+          isA<ProjectForbiddenException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'forbidden',
+          ),
+        ),
       );
     });
 
@@ -729,7 +804,13 @@ void main() {
 
       expect(
         () => repository.deleteProject('123e4567-e89b-12d3-a456-426614174000'),
-        throwsA(isA<UnauthorizedException>()),
+        throwsA(
+          isA<UnauthorizedException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'unauthorized',
+          ),
+        ),
       );
     });
 
@@ -752,7 +833,13 @@ void main() {
 
       expect(
         () => repository.deleteProject('other-user-id'),
-        throwsA(isA<ProjectForbiddenException>()),
+        throwsA(
+          isA<ProjectForbiddenException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'forbidden',
+          ),
+        ),
       );
     });
 
@@ -775,7 +862,13 @@ void main() {
 
       expect(
         () => repository.deleteProject('nonexistent'),
-        throwsA(isA<ProjectNotFoundException>()),
+        throwsA(
+          isA<ProjectNotFoundException>().having(
+            (e) => e.apiErrorCode,
+            'apiErrorCode',
+            'not_found',
+          ),
+        ),
       );
     });
 
@@ -817,6 +910,21 @@ void main() {
       expect(
         () => repository.getProject('123'),
         throwsA(isA<ProjectApiException>()),
+      );
+    });
+
+    test('test_networkError_cancel', () async {
+      when(mockDio.get(
+        '/projects/123',
+        cancelToken: anyNamed('cancelToken'),
+      )).thenThrow(DioException(
+        requestOptions: RequestOptions(path: '/projects/123'),
+        type: DioExceptionType.cancel,
+      ));
+
+      expect(
+        () => repository.getProject('123'),
+        throwsA(isA<ProjectCancelledException>()),
       );
     });
   });

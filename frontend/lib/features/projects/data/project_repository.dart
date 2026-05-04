@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:frontend/core/utils/sanitize_user_facing_message.dart';
+import 'package:frontend/core/api/api_exceptions.dart';
+import 'package:frontend/core/api/dio_api_error.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
@@ -8,16 +9,29 @@ import 'package:frontend/features/projects/domain/requests.dart';
 ///
 /// Абстрагирует логику получения данных от backend API от бизнес-логики.
 /// Используется в контроллерах/провайдерах (Riverpod) для получения данных.
+///
+/// При отмене запроса ([CancelToken.cancel], [DioExceptionType.cancel]) методы бросают
+/// [ProjectCancelledException].
 class ProjectRepository {
   final Dio _dio;
 
   ProjectRepository({required Dio dio}) : _dio = dio;
+
+  Map<String, dynamic> _jsonBody(Response<dynamic> response) =>
+      requireResponseJsonMap(
+        response,
+        onInvalid: (msg, code) => throw ProjectApiException(
+          msg,
+          statusCode: code,
+        ),
+      );
 
   /// Получает проект по UUID
   ///
   /// Throws [ProjectNotFoundException] если проект не найден (404)
   /// Throws [ProjectForbiddenException] если нет прав на доступ (403)
   /// Throws [UnauthorizedException] если не авторизован (401)
+  /// Throws [ProjectCancelledException] при отмене запроса
   /// Throws [ProjectApiException] при других ошибках API
   Future<ProjectModel> getProject(
     String id, {
@@ -32,7 +46,7 @@ class ProjectRepository {
         '/projects/$id',
         cancelToken: cancelToken,
       );
-      return ProjectModel.fromJson(response.data as Map<String, dynamic>);
+      return ProjectModel.fromJson(_jsonBody(response));
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
@@ -46,6 +60,7 @@ class ProjectRepository {
   /// - offset < 0 → 0
   ///
   /// Throws [UnauthorizedException] если не авторизован (401)
+  /// Throws [ProjectCancelledException] при отмене запроса
   /// Throws [ProjectApiException] при других ошибках API
   Future<ProjectListResponse> listProjects({
     ProjectListFilter? filter,
@@ -80,7 +95,7 @@ class ProjectRepository {
         cancelToken: cancelToken,
       );
 
-      return ProjectListResponse.fromJson(response.data as Map<String, dynamic>);
+      return ProjectListResponse.fromJson(_jsonBody(response));
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
@@ -91,6 +106,7 @@ class ProjectRepository {
   /// Throws [ProjectForbiddenException] если нет прав на создание (403)
   /// Throws [ProjectConflictException] если имя занято (409)
   /// Throws [UnauthorizedException] если не авторизован (401)
+  /// Throws [ProjectCancelledException] при отмене запроса
   /// Throws [ProjectApiException] при других ошибках API
   Future<ProjectModel> createProject(
     CreateProjectRequest request, {
@@ -102,7 +118,7 @@ class ProjectRepository {
         data: request.toJson(),
         cancelToken: cancelToken,
       );
-      return ProjectModel.fromJson(response.data as Map<String, dynamic>);
+      return ProjectModel.fromJson(_jsonBody(response));
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
@@ -116,6 +132,7 @@ class ProjectRepository {
   /// Throws [ProjectForbiddenException] если нет прав на обновление (403)
   /// Throws [ProjectConflictException] если имя занято (409)
   /// Throws [UnauthorizedException] если не авторизован (401)
+  /// Throws [ProjectCancelledException] при отмене запроса
   /// Throws [ProjectApiException] при других ошибках API
   Future<ProjectModel> updateProject(
     String id,
@@ -136,7 +153,7 @@ class ProjectRepository {
         data: request.toJson(),
         cancelToken: cancelToken,
       );
-      return ProjectModel.fromJson(response.data as Map<String, dynamic>);
+      return ProjectModel.fromJson(_jsonBody(response));
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
@@ -148,6 +165,7 @@ class ProjectRepository {
   /// Throws [ProjectNotFoundException] если проект не найден (404)
   /// Throws [ProjectForbiddenException] если нет прав на удаление (403)
   /// Throws [UnauthorizedException] если не авторизован (401)
+  /// Throws [ProjectCancelledException] при отмене запроса
   /// Throws [ProjectApiException] при других ошибках API
   Future<void> deleteProject(
     String id, {
@@ -167,59 +185,54 @@ class ProjectRepository {
     }
   }
 
-  /// Текст из JSON ответа API: только непустая строка, иначе `null` (чтобы не брать `''` вместо fallback).
-  String? _firstNonEmptyApiString(Map<String, dynamic> data, String key) {
-    final v = data[key];
-    if (v is! String) {
-      return null;
-    }
-    final t = v.trim();
-    return t.isEmpty ? null : t;
-  }
-
   /// Обработка ошибок Dio
-  ProjectRepositoryException _handleDioError(DioException error) {
-    switch (error.type) {
-      case DioExceptionType.badResponse:
-        final statusCode = error.response?.statusCode;
-        final data = error.response?.data;
+  Exception _handleDioError(DioException error) {
+    final p = parseDioApiError(error);
+    final statusCode = p.statusCode;
 
-        String? message;
-        if (data is Map<String, dynamic>) {
-          message = _firstNonEmptyApiString(data, 'message') ??
-              _firstNonEmptyApiString(data, 'error');
-        }
-        final rawMsg = message ?? data.toString();
-        final errorMsg = sanitizeUserFacingMessage(rawMsg);
+    if (p.isCancellation) {
+      return ProjectCancelledException(
+        p.sanitizedMessage,
+        originalError: error,
+      );
+    }
 
-        switch (statusCode) {
-          case 401:
-            return UnauthorizedException(errorMsg);
-          case 403:
-            return ProjectForbiddenException(errorMsg);
-          case 404:
-            return ProjectNotFoundException(errorMsg);
-          case 409:
-            return ProjectConflictException(errorMsg);
-          default:
-            return ProjectApiException(
-              errorMsg,
-              statusCode: statusCode,
-              originalError: error,
-            );
-        }
+    if (statusCode == null) {
+      return ProjectApiException(
+        p.sanitizedMessage,
+        originalError: error,
+      );
+    }
 
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.receiveTimeout:
-      case DioExceptionType.sendTimeout:
-        return ProjectApiException('Network timeout', originalError: error);
-
-      case DioExceptionType.connectionError:
-        return ProjectApiException('Network error', originalError: error);
-
+    switch (statusCode) {
+      case 401:
+        return UnauthorizedException(
+          p.sanitizedMessage,
+          originalError: error,
+          apiErrorCode: p.stableErrorCode,
+        );
+      case 403:
+        return ProjectForbiddenException(
+          p.sanitizedMessage,
+          originalError: error,
+          apiErrorCode: p.stableErrorCode,
+        );
+      case 404:
+        return ProjectNotFoundException(
+          p.sanitizedMessage,
+          originalError: error,
+          apiErrorCode: p.stableErrorCode,
+        );
+      case 409:
+        return ProjectConflictException(
+          p.sanitizedMessage,
+          originalError: error,
+          apiErrorCode: p.stableErrorCode,
+        );
       default:
         return ProjectApiException(
-          sanitizeUserFacingMessage(error.message ?? 'Unknown error'),
+          p.sanitizedMessage,
+          statusCode: statusCode,
           originalError: error,
         );
     }

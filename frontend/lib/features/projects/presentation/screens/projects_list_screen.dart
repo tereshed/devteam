@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models.dart';
+import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
 import 'package:frontend/features/projects/presentation/utils/project_status_display.dart';

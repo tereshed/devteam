@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:frontend/features/auth/data/auth_providers.dart';
+import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
 import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/projects/domain/requests.dart';

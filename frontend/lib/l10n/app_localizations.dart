@@ -350,6 +350,12 @@ abstract class AppLocalizations {
   /// **'Ошибка сети. Проверьте подключение к интернету.'**
   String get errorNetwork;
 
+  /// HTTP-запрос отменён (dispose, отмена пользователем и т.п.)
+  ///
+  /// In ru, this message translates to:
+  /// **'Запрос отменён.'**
+  String get errorRequestCancelled;
+
   /// Ошибка: проблема на сервере
   ///
   /// In ru, this message translates to:

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
-import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_dashboard_shell.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';

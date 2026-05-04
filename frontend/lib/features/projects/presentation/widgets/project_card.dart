@@ -25,7 +25,7 @@ class ProjectCard extends StatelessWidget {
         label: '${project.name}, $statusLabel',
         child: InkWell(
           key: Key('project-card-${project.id}'),
-          // ID — UUID с API (hex, допускает A–F); [isValidProjectUuid] в роутере отсекает
+          // ID — UUID с API (hex, допускает A–F); [isValidUuid] в роутере отсекает
           // несовместимые форматы. encodeComponent не используем — не та же мотивация, что у валидации.
           onTap: () => context.push('/projects/${project.id}'),
           child: Padding(
