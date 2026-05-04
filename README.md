@@ -316,7 +316,7 @@ User Message
 | 11.1 | Модели (Freezed): сущности чата + пагинационные обёртки (`ConversationModel`, `ConversationMessageModel`, `ConversationListResponse`, `MessageListResponse`) | `frontend/lib/features/chat/domain/` | ✅ | [детали](docs/tasks/11.1-models-freezed-chat.md) |
 | 11.2 | WebSocket Service: подключение, реконнект, парсинг событий | `frontend/lib/core/api/websocket_service.dart`, `frontend/lib/core/api/websocket_events.dart`, `frontend/lib/core/api/websocket.dart` | ✅ | [детали](docs/tasks/11.2-websocket-service.md) |
 | 11.3 | Repository: `ConversationRepository` (Dio → backend API) | `frontend/lib/features/chat/data/conversation_repository.dart` | ✅ | [детали](docs/tasks/11.3-repository-conversation.md) |
-| 11.4 | Controller: `ChatController` (AsyncNotifier — загрузка, отправка, стрим) | `frontend/lib/features/chat/presentation/controllers/chat_controller.dart` | ⬜ |
+| 11.4 | Controller: `ChatController` (AsyncNotifier — загрузка, отправка, стрим) | `frontend/lib/features/chat/presentation/controllers/chat_controller.dart` | ✅ | [детали](docs/tasks/11.4-chat-controller.md) |
 | 11.5 | Экран: Чат (список сообщений, поле ввода, отправка) | `frontend/lib/features/chat/presentation/screens/chat_screen.dart` | ⬜ |
 | 11.6 | Виджет: `ChatMessage` (user/assistant/system, markdown, код, стримящийся текст) | `frontend/lib/features/chat/presentation/widgets/chat_message.dart` | ⬜ |
 | 11.7 | Виджет: `TaskStatusCard` (встроенная карточка статуса задачи в чате) | `frontend/lib/features/chat/presentation/widgets/task_status_card.dart` | ⬜ |

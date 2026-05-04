@@ -509,4 +509,13 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get projectDashboardNotFoundBackToList => 'К списку проектов';
+
+  @override
+  String get chatErrorGeneric => 'Не удалось загрузить чат';
+
+  @override
+  String get chatErrorConversationNotFound => 'Чат не найден';
+
+  @override
+  String get chatErrorRateLimited => 'Слишком много запросов. Попробуйте позже';
 }

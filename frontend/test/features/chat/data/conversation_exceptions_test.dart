@@ -59,5 +59,22 @@ void main() {
       );
       expect(a, equals(b));
     });
+
+    test('isNetworkTransportError участвует в равенстве', () {
+      final a = ConversationApiException(
+        'x',
+        isNetworkTransportError: true,
+      );
+      final b = ConversationApiException(
+        'x',
+        isNetworkTransportError: true,
+      );
+      final c = ConversationApiException(
+        'x',
+        isNetworkTransportError: false,
+      );
+      expect(a, equals(b));
+      expect(a, isNot(equals(c)));
+    });
   });
 }

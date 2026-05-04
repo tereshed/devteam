@@ -55,4 +55,43 @@ void main() {
       );
     });
   });
+
+  group('parseDioApiError', () {
+    test('connectionTimeout sets isNetworkTransportError', () {
+      final p = parseDioApiError(
+        DioException(
+          requestOptions: RequestOptions(path: '/a'),
+          type: DioExceptionType.connectionTimeout,
+        ),
+      );
+      expect(p.isNetworkTransportError, isTrue);
+      expect(p.statusCode, isNull);
+    });
+
+    test('connectionError sets isNetworkTransportError', () {
+      final p = parseDioApiError(
+        DioException(
+          requestOptions: RequestOptions(path: '/a'),
+          type: DioExceptionType.connectionError,
+        ),
+      );
+      expect(p.isNetworkTransportError, isTrue);
+    });
+
+    test('badResponse leaves isNetworkTransportError false', () {
+      final p = parseDioApiError(
+        DioException(
+          requestOptions: RequestOptions(path: '/a'),
+          type: DioExceptionType.badResponse,
+          response: Response<dynamic>(
+            statusCode: 500,
+            requestOptions: RequestOptions(path: '/a'),
+            data: <String, dynamic>{'message': 'x'},
+          ),
+        ),
+      );
+      expect(p.isNetworkTransportError, isFalse);
+      expect(p.statusCode, 500);
+    });
+  });
 }

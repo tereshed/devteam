@@ -259,6 +259,7 @@ class ConversationRepository {
       return ConversationApiException(
         p.sanitizedMessage,
         originalError: error,
+        isNetworkTransportError: p.isNetworkTransportError,
       );
     }
 

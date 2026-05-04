@@ -1,0 +1,6 @@
+# Объявление тегов для `flutter test --tags=…` (см. README / docs/rules/frontend.md).
+tags:
+  unit:
+    description: "Юнит-тесты (логика, репозитории с моками)"
+  widget:
+    description: "Виджет-тесты"

@@ -1034,11 +1034,13 @@ void main() {
       expect(
         () => repository.getConversation(conversationId),
         throwsA(
-          isA<ConversationApiException>().having(
-            (e) => e.message,
-            'message',
-            'Network timeout',
-          ),
+          isA<ConversationApiException>()
+              .having((e) => e.message, 'message', 'Network timeout')
+              .having(
+                (e) => e.isNetworkTransportError,
+                'isNetworkTransportError',
+                isTrue,
+              ),
         ),
       );
     });
@@ -1059,11 +1061,13 @@ void main() {
       expect(
         () => repository.getConversation(conversationId),
         throwsA(
-          isA<ConversationApiException>().having(
-            (e) => e.message,
-            'message',
-            'Network error',
-          ),
+          isA<ConversationApiException>()
+              .having((e) => e.message, 'message', 'Network error')
+              .having(
+                (e) => e.isNetworkTransportError,
+                'isNetworkTransportError',
+                isTrue,
+              ),
         ),
       );
     });

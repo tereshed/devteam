@@ -121,11 +121,15 @@ class ConversationApiException extends ConversationRepositoryException {
   final int? statusCode;
   final String? apiErrorCode;
 
+  /// Сеть без HTTP-ответа (таймаут / connection error), см. [parseDioApiError].
+  final bool isNetworkTransportError;
+
   ConversationApiException(
     super.message, {
     this.statusCode,
     this.apiErrorCode,
     super.originalError,
+    this.isNetworkTransportError = false,
   });
 
   @override
@@ -136,9 +140,16 @@ class ConversationApiException extends ConversationRepositoryException {
     return other is ConversationApiException &&
         message == other.message &&
         statusCode == other.statusCode &&
-        apiErrorCode == other.apiErrorCode;
+        apiErrorCode == other.apiErrorCode &&
+        isNetworkTransportError == other.isNetworkTransportError;
   }
 
   @override
-  int get hashCode => Object.hash(runtimeType, message, statusCode, apiErrorCode);
+  int get hashCode => Object.hash(
+        runtimeType,
+        message,
+        statusCode,
+        apiErrorCode,
+        isNetworkTransportError,
+      );
 }

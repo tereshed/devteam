@@ -17,6 +17,7 @@ class ApiErrorPayload {
     this.statusCode,
     this.stableErrorCode,
     this.isCancellation = false,
+    this.isNetworkTransportError = false,
   });
 
   final int? statusCode;
@@ -24,6 +25,9 @@ class ApiErrorPayload {
   final String? stableErrorCode;
   final String requestPath;
   final bool isCancellation;
+
+  /// Таймауты / обрыв соединения Dio без HTTP-ответа (не путать с телом API).
+  final bool isNetworkTransportError;
 }
 
 /// Требует JSON-объект в [Response.data]. Иначе вызывает [onInvalid] (репозиторий кидает своё исключение).
@@ -95,6 +99,7 @@ ApiErrorPayload parseDioApiError(DioException error) {
         stableErrorCode: null,
         sanitizedMessage: sanitizeUserFacingMessage('Network timeout'),
         requestPath: requestPath,
+        isNetworkTransportError: true,
       );
 
     case DioExceptionType.connectionError:
@@ -103,6 +108,7 @@ ApiErrorPayload parseDioApiError(DioException error) {
         stableErrorCode: null,
         sanitizedMessage: sanitizeUserFacingMessage('Network error'),
         requestPath: requestPath,
+        isNetworkTransportError: true,
       );
 
     case DioExceptionType.cancel:

@@ -510,4 +510,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get projectDashboardNotFoundBackToList => 'Back to projects';
+
+  @override
+  String get chatErrorGeneric => 'Could not load chat';
+
+  @override
+  String get chatErrorConversationNotFound => 'Conversation not found';
+
+  @override
+  String get chatErrorRateLimited =>
+      'Too many requests. Please try again later';
 }

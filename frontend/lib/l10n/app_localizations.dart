@@ -1063,6 +1063,24 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'К списку проектов'**
   String get projectDashboardNotFoundBackToList;
+
+  /// Общая ошибка чата (ChatController)
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить чат'**
+  String get chatErrorGeneric;
+
+  /// 404 чата
+  ///
+  /// In ru, this message translates to:
+  /// **'Чат не найден'**
+  String get chatErrorConversationNotFound;
+
+  /// 429 при работе с чатом
+  ///
+  /// In ru, this message translates to:
+  /// **'Слишком много запросов. Попробуйте позже'**
+  String get chatErrorRateLimited;
 }
 
 class _AppLocalizationsDelegate

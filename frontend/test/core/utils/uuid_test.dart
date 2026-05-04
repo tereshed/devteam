@@ -1,7 +1,25 @@
+// @dart=2.19
+// @TestOn('vm')
+// @Tags(['unit'])
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/utils/uuid.dart';
 
 void main() {
+  group('generateClientMessageId', () {
+    test('возвращает валидный UUID v4 (формат 8-4-4-4-12)', () {
+      final id = generateClientMessageId();
+      expect(isValidUuid(id), isTrue);
+    });
+
+    test('два вызова отличаются (стохастично, вероятность коллизии исчезающе мала)', () {
+      expect(
+        generateClientMessageId() == generateClientMessageId(),
+        isFalse,
+      );
+    });
+  });
+
   group('isValidUuid', () {
     test('принимает типичный UUID v4', () {
       expect(

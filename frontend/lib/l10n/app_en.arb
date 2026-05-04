@@ -187,6 +187,12 @@
   "projectDashboardTeam": "Team",
   "projectDashboardSettings": "Settings",
   "projectDashboardNotFoundTitle": "Project not found",
-  "projectDashboardNotFoundBackToList": "Back to projects"
+  "projectDashboardNotFoundBackToList": "Back to projects",
+  "chatErrorGeneric": "Could not load chat",
+  "@chatErrorGeneric": { "description": "Generic chat error (ChatController)" },
+  "chatErrorConversationNotFound": "Conversation not found",
+  "@chatErrorConversationNotFound": { "description": "404 for conversation" },
+  "chatErrorRateLimited": "Too many requests. Please try again later",
+  "@chatErrorRateLimited": { "description": "429 for chat API" }
 }
 

@@ -453,6 +453,12 @@
     "description": "Только 404: основной текст в body (в AppBar — projectDashboardFallbackTitle)"
   },
   "projectDashboardNotFoundBackToList": "К списку проектов",
-  "@projectDashboardNotFoundBackToList": { "description": "Кнопка: вернуться к списку" }
+  "@projectDashboardNotFoundBackToList": { "description": "Кнопка: вернуться к списку" },
+  "chatErrorGeneric": "Не удалось загрузить чат",
+  "@chatErrorGeneric": { "description": "Общая ошибка чата (ChatController)" },
+  "chatErrorConversationNotFound": "Чат не найден",
+  "@chatErrorConversationNotFound": { "description": "404 чата" },
+  "chatErrorRateLimited": "Слишком много запросов. Попробуйте позже",
+  "@chatErrorRateLimited": { "description": "429 при работе с чатом" }
 }
 
