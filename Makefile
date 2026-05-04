@@ -8,7 +8,7 @@ SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 	validate-agent-configs \
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
 	migrate-create migrate-up migrate-down migrate-status \
-	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration \
+	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration frontend-test-ws \
 	frontend-analyze frontend-codegen frontend-codegen-watch frontend-l10n-check \
 	frontend-run-web frontend-run-android frontend-run-ios \
 	frontend-build-web frontend-build-android frontend-build-ios \
@@ -76,6 +76,12 @@ frontend-test-widget: frontend-test
 
 frontend-test-integration:
 	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n && flutter test integration_test/
+
+# Задача 11.2: WebSocket unit-тесты на VM и в Chrome (subprotocol / web).
+frontend-test-ws:
+	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n && \
+	flutter test test/core/api/websocket_service_test.dart test/core/api/websocket_events_test.dart test/core/api/ws_handshake_unauthorized_test.dart && \
+	flutter test --platform chrome test/core/api/websocket_service_test.dart test/core/api/websocket_events_test.dart test/core/api/websocket_service_web_test.dart
 
 # === Миграции Базы Данных (YugabyteDB) ===
 migrate-create:

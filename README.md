@@ -314,7 +314,7 @@ User Message
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
 | 11.1 | Модели (Freezed): сущности чата + пагинационные обёртки (`ConversationModel`, `ConversationMessageModel`, `ConversationListResponse`, `MessageListResponse`) | `frontend/lib/features/chat/domain/` | ✅ | [детали](docs/tasks/11.1-models-freezed-chat.md) |
-| 11.2 | WebSocket Service: подключение, реконнект, парсинг событий | `frontend/lib/core/api/websocket_service.dart` | ⬜ |
+| 11.2 | WebSocket Service: подключение, реконнект, парсинг событий | `frontend/lib/core/api/websocket_service.dart`, `frontend/lib/core/api/websocket_events.dart`, `frontend/lib/core/api/websocket.dart` | ✅ | [детали](docs/tasks/11.2-websocket-service.md) |
 | 11.3 | Repository: `ConversationRepository` | `frontend/lib/features/chat/data/conversation_repository.dart` | ⬜ |
 | 11.4 | Controller: `ChatController` (AsyncNotifier — загрузка, отправка, стрим) | `frontend/lib/features/chat/presentation/controllers/chat_controller.dart` | ⬜ |
 | 11.5 | Экран: Чат (список сообщений, поле ввода, отправка) | `frontend/lib/features/chat/presentation/screens/chat_screen.dart` | ⬜ |
