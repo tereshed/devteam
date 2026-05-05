@@ -58,6 +58,16 @@ void main() {
       expect(msg.metadata!['tokens'], 42);
     });
 
+    test('metadata: is_streaming без streaming → поднимается в streaming', () {
+      final json = baseJson(
+        metadataValue: <String, dynamic>{'is_streaming': true},
+      );
+      final msg = ConversationMessageModel.fromJson(json);
+
+      expect(msg.metadata!['streaming'], isTrue);
+      expect(msg.metadata!['is_streaming'], isTrue);
+    });
+
     test('linked_task_ids: ключ отсутствует → пустой список', () {
       final json = baseJson(includeLinked: false);
       final msg = ConversationMessageModel.fromJson(json);

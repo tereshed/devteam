@@ -294,4 +294,62 @@ void main() {
       );
     },
   );
+
+  /// Страховка жестов: горизонтальный скролл кода + вертикальная лента ([ChatScreen], 11.5);
+  /// блок кода — [ChatMessage] / `chat_message_builders.dart` (11.6).
+  testWidgets(
+    'смок: вертикальный drag с области code-блока прокручивает ленту',
+    (tester) async {
+      when(
+        repo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      final wall = List.generate(25, (i) => 'Line $i ${'x' * 72}').join('\n');
+      final content = '$wall\n\n```dart\nconst k = 1;\n```';
+      when(
+        repo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => MessageListResponse(
+          messages: [assistantMsg('m1', content)],
+          hasNext: false,
+        ),
+      );
+
+      await tester.pumpWidget(buildSubjectInShortViewport());
+      await tester.pumpAndSettle();
+
+      final codeFinder =
+          find.byKey(const ValueKey<String>('chat_message_code_hscroll'));
+      await tester.ensureVisible(codeFinder);
+      await tester.pump();
+
+      final scrollFinder = find
+          .descendant(
+            of: find.byKey(const ValueKey('chat_message_list')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      final scrollState = tester.state<ScrollableState>(scrollFinder);
+      final pos = scrollState.position;
+      expect(pos.maxScrollExtent, greaterThan(48));
+
+      final before = pos.pixels;
+      await tester.drag(
+        codeFinder,
+        const Offset(0, -200),
+      );
+      await tester.pumpAndSettle();
+
+      final after = pos.pixels;
+      expect(
+        (after - before).abs(),
+        greaterThan(4.0),
+        reason: 'вертикальный drag с code-блока (11.5 + 11.6) не должен блокировать scroll ленты',
+      );
+    },
+  );
 }

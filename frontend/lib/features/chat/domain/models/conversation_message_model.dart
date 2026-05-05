@@ -3,6 +3,23 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'conversation_message_model.freezed.dart';
 part 'conversation_message_model.g.dart';
 
+/// Нормализация из JSON: канонический флаг стрима — `streaming`; legacy API может слать `is_streaming`.
+Map<String, dynamic>? _conversationMetadataFromJson(Object? json) {
+  if (json == null) {
+    return null;
+  }
+  if (json is! Map) {
+    return null;
+  }
+  final m = Map<String, dynamic>.from(
+    json.map((key, value) => MapEntry(key.toString(), value)),
+  );
+  if (!m.containsKey('streaming') && m.containsKey('is_streaming')) {
+    m['streaming'] = m['is_streaming'];
+  }
+  return m;
+}
+
 /// Допустимые значения `role` (см. `ConversationRole` на бэкенде).
 const conversationMessageRoles = [
   'user',
@@ -28,6 +45,7 @@ abstract class ConversationMessageModel with _$ConversationMessageModel {
     @Default(<String>[])
     List<String> linkedTaskIds,
 
+    @JsonKey(name: 'metadata', fromJson: _conversationMetadataFromJson)
     Map<String, dynamic>? metadata,
 
     @JsonKey(name: 'created_at')

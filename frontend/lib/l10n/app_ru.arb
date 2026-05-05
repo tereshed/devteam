@@ -500,6 +500,19 @@
   "chatScreenPendingRetry": "Повторить отправку",
   "@chatScreenPendingRetry": { "description": "Действо для повторной отправки после ошибки" },
   "chatScreenNotFoundBack": "К списку проектов",
-  "@chatScreenNotFoundBack": { "description": "Кнопка при 404 беседы" }
+  "@chatScreenNotFoundBack": { "description": "Кнопка при 404 беседы" },
+  "chatMessageCopyCode": "Копировать код",
+  "@chatMessageCopyCode": { "description": "Подсказка кнопки копирования блока кода в чате" },
+  "chatMessageStreamingPlaceholder": "Печатает…",
+  "@chatMessageStreamingPlaceholder": { "description": "Пустое тело при стриме ассистента" },
+  "chatMessageImagePlaceholder": "[изображение]",
+  "@chatMessageImagePlaceholder": { "description": "Картинка markdown без alt — без загрузки по сети" },
+  "chatMessageMarkdownImageAlt": "[{alt}]",
+  "@chatMessageMarkdownImageAlt": {
+    "description": "Картинка markdown заменена текстом, только alt",
+    "placeholders": {
+      "alt": { "type": "String" }
+    }
+  }
 }
 

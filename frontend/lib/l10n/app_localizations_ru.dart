@@ -558,4 +558,18 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get chatScreenNotFoundBack => 'К списку проектов';
+
+  @override
+  String get chatMessageCopyCode => 'Копировать код';
+
+  @override
+  String get chatMessageStreamingPlaceholder => 'Печатает…';
+
+  @override
+  String get chatMessageImagePlaceholder => '[изображение]';
+
+  @override
+  String chatMessageMarkdownImageAlt(String alt) {
+    return '[$alt]';
+  }
 }

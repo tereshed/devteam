@@ -1147,6 +1147,30 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'К списку проектов'**
   String get chatScreenNotFoundBack;
+
+  /// Подсказка кнопки копирования блока кода в чате
+  ///
+  /// In ru, this message translates to:
+  /// **'Копировать код'**
+  String get chatMessageCopyCode;
+
+  /// Пустое тело при стриме ассистента
+  ///
+  /// In ru, this message translates to:
+  /// **'Печатает…'**
+  String get chatMessageStreamingPlaceholder;
+
+  /// Картинка markdown без alt — без загрузки по сети
+  ///
+  /// In ru, this message translates to:
+  /// **'[изображение]'**
+  String get chatMessageImagePlaceholder;
+
+  /// Картинка markdown заменена текстом, только alt
+  ///
+  /// In ru, this message translates to:
+  /// **'[{alt}]'**
+  String chatMessageMarkdownImageAlt(String alt);
 }
 
 class _AppLocalizationsDelegate

@@ -560,4 +560,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatScreenNotFoundBack => 'Back to projects';
+
+  @override
+  String get chatMessageCopyCode => 'Copy code';
+
+  @override
+  String get chatMessageStreamingPlaceholder => 'Typing…';
+
+  @override
+  String get chatMessageImagePlaceholder => '[image]';
+
+  @override
+  String chatMessageMarkdownImageAlt(String alt) {
+    return '[$alt]';
+  }
 }

@@ -234,6 +234,19 @@
   "chatScreenPendingRetry": "Retry send",
   "@chatScreenPendingRetry": { "description": "Retry after transient send failure" },
   "chatScreenNotFoundBack": "Back to projects",
-  "@chatScreenNotFoundBack": { "description": "Button when conversation 404" }
+  "@chatScreenNotFoundBack": { "description": "Button when conversation 404" },
+  "chatMessageCopyCode": "Copy code",
+  "@chatMessageCopyCode": { "description": "Tooltip for fenced code copy button in chat" },
+  "chatMessageStreamingPlaceholder": "Typing…",
+  "@chatMessageStreamingPlaceholder": { "description": "Shown when assistant message is streaming but body is still empty" },
+  "chatMessageImagePlaceholder": "[image]",
+  "@chatMessageImagePlaceholder": { "description": "Markdown image with empty alt — no network load" },
+  "chatMessageMarkdownImageAlt": "[{alt}]",
+  "@chatMessageMarkdownImageAlt": {
+    "description": "Markdown image replaced by text; alt text only",
+    "placeholders": {
+      "alt": { "type": "String" }
+    }
+  }
 }
 

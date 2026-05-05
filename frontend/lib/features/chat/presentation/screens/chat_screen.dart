@@ -10,6 +10,7 @@ import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/presentation/controllers/chat_controller.dart';
 import 'package:frontend/features/chat/presentation/state/chat_state.dart';
 import 'package:frontend/features/chat/presentation/state/pending_message.dart';
+import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
@@ -518,6 +519,14 @@ class _LoadOlderIndicator extends StatelessWidget {
   }
 }
 
+bool _metadataStreamingAssistant(Map<String, dynamic>? meta) {
+  if (meta == null) {
+    return false;
+  }
+  // Канонический ключ после [ConversationMessageModel.fromJson] (`streaming`; см. модель).
+  return meta['streaming'] == true;
+}
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
@@ -531,8 +540,9 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // TODO(11.6): заменить SelectableText на ChatMessage (markdown, код).
     final label = _semanticLabel(l10n, message);
+    final isStreamingBody =
+        message.role == 'assistant' && _metadataStreamingAssistant(message.metadata);
     final isUser = message.role == 'user';
     final isAssistant = message.role == 'assistant';
 
@@ -556,14 +566,18 @@ class _MessageBubble extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: SelectableText(
-        message.content,
-        style: theme.textTheme.bodyMedium,
+      child: ChatMessage(
+        key: ValueKey<String>('conv_msg_${message.id}'),
+        role: message.role,
+        content: message.content,
+        isStreaming: isStreamingBody,
       ),
     );
 
+    // 11.6: во время стрима не включаем liveRegion — иначе каждый чанк озвучивается заново.
     return Semantics(
       label: label,
+      liveRegion: false,
       child: Align(
         alignment: align,
         child: ConstrainedBox(
@@ -630,38 +644,42 @@ class _PendingBubble extends StatelessWidget {
               ),
               color: theme.colorScheme.primaryContainer.withValues(alpha: 0.6),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SelectableText(
-                  pending.content,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 6),
-                if (!err)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        l10n.chatScreenPendingSending,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  )
-                else
-                  TextButton.icon(
-                    key: ValueKey('pending_retry_${pending.clientMessageId}'),
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: Text(l10n.chatScreenPendingRetry),
+            child: RepaintBoundary(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ChatMessage(
+                    key: ValueKey<String>('pending_msg_${pending.clientMessageId}'),
+                    role: 'user',
+                    content: pending.content,
+                    isStreaming: false,
                   ),
-              ],
+                  const SizedBox(height: 6),
+                  if (!err)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          l10n.chatScreenPendingSending,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    )
+                  else
+                    TextButton.icon(
+                      key: ValueKey('pending_retry_${pending.clientMessageId}'),
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: Text(l10n.chatScreenPendingRetry),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
