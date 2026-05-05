@@ -1081,6 +1081,72 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Слишком много запросов. Попробуйте позже'**
   String get chatErrorRateLimited;
+
+  /// AppBar чата, пока метаданные беседы не загружены
+  ///
+  /// In ru, this message translates to:
+  /// **'Чат'**
+  String get chatScreenAppBarFallbackTitle;
+
+  /// Экран ветки /chat без :conversationId в URL
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите беседу или откройте её по прямой ссылке с идентификатором.'**
+  String get chatScreenSelectConversationHint;
+
+  /// Семантика пузыря пользователя
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы: {text}'**
+  String chatScreenMessageSemanticUser(String text);
+
+  /// Семантика пузыря ассистента
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент: {text}'**
+  String chatScreenMessageSemanticAssistant(String text);
+
+  /// Семантика системного сообщения
+  ///
+  /// In ru, this message translates to:
+  /// **'Система: {text}'**
+  String chatScreenMessageSemanticSystem(String text);
+
+  /// Кнопка отправки сообщения в чате
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправить'**
+  String get chatScreenSendButton;
+
+  /// Подсказка поля ввода чата
+  ///
+  /// In ru, this message translates to:
+  /// **'Сообщение…'**
+  String get chatScreenInputHint;
+
+  /// Индикатор подгрузки старых сообщений
+  ///
+  /// In ru, this message translates to:
+  /// **'Загрузка истории…'**
+  String get chatScreenLoadingOlder;
+
+  /// Статус незавершённой отправки
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправка…'**
+  String get chatScreenPendingSending;
+
+  /// Действо для повторной отправки после ошибки
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить отправку'**
+  String get chatScreenPendingRetry;
+
+  /// Кнопка при 404 беседы
+  ///
+  /// In ru, this message translates to:
+  /// **'К списку проектов'**
+  String get chatScreenNotFoundBack;
 }
 
 class _AppLocalizationsDelegate

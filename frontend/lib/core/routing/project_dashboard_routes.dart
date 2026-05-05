@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/utils/uuid.dart';
+import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
+import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -40,9 +42,10 @@ String projectDashboardRedirectPreservingQuery(
 /// уровне [GoRouter.redirect] пользователь попадает в [GoRouter.errorBuilder]. См. задачу
 /// **10.7** (`docs/tasks/10.7-gorouter-projects-routes.md`, «Обоснование глобального redirect»).
 ///
-/// **Краевой случай (Sprint 10):** путь `/projects/:id/<branch>/<extra>` при известном `<branch>`
-/// здесь **не** обрабатывается (вложенных маршрутов у веток shell ещё нет) — возможен
-/// [GoRouter.errorBuilder]. Под-маршруты веток — Sprint 11+.
+/// **Краевой случай (Sprint 10):** путь `/projects/:id/<branch>/<extra>` при неизвестном
+/// `<branch>` — [projectDashboardUnknownShellBranchRedirect]. Ветка `chat` с
+/// [projectDashboardChatConversationRedirect] на `:conversationId` отбрасывает не-UUID сегмент
+/// на `/projects/:id/chat`.
 String? projectDashboardUnknownShellBranchRedirect(GoRouterState state) {
   final segs = state.uri.pathSegments;
   if (segs.length < 3 || segs[0] != 'projects') {
@@ -93,6 +96,25 @@ String _stripSingleTrailingSlash(String path) {
   return path;
 }
 
+/// Невалидный `:conversationId` (не UUID) → `/projects/:id/chat` без потери query.
+String? projectDashboardChatConversationRedirect(
+  BuildContext context,
+  GoRouterState state,
+) {
+  final id = state.pathParameters['id'];
+  final conv = state.pathParameters['conversationId'];
+  if (id == null || conv == null) {
+    return null;
+  }
+  if (!isValidUuid(conv)) {
+    return projectDashboardRedirectPreservingQuery(
+      state,
+      '/projects/$id/chat',
+    );
+  }
+  return null;
+}
+
 /// Ветки [StatefulShellRoute] дашборда проекта (single source для prod и тестов).
 List<StatefulShellBranch> buildProjectDashboardShellBranches({
   required GlobalKey<NavigatorState> chatNavigatorKey,
@@ -134,7 +156,39 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
   }
 
   return [
-    for (var i = 0; i < entries.length; i++)
+    StatefulShellBranch(
+      navigatorKey: entries[0].key,
+      routes: [
+        GoRoute(
+          path: projectDashboardShellBranchPaths[0],
+          pageBuilder: (context, state) {
+            final id = state.pathParameters['id']!;
+            return NoTransitionPage(
+              key: state.pageKey,
+              child: ChatConversationPlaceholderScreen(projectId: id),
+            );
+          },
+          routes: [
+            GoRoute(
+              path: ':conversationId',
+              redirect: projectDashboardChatConversationRedirect,
+              pageBuilder: (context, state) {
+                final id = state.pathParameters['id']!;
+                final convId = state.pathParameters['conversationId']!;
+                return NoTransitionPage(
+                  key: state.pageKey,
+                  child: ChatScreen(
+                    projectId: id,
+                    conversationId: convId,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ],
+    ),
+    for (var i = 1; i < entries.length; i++)
       StatefulShellBranch(
         navigatorKey: entries[i].key,
         routes: [

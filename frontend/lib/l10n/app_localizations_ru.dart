@@ -518,4 +518,44 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get chatErrorRateLimited => 'Слишком много запросов. Попробуйте позже';
+
+  @override
+  String get chatScreenAppBarFallbackTitle => 'Чат';
+
+  @override
+  String get chatScreenSelectConversationHint =>
+      'Выберите беседу или откройте её по прямой ссылке с идентификатором.';
+
+  @override
+  String chatScreenMessageSemanticUser(String text) {
+    return 'Вы: $text';
+  }
+
+  @override
+  String chatScreenMessageSemanticAssistant(String text) {
+    return 'Ассистент: $text';
+  }
+
+  @override
+  String chatScreenMessageSemanticSystem(String text) {
+    return 'Система: $text';
+  }
+
+  @override
+  String get chatScreenSendButton => 'Отправить';
+
+  @override
+  String get chatScreenInputHint => 'Сообщение…';
+
+  @override
+  String get chatScreenLoadingOlder => 'Загрузка истории…';
+
+  @override
+  String get chatScreenPendingSending => 'Отправка…';
+
+  @override
+  String get chatScreenPendingRetry => 'Повторить отправку';
+
+  @override
+  String get chatScreenNotFoundBack => 'К списку проектов';
 }

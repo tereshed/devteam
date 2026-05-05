@@ -193,6 +193,47 @@
   "chatErrorConversationNotFound": "Conversation not found",
   "@chatErrorConversationNotFound": { "description": "404 for conversation" },
   "chatErrorRateLimited": "Too many requests. Please try again later",
-  "@chatErrorRateLimited": { "description": "429 for chat API" }
+  "@chatErrorRateLimited": { "description": "429 for chat API" },
+  "chatScreenAppBarFallbackTitle": "Chat",
+  "@chatScreenAppBarFallbackTitle": {
+    "description": "Chat AppBar while conversation metadata is loading"
+  },
+  "chatScreenSelectConversationHint": "Pick a conversation or open one via a direct link with its id.",
+  "@chatScreenSelectConversationHint": {
+    "description": "Branch /chat without :conversationId in the URL"
+  },
+  "chatScreenMessageSemanticUser": "You: {text}",
+  "@chatScreenMessageSemanticUser": {
+    "description": "Semantics label for user bubble",
+    "placeholders": {
+      "text": { "type": "String" }
+    }
+  },
+  "chatScreenMessageSemanticAssistant": "Assistant: {text}",
+  "@chatScreenMessageSemanticAssistant": {
+    "description": "Semantics label for assistant bubble",
+    "placeholders": {
+      "text": { "type": "String" }
+    }
+  },
+  "chatScreenMessageSemanticSystem": "System: {text}",
+  "@chatScreenMessageSemanticSystem": {
+    "description": "Semantics label for system message",
+    "placeholders": {
+      "text": { "type": "String" }
+    }
+  },
+  "chatScreenSendButton": "Send",
+  "@chatScreenSendButton": { "description": "Send message button in chat" },
+  "chatScreenInputHint": "Message…",
+  "@chatScreenInputHint": { "description": "Chat input hint" },
+  "chatScreenLoadingOlder": "Loading older messages…",
+  "@chatScreenLoadingOlder": { "description": "Loading indicator for older messages" },
+  "chatScreenPendingSending": "Sending…",
+  "@chatScreenPendingSending": { "description": "Pending outbound message status" },
+  "chatScreenPendingRetry": "Retry send",
+  "@chatScreenPendingRetry": { "description": "Retry after transient send failure" },
+  "chatScreenNotFoundBack": "Back to projects",
+  "@chatScreenNotFoundBack": { "description": "Button when conversation 404" }
 }
 

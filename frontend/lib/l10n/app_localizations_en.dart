@@ -520,4 +520,44 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get chatErrorRateLimited =>
       'Too many requests. Please try again later';
+
+  @override
+  String get chatScreenAppBarFallbackTitle => 'Chat';
+
+  @override
+  String get chatScreenSelectConversationHint =>
+      'Pick a conversation or open one via a direct link with its id.';
+
+  @override
+  String chatScreenMessageSemanticUser(String text) {
+    return 'You: $text';
+  }
+
+  @override
+  String chatScreenMessageSemanticAssistant(String text) {
+    return 'Assistant: $text';
+  }
+
+  @override
+  String chatScreenMessageSemanticSystem(String text) {
+    return 'System: $text';
+  }
+
+  @override
+  String get chatScreenSendButton => 'Send';
+
+  @override
+  String get chatScreenInputHint => 'Message…';
+
+  @override
+  String get chatScreenLoadingOlder => 'Loading older messages…';
+
+  @override
+  String get chatScreenPendingSending => 'Sending…';
+
+  @override
+  String get chatScreenPendingRetry => 'Retry send';
+
+  @override
+  String get chatScreenNotFoundBack => 'Back to projects';
 }

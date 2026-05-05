@@ -459,6 +459,47 @@
   "chatErrorConversationNotFound": "Чат не найден",
   "@chatErrorConversationNotFound": { "description": "404 чата" },
   "chatErrorRateLimited": "Слишком много запросов. Попробуйте позже",
-  "@chatErrorRateLimited": { "description": "429 при работе с чатом" }
+  "@chatErrorRateLimited": { "description": "429 при работе с чатом" },
+  "chatScreenAppBarFallbackTitle": "Чат",
+  "@chatScreenAppBarFallbackTitle": {
+    "description": "AppBar чата, пока метаданные беседы не загружены"
+  },
+  "chatScreenSelectConversationHint": "Выберите беседу или откройте её по прямой ссылке с идентификатором.",
+  "@chatScreenSelectConversationHint": {
+    "description": "Экран ветки /chat без :conversationId в URL"
+  },
+  "chatScreenMessageSemanticUser": "Вы: {text}",
+  "@chatScreenMessageSemanticUser": {
+    "description": "Семантика пузыря пользователя",
+    "placeholders": {
+      "text": { "type": "String" }
+    }
+  },
+  "chatScreenMessageSemanticAssistant": "Ассистент: {text}",
+  "@chatScreenMessageSemanticAssistant": {
+    "description": "Семантика пузыря ассистента",
+    "placeholders": {
+      "text": { "type": "String" }
+    }
+  },
+  "chatScreenMessageSemanticSystem": "Система: {text}",
+  "@chatScreenMessageSemanticSystem": {
+    "description": "Семантика системного сообщения",
+    "placeholders": {
+      "text": { "type": "String" }
+    }
+  },
+  "chatScreenSendButton": "Отправить",
+  "@chatScreenSendButton": { "description": "Кнопка отправки сообщения в чате" },
+  "chatScreenInputHint": "Сообщение…",
+  "@chatScreenInputHint": { "description": "Подсказка поля ввода чата" },
+  "chatScreenLoadingOlder": "Загрузка истории…",
+  "@chatScreenLoadingOlder": { "description": "Индикатор подгрузки старых сообщений" },
+  "chatScreenPendingSending": "Отправка…",
+  "@chatScreenPendingSending": { "description": "Статус незавершённой отправки" },
+  "chatScreenPendingRetry": "Повторить отправку",
+  "@chatScreenPendingRetry": { "description": "Действо для повторной отправки после ошибки" },
+  "chatScreenNotFoundBack": "К списку проектов",
+  "@chatScreenNotFoundBack": { "description": "Кнопка при 404 беседы" }
 }
 

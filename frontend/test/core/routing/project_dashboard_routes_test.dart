@@ -3,11 +3,22 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
+import 'package:frontend/features/chat/data/chat_providers.dart';
+import 'package:frontend/features/chat/domain/models.dart';
+import 'package:frontend/features/chat/domain/requests.dart';
+import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
+import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+import 'package:mockito/mockito.dart';
 
+import '../../features/chat/presentation/controllers/chat_controller_test.mocks.dart';
 import '../../features/projects/helpers/project_dashboard_test_router.dart';
 import '../../features/projects/helpers/project_fixtures.dart';
+
+/// UUID беседы для smoke-маршрута `/projects/:id/chat/:conversationId`.
+const kChatConversationUuidForRoutingTest =
+    'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 
 void main() {
   test('projectDashboardDefaultBranch совпадает с первой веткой (SSOT)', () {
@@ -102,30 +113,101 @@ void main() {
   );
 
   testWidgets(
-    'Sprint 10: /projects/:id/chat/extra без вложенного маршрута → errorBuilder + l10n',
+    'Sprint 11: /projects/:id/chat/extra (не-UUID) → редирект на /projects/:id/chat',
     (tester) async {
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTestProjectUuid/chat/extra',
       );
       await tester.pumpWidget(
-        MaterialApp.router(
-          routerConfig: router,
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
+        ProviderScope(
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
+            ),
           ],
-          supportedLocales: const [Locale('en')],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+          ),
         ),
       );
       await tester.pumpAndSettle();
-      // Контекст [MaterialApp] выше [Localizations] — [AppLocalizations.of] даст null.
-      final ctx = tester.element(find.byType(Scaffold));
       expect(
-        find.text(AppLocalizations.of(ctx)!.routerNavigationError),
+        router.state.uri.path,
+        '/projects/$kTestProjectUuid/chat',
+      );
+      final ctx = tester.element(find.byType(ChatConversationPlaceholderScreen));
+      expect(
+        find.text(AppLocalizations.of(ctx)!.chatScreenSelectConversationHint),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    '/projects/:id/chat/:conversationId (UUID) показывает ChatScreen',
+    (tester) async {
+      final repo = MockConversationRepository();
+      when(
+        repo.getConversation(
+          kChatConversationUuidForRoutingTest,
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ConversationModel(
+          id: kChatConversationUuidForRoutingTest,
+          projectId: kTestProjectUuid,
+          title: 'Conv',
+          status: 'active',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        repo.getMessages(
+          kChatConversationUuidForRoutingTest,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => const MessageListResponse());
+
+      final router = buildProjectDashboardTestRouter(
+        initialLocation:
+            '/projects/$kTestProjectUuid/chat/$kChatConversationUuidForRoutingTest',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid, name: 'R'),
+            ),
+            conversationRepositoryProvider.overrideWithValue(repo),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestProjectUuid/chat/$kChatConversationUuidForRoutingTest',
+      );
+      expect(find.byType(ChatScreen), findsOneWidget);
     },
   );
 }
