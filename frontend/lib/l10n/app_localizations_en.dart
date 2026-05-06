@@ -562,6 +562,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatScreenNotFoundBack => 'Back to projects';
 
   @override
+  String get chatInputHint => 'Message…';
+
+  @override
+  String get chatInputSendTooltip => 'Send';
+
+  @override
+  String get chatInputStopTooltip => 'Cancel sending';
+
+  @override
+  String get chatInputAttachTooltip => 'Attach file';
+
+  @override
+  String get chatInputAttachDisabledHint => 'Attachments unavailable';
+
+  @override
   String get chatLinkedTasksRealtimeNote =>
       'Live task status updates will arrive with task 11.9 (WebSocket).';
 

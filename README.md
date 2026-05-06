@@ -320,7 +320,7 @@ User Message
 | 11.5 | Экран: Чат (список сообщений, поле ввода, отправка) | `frontend/lib/features/chat/presentation/screens/chat_screen.dart` | ✅ | [детали](docs/tasks/11.5-chat-screen.md) |
 | 11.6 | Виджет: `ChatMessage` (user/assistant/system, markdown, код, стримящийся текст) | `frontend/lib/features/chat/presentation/widgets/chat_message.dart` | ✅ | [детали](docs/tasks/11.6-chat-message-widget.md) |
 | 11.7 | Виджет: `TaskStatusCard` (встроенная карточка статуса задачи в чате) | `task_status_card.dart`, `task_status_visuals.dart`, `chat_screen.dart`; live-статусы — задача **11.9** ниже в этом спринте | ✅ | [детали](docs/tasks/11.7-task-status-card-widget.md) |
-| 11.8 | Виджет: `ChatInput` (текстовое поле + кнопки: отправить, стоп, attach) | `frontend/lib/features/chat/presentation/widgets/chat_input.dart` | ⬜ |
+| 11.8 | Виджет: `ChatInput` (текстовое поле + кнопки: отправить, стоп, attach) | `frontend/lib/features/chat/presentation/widgets/chat_input.dart` | ✅ | [детали](docs/tasks/11.8-chat-input-widget.md) |
 | 11.9 | Реалтайм: подписка на WebSocket → обновление UI при новых сообщениях/статусах | В `ChatController` | ⬜ |
 | 11.10 | Локализация | `.arb` файлы | ⬜ |
 | 11.11 | Widget-тесты | `frontend/test/features/chat/` | ⬜ |

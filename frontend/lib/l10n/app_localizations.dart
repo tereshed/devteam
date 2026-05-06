@@ -1148,6 +1148,36 @@ abstract class AppLocalizations {
   /// **'К списку проектов'**
   String get chatScreenNotFoundBack;
 
+  /// Placeholder поля ввода (виджет ChatInput, 11.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Сообщение…'**
+  String get chatInputHint;
+
+  /// Подсказка кнопки отправки в ChatInput
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправить'**
+  String get chatInputSendTooltip;
+
+  /// Отмена исходящего HTTP send (не ответ ассистента)
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить отправку'**
+  String get chatInputStopTooltip;
+
+  /// Кнопка вложений в ChatInput
+  ///
+  /// In ru, this message translates to:
+  /// **'Вложение'**
+  String get chatInputAttachTooltip;
+
+  /// Резерв при скрытом/отключённом attach
+  ///
+  /// In ru, this message translates to:
+  /// **'Вложения недоступны'**
+  String get chatInputAttachDisabledHint;
+
   /// Дегрейд до 11.9: подсказка под карточками связанных задач
   ///
   /// In ru, this message translates to:

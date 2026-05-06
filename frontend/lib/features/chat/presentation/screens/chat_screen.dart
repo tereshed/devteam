@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
@@ -10,6 +9,7 @@ import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/presentation/controllers/chat_controller.dart';
 import 'package:frontend/features/chat/presentation/state/chat_state.dart';
 import 'package:frontend/features/chat/presentation/state/pending_message.dart';
+import 'package:frontend/features/chat/presentation/widgets/chat_input.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
 import 'package:frontend/features/chat/presentation/widgets/task_status_card.dart';
 import 'package:frontend/features/chat/presentation/widgets/task_status_visuals.dart';
@@ -136,6 +136,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
+
+  /// In-flight [ChatController.send]: блок [ChatInput.isSending] и идемпотентность UI.
+  bool _sendInFlight = false;
 
   bool _userAtBottom = true;
   bool _didInitialBottomScroll = false;
@@ -297,9 +300,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _submitText(String raw) async {
-    if (raw.trim().isEmpty) {
+    if (raw.trim().isEmpty || _sendInFlight) {
       return;
     }
+    setState(() => _sendInFlight = true);
     try {
       await _notifier.send(raw);
       _textController.clear();
@@ -308,6 +312,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     } catch (_) {
       // Фатальная ошибка — [AsyncError] на провайдере; SnackBar не дублируем.
+    } finally {
+      if (mounted) {
+        setState(() => _sendInFlight = false);
+      } else {
+        _sendInFlight = false;
+      }
     }
   }
 
@@ -450,59 +460,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               color: theme.colorScheme.surface,
               child: AdaptiveContainer(
                 usePadding: true,
-                // Ctrl/Meta+Enter: единая точка входа с кнопкой; ChatInput (11.8) переиспользует те же Shortcuts/Intent,
-                // без второго пути отправки (см. задачу 11.8 в PR).
-                child: Shortcuts(
-                  shortcuts: const <ShortcutActivator, Intent>{
-                    SingleActivator(LogicalKeyboardKey.enter, control: true):
-                        _ChatSendIntent(),
-                    SingleActivator(LogicalKeyboardKey.enter, meta: true):
-                        _ChatSendIntent(),
-                  },
-                  child: Actions(
-                    actions: <Type, Action<Intent>>{
-                      _ChatSendIntent: CallbackAction<_ChatSendIntent>(
-                        onInvoke: (_) {
-                          _submitText(_textController.text);
-                          return null;
-                        },
-                      ),
-                    },
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            key: const ValueKey('chat_input_field'),
-                            controller: _textController,
-                            focusNode: _inputFocus,
-                            minLines: 1,
-                            maxLines: 6,
-                            textInputAction: TextInputAction.newline,
-                            decoration: InputDecoration(
-                              hintText: l10n.chatScreenInputHint,
-                              border: const OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ListenableBuilder(
-                          listenable: _textController,
-                          builder: (context, _) {
-                            final empty = _textController.text.trim().isEmpty;
-                            return IconButton.filled(
-                              key: const ValueKey('chat_send_button'),
-                              onPressed: empty
-                                  ? null
-                                  : () => _submitText(_textController.text),
-                              tooltip: l10n.chatScreenSendButton,
-                              icon: const Icon(Icons.send),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
+                child: ChatInput(
+                  controller: _textController,
+                  focusNode: _inputFocus,
+                  onSend: (text) => unawaited(_submitText(text)),
+                  isSending: _sendInFlight,
+                  hintText: l10n.chatInputHint,
+                  sendTooltip: l10n.chatInputSendTooltip,
                 ),
               ),
             ),
@@ -511,10 +475,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
     );
   }
-}
-
-class _ChatSendIntent extends Intent {
-  const _ChatSendIntent();
 }
 
 class _ChatMessageList extends StatelessWidget {

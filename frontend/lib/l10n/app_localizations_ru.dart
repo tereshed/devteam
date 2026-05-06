@@ -560,6 +560,21 @@ class AppLocalizationsRu extends AppLocalizations {
   String get chatScreenNotFoundBack => 'К списку проектов';
 
   @override
+  String get chatInputHint => 'Сообщение…';
+
+  @override
+  String get chatInputSendTooltip => 'Отправить';
+
+  @override
+  String get chatInputStopTooltip => 'Отменить отправку';
+
+  @override
+  String get chatInputAttachTooltip => 'Вложение';
+
+  @override
+  String get chatInputAttachDisabledHint => 'Вложения недоступны';
+
+  @override
   String get chatLinkedTasksRealtimeNote =>
       'Актуальный статус задач в реальном времени подключится в задаче 11.9 (WebSocket).';
 

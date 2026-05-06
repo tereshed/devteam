@@ -501,6 +501,18 @@
   "@chatScreenPendingRetry": { "description": "Действо для повторной отправки после ошибки" },
   "chatScreenNotFoundBack": "К списку проектов",
   "@chatScreenNotFoundBack": { "description": "Кнопка при 404 беседы" },
+  "chatInputHint": "Сообщение…",
+  "@chatInputHint": { "description": "Placeholder поля ввода (виджет ChatInput, 11.8)" },
+  "chatInputSendTooltip": "Отправить",
+  "@chatInputSendTooltip": { "description": "Подсказка кнопки отправки в ChatInput" },
+  "chatInputStopTooltip": "Отменить отправку",
+  "@chatInputStopTooltip": { "description": "Отмена исходящего HTTP send (не ответ ассистента)" },
+  "chatInputAttachTooltip": "Вложение",
+  "@chatInputAttachTooltip": { "description": "Кнопка вложений в ChatInput" },
+  "chatInputAttachDisabledHint": "Вложения недоступны",
+  "@chatInputAttachDisabledHint": {
+    "description": "Резерв (таблица l10n 11.8): подсказка при отключённом attach; в 11.8 не используется — подключить в 11.11+ или удалить, если так и не понадобится"
+  },
   "chatLinkedTasksRealtimeNote": "Актуальный статус задач в реальном времени подключится в задаче 11.9 (WebSocket).",
   "@chatLinkedTasksRealtimeNote": {
     "description": "Дегрейд до 11.9: подсказка под карточками связанных задач"

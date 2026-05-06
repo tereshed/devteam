@@ -235,6 +235,18 @@
   "@chatScreenPendingRetry": { "description": "Retry after transient send failure" },
   "chatScreenNotFoundBack": "Back to projects",
   "@chatScreenNotFoundBack": { "description": "Button when conversation 404" },
+  "chatInputHint": "Message…",
+  "@chatInputHint": { "description": "Chat input placeholder (widget ChatInput, 11.8)" },
+  "chatInputSendTooltip": "Send",
+  "@chatInputSendTooltip": { "description": "Send button tooltip in ChatInput" },
+  "chatInputStopTooltip": "Cancel sending",
+  "@chatInputStopTooltip": { "description": "Stop outbound HTTP send (not assistant reply)" },
+  "chatInputAttachTooltip": "Attach file",
+  "@chatInputAttachTooltip": { "description": "Attach file button in ChatInput" },
+  "chatInputAttachDisabledHint": "Attachments unavailable",
+  "@chatInputAttachDisabledHint": {
+    "description": "Reserved (11.8 l10n table): hint when attach is disabled; no consumer in 11.8 — use in 11.11+ or remove if still unused"
+  },
   "chatLinkedTasksRealtimeNote": "Live task status updates will arrive with task 11.9 (WebSocket).",
   "@chatLinkedTasksRealtimeNote": {
     "description": "Degrade until 11.9: hint under linked task cards"
