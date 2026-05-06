@@ -1112,12 +1112,6 @@ abstract class AppLocalizations {
   /// **'Система: {text}'**
   String chatScreenMessageSemanticSystem(String text);
 
-  /// Кнопка отправки сообщения в чате
-  ///
-  /// In ru, this message translates to:
-  /// **'Отправить'**
-  String get chatScreenSendButton;
-
   /// Подсказка поля ввода чата
   ///
   /// In ru, this message translates to:
@@ -1177,12 +1171,6 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Вложения недоступны'**
   String get chatInputAttachDisabledHint;
-
-  /// Дегрейд до 11.9: подсказка под карточками связанных задач
-  ///
-  /// In ru, this message translates to:
-  /// **'Актуальный статус задач в реальном времени подключится в задаче 11.9 (WebSocket).'**
-  String get chatLinkedTasksRealtimeNote;
 
   /// Статус задачи pending
   ///

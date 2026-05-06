@@ -568,15 +568,6 @@ class _MessageBubble extends StatelessWidget {
           if (i > 0) const SizedBox(height: 8),
           _messageTaskStatusCard(message, linked[i]),
         ],
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            l10n.chatLinkedTasksRealtimeNote,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.outline,
-            ),
-          ),
-        ),
       ],
     ];
 

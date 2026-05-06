@@ -223,8 +223,6 @@
       "text": { "type": "String" }
     }
   },
-  "chatScreenSendButton": "Send",
-  "@chatScreenSendButton": { "description": "Send message button in chat" },
   "chatScreenInputHint": "Message…",
   "@chatScreenInputHint": { "description": "Chat input hint" },
   "chatScreenLoadingOlder": "Loading older messages…",
@@ -246,10 +244,6 @@
   "chatInputAttachDisabledHint": "Attachments unavailable",
   "@chatInputAttachDisabledHint": {
     "description": "Reserved (11.8 l10n table): hint when attach is disabled; no consumer in 11.8 — use in 11.11+ or remove if still unused"
-  },
-  "chatLinkedTasksRealtimeNote": "Live task status updates will arrive with task 11.9 (WebSocket).",
-  "@chatLinkedTasksRealtimeNote": {
-    "description": "Degrade until 11.9: hint under linked task cards"
   },
   "taskStatusPending": "Pending",
   "@taskStatusPending": { "description": "Task status pending" },

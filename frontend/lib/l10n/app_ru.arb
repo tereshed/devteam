@@ -489,8 +489,6 @@
       "text": { "type": "String" }
     }
   },
-  "chatScreenSendButton": "Отправить",
-  "@chatScreenSendButton": { "description": "Кнопка отправки сообщения в чате" },
   "chatScreenInputHint": "Сообщение…",
   "@chatScreenInputHint": { "description": "Подсказка поля ввода чата" },
   "chatScreenLoadingOlder": "Загрузка истории…",
@@ -512,10 +510,6 @@
   "chatInputAttachDisabledHint": "Вложения недоступны",
   "@chatInputAttachDisabledHint": {
     "description": "Резерв (таблица l10n 11.8): подсказка при отключённом attach; в 11.8 не используется — подключить в 11.11+ или удалить, если так и не понадобится"
-  },
-  "chatLinkedTasksRealtimeNote": "Актуальный статус задач в реальном времени подключится в задаче 11.9 (WebSocket).",
-  "@chatLinkedTasksRealtimeNote": {
-    "description": "Дегрейд до 11.9: подсказка под карточками связанных задач"
   },
   "taskStatusPending": "В ожидании",
   "@taskStatusPending": { "description": "Статус задачи pending" },

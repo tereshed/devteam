@@ -323,7 +323,7 @@ User Message
 | 11.7 | Виджет: `TaskStatusCard` (встроенная карточка статуса задачи в чате) | `task_status_card.dart`, `task_status_visuals.dart`, `chat_screen.dart`; live-статусы — задача **11.9** ниже в этом спринте | ✅ | [детали](docs/tasks/11.7-task-status-card-widget.md) |
 | 11.8 | Виджет: `ChatInput` (текстовое поле + кнопки: отправить, стоп, attach) | `frontend/lib/features/chat/presentation/widgets/chat_input.dart` | ✅ | [детали](docs/tasks/11.8-chat-input-widget.md) |
 | 11.9 | Реалтайм: подписка на WebSocket → обновление UI при новых сообщениях/статусах | В `ChatController` | ✅ | [детали](docs/tasks/11.9-realtime-websocket-subscription.md) |
-| 11.10 | Локализация | `.arb` файлы | ⬜ |
+| 11.10 | Локализация / аудит l10n для Sprint 11 — чат (ru, en) | `frontend/lib/l10n/app_ru.arb`, `app_en.arb`; `frontend/lib/features/chat/` | ⬜ | [детали](docs/tasks/11.10-l10n-chat-strings.md) |
 | 11.11 | Widget-тесты | `frontend/test/features/chat/` | ⬜ |
 
 **Зависимости:** Sprint 7, Sprint 8, Sprint 10

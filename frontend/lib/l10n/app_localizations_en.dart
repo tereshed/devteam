@@ -544,9 +544,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get chatScreenSendButton => 'Send';
-
-  @override
   String get chatScreenInputHint => 'Message…';
 
   @override
@@ -575,10 +572,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatInputAttachDisabledHint => 'Attachments unavailable';
-
-  @override
-  String get chatLinkedTasksRealtimeNote =>
-      'Live task status updates will arrive with task 11.9 (WebSocket).';
 
   @override
   String get taskStatusPending => 'Pending';

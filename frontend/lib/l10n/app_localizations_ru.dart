@@ -542,9 +542,6 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
-  String get chatScreenSendButton => 'Отправить';
-
-  @override
   String get chatScreenInputHint => 'Сообщение…';
 
   @override
@@ -573,10 +570,6 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get chatInputAttachDisabledHint => 'Вложения недоступны';
-
-  @override
-  String get chatLinkedTasksRealtimeNote =>
-      'Актуальный статус задач в реальном времени подключится в задаче 11.9 (WebSocket).';
 
   @override
   String get taskStatusPending => 'В ожидании';
