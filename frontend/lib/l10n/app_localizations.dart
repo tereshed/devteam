@@ -1148,6 +1148,132 @@ abstract class AppLocalizations {
   /// **'К списку проектов'**
   String get chatScreenNotFoundBack;
 
+  /// Дегрейд до 11.9: подсказка под карточками связанных задач
+  ///
+  /// In ru, this message translates to:
+  /// **'Актуальный статус задач в реальном времени подключится в задаче 11.9 (WebSocket).'**
+  String get chatLinkedTasksRealtimeNote;
+
+  /// Статус задачи pending
+  ///
+  /// In ru, this message translates to:
+  /// **'В ожидании'**
+  String get taskStatusPending;
+
+  /// Статус задачи planning
+  ///
+  /// In ru, this message translates to:
+  /// **'Планирование'**
+  String get taskStatusPlanning;
+
+  /// Статус задачи in_progress
+  ///
+  /// In ru, this message translates to:
+  /// **'В работе'**
+  String get taskStatusInProgress;
+
+  /// Статус задачи review
+  ///
+  /// In ru, this message translates to:
+  /// **'Ревью'**
+  String get taskStatusReview;
+
+  /// Статус задачи testing
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестирование'**
+  String get taskStatusTesting;
+
+  /// Статус задачи changes_requested
+  ///
+  /// In ru, this message translates to:
+  /// **'Нужны правки'**
+  String get taskStatusChangesRequested;
+
+  /// Статус задачи completed
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get taskStatusCompleted;
+
+  /// Статус задачи failed
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get taskStatusFailed;
+
+  /// Статус задачи cancelled
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменена'**
+  String get taskStatusCancelled;
+
+  /// Статус задачи paused
+  ///
+  /// In ru, this message translates to:
+  /// **'На паузе'**
+  String get taskStatusPaused;
+
+  /// Неизвестная строка статуса с бэкенда
+  ///
+  /// In ru, this message translates to:
+  /// **'Неизвестный статус'**
+  String get taskStatusUnknownStatus;
+
+  /// Заголовок карточки без title из метаданных
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача {shortId}'**
+  String taskStatusCardFallbackTitle(String shortId);
+
+  /// Роль агента worker
+  ///
+  /// In ru, this message translates to:
+  /// **'Исполнитель'**
+  String get taskCardAgentRoleWorker;
+
+  /// Роль агента supervisor
+  ///
+  /// In ru, this message translates to:
+  /// **'Супервизор'**
+  String get taskCardAgentRoleSupervisor;
+
+  /// Роль агента orchestrator
+  ///
+  /// In ru, this message translates to:
+  /// **'Оркестратор'**
+  String get taskCardAgentRoleOrchestrator;
+
+  /// Роль агента planner
+  ///
+  /// In ru, this message translates to:
+  /// **'Планировщик'**
+  String get taskCardAgentRolePlanner;
+
+  /// Роль агента developer
+  ///
+  /// In ru, this message translates to:
+  /// **'Разработчик'**
+  String get taskCardAgentRoleDeveloper;
+
+  /// Роль агента reviewer
+  ///
+  /// In ru, this message translates to:
+  /// **'Ревьюер'**
+  String get taskCardAgentRoleReviewer;
+
+  /// Роль агента tester
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестировщик'**
+  String get taskCardAgentRoleTester;
+
+  /// Роль агента devops
+  ///
+  /// In ru, this message translates to:
+  /// **'DevOps'**
+  String get taskCardAgentRoleDevops;
+
   /// Подсказка кнопки копирования блока кода в чате
   ///
   /// In ru, this message translates to:

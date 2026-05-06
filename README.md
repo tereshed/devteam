@@ -319,7 +319,7 @@ User Message
 | 11.4 | Controller: `ChatController` (AsyncNotifier — загрузка, отправка, стрим) | `frontend/lib/features/chat/presentation/controllers/chat_controller.dart` | ✅ | [детали](docs/tasks/11.4-chat-controller.md) |
 | 11.5 | Экран: Чат (список сообщений, поле ввода, отправка) | `frontend/lib/features/chat/presentation/screens/chat_screen.dart` | ✅ | [детали](docs/tasks/11.5-chat-screen.md) |
 | 11.6 | Виджет: `ChatMessage` (user/assistant/system, markdown, код, стримящийся текст) | `frontend/lib/features/chat/presentation/widgets/chat_message.dart` | ✅ | [детали](docs/tasks/11.6-chat-message-widget.md) |
-| 11.7 | Виджет: `TaskStatusCard` (встроенная карточка статуса задачи в чате) | `frontend/lib/features/chat/presentation/widgets/task_status_card.dart` | ⬜ |
+| 11.7 | Виджет: `TaskStatusCard` (встроенная карточка статуса задачи в чате) | `task_status_card.dart`, `task_status_visuals.dart`, `chat_screen.dart`; live-статусы — задача **11.9** ниже в этом спринте | ✅ | [детали](docs/tasks/11.7-task-status-card-widget.md) |
 | 11.8 | Виджет: `ChatInput` (текстовое поле + кнопки: отправить, стоп, attach) | `frontend/lib/features/chat/presentation/widgets/chat_input.dart` | ⬜ |
 | 11.9 | Реалтайм: подписка на WebSocket → обновление UI при новых сообщениях/статусах | В `ChatController` | ⬜ |
 | 11.10 | Локализация | `.arb` файлы | ⬜ |
@@ -339,7 +339,7 @@ User Message
 | 12.2 | Repository: `TaskRepository` | `frontend/lib/features/tasks/data/task_repository.dart` | ⬜ |
 | 12.3 | Controller: `TaskListController`, `TaskDetailController` | `frontend/lib/features/tasks/presentation/controllers/` | ⬜ |
 | 12.4 | Экран: Список задач (Kanban-доска по статусам или таблица) | `frontend/lib/features/tasks/presentation/screens/tasks_list_screen.dart` | ⬜ |
-| 12.5 | Экран: Детали задачи (статус, описание, лог агентов, diff, результат) | `frontend/lib/features/tasks/presentation/screens/task_detail_screen.dart` | ⬜ |
+| 12.5 | Экран: Детали задачи (статус, описание, лог агентов, diff, результат) | `frontend/lib/features/tasks/presentation/screens/task_detail_screen.dart` | ⬜ | [детали](docs/tasks/12.5-task-detail-screen.md) |
 | 12.6 | Виджет: `TaskCard` (статус, приоритет, агент, время) | `frontend/lib/features/tasks/presentation/widgets/task_card.dart` | ⬜ |
 | 12.7 | Виджет: `DiffViewer` (отображение git diff с подсветкой) | `frontend/lib/shared/widgets/diff_viewer.dart` | ⬜ |
 | 12.8 | Действия: кнопки Pause/Cancel/Resume на задаче | В `TaskDetailScreen` | ⬜ |

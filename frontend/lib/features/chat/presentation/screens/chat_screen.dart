@@ -11,8 +11,102 @@ import 'package:frontend/features/chat/presentation/controllers/chat_controller.
 import 'package:frontend/features/chat/presentation/state/chat_state.dart';
 import 'package:frontend/features/chat/presentation/state/pending_message.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
+import 'package:frontend/features/chat/presentation/widgets/task_status_card.dart';
+import 'package:frontend/features/chat/presentation/widgets/task_status_visuals.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+
+/// Отступ между пузырём [ChatMessage] и блоком [TaskStatusCard] (ТЗ 11.7).
+const double _kBubbleToCardGap = 8;
+
+Map<String, Object?>? _linkedTaskSnapshotsFromMetadata(Map<String, dynamic>? meta) {
+  if (meta == null) {
+    return null;
+  }
+  final v = meta['linked_task_snapshots'];
+  if (v is! Map) {
+    return null;
+  }
+  return v.map((k, val) => MapEntry(k.toString(), val));
+}
+
+/// Снимок полей задачи для карточки из [ConversationMessageModel.metadata].
+class _LinkedTaskSnapshot {
+  const _LinkedTaskSnapshot({
+    required this.taskId,
+    this.title,
+    required this.status,
+    this.errorMessage,
+    this.agentRole,
+  });
+
+  final String taskId;
+  final String? title;
+  final String status;
+  final String? errorMessage;
+  final TaskCardAgentRole? agentRole;
+}
+
+_LinkedTaskSnapshot _snapshotForLinkedTask(
+  ConversationMessageModel message,
+  String taskId,
+) {
+  final snaps = _linkedTaskSnapshotsFromMetadata(message.metadata);
+  if (snaps != null) {
+    final raw = snaps[taskId];
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(
+        raw.map((k, v) => MapEntry(k.toString(), v)),
+      );
+
+      assert(() {
+        void checkField(String jsonKey) {
+          final v = map[jsonKey];
+          if (v != null && v is! String) {
+            throw FlutterError(
+              'linked_task_snapshots[$taskId].$jsonKey: expected String?, got ${v.runtimeType}',
+            );
+          }
+        }
+
+        checkField('status');
+        checkField('title');
+        checkField('error_message');
+        checkField('agent_role');
+        return true;
+      }());
+
+      final titleStr = map['title'] is String ? map['title'] as String : null;
+      final statusStr = map['status'] is String ? map['status'] as String : '';
+      final errStr =
+          map['error_message'] is String ? map['error_message'] as String : null;
+      final roleRaw =
+          map['agent_role'] is String ? map['agent_role'] as String : null;
+
+      return _LinkedTaskSnapshot(
+        taskId: taskId,
+        title: titleStr,
+        status: statusStr,
+        errorMessage: errStr,
+        agentRole: taskCardAgentRoleTryParse(roleRaw),
+      );
+    }
+  }
+  return _LinkedTaskSnapshot(taskId: taskId, title: null, status: '');
+}
+
+Widget _messageTaskStatusCard(ConversationMessageModel message, String taskId) {
+  final snap = _snapshotForLinkedTask(message, taskId);
+  return TaskStatusCard(
+    key: ValueKey<String>(taskId),
+    taskId: taskId,
+    title: snap.title,
+    status: snap.status,
+    errorMessage: snap.errorMessage,
+    agentRole: snap.agentRole,
+    onOpen: null,
+  );
+}
 
 /// Константы прокрутки чата ([ListView.reverse] = true: низ — [ScrollPosition.pixels] → 0).
 abstract final class ChatScreenScroll {
@@ -561,7 +655,7 @@ class _MessageBubble extends StatelessWidget {
 
     final bubble = Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(12),
@@ -574,6 +668,33 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
 
+    final linked = message.linkedTaskIds;
+    final cross = switch (align) {
+      Alignment.centerRight => CrossAxisAlignment.end,
+      Alignment.centerLeft => CrossAxisAlignment.start,
+      _ => CrossAxisAlignment.center,
+    };
+
+    final cardColumn = <Widget>[
+      bubble,
+      if (linked.isNotEmpty) ...[
+        const SizedBox(height: _kBubbleToCardGap),
+        for (var i = 0; i < linked.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          _messageTaskStatusCard(message, linked[i]),
+        ],
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            l10n.chatLinkedTasksRealtimeNote,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
+          ),
+        ),
+      ],
+    ];
+
     // 11.6: во время стрима не включаем liveRegion — иначе каждый чанк озвучивается заново.
     return Semantics(
       label: label,
@@ -584,7 +705,11 @@ class _MessageBubble extends StatelessWidget {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.sizeOf(context).width * 0.88,
           ),
-          child: bubble,
+          child: Column(
+            crossAxisAlignment: cross,
+            mainAxisSize: MainAxisSize.min,
+            children: cardColumn,
+          ),
         ),
       ),
     );
@@ -636,7 +761,7 @@ class _PendingBubble extends StatelessWidget {
           ),
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(

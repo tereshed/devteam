@@ -560,6 +560,72 @@ class AppLocalizationsRu extends AppLocalizations {
   String get chatScreenNotFoundBack => 'К списку проектов';
 
   @override
+  String get chatLinkedTasksRealtimeNote =>
+      'Актуальный статус задач в реальном времени подключится в задаче 11.9 (WebSocket).';
+
+  @override
+  String get taskStatusPending => 'В ожидании';
+
+  @override
+  String get taskStatusPlanning => 'Планирование';
+
+  @override
+  String get taskStatusInProgress => 'В работе';
+
+  @override
+  String get taskStatusReview => 'Ревью';
+
+  @override
+  String get taskStatusTesting => 'Тестирование';
+
+  @override
+  String get taskStatusChangesRequested => 'Нужны правки';
+
+  @override
+  String get taskStatusCompleted => 'Готово';
+
+  @override
+  String get taskStatusFailed => 'Ошибка';
+
+  @override
+  String get taskStatusCancelled => 'Отменена';
+
+  @override
+  String get taskStatusPaused => 'На паузе';
+
+  @override
+  String get taskStatusUnknownStatus => 'Неизвестный статус';
+
+  @override
+  String taskStatusCardFallbackTitle(String shortId) {
+    return 'Задача $shortId';
+  }
+
+  @override
+  String get taskCardAgentRoleWorker => 'Исполнитель';
+
+  @override
+  String get taskCardAgentRoleSupervisor => 'Супервизор';
+
+  @override
+  String get taskCardAgentRoleOrchestrator => 'Оркестратор';
+
+  @override
+  String get taskCardAgentRolePlanner => 'Планировщик';
+
+  @override
+  String get taskCardAgentRoleDeveloper => 'Разработчик';
+
+  @override
+  String get taskCardAgentRoleReviewer => 'Ревьюер';
+
+  @override
+  String get taskCardAgentRoleTester => 'Тестировщик';
+
+  @override
+  String get taskCardAgentRoleDevops => 'DevOps';
+
+  @override
   String get chatMessageCopyCode => 'Копировать код';
 
   @override

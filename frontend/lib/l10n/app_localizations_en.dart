@@ -562,6 +562,72 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatScreenNotFoundBack => 'Back to projects';
 
   @override
+  String get chatLinkedTasksRealtimeNote =>
+      'Live task status updates will arrive with task 11.9 (WebSocket).';
+
+  @override
+  String get taskStatusPending => 'Pending';
+
+  @override
+  String get taskStatusPlanning => 'Planning';
+
+  @override
+  String get taskStatusInProgress => 'In progress';
+
+  @override
+  String get taskStatusReview => 'Review';
+
+  @override
+  String get taskStatusTesting => 'Testing';
+
+  @override
+  String get taskStatusChangesRequested => 'Changes requested';
+
+  @override
+  String get taskStatusCompleted => 'Completed';
+
+  @override
+  String get taskStatusFailed => 'Failed';
+
+  @override
+  String get taskStatusCancelled => 'Cancelled';
+
+  @override
+  String get taskStatusPaused => 'Paused';
+
+  @override
+  String get taskStatusUnknownStatus => 'Unknown status';
+
+  @override
+  String taskStatusCardFallbackTitle(String shortId) {
+    return 'Task $shortId';
+  }
+
+  @override
+  String get taskCardAgentRoleWorker => 'Worker';
+
+  @override
+  String get taskCardAgentRoleSupervisor => 'Supervisor';
+
+  @override
+  String get taskCardAgentRoleOrchestrator => 'Orchestrator';
+
+  @override
+  String get taskCardAgentRolePlanner => 'Planner';
+
+  @override
+  String get taskCardAgentRoleDeveloper => 'Developer';
+
+  @override
+  String get taskCardAgentRoleReviewer => 'Reviewer';
+
+  @override
+  String get taskCardAgentRoleTester => 'Tester';
+
+  @override
+  String get taskCardAgentRoleDevops => 'DevOps';
+
+  @override
   String get chatMessageCopyCode => 'Copy code';
 
   @override
