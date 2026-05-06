@@ -13,8 +13,14 @@ WsConfig wsConfig(Ref ref) {
   return const WsConfig();
 }
 
-/// WebSocket-сервис на время жизни scope-провайдера; сокет закрывается при dispose.
-@Riverpod(keepAlive: false)
+/// WebSocket-сервис (единый на приложение): **keepAlive**, чтобы [ChatController]
+/// мог только подписаться на [WebSocketService.events] без `watch` провайдера.
+///
+/// **Выход из всех проектов** (список проектов, logout): соединение не закрывается
+/// автоматически — нужен вызов [WebSocketService.disconnect] из shell роутера /
+/// сессии. TODO: wiring при уходе на корневые экраны без проекта (задача уровня
+/// AppShell / навигации, не 11.9); отслеживать в roadmap (напр. фаза 12.x).
+@Riverpod(keepAlive: true)
 WebSocketService webSocketService(Ref ref) {
   final dio = ref.watch(dioClientProvider);
   final baseUrl = dio.options.baseUrl;

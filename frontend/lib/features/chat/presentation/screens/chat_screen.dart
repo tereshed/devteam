@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
+import 'package:frontend/features/chat/domain/linked_task_snapshots.dart';
 import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/presentation/controllers/chat_controller.dart';
 import 'package:frontend/features/chat/presentation/state/chat_state.dart';
@@ -19,91 +20,15 @@ import 'package:go_router/go_router.dart';
 /// Отступ между пузырём [ChatMessage] и блоком [TaskStatusCard] (ТЗ 11.7).
 const double _kBubbleToCardGap = 8;
 
-Map<String, Object?>? _linkedTaskSnapshotsFromMetadata(Map<String, dynamic>? meta) {
-  if (meta == null) {
-    return null;
-  }
-  final v = meta['linked_task_snapshots'];
-  if (v is! Map) {
-    return null;
-  }
-  return v.map((k, val) => MapEntry(k.toString(), val));
-}
-
-/// Снимок полей задачи для карточки из [ConversationMessageModel.metadata].
-class _LinkedTaskSnapshot {
-  const _LinkedTaskSnapshot({
-    required this.taskId,
-    this.title,
-    required this.status,
-    this.errorMessage,
-    this.agentRole,
-  });
-
-  final String taskId;
-  final String? title;
-  final String status;
-  final String? errorMessage;
-  final TaskCardAgentRole? agentRole;
-}
-
-_LinkedTaskSnapshot _snapshotForLinkedTask(
-  ConversationMessageModel message,
-  String taskId,
-) {
-  final snaps = _linkedTaskSnapshotsFromMetadata(message.metadata);
-  if (snaps != null) {
-    final raw = snaps[taskId];
-    if (raw is Map) {
-      final map = Map<String, dynamic>.from(
-        raw.map((k, v) => MapEntry(k.toString(), v)),
-      );
-
-      assert(() {
-        void checkField(String jsonKey) {
-          final v = map[jsonKey];
-          if (v != null && v is! String) {
-            throw FlutterError(
-              'linked_task_snapshots[$taskId].$jsonKey: expected String?, got ${v.runtimeType}',
-            );
-          }
-        }
-
-        checkField('status');
-        checkField('title');
-        checkField('error_message');
-        checkField('agent_role');
-        return true;
-      }());
-
-      final titleStr = map['title'] is String ? map['title'] as String : null;
-      final statusStr = map['status'] is String ? map['status'] as String : '';
-      final errStr =
-          map['error_message'] is String ? map['error_message'] as String : null;
-      final roleRaw =
-          map['agent_role'] is String ? map['agent_role'] as String : null;
-
-      return _LinkedTaskSnapshot(
-        taskId: taskId,
-        title: titleStr,
-        status: statusStr,
-        errorMessage: errStr,
-        agentRole: taskCardAgentRoleTryParse(roleRaw),
-      );
-    }
-  }
-  return _LinkedTaskSnapshot(taskId: taskId, title: null, status: '');
-}
-
 Widget _messageTaskStatusCard(ConversationMessageModel message, String taskId) {
-  final snap = _snapshotForLinkedTask(message, taskId);
+  final snap = linkedTaskSnapshotForMessage(message, taskId);
   return TaskStatusCard(
     key: ValueKey<String>(taskId),
     taskId: taskId,
     title: snap.title,
     status: snap.status,
     errorMessage: snap.errorMessage,
-    agentRole: snap.agentRole,
+    agentRole: taskCardAgentRoleTryParse(snap.agentRoleRaw),
     onOpen: null,
   );
 }
@@ -305,9 +230,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     setState(() => _sendInFlight = true);
     try {
-      await _notifier.send(raw);
-      _textController.clear();
-      if (mounted) {
+      final outcome = await _notifier.send(raw);
+      if (outcome == ChatSendOutcome.completed && mounted) {
+        _textController.clear();
         _inputFocus.requestFocus();
       }
     } catch (_) {

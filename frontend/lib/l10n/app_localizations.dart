@@ -1172,7 +1172,7 @@ abstract class AppLocalizations {
   /// **'Вложение'**
   String get chatInputAttachTooltip;
 
-  /// Резерв при скрытом/отключённом attach
+  /// Резерв (таблица l10n 11.8): подсказка при отключённом attach; в 11.8 не используется — подключить в 11.11+ или удалить, если так и не понадобится
   ///
   /// In ru, this message translates to:
   /// **'Вложения недоступны'**

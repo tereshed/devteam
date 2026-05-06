@@ -8,6 +8,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
+import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
+import 'package:frontend/core/api/websocket_service.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/chat/data/chat_providers.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
@@ -15,18 +18,21 @@ import 'package:frontend/features/chat/data/conversation_repository.dart';
 import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/domain/requests.dart';
 import 'package:frontend/features/chat/presentation/controllers/chat_controller.dart';
+import 'package:frontend/features/chat/presentation/state/chat_state.dart';
 import 'package:frontend/l10n/app_localizations_en.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 
 import 'chat_controller_test.mocks.dart';
 
-@GenerateNiceMocks([MockSpec<ConversationRepository>()])
+@GenerateNiceMocks([MockSpec<ConversationRepository>(), MockSpec<WebSocketService>()])
 void main() {
   const pid = '550e8400-e29b-41d4-a716-446655440000';
   const cid = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
   late MockConversationRepository mockRepo;
+  late MockWebSocketService mockWs;
+  late StreamController<WsClientEvent> wsEvents;
   late ProviderContainer container;
 
   ConversationModel conv() => ConversationModel(
@@ -57,12 +63,13 @@ void main() {
         chatControllerProvider(projectId: pid, conversationId: cid).notifier,
       );
 
-  Future<void> waitIdle() async {
+  Future<void> waitIdle([ProviderContainer? pc]) async {
+    final c = pc ?? container;
     const step = Duration(milliseconds: 2);
     const timeout = Duration(seconds: 2);
     final sw = Stopwatch()..start();
     while (sw.elapsed < timeout) {
-      final st = container.read(
+      final st = c.read(
         chatControllerProvider(projectId: pid, conversationId: cid),
       );
       if (st.hasError) {
@@ -89,12 +96,20 @@ void main() {
 
   setUp(() {
     mockRepo = MockConversationRepository();
+    mockWs = MockWebSocketService();
+    wsEvents = StreamController<WsClientEvent>.broadcast();
+    when(mockWs.events).thenAnswer((_) => wsEvents.stream);
+    when(mockWs.connect(any)).thenAnswer((_) => wsEvents.stream);
     container = ProviderContainer(
       overrides: [
         conversationRepositoryProvider.overrideWithValue(mockRepo),
+        webSocketServiceProvider.overrideWithValue(mockWs),
       ],
     );
-    addTearDown(container.dispose);
+    addTearDown(() async {
+      await wsEvents.close();
+      container.dispose();
+    });
   });
 
   group('ChatController', () {
@@ -719,7 +734,7 @@ void main() {
           .requireValue
           .messages
           .length;
-      expect(after, before);
+      expect(identical(after, before), isTrue);
     });
 
     test('refresh during loadOlder: stale page merge ignored after epoch bump',
@@ -913,6 +928,612 @@ void main() {
       final d = chatErrorDetail(err)!;
       expect(d.endsWith('…'), isTrue);
       expect('……'.allMatches(d).length, lessThan(2));
+    });
+  });
+
+  group('ChatController realtime (11.9)', () {
+    const taskA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+    WsTaskStatusEvent wsTask({
+      required String taskId,
+      String status = 'in_progress',
+      String project = pid,
+    }) {
+      return WsTaskStatusEvent(
+        ts: DateTime.utc(2026, 1, 1),
+        v: 1,
+        projectId: project,
+        taskId: taskId,
+        previousStatus: 'pending',
+        status: status,
+      );
+    }
+
+    ConversationMessageModel msgLinked(
+      String id,
+      List<String> linked,
+      DateTime createdAt,
+    ) {
+      return ConversationMessageModel(
+        id: id,
+        conversationId: cid,
+        role: 'assistant',
+        content: 'c',
+        linkedTaskIds: linked,
+        createdAt: createdAt,
+      );
+    }
+
+    /// Strict no-op: нельзя сравнивать [ChatState.messages] через `identical` дважды —
+    /// геттер в Freezed оборачивает список в новый [EqualUnmodifiableListView] при чтении.
+    test('T1 taskStatus without linked messages is strict no-op', () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => MessageListResponse(
+          messages: [
+            msg('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'x',
+                DateTime.utc(2026, 1, 2)),
+          ],
+          hasNext: false,
+        ),
+      );
+
+      ctrl();
+      await waitIdle();
+
+      final beforeState = container
+          .read(chatControllerProvider(projectId: pid, conversationId: cid))
+          .requireValue;
+      clearInteractions(mockRepo);
+      wsEvents.add(WsClientEvent.server(WsServerEvent.taskStatus(wsTask(taskId: taskA))));
+      await Future<void>.delayed(Duration.zero);
+
+      verifyNever(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      );
+
+      final afterState = container
+          .read(chatControllerProvider(projectId: pid, conversationId: cid))
+          .requireValue;
+      expect(identical(afterState, beforeState), isTrue);
+    });
+
+    test('T2 taskStatus patches all messages sharing taskId', () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => MessageListResponse(
+          messages: [
+            msgLinked('m1', [taskA], DateTime.utc(2026, 1, 1)),
+            msgLinked('m2', [taskA], DateTime.utc(2026, 1, 2)),
+          ],
+          hasNext: false,
+        ),
+      );
+
+      ctrl();
+      await waitIdle();
+
+      wsEvents.add(
+        WsClientEvent.server(
+          WsServerEvent.taskStatus(wsTask(taskId: taskA, status: 'completed')),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final msgs = container
+          .read(chatControllerProvider(projectId: pid, conversationId: cid))
+          .requireValue
+          .messages;
+      for (final m in msgs) {
+        final snap = m.metadata?['linked_task_snapshots']?[taskA];
+        expect(snap, isNotNull);
+        expect(snap!['status'], 'completed');
+      }
+    });
+
+    test('T3 ignores task_status for foreign projectId', () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => MessageListResponse(
+          messages: [
+            msgLinked('m1', [taskA], DateTime.utc(2026, 1, 1)),
+          ],
+          hasNext: false,
+        ),
+      );
+
+      ctrl();
+      await waitIdle();
+
+      final beforeState = container
+          .read(chatControllerProvider(projectId: pid, conversationId: cid))
+          .requireValue;
+
+      wsEvents.add(
+        WsClientEvent.server(
+          WsServerEvent.taskStatus(
+            wsTask(
+              taskId: taskA,
+              status: 'completed',
+              project: '11111111-1111-1111-1111-111111111111',
+            ),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final afterState = container
+          .read(chatControllerProvider(projectId: pid, conversationId: cid))
+          .requireValue;
+      expect(identical(afterState, beforeState), isTrue);
+    });
+
+    test('T4 five stream_overflow errors trigger exactly one refresh', () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => const MessageListResponse());
+
+      ctrl();
+      await waitIdle();
+
+      clearInteractions(mockRepo);
+      for (var i = 0; i < 5; i++) {
+        wsEvents.add(
+          WsClientEvent.server(
+            WsServerEvent.error(
+              WsErrorEvent(
+                ts: DateTime.utc(2026, 1, 1),
+                v: 1,
+                projectId: pid,
+                code: WsErrorCode.streamOverflow,
+                message: 'overflow',
+                needsRestRefetch: true,
+              ),
+            ),
+          ),
+        );
+      }
+      await waitIdle();
+
+      verify(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).called(1);
+    });
+
+    test('T5 parseError does not call refresh', () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => const MessageListResponse());
+
+      ctrl();
+      await waitIdle();
+
+      clearInteractions(mockRepo);
+      wsEvents.add(const WsClientEvent.parseError(WsParseError(message: 'bad')));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      verifyNever(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      );
+    });
+
+    test('T6 transient serviceFailure then taskStatus clears realtime flag',
+        () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => MessageListResponse(
+          messages: [
+            msgLinked('m1', [taskA], DateTime.utc(2026, 1, 1)),
+          ],
+          hasNext: false,
+        ),
+      );
+
+      ctrl();
+      await waitIdle();
+
+      wsEvents.add(
+        const WsClientEvent.serviceFailure(WsServiceFailure.transient('x')),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        container
+            .read(chatControllerProvider(projectId: pid, conversationId: cid))
+            .requireValue
+            .realtimeServiceFailure,
+        isNotNull,
+      );
+
+      wsEvents.add(
+        WsClientEvent.server(
+          WsServerEvent.taskStatus(wsTask(taskId: taskA)),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        container
+            .read(chatControllerProvider(projectId: pid, conversationId: cid))
+            .requireValue
+            .realtimeServiceFailure,
+        isNull,
+      );
+    });
+
+    test(
+      'T6b transient then taskMessage clears flag without linked task match',
+      () async {
+        when(
+          mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+        ).thenAnswer((_) async => conv());
+        when(
+          mockRepo.getMessages(
+            cid,
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => MessageListResponse(
+            messages: [
+              msg('z1', 'x', DateTime.utc(2026, 1, 1)),
+            ],
+            hasNext: false,
+          ),
+        );
+
+        ctrl();
+        await waitIdle();
+
+        wsEvents.add(
+          const WsClientEvent.serviceFailure(WsServiceFailure.transient('x')),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          container
+              .read(chatControllerProvider(projectId: pid, conversationId: cid))
+              .requireValue
+              .realtimeServiceFailure,
+          isNotNull,
+        );
+
+        wsEvents.add(
+          WsClientEvent.server(
+            WsServerEvent.taskMessage(
+              WsTaskMessageEvent(
+                ts: DateTime.utc(2026, 1, 1),
+                v: 1,
+                projectId: pid,
+                taskId: taskA,
+                messageId: '77777777-7777-7777-7777-777777777777',
+                senderType: 'agent',
+                senderId: '88888888-8888-8888-8888-888888888888',
+                messageType: 'result',
+                content: 'log',
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          container
+              .read(chatControllerProvider(projectId: pid, conversationId: cid))
+              .requireValue
+              .realtimeServiceFailure,
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'T6c transient(A) then transient(B) replaces cause without intermediate null',
+      () async {
+        when(
+          mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+        ).thenAnswer((_) async => conv());
+        when(
+          mockRepo.getMessages(
+            cid,
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => MessageListResponse(
+            messages: [
+              msg('z1', 'x', DateTime.utc(2026, 1, 1)),
+            ],
+            hasNext: false,
+          ),
+        );
+
+        ctrl();
+        await waitIdle();
+
+        final messagesSnapshot = container
+            .read(chatControllerProvider(projectId: pid, conversationId: cid))
+            .requireValue
+            .messages;
+
+        final rfLog = <WsServiceFailure?>[];
+        container.listen(
+          chatControllerProvider(projectId: pid, conversationId: cid),
+          (previous, next) {
+            next.whenData((s) => rfLog.add(s.realtimeServiceFailure));
+          },
+        );
+
+        wsEvents.add(
+          const WsClientEvent.serviceFailure(WsServiceFailure.transient('cause-a')),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        wsEvents.add(
+          const WsClientEvent.serviceFailure(WsServiceFailure.transient('cause-b')),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          container
+              .read(chatControllerProvider(projectId: pid, conversationId: cid))
+              .requireValue
+              .realtimeServiceFailure,
+          const WsServiceFailure.transient('cause-b'),
+        );
+
+        expect(rfLog, [
+          const WsServiceFailure.transient('cause-a'),
+          const WsServiceFailure.transient('cause-b'),
+        ]);
+
+        // Не identical(messages): геттер ChatState.messages оборачивает список в
+        // EqualUnmodifiableListView при каждом чтении — сравниваем содержимое.
+        expect(
+          container
+              .read(chatControllerProvider(projectId: pid, conversationId: cid))
+              .requireValue
+              .messages,
+          messagesSnapshot,
+        );
+      },
+    );
+
+    test('T7 after dispose, WS events do not update chat state', () async {
+      final localWs = MockWebSocketService();
+      final localStream = StreamController<WsClientEvent>.broadcast();
+      when(localWs.events).thenAnswer((_) => localStream.stream);
+      when(localWs.connect(any)).thenAnswer((_) => localStream.stream);
+
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => MessageListResponse(
+          messages: [
+            msgLinked('m1', [taskA], DateTime.utc(2026, 1, 1)),
+          ],
+          hasNext: false,
+        ),
+      );
+
+      final localContainer = ProviderContainer(
+        overrides: [
+          conversationRepositoryProvider.overrideWithValue(mockRepo),
+          webSocketServiceProvider.overrideWithValue(localWs),
+        ],
+      );
+      addTearDown(() async {
+        await localStream.close();
+      });
+
+      localContainer.read(
+        chatControllerProvider(projectId: pid, conversationId: cid).notifier,
+      );
+      await waitIdle(localContainer);
+
+      clearInteractions(mockRepo);
+      localContainer.dispose();
+
+      localStream.add(
+        WsClientEvent.server(
+          WsServerEvent.error(
+            WsErrorEvent(
+              ts: DateTime.utc(2026, 1, 1),
+              v: 1,
+              projectId: pid,
+              code: WsErrorCode.streamOverflow,
+              message: 'overflow',
+              needsRestRefetch: true,
+            ),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      verifyNever(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      );
+      verifyNever(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      );
+    });
+
+    test('T9 authExpired blocks send to repository', () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => const MessageListResponse());
+
+      ctrl();
+      await waitIdle();
+
+      wsEvents.add(
+        const WsClientEvent.serviceFailure(WsServiceFailure.authExpired()),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        container
+            .read(chatControllerProvider(projectId: pid, conversationId: cid))
+            .requireValue
+            .realtimeSessionFailure,
+        const ChatRealtimeSessionFailure.authenticationLost(),
+      );
+
+      expect(
+        await ctrl().send('hello'),
+        ChatSendOutcome.blockedByRealtimeSession,
+      );
+      verifyNever(
+        mockRepo.sendMessage(
+          cid,
+          any,
+          clientMessageId: anyNamed('clientMessageId'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      );
+    });
+
+    test('T10 taskMessage and agentLog do not alter messages list', () async {
+      when(
+        mockRepo.getConversation(cid, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer((_) async => conv());
+      when(
+        mockRepo.getMessages(
+          cid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => MessageListResponse(
+          messages: [
+            msg('z1', 'x', DateTime.utc(2026, 1, 1)),
+          ],
+          hasNext: false,
+        ),
+      );
+
+      ctrl();
+      await waitIdle();
+
+      final beforeState = container
+          .read(chatControllerProvider(projectId: pid, conversationId: cid))
+          .requireValue;
+
+      wsEvents.add(
+        WsClientEvent.server(
+          WsServerEvent.taskMessage(
+            WsTaskMessageEvent(
+              ts: DateTime.utc(2026, 1, 1),
+              v: 1,
+              projectId: pid,
+              taskId: taskA,
+              messageId: '77777777-7777-7777-7777-777777777777',
+              senderType: 'agent',
+              senderId: '88888888-8888-8888-8888-888888888888',
+              messageType: 'result',
+              content: 'log',
+            ),
+          ),
+        ),
+      );
+      wsEvents.add(
+        WsClientEvent.server(
+          WsServerEvent.agentLog(
+            WsAgentLogEvent(
+              ts: DateTime.utc(2026, 1, 1),
+              v: 1,
+              projectId: pid,
+              taskId: taskA,
+              sandboxId: 's',
+              stream: 'stdout',
+              line: 'l',
+              seq: 1,
+            ),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final afterState = container
+          .read(chatControllerProvider(projectId: pid, conversationId: cid))
+          .requireValue;
+      expect(identical(afterState, beforeState), isTrue);
     });
   });
 }

@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:frontend/core/api/api_exceptions.dart';
+import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/chat/data/chat_providers.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
+import 'package:frontend/features/chat/domain/linked_task_snapshots.dart';
 import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/domain/requests.dart';
 import 'package:frontend/features/chat/presentation/state/chat_state.dart';
@@ -13,6 +16,16 @@ import 'package:frontend/l10n/app_localizations.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'chat_controller.g.dart';
+
+/// Результат [ChatController.send] / [ChatController.retrySend] для UI (11.9).
+enum ChatSendOutcome {
+  /// Пустой ввод или нет pending для retry — репозиторий не вызывали.
+  ignored,
+  /// [ChatState.realtimeSessionFailure] != null — HTTP не выполняли.
+  blockedByRealtimeSession,
+  /// Успех, постановка в transient pending или отмена отправки.
+  completed,
+}
 
 /// Локализованный заголовок ошибки чата (SnackBar / диалоги).
 String chatErrorTitle(AppLocalizations l10n, Object error) {
@@ -135,7 +148,11 @@ class ChatController extends _$ChatController {
   /// — повторный [loadOlder] в этом окне получит тот же [Future] (уже отменённый
   /// запрос истории), это безопасно.
   Future<void>? _olderInFlight;
-  bool _initialLoadScheduled = false;
+
+  StreamSubscription<WsClientEvent>? _wsSubscription;
+
+  /// Антишторм [refresh] по `needsRestRefetch` (stream_overflow).
+  bool _wsOverflowRefreshInFlight = false;
 
   @override
   FutureOr<ChatState> build({
@@ -152,17 +169,161 @@ class ChatController extends _$ChatController {
 
     _historyCancelToken ??= CancelToken();
 
-    if (!_initialLoadScheduled) {
-      _initialLoadScheduled = true;
+    if (_wsSubscription == null) {
       ref.onDispose(() {
         _historyCancelToken?.cancel();
+        unawaited(_wsSubscription?.cancel());
+        _wsSubscription = null;
       });
+      final ws = ref.read(webSocketServiceProvider);
+      ws.connect(projectId);
+      _wsSubscription = ws.events.listen(_onWsClientEvent);
       Future.microtask(() {
         unawaited(_loadInitial());
       });
     }
 
     return ChatState.initial();
+  }
+
+  void _clearRealtimeTransientFailure() {
+    final v = switch (state) {
+      AsyncData<ChatState>(:final value) => value,
+      _ => null,
+    };
+    if (v == null || v.realtimeServiceFailure == null) {
+      return;
+    }
+    _patchState((s) => s.copyWith(realtimeServiceFailure: null));
+  }
+
+  void _patchRealtimeSessionFailure(ChatRealtimeSessionFailure failure) {
+    _patchState(
+      (s) => s.copyWith(
+        realtimeSessionFailure: failure,
+        realtimeServiceFailure: null,
+      ),
+    );
+  }
+
+  void _applyTerminalServiceFailure(WsServiceFailure f) {
+    f.when(
+      transient: (_) {},
+      authExpired: () => _patchRealtimeSessionFailure(
+        const ChatRealtimeSessionFailure.authenticationLost(),
+      ),
+      policyForbidden: () => _patchRealtimeSessionFailure(
+        const ChatRealtimeSessionFailure.forbidden(),
+      ),
+      policySubprotocolMismatch: () => _patchRealtimeSessionFailure(
+        const ChatRealtimeSessionFailure.forbidden(),
+      ),
+      policyCloseCode: (_) => _patchRealtimeSessionFailure(
+        const ChatRealtimeSessionFailure.forbidden(),
+      ),
+      tooManyConnectionsTerminal: () => _patchRealtimeSessionFailure(
+        const ChatRealtimeSessionFailure.connectionLimitExceeded(),
+      ),
+      tooManyConnections: () => _patchState(
+        (s) => s.copyWith(
+          realtimeServiceFailure: const WsServiceFailure.tooManyConnections(),
+        ),
+      ),
+      protocolBroken: () => throw StateError(
+        'protocolBroken is handled in _handleWsServiceFailure',
+      ),
+    );
+  }
+
+  void _requestWsOverflowRefresh() {
+    if (_wsOverflowRefreshInFlight) {
+      return;
+    }
+    _wsOverflowRefreshInFlight = true;
+    unawaited(
+      refresh().whenComplete(() {
+        _wsOverflowRefreshInFlight = false;
+      }),
+    );
+  }
+
+  void _onWsTaskStatus(WsTaskStatusEvent e) {
+    if (e.projectId != projectId || e.taskId.isEmpty) {
+      return;
+    }
+    final cur = switch (state) {
+      AsyncData<ChatState>(:final value) => value,
+      _ => null,
+    };
+    if (cur == null) {
+      return;
+    }
+    if (!cur.messages.any((m) => m.linkedTaskIds.contains(e.taskId))) {
+      return;
+    }
+
+    final patch = LinkedTaskSnapshotPatch.fromWsTaskStatus(e);
+    final next = <ConversationMessageModel>[];
+    for (final m in cur.messages) {
+      if (!m.linkedTaskIds.contains(e.taskId)) {
+        next.add(m);
+        continue;
+      }
+      next.add(applyLinkedSnapshotPatchToMessage(m, e.taskId, patch));
+    }
+
+    _patchState((s) => s.copyWith(messages: next));
+  }
+
+  void _handleWsServiceFailure(WsServiceFailure failure) {
+    switch (failure) {
+      case WsServiceFailureTransient():
+        _patchState(
+          (s) => s.copyWith(realtimeServiceFailure: failure),
+        );
+      case WsServiceFailureProtocolBroken():
+        _patchState(
+          (s) => s.copyWith(
+            realtimeServiceFailure: const WsServiceFailure.protocolBroken(),
+          ),
+        );
+      default:
+        _applyTerminalServiceFailure(failure);
+    }
+  }
+
+  void _onWsClientEvent(WsClientEvent ev) {
+    switch (ev) {
+      case WsClientEventServiceFailure(:final failure):
+        _handleWsServiceFailure(failure);
+        return;
+      case WsClientEventAuthFailure():
+        _patchRealtimeSessionFailure(
+          const ChatRealtimeSessionFailure.authenticationLost(),
+        );
+        return;
+      case WsClientEventSubprotocolMismatch():
+      case WsClientEventParseError():
+        _clearRealtimeTransientFailure();
+        return;
+      case WsClientEventServer(:final event):
+        _clearRealtimeTransientFailure();
+        event.when(
+          taskStatus: _onWsTaskStatus,
+          taskMessage: (_) {},
+          agentLog: (_) {},
+          error: (err) {
+            if (err.projectId != projectId) {
+              return;
+            }
+            if (err.needsRestRefetch) {
+              _requestWsOverflowRefresh();
+            }
+          },
+          unknown: (_) {},
+        );
+        return;
+    }
   }
 
   /// Повторная загрузка метаданных и первой страницы истории.
@@ -187,6 +348,8 @@ class ChatController extends _$ChatController {
         hasMoreOlder: false,
         olderOffset: 0,
         pendingByClientId: pending,
+        realtimeServiceFailure: prev?.realtimeServiceFailure,
+        realtimeSessionFailure: prev?.realtimeSessionFailure,
       ),
     );
 
@@ -250,6 +413,7 @@ class ChatController extends _$ChatController {
           isLoadingInitial: false,
           hasMoreOlder: hasMore,
           olderOffset: s.olderOffset + page.messages.length,
+          realtimeServiceFailure: null,
         ),
       );
     } on ConversationCancelledException {
@@ -379,10 +543,18 @@ class ChatController extends _$ChatController {
   }
 
   /// Отправка сообщения; при транзиентной ошибке — запись в [ChatState.pendingByClientId].
-  Future<void> send(String raw) async {
+  Future<ChatSendOutcome> send(String raw) async {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) {
-      return;
+      return ChatSendOutcome.ignored;
+    }
+
+    final sessionBlocked = switch (state) {
+      AsyncData<ChatState>(:final value) => value.realtimeSessionFailure != null,
+      _ => false,
+    };
+    if (sessionBlocked) {
+      return ChatSendOutcome.blockedByRealtimeSession;
     }
 
     final clientMessageId = generateClientMessageId();
@@ -398,8 +570,10 @@ class ChatController extends _$ChatController {
         cancelToken: null,
       );
       _onSendSuccess(clientMessageId, result);
+      return ChatSendOutcome.completed;
     } on ConversationCancelledException {
       _removePending(clientMessageId);
+      return ChatSendOutcome.completed;
     } catch (e) {
       if (_isTransientSendFailure(e)) {
         _putPending(
@@ -412,7 +586,7 @@ class ChatController extends _$ChatController {
             lastAttemptAt: now,
           ),
         );
-        return;
+        return ChatSendOutcome.completed;
       }
       _removePending(clientMessageId);
       rethrow;
@@ -420,14 +594,17 @@ class ChatController extends _$ChatController {
   }
 
   /// Повтор отправки с тем же [clientMessageId] и телом из pending.
-  Future<void> retrySend(String clientMessageId) async {
+  Future<ChatSendOutcome> retrySend(String clientMessageId) async {
     final s = switch (state) {
       AsyncData<ChatState>(:final value) => value,
       _ => null,
     };
+    if (s?.realtimeSessionFailure != null) {
+      return ChatSendOutcome.blockedByRealtimeSession;
+    }
     final pending = s?.pendingByClientId[clientMessageId];
     if (pending == null) {
-      return;
+      return ChatSendOutcome.ignored;
     }
 
     final cid = conversationId;
@@ -447,15 +624,17 @@ class ChatController extends _$ChatController {
         cancelToken: null,
       );
       _onSendSuccess(clientMessageId, result);
+      return ChatSendOutcome.completed;
     } on ConversationCancelledException {
       _putPending(clientMessageId, pending);
+      return ChatSendOutcome.completed;
     } catch (e) {
       if (_isTransientSendFailure(e)) {
         _putPending(
           clientMessageId,
           next.copyWith(lastError: e),
         );
-        return;
+        return ChatSendOutcome.completed;
       }
       _removePending(clientMessageId);
       rethrow;
