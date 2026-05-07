@@ -77,10 +77,12 @@ class _DebugDioLogInterceptor extends Interceptor {
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    final omit = isConversationMessagesApiPath(options.path);
+    final omitBody = isConversationMessagesApiPath(options.path) ||
+        isTaskMessagesApiPath(options.path) ||
+        isTaskCorrectApiPath(options.path);
     _log('--> ${options.method} ${options.uri}');
-    if (omit) {
-      _log('request body: [omitted: conversation messages]');
+    if (omitBody) {
+      _log('request body: [omitted: sensitive payload]');
     } else if (options.data != null) {
       _log('request body: ${options.data}');
     }
@@ -92,10 +94,13 @@ class _DebugDioLogInterceptor extends Interceptor {
     Response<dynamic> response,
     ResponseInterceptorHandler handler,
   ) {
-    final omit = isConversationMessagesApiPath(response.requestOptions.path);
+    final omitBody =
+        isConversationMessagesApiPath(response.requestOptions.path) ||
+            isTaskMessagesApiPath(response.requestOptions.path) ||
+            isTaskCorrectApiPath(response.requestOptions.path);
     _log('<-- ${response.statusCode} ${response.requestOptions.uri}');
-    if (omit) {
-      _log('response body: [omitted: conversation messages]');
+    if (omitBody) {
+      _log('response body: [omitted: sensitive payload]');
     } else {
       _log('response body: ${response.data}');
     }
@@ -105,10 +110,12 @@ class _DebugDioLogInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     final ro = err.requestOptions;
-    final omit = isConversationMessagesApiPath(ro.path);
+    final omitBody = isConversationMessagesApiPath(ro.path) ||
+        isTaskMessagesApiPath(ro.path) ||
+        isTaskCorrectApiPath(ro.path);
     _log('*** ERROR ${err.response?.statusCode} ${ro.uri} (${err.type})');
-    if (omit) {
-      _log('error response body: [omitted: conversation messages]');
+    if (omitBody) {
+      _log('error response body: [omitted: sensitive payload]');
     } else {
       final data = err.response?.data;
       if (data != null) {
