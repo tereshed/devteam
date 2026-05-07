@@ -556,6 +556,16 @@
   "@taskCardAgentRoleTester": { "description": "Роль агента tester" },
   "taskCardAgentRoleDevops": "DevOps",
   "@taskCardAgentRoleDevops": { "description": "Роль агента devops" },
+  "taskErrorGeneric": "Не удалось выполнить операцию с задачами",
+  "@taskErrorGeneric": { "description": "Общая ошибка TaskRepository / контроллеров задач (12.3)" },
+  "taskListErrorProjectNotFound": "Проект не найден",
+  "@taskListErrorProjectNotFound": { "description": "404 списка задач проекта" },
+  "taskDetailErrorTaskNotFound": "Задача не найдена",
+  "@taskDetailErrorTaskNotFound": { "description": "404 карточки задачи" },
+  "taskSendMessageNoIdempotencyHint": "Повторное нажатие «Отправить» создаёт второе сообщение на сервере (идемпотентность — отдельная задача).",
+  "@taskSendMessageNoIdempotencyHint": {
+    "description": "Документация для UI: addTaskMessage без ключа идемпотентности (12.3 §45)"
+  },
   "chatMessageCopyCode": "Копировать код",
   "@chatMessageCopyCode": { "description": "Подсказка кнопки копирования блока кода в чате" },
   "chatMessageStreamingPlaceholder": "Печатает…",

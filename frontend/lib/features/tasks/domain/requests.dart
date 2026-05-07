@@ -82,6 +82,12 @@ abstract class TaskListFilter with _$TaskListFilter {
 
   const TaskListFilter._();
 
+  /// Как на бэкенде при пустом query: сортировка по `created_at DESC`.
+  static TaskListFilter defaults() => const TaskListFilter(
+        orderBy: 'created_at',
+        orderDir: TaskOrderDir.desc,
+      );
+
   /// Параметры query для Dio (`statuses` — список для `ListFormat.multi`).
   /// Имена ключей — контракт HTTP (`ListTasksRequest` на бэкенде), не `@JsonKey`.
   Map<String, dynamic> toQueryParameters() {

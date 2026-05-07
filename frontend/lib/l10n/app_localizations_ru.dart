@@ -634,6 +634,19 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskCardAgentRoleDevops => 'DevOps';
 
   @override
+  String get taskErrorGeneric => 'Не удалось выполнить операцию с задачами';
+
+  @override
+  String get taskListErrorProjectNotFound => 'Проект не найден';
+
+  @override
+  String get taskDetailErrorTaskNotFound => 'Задача не найдена';
+
+  @override
+  String get taskSendMessageNoIdempotencyHint =>
+      'Повторное нажатие «Отправить» создаёт второе сообщение на сервере (идемпотентность — отдельная задача).';
+
+  @override
   String get chatMessageCopyCode => 'Копировать код';
 
   @override

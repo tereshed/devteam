@@ -290,6 +290,16 @@
   "@taskCardAgentRoleTester": { "description": "Agent role tester" },
   "taskCardAgentRoleDevops": "DevOps",
   "@taskCardAgentRoleDevops": { "description": "Agent role devops" },
+  "taskErrorGeneric": "Something went wrong with tasks",
+  "@taskErrorGeneric": { "description": "Generic task controller/repository error (12.3)" },
+  "taskListErrorProjectNotFound": "Project not found",
+  "@taskListErrorProjectNotFound": { "description": "404 when listing project tasks" },
+  "taskDetailErrorTaskNotFound": "Task not found",
+  "@taskDetailErrorTaskNotFound": { "description": "404 task detail" },
+  "taskSendMessageNoIdempotencyHint": "Tapping Send again creates another message on the server (idempotency is a separate task).",
+  "@taskSendMessageNoIdempotencyHint": {
+    "description": "UI doc: addTaskMessage has no idempotency key (12.3 §45)"
+  },
   "chatMessageCopyCode": "Copy code",
   "@chatMessageCopyCode": { "description": "Tooltip for fenced code copy button in chat" },
   "chatMessageStreamingPlaceholder": "Typing…",

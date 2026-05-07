@@ -1292,6 +1292,30 @@ abstract class AppLocalizations {
   /// **'DevOps'**
   String get taskCardAgentRoleDevops;
 
+  /// Общая ошибка TaskRepository / контроллеров задач (12.3)
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось выполнить операцию с задачами'**
+  String get taskErrorGeneric;
+
+  /// 404 списка задач проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Проект не найден'**
+  String get taskListErrorProjectNotFound;
+
+  /// 404 карточки задачи
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача не найдена'**
+  String get taskDetailErrorTaskNotFound;
+
+  /// Документация для UI: addTaskMessage без ключа идемпотентности (12.3 §45)
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторное нажатие «Отправить» создаёт второе сообщение на сервере (идемпотентность — отдельная задача).'**
+  String get taskSendMessageNoIdempotencyHint;
+
   /// Подсказка кнопки копирования блока кода в чате
   ///
   /// In ru, this message translates to:

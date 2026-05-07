@@ -636,6 +636,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskCardAgentRoleDevops => 'DevOps';
 
   @override
+  String get taskErrorGeneric => 'Something went wrong with tasks';
+
+  @override
+  String get taskListErrorProjectNotFound => 'Project not found';
+
+  @override
+  String get taskDetailErrorTaskNotFound => 'Task not found';
+
+  @override
+  String get taskSendMessageNoIdempotencyHint =>
+      'Tapping Send again creates another message on the server (idempotency is a separate task).';
+
+  @override
   String get chatMessageCopyCode => 'Copy code';
 
   @override
