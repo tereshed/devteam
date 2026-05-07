@@ -336,7 +336,7 @@ User Message
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 12.1 | Модели (Freezed): `TaskModel`, `TaskMessageModel` | `frontend/lib/features/tasks/domain/` | ⬜ |
+| 12.1 | Модели (Freezed): `TaskModel`, `TaskMessageModel` | `frontend/lib/features/tasks/domain/` | ✅ | [детали](docs/tasks/12.1-models-freezed-tasks.md) |
 | 12.2 | Repository: `TaskRepository` | `frontend/lib/features/tasks/data/task_repository.dart` | ⬜ |
 | 12.3 | Controller: `TaskListController`, `TaskDetailController` | `frontend/lib/features/tasks/presentation/controllers/` | ⬜ |
 | 12.4 | Экран: Список задач (Kanban-доска по статусам или таблица) | `frontend/lib/features/tasks/presentation/screens/tasks_list_screen.dart` | ⬜ |

@@ -29,6 +29,16 @@ integration_test/          # E2E интеграционные тесты
 
 **Теги:** `@Tags(['unit'])`
 
+**Шапка unit-файла (VM):** для unit-тестов домена, репозиториев и утилит без браузерного рантайма используйте в начале файла (до импортов):
+
+```dart
+// @dart=2.19
+// @TestOn('vm')
+// @Tags(['unit'])
+```
+
+`@TestOn('vm')` ограничивает запуск виртуальной машиной Dart (не `chrome`/wasm). Полный пример — `test/core/utils/uuid_test.dart`.
+
 ### Widget-тесты
 Тестируют UI компоненты:
 - Виджеты из `shared/widgets` (UI Kit)
@@ -85,6 +95,8 @@ flutter test test/features/auth/data/auth_repository_test.dart
 ### Unit-тест пример
 
 ```dart
+// @dart=2.19
+// @TestOn('vm')
 // @Tags(['unit'])
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
