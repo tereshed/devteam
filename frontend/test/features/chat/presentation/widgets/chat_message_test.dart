@@ -8,14 +8,9 @@ import 'package:frontend/features/chat/presentation/widgets/chat_message_builder
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:markdown/markdown.dart' as md;
 
-Widget _harness(Widget child) {
-  return MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    locale: const Locale('en'),
-    home: Scaffold(body: child),
-  );
-}
+import '../../helpers/test_wrappers.dart';
+
+Widget _harness(Widget child) => wrapChatSimple(child: child);
 
 TextDecoration? _decorationForSubstring(InlineSpan? root, String needle) {
   if (root is! TextSpan) {
@@ -240,7 +235,9 @@ void main() {
       ),
     );
     expect(find.byIcon(Icons.copy), findsOneWidget);
-    expect(find.byTooltip('Copy code'), findsOneWidget);
+    final l10n =
+        AppLocalizations.of(tester.element(find.byType(ChatMessage)))!;
+    expect(find.byTooltip(l10n.chatMessageCopyCode), findsOneWidget);
 
     final codeBlock = find.byKey(const ValueKey<String>('chat_message_code_hscroll'));
     expect(codeBlock, findsOneWidget);
@@ -395,7 +392,7 @@ void main() {
     expect(find.byType(HtmlElementView), findsNothing);
   });
 
-  testWidgets('https и mailto в whitelist; javascript — нет', (tester) async {
+  testWidgets('whitelist: https — подчёркивание', (tester) async {
     await tester.pumpWidget(
       _harness(
         const ChatMessage(
@@ -404,10 +401,12 @@ void main() {
         ),
       ),
     );
-    final httpsSpan =
+    final span =
         tester.widget<SelectableText>(find.byType(SelectableText).first).textSpan;
-    final decHttps = _decorationForSubstring(httpsSpan, 'a');
+    expect(_decorationForSubstring(span, 'a'), TextDecoration.underline);
+  });
 
+  testWidgets('whitelist: mailto — подчёркивание', (tester) async {
     await tester.pumpWidget(
       _harness(
         const ChatMessage(
@@ -416,10 +415,12 @@ void main() {
         ),
       ),
     );
-    final mailSpan =
+    final span =
         tester.widget<SelectableText>(find.byType(SelectableText).first).textSpan;
-    final decMail = _decorationForSubstring(mailSpan, 'm');
+    expect(_decorationForSubstring(span, 'm'), TextDecoration.underline);
+  });
 
+  testWidgets('javascript: не в whitelist — без подчёркивания', (tester) async {
     await tester.pumpWidget(
       _harness(
         const ChatMessage(
@@ -428,13 +429,12 @@ void main() {
         ),
       ),
     );
-    final jsSpan =
+    final span =
         tester.widget<SelectableText>(find.byType(SelectableText).first).textSpan;
-    final decJs = _decorationForSubstring(jsSpan, 'go');
-
-    expect(decHttps, TextDecoration.underline);
-    expect(decMail, TextDecoration.underline);
-    expect(decJs, isNot(equals(TextDecoration.underline)));
+    expect(
+      _decorationForSubstring(span, 'go'),
+      isNot(equals(TextDecoration.underline)),
+    );
   });
 
   testWidgets('autolink ftp:// не в whitelist — без подчёркивания', (tester) async {
@@ -477,7 +477,9 @@ void main() {
       ),
     );
     expect(find.byType(Image), findsNothing);
-    expect(find.text('[alt]'), findsOneWidget);
+    final l10n =
+        AppLocalizations.of(tester.element(find.byType(ChatMessage)))!;
+    expect(find.text(l10n.chatMessageMarkdownImageAlt('alt')), findsOneWidget);
   });
 
   testWidgets('пустой стрим: плейсхолдер', (tester) async {
@@ -490,7 +492,9 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Typing…'), findsOneWidget);
+    final ctx = tester.element(find.byType(ChatMessage));
+    final l10n = AppLocalizations.of(ctx)!;
+    expect(find.text(l10n.chatMessageStreamingPlaceholder), findsOneWidget);
   });
 
   testWidgets('копирование кода отключено при isStreaming', (tester) async {
@@ -511,13 +515,11 @@ void main() {
   testWidgets('MediaQuery.textScaler увеличивает высоту строки', (tester) async {
     Future<double> lineHeight(double scale) async {
       await tester.pumpWidget(
-        MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-          child: _harness(
-            const ChatMessage(
-              role: 'user',
-              content: 'scaled',
-            ),
+        wrapChatSimple(
+          textScaler: TextScaler.linear(scale),
+          child: const ChatMessage(
+            role: 'user',
+            content: 'scaled',
           ),
         ),
       );
@@ -531,24 +533,17 @@ void main() {
   });
 
   testWidgets('длинный непрерывный токен вне fence: нет overflow при узком maxWidth', (tester) async {
+    useViewSize(tester, const Size(400, 900));
     final long = List.filled(400, 'a').join();
     await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(size: Size(400, 900)),
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('en'),
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 352),
-                child: ChatMessage(
-                  role: 'assistant',
-                  content: long,
-                ),
-              ),
+      wrapChatSimple(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 352),
+            child: ChatMessage(
+              role: 'assistant',
+              content: long,
             ),
           ),
         ),
@@ -559,20 +554,13 @@ void main() {
   });
 
   testWidgets('длинный токен в параграфе: нет U+200B в плоском тексте для выделения', (tester) async {
+    useViewSize(tester, const Size(400, 900));
     final long = List.filled(200, 'z').join();
     await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(size: Size(400, 900)),
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('en'),
-          home: Scaffold(
-            body: ChatMessage(
-              role: 'assistant',
-              content: long,
-            ),
-          ),
+      wrapChatSimple(
+        child: ChatMessage(
+          role: 'assistant',
+          content: long,
         ),
       ),
     );
@@ -600,11 +588,8 @@ void main() {
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
     );
     await tester.pumpWidget(
-      MaterialApp(
+      wrapChatMaterialApp(
         theme: theme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
         home: const Scaffold(
           body: ChatMessage(
             role: 'system',
@@ -618,11 +603,8 @@ void main() {
     final cSystem = _colorForSubstring(systemSpan, 'ping');
 
     await tester.pumpWidget(
-      MaterialApp(
+      wrapChatMaterialApp(
         theme: theme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
         home: const Scaffold(
           body: ChatMessage(
             role: 'assistant',
@@ -645,11 +627,8 @@ void main() {
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepOrange),
     );
     await tester.pumpWidget(
-      MaterialApp(
+      wrapChatMaterialApp(
         theme: theme,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
         home: const Scaffold(
           body: ChatMessage(
             role: 'system',
@@ -690,11 +669,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // ignore: deprecated_member_use — pipelineOwner (RendererBinding API эволюционирует)
     final owner = tester.binding.pipelineOwner.semanticsOwner;
     expect(owner, isNotNull);
     final root = owner!.rootSemanticsNode!;
     void walk(SemanticsNode n) {
       expect(
+        // ignore: deprecated_member_use
         n.hasFlag(SemanticsFlag.isLiveRegion),
         isFalse,
         reason: 'liveRegion при стриме заставляет скринридер повторять каждый чанк',

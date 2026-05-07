@@ -40,6 +40,9 @@ abstract final class ChatScreenScroll {
 
   /// Порог от верха (визуально старые сообщения) для [ChatController.loadOlder].
   static const double loadOlderLeadPx = 96;
+
+  /// Длительность [ScrollController.animateTo] к низу ленты ([ListView.reverse]).
+  static const Duration scrollToBottomDuration = Duration(milliseconds: 220);
 }
 
 /// Экран чата: история, ввод, отправка, пагинация вверх, pending/retry.
@@ -171,7 +174,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _scrollController
           .animateTo(
         0,
-        duration: const Duration(milliseconds: 220),
+        duration: ChatScreenScroll.scrollToBottomDuration,
         curve: Curves.easeOutCubic,
       )
           .whenComplete(() {

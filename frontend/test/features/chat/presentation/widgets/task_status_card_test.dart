@@ -1,52 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/chat/presentation/widgets/task_status_card.dart';
 import 'package:frontend/features/chat/presentation/widgets/task_status_visuals.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
+import '../../helpers/test_wrappers.dart';
+
+/// Технические заголовки в тесте смены [ValueKey], не UI-литералы продукта.
+const kTaskStatusSwapCardTitleA = 'Card A';
+const kTaskStatusSwapCardTitleB = 'Card B';
+
 void main() {
   const kTid = '660e8400-e29b-41d4-a716-446655440001';
-
-  const delegates = <LocalizationsDelegate<dynamic>>[
-    AppLocalizations.delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-  ];
-
-  Widget wrapRu(
-    Widget child, {
-    ThemeMode themeMode = ThemeMode.light,
-    TextScaler textScaler = TextScaler.noScaling,
-    TextDirection direction = TextDirection.ltr,
-  }) {
-    return MaterialApp(
-      locale: const Locale('ru'),
-      themeMode: themeMode,
-      theme: ThemeData.light(useMaterial3: true),
-      darkTheme: ThemeData.dark(useMaterial3: true),
-      localizationsDelegates: delegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Directionality(
-        textDirection: direction,
-        child: Builder(
-          builder: (context) {
-            return MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaler: textScaler),
-              child: Center(child: child),
-            );
-          },
-        ),
-      ),
-    );
-  }
 
   group('M3 категории по иконкам', () {
     testWidgets('Active: in_progress → autorenew', (tester) async {
       await tester.pumpWidget(
-        wrapRu(
+        wrapTaskStatusRu(
           const TaskStatusCard(
             key: ValueKey(kTid),
             taskId: kTid,
@@ -61,7 +32,7 @@ void main() {
 
     testWidgets('Success: completed → check_circle', (tester) async {
       await tester.pumpWidget(
-        wrapRu(
+        wrapTaskStatusRu(
           const TaskStatusCard(
             key: ValueKey(kTid),
             taskId: kTid,
@@ -75,7 +46,7 @@ void main() {
 
     testWidgets('Error: failed → error icon', (tester) async {
       await tester.pumpWidget(
-        wrapRu(
+        wrapTaskStatusRu(
           const TaskStatusCard(
             key: ValueKey(kTid),
             taskId: kTid,
@@ -90,7 +61,7 @@ void main() {
 
     testWidgets('Stopped: paused → pause_circle', (tester) async {
       await tester.pumpWidget(
-        wrapRu(
+        wrapTaskStatusRu(
           const TaskStatusCard(
             key: ValueKey(kTid),
             taskId: kTid,
@@ -104,7 +75,7 @@ void main() {
 
     testWidgets('Unknown: bogus_xyz → pause_circle, не autorenew', (tester) async {
       await tester.pumpWidget(
-        wrapRu(
+        wrapTaskStatusRu(
           const TaskStatusCard(
             key: ValueKey(kTid),
             taskId: kTid,
@@ -123,7 +94,7 @@ void main() {
       testWidgets('статус в Semantics: $status', (tester) async {
         const tid = '770e8400-e29b-41d4-a716-446655440099';
         await tester.pumpWidget(
-          wrapRu(
+          wrapTaskStatusRu(
             TaskStatusCard(
               key: const ValueKey(tid),
               taskId: tid,
@@ -149,7 +120,7 @@ void main() {
 
   testWidgets('неизвестный bogus_xyz: подпись taskStatusUnknownStatus', (tester) async {
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         const TaskStatusCard(
           key: ValueKey(kTid),
           taskId: kTid,
@@ -165,10 +136,8 @@ void main() {
   testWidgets('l10n: каждый taskStatus* не пустой и не равен сырому status', (tester) async {
     late AppLocalizations l10n;
     await tester.pumpWidget(
-      MaterialApp(
+      wrapChatMaterialAppLite(
         locale: const Locale('ru'),
-        localizationsDelegates: delegates,
-        supportedLocales: AppLocalizations.supportedLocales,
         home: Builder(
           builder: (ctx) {
             l10n = AppLocalizations.of(ctx)!;
@@ -188,7 +157,7 @@ void main() {
 
   testWidgets('onOpen == null: нет InkWell; Semantics isButton false', (tester) async {
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         const TaskStatusCard(
           key: ValueKey(kTid),
           taskId: kTid,
@@ -211,7 +180,7 @@ void main() {
 
   testWidgets('onOpen != null: InkWell + Semantics isButton true', (tester) async {
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         TaskStatusCard(
           key: const ValueKey(kTid),
           taskId: kTid,
@@ -235,7 +204,7 @@ void main() {
 
   testWidgets('agentRole == null: нет · и нет локализованной роли', (tester) async {
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         const TaskStatusCard(
           key: ValueKey(kTid),
           taskId: kTid,
@@ -254,7 +223,7 @@ void main() {
 
   testWidgets('agentRole != null: есть · и роль', (tester) async {
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         const TaskStatusCard(
           key: ValueKey('660e8400-e29b-41d4-a716-446655440002'),
           taskId: '660e8400-e29b-41d4-a716-446655440002',
@@ -277,7 +246,7 @@ void main() {
   testWidgets('длинный title: не бросает, maxLines 2', (tester) async {
     final long = List.filled(120, 'word').join(' ');
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         TaskStatusCard(
           key: const ValueKey('660e8400-e29b-41d4-a716-446655440003'),
           taskId: '660e8400-e29b-41d4-a716-446655440003',
@@ -296,7 +265,7 @@ void main() {
 
   testWidgets('TextScaler 2.0: строится без overflow exception', (tester) async {
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         const TaskStatusCard(
           key: ValueKey(kTid),
           taskId: kTid,
@@ -312,7 +281,7 @@ void main() {
 
   testWidgets('RTL: строится без исключений', (tester) async {
     await tester.pumpWidget(
-      wrapRu(
+      wrapTaskStatusRu(
         const TaskStatusCard(
           key: ValueKey(kTid),
           taskId: kTid,
@@ -329,7 +298,7 @@ void main() {
     for (final mode in [ThemeMode.light, ThemeMode.dark]) {
       for (final status in [...kNormativeTaskStatuses, 'bogus_xyz']) {
         await tester.pumpWidget(
-          wrapRu(
+          wrapTaskStatusRu(
             TaskStatusCard(
               key: const ValueKey('660e8400-e29b-41d4-a716-446655440001'),
               taskId: '660e8400-e29b-41d4-a716-446655440001',
@@ -347,32 +316,29 @@ void main() {
 
   testWidgets('ValueKey: смена порядка двух карточек не путает заголовки', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
+      wrapChatMaterialAppLite(
         locale: const Locale('ru'),
-        localizationsDelegates: delegates,
-        supportedLocales: AppLocalizations.supportedLocales,
         home: const _SwapKeysHarness(),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Card A'), findsOneWidget);
-    expect(find.text('Card B'), findsOneWidget);
+    expect(find.text(kTaskStatusSwapCardTitleA), findsOneWidget);
+    expect(find.text(kTaskStatusSwapCardTitleB), findsOneWidget);
     await tester.tap(find.text('swap'));
     await tester.pumpAndSettle();
-    expect(find.text('Card A'), findsOneWidget);
-    expect(find.text('Card B'), findsOneWidget);
+    expect(find.text(kTaskStatusSwapCardTitleA), findsOneWidget);
+    expect(find.text(kTaskStatusSwapCardTitleB), findsOneWidget);
   });
 
   testWidgets('golden in_progress light', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData.light(useMaterial3: true),
-        localizationsDelegates: delegates,
-        supportedLocales: AppLocalizations.supportedLocales,
+      wrapChatMaterialAppLite(
         locale: const Locale('ru'),
-        home: Center(
+        theme: ThemeData.light(useMaterial3: true),
+        themeMode: ThemeMode.light,
+        home: const Center(
           child: RepaintBoundary(
-            key: const ValueKey('golden_rb'),
+            key: ValueKey('golden_rb'),
             child: SizedBox(
               width: 380,
               height: 220,
@@ -396,14 +362,14 @@ void main() {
 
   testWidgets('golden in_progress dark', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData.dark(useMaterial3: true),
-        localizationsDelegates: delegates,
-        supportedLocales: AppLocalizations.supportedLocales,
+      wrapChatMaterialAppLite(
         locale: const Locale('ru'),
-        home: Center(
+        theme: ThemeData.light(useMaterial3: true),
+        darkTheme: ThemeData.dark(useMaterial3: true),
+        themeMode: ThemeMode.dark,
+        home: const Center(
           child: RepaintBoundary(
-            key: const ValueKey('golden_rb'),
+            key: ValueKey('golden_rb'),
             child: SizedBox(
               width: 380,
               height: 220,
@@ -442,13 +408,13 @@ class _SwapKeysHarnessState extends State<_SwapKeysHarness> {
       key: ValueKey('aaa11111-1111-1111-1111-111111111111'),
       taskId: 'aaa11111-1111-1111-1111-111111111111',
       status: 'completed',
-      title: 'Card A',
+      title: kTaskStatusSwapCardTitleA,
     );
     const b = TaskStatusCard(
       key: ValueKey('bbb22222-2222-2222-2222-222222222222'),
       taskId: 'bbb22222-2222-2222-2222-222222222222',
       status: 'pending',
-      title: 'Card B',
+      title: kTaskStatusSwapCardTitleB,
     );
     return Column(
       children: [

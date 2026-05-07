@@ -60,5 +60,7 @@ analyzer:
   exclude:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
+    # mockito: стиль генерации не совпадает с prefer_const_constructors / prefer_single_quotes и т.д. (как *.g.dart)
+    - "**/*.mocks.dart"
   errors:
     invalid_annotation_target: ignore

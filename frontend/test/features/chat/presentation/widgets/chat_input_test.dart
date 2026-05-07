@@ -1,38 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_input.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
+import '../../helpers/test_wrappers.dart';
+
 void main() {
-  Widget harness(
-    Widget child, {
+  /// Как прежний harness: фиксированный logical size (**11.11** / **useViewSize**).
+  void bindDefaultView(WidgetTester tester) {
+    useViewSize(tester, const Size(800, 1200));
+  }
+
+  Widget harness({
+    required Widget Function(AppLocalizations l10n) body,
     Locale locale = const Locale('en'),
     TextScaler textScaler = TextScaler.noScaling,
-  }) {
-    return MaterialApp(
-      locale: locale,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('en'), Locale('ru')],
-      home: MediaQuery(
-        data: MediaQueryData(size: const Size(800, 1200), textScaler: textScaler),
-        child: Scaffold(body: child),
-      ),
-    );
-  }
+  }) =>
+      wrapChatInputHarness(
+        locale: locale,
+        textScaler: textScaler,
+        body: Builder(
+          builder: (context) {
+            final l10n = AppLocalizations.of(context)!;
+            return body(l10n);
+          },
+        ),
+      );
 
   Future<void> focusInput(WidgetTester tester) async {
     await tester.tap(find.byKey(const ValueKey('chat_input_field')));
     await tester.pump();
   }
 
-  /// Ctrl+Enter: стабильная последовательность для [Shortcuts] + [Actions].
   Future<void> sendCtrlEnter(WidgetTester tester) async {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
@@ -41,7 +41,6 @@ void main() {
     await tester.pump();
   }
 
-  /// Meta+Enter (для CI без привязки к macOS).
   Future<void> sendMetaEnter(WidgetTester tester) async {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
@@ -53,6 +52,7 @@ void main() {
   testWidgets('chat_input_send_button_disabled_when_empty_or_whitespace', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController();
     final focus = FocusNode();
     addTearDown(() {
@@ -62,11 +62,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) {},
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -89,6 +90,7 @@ void main() {
   testWidgets('chat_input_send_button_enabled_when_non_empty', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: 'x');
     final focus = FocusNode();
     addTearDown(() {
@@ -98,11 +100,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) {},
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
           isSending: false,
         ),
       ),
@@ -117,6 +120,7 @@ void main() {
   testWidgets('chat_input_on_send_called_once_on_button_tap', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: 'hello');
     final focus = FocusNode();
     var n = 0;
@@ -127,11 +131,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) => n++,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -144,6 +149,7 @@ void main() {
   testWidgets('chat_input_on_send_called_with_raw_text_no_trim', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: '  hi  ');
     final focus = FocusNode();
     String? received;
@@ -154,11 +160,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (s) => received = s,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -171,6 +178,7 @@ void main() {
   testWidgets('chat_input_on_send_called_once_on_ctrl_enter', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: 'a');
     final focus = FocusNode();
     var n = 0;
@@ -181,11 +189,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) => n++,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -198,6 +207,7 @@ void main() {
   testWidgets('chat_input_on_send_called_once_on_meta_enter', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: 'a');
     final focus = FocusNode();
     var n = 0;
@@ -208,11 +218,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) => n++,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -225,6 +236,7 @@ void main() {
   testWidgets('chat_input_shortcuts_do_not_duplicate_actions_listener', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: 'ok');
     final focus = FocusNode();
     var n = 0;
@@ -235,11 +247,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) => n++,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -254,6 +267,7 @@ void main() {
   testWidgets('chat_input_on_send_not_called_whitespace_and_shortcut', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: ' \n ');
     final focus = FocusNode();
     var n = 0;
@@ -264,11 +278,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) => n++,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -281,6 +296,7 @@ void main() {
   testWidgets('chat_input_on_send_not_called_during_ime_composition', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController();
     final focus = FocusNode();
     var n = 0;
@@ -291,11 +307,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) => n++,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -315,6 +332,7 @@ void main() {
   testWidgets('chat_input_send_blocked_when_is_sending_true', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: 'y');
     final focus = FocusNode();
     var n = 0;
@@ -325,11 +343,12 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) => n++,
-          sendTooltip: 'Send',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
           isSending: true,
         ),
       ),
@@ -350,6 +369,7 @@ void main() {
   testWidgets('chat_input_semantics_send_tooltip_matches_localizations', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final c = TextEditingController(text: 'z');
     final focus = FocusNode();
     addTearDown(() {
@@ -358,26 +378,13 @@ void main() {
     });
 
     await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: const [Locale('en')],
-        home: Builder(
-          builder: (context) {
-            final l10n = AppLocalizations.of(context)!;
-            return Scaffold(
-              body: ChatInput(
-                controller: c,
-                focusNode: focus,
-                onSend: (_) {},
-                sendTooltip: l10n.chatInputSendTooltip,
-              ),
-            );
-          },
+      harness(
+        body: (l10n) => ChatInput(
+          controller: c,
+          focusNode: focus,
+          onSend: (_) {},
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
       ),
     );
@@ -391,9 +398,40 @@ void main() {
     );
   });
 
+  testWidgets('chat_input_ru_locale_hint_and_tooltip_from_arb', (
+    WidgetTester tester,
+  ) async {
+    bindDefaultView(tester);
+    final c = TextEditingController(text: 'z');
+    final focus = FocusNode();
+    addTearDown(() {
+      c.dispose();
+      focus.dispose();
+    });
+
+    await tester.pumpWidget(
+      harness(
+        locale: const Locale('ru'),
+        body: (l10n) => ChatInput(
+          controller: c,
+          focusNode: focus,
+          onSend: (_) {},
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
+        ),
+      ),
+    );
+
+    final ctx = tester.element(find.byType(ChatInput));
+    final l10n = AppLocalizations.of(ctx)!;
+    expect(find.byTooltip(l10n.chatInputSendTooltip), findsOneWidget);
+    expect(find.text(l10n.chatInputHint), findsWidgets);
+  });
+
   testWidgets('chat_input_text_scaler_2_no_overflow_usable_send', (
     WidgetTester tester,
   ) async {
+    bindDefaultView(tester);
     final longText = List<String>.filled(
       25,
       'Line that should wrap inside the field with maxLines six.\n',
@@ -407,14 +445,14 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        ChatInput(
+        textScaler: const TextScaler.linear(2),
+        body: (l10n) => ChatInput(
           controller: c,
           focusNode: focus,
           onSend: (_) {},
-          sendTooltip: 'Send',
-          hintText: 'Hint',
+          sendTooltip: l10n.chatInputSendTooltip,
+          hintText: l10n.chatInputHint,
         ),
-        textScaler: const TextScaler.linear(2),
       ),
     );
 

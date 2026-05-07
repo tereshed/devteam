@@ -1,17 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/chat/presentation/widgets/task_status_visuals.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
-void main() {
-  const delegates = <LocalizationsDelegate<dynamic>>[
-    AppLocalizations.delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-  ];
+import '../../helpers/test_wrappers.dart';
 
+void main() {
   test('SSOT: каждый kNormativeTaskStatuses имеет ветку в taskStatusVisualCategory', () {
     for (final s in kNormativeTaskStatuses) {
       expect(
@@ -24,11 +18,9 @@ void main() {
 
   testWidgets('SSOT: каждый kNormativeTaskStatuses имеет ветку в taskStatusLabel (ru)', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        locale: Locale('ru'),
-        localizationsDelegates: delegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: SizedBox.shrink()),
+      wrapChatSimple(
+        locale: const Locale('ru'),
+        child: const SizedBox.shrink(),
       ),
     );
     await tester.pumpAndSettle();
