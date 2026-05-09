@@ -4,14 +4,19 @@ import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
+import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+
+/// Сегмент URL вкладки «Задачи» в shell (`/projects/:id/tasks`).
+/// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
+const String projectDashboardShellBranchTasksSegment = 'tasks';
 
 /// Сегмент URL после `/projects/:id` для веток shell (порядок = порядок вкладок).
 /// Единственный источник имён путей для [buildProjectDashboardShellBranches] и редиректов.
 const List<String> projectDashboardShellBranchPaths = [
   'chat',
-  'tasks',
+  projectDashboardShellBranchTasksSegment,
   'team',
   'settings',
 ];
@@ -194,14 +199,22 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
         routes: [
           GoRoute(
             path: projectDashboardShellBranchPaths[i],
-            pageBuilder: (context, state) => NoTransitionPage(
-              key: state.pageKey,
-              child: ProjectDestinationPlaceholder(
-                title: entries[i].title(
-                  requireAppLocalizations(context, where: 'project_dashboard_shell'),
-                ),
-              ),
-            ),
+            pageBuilder: (context, state) {
+              final projectId = state.pathParameters['id']!;
+              final child =
+                  projectDashboardShellBranchPaths[i] ==
+                      projectDashboardShellBranchTasksSegment
+                  ? TasksListScreen(projectId: projectId)
+                  : ProjectDestinationPlaceholder(
+                      title: entries[i].title(
+                        requireAppLocalizations(
+                          context,
+                          where: 'project_dashboard_shell',
+                        ),
+                      ),
+                    );
+              return NoTransitionPage(key: state.pageKey, child: child);
+            },
           ),
         ],
       ),

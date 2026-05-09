@@ -21,6 +21,13 @@ const kChatConversationUuidForRoutingTest =
     'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 
 void main() {
+  test('projectDashboardShellBranchTasksSegment в projectDashboardShellBranchPaths', () {
+    expect(
+      projectDashboardShellBranchPaths.contains(projectDashboardShellBranchTasksSegment),
+      isTrue,
+    );
+  });
+
   test('projectDashboardDefaultBranch совпадает с первой веткой (SSOT)', () {
     expect(
       projectDashboardDefaultBranch,

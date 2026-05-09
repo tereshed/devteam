@@ -1238,6 +1238,66 @@ abstract class AppLocalizations {
   /// **'Неизвестный статус'**
   String get taskStatusUnknownStatus;
 
+  /// Подсказка поля поиска списка задач (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Поиск задач'**
+  String get tasksSearchHint;
+
+  /// Пустой список задач без фильтров (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Задач пока нет'**
+  String get tasksEmpty;
+
+  /// Пустой список при активных фильтрах (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет задач по выбранным фильтрам'**
+  String get tasksEmptyFiltered;
+
+  /// Кнопка сброса фильтров на пустом отфильтрованном списке (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Сбросить фильтры'**
+  String get tasksEmptyFilteredClear;
+
+  /// SnackBar до маршрута детали задачи (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Экран задачи пока недоступен'**
+  String get taskDetailNotImplementedYet;
+
+  /// Приоритет задачи critical (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Критический'**
+  String get taskPriorityCritical;
+
+  /// Приоритет задачи high (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Высокий'**
+  String get taskPriorityHigh;
+
+  /// Приоритет задачи medium (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Средний'**
+  String get taskPriorityMedium;
+
+  /// Приоритет задачи low (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Низкий'**
+  String get taskPriorityLow;
+
+  /// Фоллбэк для неизвестного приоритета (12.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Неизвестный приоритет'**
+  String get taskPriorityUnknown;
+
   /// Заголовок карточки без title из метаданных
   ///
   /// In ru, this message translates to:

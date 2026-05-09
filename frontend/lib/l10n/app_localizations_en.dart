@@ -607,6 +607,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskStatusUnknownStatus => 'Unknown status';
 
   @override
+  String get tasksSearchHint => 'Search tasks';
+
+  @override
+  String get tasksEmpty => 'No tasks yet';
+
+  @override
+  String get tasksEmptyFiltered => 'No tasks match the filters';
+
+  @override
+  String get tasksEmptyFilteredClear => 'Clear filters';
+
+  @override
+  String get taskDetailNotImplementedYet =>
+      'Task details are not available yet';
+
+  @override
+  String get taskPriorityCritical => 'Critical';
+
+  @override
+  String get taskPriorityHigh => 'High';
+
+  @override
+  String get taskPriorityMedium => 'Medium';
+
+  @override
+  String get taskPriorityLow => 'Low';
+
+  @override
+  String get taskPriorityUnknown => 'Unknown priority';
+
+  @override
   String taskStatusCardFallbackTitle(String shortId) {
     return 'Task $shortId';
   }

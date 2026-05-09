@@ -605,6 +605,36 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskStatusUnknownStatus => 'Неизвестный статус';
 
   @override
+  String get tasksSearchHint => 'Поиск задач';
+
+  @override
+  String get tasksEmpty => 'Задач пока нет';
+
+  @override
+  String get tasksEmptyFiltered => 'Нет задач по выбранным фильтрам';
+
+  @override
+  String get tasksEmptyFilteredClear => 'Сбросить фильтры';
+
+  @override
+  String get taskDetailNotImplementedYet => 'Экран задачи пока недоступен';
+
+  @override
+  String get taskPriorityCritical => 'Критический';
+
+  @override
+  String get taskPriorityHigh => 'Высокий';
+
+  @override
+  String get taskPriorityMedium => 'Средний';
+
+  @override
+  String get taskPriorityLow => 'Низкий';
+
+  @override
+  String get taskPriorityUnknown => 'Неизвестный приоритет';
+
+  @override
   String taskStatusCardFallbackTitle(String shortId) {
     return 'Задача $shortId';
   }
