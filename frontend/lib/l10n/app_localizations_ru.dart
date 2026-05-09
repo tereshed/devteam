@@ -632,6 +632,19 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskPriorityUnknown => 'Неизвестный приоритет';
 
   @override
+  String get taskCardUnassigned => 'Не назначен';
+
+  @override
+  String taskCardAgentLine(String name, String role) {
+    return '$name · $role';
+  }
+
+  @override
+  String taskCardUpdatedAt(String time) {
+    return 'Обновлено: $time';
+  }
+
+  @override
   String taskStatusCardFallbackTitle(String shortId) {
     return 'Задача $shortId';
   }

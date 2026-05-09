@@ -1,4 +1,5 @@
 import 'package:frontend/features/tasks/domain/models/task_list_item_model.dart';
+import 'package:frontend/features/tasks/domain/models/task_model.dart';
 import 'package:frontend/features/tasks/domain/requests.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 
@@ -15,6 +16,7 @@ TaskListItemModel makeTaskListItemFixture({
   String priority = 'medium',
   DateTime? createdAt,
   DateTime? updatedAt,
+  AgentSummaryModel? assignedAgent,
 }) {
   final c = createdAt ?? DateTime.utc(2026, 1, 1);
   final u = updatedAt ?? DateTime.utc(2026, 1, 2);
@@ -24,6 +26,7 @@ TaskListItemModel makeTaskListItemFixture({
     title: title,
     status: status,
     priority: priority,
+    assignedAgent: assignedAgent,
     createdByType: 'user',
     createdById: kTaskFixtureUserId,
     createdAt: c,

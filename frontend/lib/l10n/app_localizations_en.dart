@@ -634,6 +634,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskPriorityUnknown => 'Unknown priority';
 
   @override
+  String get taskCardUnassigned => 'Unassigned';
+
+  @override
+  String taskCardAgentLine(String name, String role) {
+    return '$name · $role';
+  }
+
+  @override
+  String taskCardUpdatedAt(String time) {
+    return 'Updated: $time';
+  }
+
+  @override
   String taskStatusCardFallbackTitle(String shortId) {
     return 'Task $shortId';
   }

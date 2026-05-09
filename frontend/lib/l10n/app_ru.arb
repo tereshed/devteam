@@ -551,6 +551,23 @@
   "@taskPriorityLow": { "description": "Приоритет задачи low (12.4)" },
   "taskPriorityUnknown": "Неизвестный приоритет",
   "@taskPriorityUnknown": { "description": "Фоллбэк для неизвестного приоритета (12.4)" },
+  "taskCardUnassigned": "Не назначен",
+  "@taskCardUnassigned": { "description": "Карточка задачи без назначенного агента (12.6)" },
+  "taskCardAgentLine": "{name} · {role}",
+  "@taskCardAgentLine": {
+    "description": "Строка назначенного агента на карточке задачи (12.6)",
+    "placeholders": {
+      "name": { "type": "String" },
+      "role": { "type": "String" }
+    }
+  },
+  "taskCardUpdatedAt": "Обновлено: {time}",
+  "@taskCardUpdatedAt": {
+    "description": "Строка времени обновления с уже отформатированным временем (12.6)",
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "taskStatusCardFallbackTitle": "Задача {shortId}",
   "@taskStatusCardFallbackTitle": {
     "description": "Заголовок карточки без title из метаданных",

@@ -285,6 +285,23 @@
   "@taskPriorityLow": { "description": "Task priority low (12.4)" },
   "taskPriorityUnknown": "Unknown priority",
   "@taskPriorityUnknown": { "description": "Fallback when priority wire value is unknown (12.4)" },
+  "taskCardUnassigned": "Unassigned",
+  "@taskCardUnassigned": { "description": "Task card when no assigned agent (12.6)" },
+  "taskCardAgentLine": "{name} · {role}",
+  "@taskCardAgentLine": {
+    "description": "Assigned agent line on task card (12.6)",
+    "placeholders": {
+      "name": { "type": "String" },
+      "role": { "type": "String" }
+    }
+  },
+  "taskCardUpdatedAt": "Updated: {time}",
+  "@taskCardUpdatedAt": {
+    "description": "Task card last updated line with preformatted time (12.6)",
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "taskStatusCardFallbackTitle": "Task {shortId}",
   "@taskStatusCardFallbackTitle": {
     "description": "Card title without metadata title",

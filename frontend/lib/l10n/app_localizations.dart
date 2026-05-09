@@ -1292,6 +1292,24 @@ abstract class AppLocalizations {
   /// **'Неизвестный приоритет'**
   String get taskPriorityUnknown;
 
+  /// Карточка задачи без назначенного агента (12.6)
+  ///
+  /// In ru, this message translates to:
+  /// **'Не назначен'**
+  String get taskCardUnassigned;
+
+  /// Строка назначенного агента на карточке задачи (12.6)
+  ///
+  /// In ru, this message translates to:
+  /// **'{name} · {role}'**
+  String taskCardAgentLine(String name, String role);
+
+  /// Строка времени обновления с уже отформатированным временем (12.6)
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновлено: {time}'**
+  String taskCardUpdatedAt(String time);
+
   /// Заголовок карточки без title из метаданных
   ///
   /// In ru, this message translates to:

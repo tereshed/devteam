@@ -9,6 +9,7 @@ import 'package:frontend/features/tasks/presentation/controllers/task_errors.dar
 import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
+import 'package:frontend/features/tasks/presentation/widgets/task_card.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
@@ -535,7 +536,7 @@ class _TasksListBody extends StatelessWidget {
                   final task = state.items[index];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: _TaskRowCard(task: task, l10n: l10n, onTap: () => onTaskTap(task)),
+                    child: TaskCard(task: task, onTap: () => onTaskTap(task)),
                   );
                 },
                 childCount: state.items.length + (state.isLoadingMore ? 1 : 0),
@@ -625,9 +626,8 @@ class _KanbanColumn extends StatelessWidget {
                       final task = tasks[i];
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: _TaskRowCard(
+                        child: TaskCard(
                           task: task,
-                          l10n: l10n,
                           dense: true,
                           onTap: () => onTaskTap(task),
                         ),
@@ -639,105 +639,6 @@ class _KanbanColumn extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _TaskRowCard extends StatelessWidget {
-  const _TaskRowCard({
-    required this.task,
-    required this.l10n,
-    required this.onTap,
-    this.dense = false,
-  });
-
-  final TaskListItemModel task;
-  final AppLocalizations l10n;
-  final VoidCallback onTap;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final stTone = taskStatusTone(task.status);
-    final prTone = taskPriorityTone(task.priority);
-
-    return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.all(dense ? 10 : 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                task.title,
-                style: Theme.of(context).textTheme.titleSmall,
-                maxLines: dense ? 3 : 4,
-                overflow: TextOverflow.ellipsis,
-              ),
-              SizedBox(height: dense ? 6 : 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  _MiniChip(
-                    icon: taskStatusIcon(stTone),
-                    label: taskStatusLabel(l10n, task.status),
-                    foreground: taskStatusChipForeground(scheme, stTone),
-                    background: taskStatusChipBackground(scheme, stTone),
-                  ),
-                  _MiniChip(
-                    icon: taskPriorityIcon(prTone),
-                    label: taskPriorityLabel(l10n, task.priority),
-                    foreground: taskPriorityChipForeground(scheme, prTone),
-                    background: taskPriorityChipBackground(scheme, prTone),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniChip extends StatelessWidget {
-  const _MiniChip({
-    required this.icon,
-    required this.label,
-    required this.foreground,
-    required this.background,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color foreground;
-  final Color background;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: foreground),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(color: foreground),
-          ),
-        ],
       ),
     );
   }
