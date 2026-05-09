@@ -617,9 +617,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get tasksEmptyFilteredClear => 'Сбросить фильтры';
 
   @override
-  String get taskDetailNotImplementedYet => 'Экран задачи пока недоступен';
-
-  @override
   String get taskPriorityCritical => 'Критический';
 
   @override
@@ -675,6 +672,126 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get taskSendMessageNoIdempotencyHint =>
       'Повторное нажатие «Отправить» создаёт второе сообщение на сервере (идемпотентность — отдельная задача).';
+
+  @override
+  String get taskDetailAppBarLoading => 'Загрузка…';
+
+  @override
+  String get taskDetailRefreshTimedOut =>
+      'Обновление занимает слишком много времени. Попробуйте снова.';
+
+  @override
+  String get taskDetailDeletedTitle => 'Задача удалена';
+
+  @override
+  String get taskDetailDeletedBody =>
+      'Эта задача удалена на сервере. Откройте список задач, чтобы продолжить работу с другими карточками.';
+
+  @override
+  String get taskDetailSectionDescription => 'Описание';
+
+  @override
+  String get taskDetailSectionResult => 'Результат';
+
+  @override
+  String get taskDetailSectionDiff => 'Изменения (diff)';
+
+  @override
+  String get taskDetailSectionMessages => 'Лог сообщений';
+
+  @override
+  String get taskDetailSectionErrorMessage => 'Ошибка задачи';
+
+  @override
+  String get taskDetailSectionSubtasks => 'Подзадачи';
+
+  @override
+  String get taskDetailNoDiff => 'Нет diff';
+
+  @override
+  String get taskDetailNoDescription => 'Нет описания';
+
+  @override
+  String get taskDetailNoResult => 'Нет результата';
+
+  @override
+  String get taskDetailNoMessages => 'Сообщений пока нет';
+
+  @override
+  String get taskDetailBackToList => 'К списку задач';
+
+  @override
+  String get taskDetailProjectMismatch => 'Задача из другого проекта';
+
+  @override
+  String get taskDetailRealtimeMutationBlocked =>
+      'Обновление задачи по сети временно недоступно';
+
+  @override
+  String get taskDetailRealtimeSessionFailure => 'Проблема сессии realtime';
+
+  @override
+  String get taskDetailRealtimeServiceFailure => 'Сбой realtime-сервиса';
+
+  @override
+  String get taskMessageTypeUnknown => 'Неизвестный тип сообщения';
+
+  @override
+  String get taskSenderTypeUnknown => 'Неизвестный отправитель';
+
+  @override
+  String get taskMessageTypeInstruction => 'Инструкция';
+
+  @override
+  String get taskMessageTypeResult => 'Результат';
+
+  @override
+  String get taskMessageTypeQuestion => 'Вопрос';
+
+  @override
+  String get taskMessageTypeFeedback => 'Обратная связь';
+
+  @override
+  String get taskMessageTypeError => 'Ошибка';
+
+  @override
+  String get taskMessageTypeComment => 'Комментарий';
+
+  @override
+  String get taskMessageTypeSummary => 'Сводка';
+
+  @override
+  String get taskSenderTypeUser => 'Пользователь';
+
+  @override
+  String get taskSenderTypeAgent => 'Агент';
+
+  @override
+  String get taskAgentRoleUnknown => 'Неизвестная роль';
+
+  @override
+  String get taskAgentRoleWorker => 'Исполнитель';
+
+  @override
+  String get taskAgentRoleSupervisor => 'Супервизор';
+
+  @override
+  String get taskAgentRoleOrchestrator => 'Оркестратор';
+
+  @override
+  String get taskAgentRolePlanner => 'Планировщик';
+
+  @override
+  String get taskAgentRoleDeveloper => 'Разработчик';
+
+  @override
+  String get taskAgentRoleReviewer => 'Ревьюер';
+
+  @override
+  String get taskAgentRoleTester => 'Тестировщик';
+
+  @override
+  String get taskAgentRoleDevops => 'DevOps';
 
   @override
   String get chatMessageCopyCode => 'Копировать код';

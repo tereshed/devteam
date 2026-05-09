@@ -619,10 +619,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tasksEmptyFilteredClear => 'Clear filters';
 
   @override
-  String get taskDetailNotImplementedYet =>
-      'Task details are not available yet';
-
-  @override
   String get taskPriorityCritical => 'Critical';
 
   @override
@@ -678,6 +674,126 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get taskSendMessageNoIdempotencyHint =>
       'Tapping Send again creates another message on the server (idempotency is a separate task).';
+
+  @override
+  String get taskDetailAppBarLoading => 'Loading…';
+
+  @override
+  String get taskDetailRefreshTimedOut =>
+      'Refresh is taking too long. Try again.';
+
+  @override
+  String get taskDetailDeletedTitle => 'Task deleted';
+
+  @override
+  String get taskDetailDeletedBody =>
+      'This task was deleted on the server. Open the task list to continue with other items.';
+
+  @override
+  String get taskDetailSectionDescription => 'Description';
+
+  @override
+  String get taskDetailSectionResult => 'Result';
+
+  @override
+  String get taskDetailSectionDiff => 'Diff';
+
+  @override
+  String get taskDetailSectionMessages => 'Message log';
+
+  @override
+  String get taskDetailSectionErrorMessage => 'Task error';
+
+  @override
+  String get taskDetailSectionSubtasks => 'Subtasks';
+
+  @override
+  String get taskDetailNoDiff => 'No diff';
+
+  @override
+  String get taskDetailNoDescription => 'No description';
+
+  @override
+  String get taskDetailNoResult => 'No result yet';
+
+  @override
+  String get taskDetailNoMessages => 'No messages yet';
+
+  @override
+  String get taskDetailBackToList => 'Back to task list';
+
+  @override
+  String get taskDetailProjectMismatch => 'Task belongs to another project';
+
+  @override
+  String get taskDetailRealtimeMutationBlocked =>
+      'Task updates are temporarily unavailable';
+
+  @override
+  String get taskDetailRealtimeSessionFailure => 'Realtime session issue';
+
+  @override
+  String get taskDetailRealtimeServiceFailure => 'Realtime service error';
+
+  @override
+  String get taskMessageTypeUnknown => 'Unknown message type';
+
+  @override
+  String get taskSenderTypeUnknown => 'Unknown sender';
+
+  @override
+  String get taskMessageTypeInstruction => 'Instruction';
+
+  @override
+  String get taskMessageTypeResult => 'Result';
+
+  @override
+  String get taskMessageTypeQuestion => 'Question';
+
+  @override
+  String get taskMessageTypeFeedback => 'Feedback';
+
+  @override
+  String get taskMessageTypeError => 'Error';
+
+  @override
+  String get taskMessageTypeComment => 'Comment';
+
+  @override
+  String get taskMessageTypeSummary => 'Summary';
+
+  @override
+  String get taskSenderTypeUser => 'User';
+
+  @override
+  String get taskSenderTypeAgent => 'Agent';
+
+  @override
+  String get taskAgentRoleUnknown => 'Unknown role';
+
+  @override
+  String get taskAgentRoleWorker => 'Worker';
+
+  @override
+  String get taskAgentRoleSupervisor => 'Supervisor';
+
+  @override
+  String get taskAgentRoleOrchestrator => 'Orchestrator';
+
+  @override
+  String get taskAgentRolePlanner => 'Planner';
+
+  @override
+  String get taskAgentRoleDeveloper => 'Developer';
+
+  @override
+  String get taskAgentRoleReviewer => 'Reviewer';
+
+  @override
+  String get taskAgentRoleTester => 'Tester';
+
+  @override
+  String get taskAgentRoleDevops => 'DevOps';
 
   @override
   String get chatMessageCopyCode => 'Copy code';

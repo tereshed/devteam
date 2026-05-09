@@ -4,9 +4,23 @@ import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
+import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+
+/// [Navigator] ветки «Задачи» StatefulShellRoute (`/projects/:id/tasks/...`).
+///
+/// Cross-branch `push` из чата выполняется через
+/// `GoRouter.of(projectDashboardShellTasksNavigatorKey.currentContext!).push(...)` —
+/// контекст чата относится к другому вложенному navigator (см. `_openTaskDetailFromChatShell`).
+///
+/// **Инвариант:** в дереве одновременно может существовать только один [Navigator] с этим ключом.
+/// Тесты должны монтировать один дашборд на `pumpWidget`; параллельные деревья / превью с вторым
+/// shell приведут к `Duplicate GlobalKey`. При подозрении на flake убедиться, что после теста дерево
+/// снято (`pumpWidget`/`tearDown`) и нет висящих таймеров оверлея.
+final GlobalKey<NavigatorState> projectDashboardShellTasksNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'projectDashboardShellTasks');
 
 /// Сегмент URL вкладки «Задачи» в shell (`/projects/:id/tasks`).
 /// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
@@ -120,6 +134,25 @@ String? projectDashboardChatConversationRedirect(
   return null;
 }
 
+/// Невалидный `:taskId` (не UUID) → `/projects/:id/tasks` без потери query.
+String? projectDashboardTaskDetailRedirect(
+  BuildContext context,
+  GoRouterState state,
+) {
+  final id = state.pathParameters['id'];
+  final taskId = state.pathParameters['taskId'];
+  if (id == null || taskId == null) {
+    return null;
+  }
+  if (!isValidUuid(taskId)) {
+    return projectDashboardRedirectPreservingQuery(
+      state,
+      '/projects/$id/$projectDashboardShellBranchTasksSegment',
+    );
+  }
+  return null;
+}
+
 /// Ветки [StatefulShellRoute] дашборда проекта (single source для prod и тестов).
 List<StatefulShellBranch> buildProjectDashboardShellBranches({
   required GlobalKey<NavigatorState> chatNavigatorKey,
@@ -197,25 +230,52 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
       StatefulShellBranch(
         navigatorKey: entries[i].key,
         routes: [
-          GoRoute(
-            path: projectDashboardShellBranchPaths[i],
-            pageBuilder: (context, state) {
-              final projectId = state.pathParameters['id']!;
-              final child =
-                  projectDashboardShellBranchPaths[i] ==
-                      projectDashboardShellBranchTasksSegment
-                  ? TasksListScreen(projectId: projectId)
-                  : ProjectDestinationPlaceholder(
-                      title: entries[i].title(
-                        requireAppLocalizations(
-                          context,
-                          where: 'project_dashboard_shell',
-                        ),
+          if (projectDashboardShellBranchPaths[i] ==
+              projectDashboardShellBranchTasksSegment)
+            GoRoute(
+              path: projectDashboardShellBranchTasksSegment,
+              pageBuilder: (context, state) {
+                final projectId = state.pathParameters['id']!;
+                return NoTransitionPage(
+                  key: state.pageKey,
+                  child: TasksListScreen(projectId: projectId),
+                );
+              },
+              routes: [
+                GoRoute(
+                  path: ':taskId',
+                  redirect: projectDashboardTaskDetailRedirect,
+                  pageBuilder: (context, state) {
+                    final projectId = state.pathParameters['id']!;
+                    final taskId = state.pathParameters['taskId']!;
+                    return NoTransitionPage(
+                      key: state.pageKey,
+                      child: TaskDetailScreen(
+                        projectId: projectId,
+                        taskId: taskId,
                       ),
                     );
-              return NoTransitionPage(key: state.pageKey, child: child);
-            },
-          ),
+                  },
+                ),
+              ],
+            )
+          else
+            GoRoute(
+              path: projectDashboardShellBranchPaths[i],
+              pageBuilder: (context, state) {
+                return NoTransitionPage(
+                  key: state.pageKey,
+                  child: ProjectDestinationPlaceholder(
+                    title: entries[i].title(
+                      requireAppLocalizations(
+                        context,
+                        where: 'project_dashboard_shell',
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
         ],
       ),
   ];

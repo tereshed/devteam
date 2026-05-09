@@ -340,7 +340,7 @@ User Message
 | 12.2 | Repository: `TaskRepository` (Dio → backend API) | `frontend/lib/features/tasks/data/task_repository.dart` | ✅ | [детали](docs/tasks/12.2-repository-task.md) |
 | 12.3 | Controller: `TaskListController`, `TaskDetailController` | `frontend/lib/features/tasks/presentation/controllers/` | ✅ | [детали](docs/tasks/12.3-task-list-detail-controllers.md) |
 | 12.4 | Экран: Список задач (гибрид: список / Kanban) | `frontend/lib/features/tasks/presentation/screens/tasks_list_screen.dart` | ✅ | [детали](docs/tasks/12.4-tasks-list-screen.md) |
-| 12.5 | Экран: Детали задачи (статус, описание, лог агентов, diff, результат) | `frontend/lib/features/tasks/presentation/screens/task_detail_screen.dart` | ⬜ | [детали](docs/tasks/12.5-task-detail-screen.md) |
+| 12.5 | Экран: Детали задачи (статус, описание, лог агентов, diff, результат) | `frontend/lib/features/tasks/presentation/screens/task_detail_screen.dart` | ✅ | [детали](docs/tasks/12.5-task-detail-screen.md) |
 | 12.6 | Виджет: `TaskCard` (статус, приоритет, агент, время) | `frontend/lib/features/tasks/presentation/widgets/task_card.dart` | ⬜ |
 | 12.7 | Виджет: `DiffViewer` (отображение git diff с подсветкой) | `frontend/lib/shared/widgets/diff_viewer.dart` | ⬜ |
 | 12.8 | Действия: кнопки Pause/Cancel/Resume на задаче | В `TaskDetailScreen` | ⬜ |

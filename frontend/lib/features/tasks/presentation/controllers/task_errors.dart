@@ -29,6 +29,7 @@ String taskListErrorTitle(AppLocalizations l10n, Object error) {
 String taskDetailErrorTitle(AppLocalizations l10n, Object error) {
   return switch (error) {
     UnauthorizedException _ => l10n.errorUnauthorized,
+    TaskDetailProjectMismatchException _ => l10n.taskDetailProjectMismatch,
     TaskNotFoundException _ => l10n.taskDetailErrorTaskNotFound,
     TaskForbiddenException _ => l10n.errorForbidden,
     TaskConflictException _ => l10n.taskErrorGeneric,

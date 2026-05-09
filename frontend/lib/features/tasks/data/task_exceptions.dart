@@ -178,3 +178,24 @@ class TaskApiException extends TaskRepositoryException {
         isNetworkTransportError,
       );
 }
+
+/// Задача принадлежит другому проекту, чем сегмент URL (`projectId` в дашборде).
+///
+/// UI (12.5): показывать [AppLocalizations.taskDetailProjectMismatch], без сырого текста ошибки.
+@immutable
+class TaskDetailProjectMismatchException implements Exception {
+  TaskDetailProjectMismatchException({
+    required this.taskId,
+    required this.expectedProjectId,
+    required this.actualProjectId,
+  });
+
+  final String taskId;
+  final String expectedProjectId;
+  final String actualProjectId;
+
+  @override
+  String toString() =>
+      'TaskDetailProjectMismatchException(taskId=$taskId, '
+      'expectedProjectId=$expectedProjectId, actualProjectId=$actualProjectId)';
+}

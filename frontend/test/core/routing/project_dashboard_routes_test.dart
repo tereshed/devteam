@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
 import 'package:frontend/features/chat/data/chat_providers.dart';
 import 'package:frontend/features/chat/domain/models.dart';
@@ -9,12 +13,25 @@ import 'package:frontend/features/chat/domain/requests.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
+import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
+import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:mockito/mockito.dart';
 
-import '../../features/chat/presentation/controllers/chat_controller_test.mocks.dart';
+import '../../features/tasks/helpers/task_fixtures.dart';
+
+import '../../features/chat/helpers/chat_mocks.mocks.dart';
 import '../../features/projects/helpers/project_dashboard_test_router.dart';
 import '../../features/projects/helpers/project_fixtures.dart';
+
+/// Заглушка списка задач для роут-тестов без HTTP (12.5).
+class _StubTaskListForRedirect extends TaskListController {
+  _StubTaskListForRedirect(this._seed);
+  final TaskListState _seed;
+
+  @override
+  FutureOr<TaskListState> build({required String projectId}) => _seed;
+}
 
 /// UUID беседы для smoke-маршрута `/projects/:id/chat/:conversationId`.
 const kChatConversationUuidForRoutingTest =
@@ -37,9 +54,11 @@ void main() {
   test(
     'projectDashboardShellBranchPaths — длина совпадает с buildProjectDashboardShellBranches',
     () {
+      // [projectDashboardShellTasksNavigatorKey] — один экземпляр на приложение; здесь те же
+      // ключи, что в prod/test router (см. комментарий в project_dashboard_test_router.dart).
       final branches = buildProjectDashboardShellBranches(
         chatNavigatorKey: kTestShellChatKey,
-        tasksNavigatorKey: kTestShellTasksKey,
+        tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
         teamNavigatorKey: kTestShellTeamKey,
         settingsNavigatorKey: kTestShellSettingsKey,
       );
@@ -160,6 +179,14 @@ void main() {
   testWidgets(
     '/projects/:id/chat/:conversationId (UUID) показывает ChatScreen',
     (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
       final repo = MockConversationRepository();
       when(
         repo.getConversation(
@@ -196,6 +223,7 @@ void main() {
               (ref) async => makeProject(id: kTestProjectUuid, name: 'R'),
             ),
             conversationRepositoryProvider.overrideWithValue(repo),
+            webSocketServiceProvider.overrideWithValue(ws),
           ],
           child: MaterialApp.router(
             routerConfig: router,
@@ -215,6 +243,44 @@ void main() {
         '/projects/$kTestProjectUuid/chat/$kChatConversationUuidForRoutingTest',
       );
       expect(find.byType(ChatScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Sprint 12.5: невалидный taskId → /projects/:id/tasks с сохранением query',
+    (tester) async {
+      final router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/tasks/not-a-uuid?q=y',
+      );
+      final seed = makeTaskListStateFixture(
+        isLoadingInitial: false,
+        items: [],
+        total: 0,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid, name: 'Tasks'),
+            ),
+            taskListControllerProvider.overrideWith(
+              () => _StubTaskListForRedirect(seed),
+            ),
+          ],
+          child: MaterialApp.router(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestProjectUuid/tasks',
+      );
+      expect(router.state.uri.queryParameters['q'], 'y');
     },
   );
 }

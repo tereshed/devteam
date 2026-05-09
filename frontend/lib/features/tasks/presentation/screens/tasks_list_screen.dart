@@ -10,6 +10,7 @@ import 'package:frontend/features/tasks/presentation/controllers/task_list_contr
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+import 'package:go_router/go_router.dart';
 
 TaskListState? _unwrapTaskListState(AsyncValue<TaskListState>? async) {
   if (async == null || !async.hasValue) {
@@ -138,6 +139,9 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
     if (cur == null) {
       return;
     }
+    if (cur.status == statusOrNull) {
+      return;
+    }
     await ref
         .read(taskListControllerProvider(projectId: widget.projectId).notifier)
         .setFilter(cur.copyWith(status: statusOrNull));
@@ -147,6 +151,9 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
     final async = ref.read(taskListControllerProvider(projectId: widget.projectId));
     final cur = _unwrapTaskListState(async)?.filter;
     if (cur == null) {
+      return;
+    }
+    if (cur.priority == priorityOrNull) {
       return;
     }
     await ref
@@ -249,9 +256,7 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
                   .loadMore(),
             ),
             onTaskTap: (task) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(l10n.taskDetailNotImplementedYet)),
-              );
+              context.push('/projects/${widget.projectId}/tasks/${task.id}');
             },
           ),
         ),

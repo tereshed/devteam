@@ -237,9 +237,10 @@ class TaskDetailController extends _$TaskDetailController {
         return;
       }
       if (task.projectId != _projectId) {
-        throw StateError(
-          'Task ${task.id} belongs to project ${task.projectId}, '
-          'expected $_projectId',
+        throw TaskDetailProjectMismatchException(
+          taskId: task.id,
+          expectedProjectId: _projectId,
+          actualProjectId: task.projectId,
         );
       }
 
@@ -397,12 +398,38 @@ class TaskDetailController extends _$TaskDetailController {
       if (me == _messagesEpoch) {
         _patchState((s) => s.copyWith(isLoadingMessages: false));
       }
-    } catch (e, st) {
+    } catch (e) {
       if (me != _messagesEpoch) {
         return;
       }
-      _patchState((s) => s.copyWith(isLoadingMessages: false));
-      state = AsyncError(e, st);
+      _patchState(
+        (s) => s.copyWith(isLoadingMessages: false, messagesLoadMoreError: e),
+      );
+    }
+  }
+
+  /// Повтор после [TaskDetailState.messagesLoadMoreError] (догрузка или первая страница после фильтра).
+  Future<void> retryMessagesAfterError() async {
+    final cur = switch (state) {
+      AsyncData<TaskDetailState>(:final value) => value,
+      _ => null,
+    };
+    if (cur == null || cur.messagesLoadMoreError == null) {
+      return;
+    }
+
+    final failedFirstPage =
+        cur.messages.isEmpty && cur.messagesOffset == 0 && !cur.hasMoreMessages;
+    if (failedFirstPage) {
+      _patchState(
+        (s) => s.copyWith(
+          messagesLoadMoreError: null,
+          isLoadingMessages: true,
+        ),
+      );
+      await _loadMessagesFirstPage();
+    } else {
+      await loadMoreMessages();
     }
   }
 
@@ -521,7 +548,11 @@ class TaskDetailController extends _$TaskDetailController {
       return;
     }
     if (task.projectId != _projectId) {
-      throw StateError('task project mismatch');
+      throw TaskDetailProjectMismatchException(
+        taskId: task.id,
+        expectedProjectId: _projectId,
+        actualProjectId: task.projectId,
+      );
     }
     _patchState((s) => s.copyWith(task: _pickFresherTask(s.task, task)));
   }
@@ -535,7 +566,11 @@ class TaskDetailController extends _$TaskDetailController {
       return;
     }
     if (task.projectId != _projectId) {
-      throw StateError('task project mismatch');
+      throw TaskDetailProjectMismatchException(
+        taskId: task.id,
+        expectedProjectId: _projectId,
+        actualProjectId: task.projectId,
+      );
     }
     _patchState((s) => s.copyWith(task: task));
   }

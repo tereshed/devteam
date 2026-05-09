@@ -22,8 +22,6 @@ import 'package:go_router/go_router.dart';
 /// Ключи вложенных [Navigator] для веток дашборда проекта (StatefulShellRoute).
 final GlobalKey<NavigatorState> _projectShellChatNavKey =
     GlobalKey<NavigatorState>(debugLabel: 'projectShellChat');
-final GlobalKey<NavigatorState> _projectShellTasksNavKey =
-    GlobalKey<NavigatorState>(debugLabel: 'projectShellTasks');
 final GlobalKey<NavigatorState> _projectShellTeamNavKey =
     GlobalKey<NavigatorState>(debugLabel: 'projectShellTeam');
 final GlobalKey<NavigatorState> _projectShellSettingsNavKey =
@@ -135,7 +133,7 @@ class AppRouter {
                 },
                 branches: buildProjectDashboardShellBranches(
                   chatNavigatorKey: _projectShellChatNavKey,
-                  tasksNavigatorKey: _projectShellTasksNavKey,
+                  tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
                   teamNavigatorKey: _projectShellTeamNavKey,
                   settingsNavigatorKey: _projectShellSettingsNavKey,
                 ),

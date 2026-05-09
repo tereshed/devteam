@@ -114,7 +114,7 @@ void main() {
   });
 
   group('TaskDetailController', () {
-    test('project mismatch → StateError / AsyncError', () async {
+    test('project mismatch → TaskDetailProjectMismatchException / AsyncError', () async {
       stubList();
       when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
           .thenAnswer((_) async => task(projectIdOverride: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'));
@@ -128,7 +128,7 @@ void main() {
 
       final st = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid));
       expect(st.hasError, isTrue);
-      expect(st.error, isA<StateError>());
+      expect(st.error, isA<TaskDetailProjectMismatchException>());
     });
 
     test('pauseTask blockedByRealtime does not call repo', () async {
@@ -580,6 +580,42 @@ void main() {
       expect(v.messagesTotal, 1);
       expect(v.messages, hasLength(1));
     });
+
+    test(
+      'setMessageFilters: ошибка первой страницы лента не переводит провайдер в AsyncError',
+      () async {
+        stubList();
+        when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
+            .thenAnswer((_) async => task());
+        stubMessages(
+          const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
+        );
+
+        listenKeepAlive();
+        final ctrl =
+            container.read(taskDetailControllerProvider(projectId: pid, taskId: tid).notifier);
+        await waitDetail();
+
+        when(
+          mockRepo.listTaskMessages(
+            tid,
+            messageType: 'result',
+            senderType: null,
+            limit: kTaskListDefaultLimit,
+            offset: 0,
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenThrow(Exception('network'));
+
+        await ctrl.setMessageFilters(messageType: 'result');
+
+        final async = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid));
+        expect(async.hasError, isFalse);
+        final v = async.requireValue;
+        expect(v.messagesLoadMoreError, isNotNull);
+        expect(v.isLoadingMessages, isFalse);
+      },
+    );
 
     test('correctTask > kUserCorrectionMaxBytes UTF-8 → validationFailed', () async {
       stubList();

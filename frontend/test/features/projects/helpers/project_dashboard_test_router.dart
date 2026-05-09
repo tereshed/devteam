@@ -8,12 +8,14 @@ import 'package:go_router/go_router.dart';
 /// [projectDashboardUnknownShellBranchRedirect], чтобы виджет-тесты не обязаны были
 /// оборачивать дерево в [ProviderScope]. Защита **`/projects/**`** через [authGuard] +
 /// [rootRouterRedirect] — в **`frontend/test/core/routing/root_router_redirect_test.dart`**.
+///
+/// Ветка **tasks** использует тот же [projectDashboardShellTasksNavigatorKey], что и прод
+/// ([ChatScreen] обращается к нему для cross-branch push). Отдельный тестовый ключ не заводим —
+/// см. инвариант дубликата GlobalKey в `project_dashboard_routes.dart`.
 const String kTestProjectUuid = '550e8400-e29b-41d4-a716-446655440000';
 
 final GlobalKey<NavigatorState> kTestShellChatKey =
     GlobalKey<NavigatorState>(debugLabel: 'testShellChat');
-final GlobalKey<NavigatorState> kTestShellTasksKey =
-    GlobalKey<NavigatorState>(debugLabel: 'testShellTasks');
 final GlobalKey<NavigatorState> kTestShellTeamKey =
     GlobalKey<NavigatorState>(debugLabel: 'testShellTeam');
 final GlobalKey<NavigatorState> kTestShellSettingsKey =
@@ -64,7 +66,7 @@ GoRouter buildProjectDashboardTestRouter({
                 },
                 branches: buildProjectDashboardShellBranches(
                   chatNavigatorKey: kTestShellChatKey,
-                  tasksNavigatorKey: kTestShellTasksKey,
+                  tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
                   teamNavigatorKey: kTestShellTeamKey,
                   settingsNavigatorKey: kTestShellSettingsKey,
                 ),

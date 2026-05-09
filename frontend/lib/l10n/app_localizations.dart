@@ -1262,12 +1262,6 @@ abstract class AppLocalizations {
   /// **'Сбросить фильтры'**
   String get tasksEmptyFilteredClear;
 
-  /// SnackBar до маршрута детали задачи (12.4)
-  ///
-  /// In ru, this message translates to:
-  /// **'Экран задачи пока недоступен'**
-  String get taskDetailNotImplementedYet;
-
   /// Приоритет задачи critical (12.4)
   ///
   /// In ru, this message translates to:
@@ -1375,6 +1369,240 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Повторное нажатие «Отправить» создаёт второе сообщение на сервере (идемпотентность — отдельная задача).'**
   String get taskSendMessageNoIdempotencyHint;
+
+  /// AppBar детали задачи до прихода данных (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Загрузка…'**
+  String get taskDetailAppBarLoading;
+
+  /// SnackBar при таймауте обновления детали задачи (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновление занимает слишком много времени. Попробуйте снова.'**
+  String get taskDetailRefreshTimedOut;
+
+  /// Короткий заголовок при удалённой задаче (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача удалена'**
+  String get taskDetailDeletedTitle;
+
+  /// Тело экрана при taskDeleted (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Эта задача удалена на сервере. Откройте список задач, чтобы продолжить работу с другими карточками.'**
+  String get taskDetailDeletedBody;
+
+  /// Секция описания задачи (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание'**
+  String get taskDetailSectionDescription;
+
+  /// Секция результата (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Результат'**
+  String get taskDetailSectionResult;
+
+  /// Секция артефакта diff (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменения (diff)'**
+  String get taskDetailSectionDiff;
+
+  /// Секция ленты сообщений (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Лог сообщений'**
+  String get taskDetailSectionMessages;
+
+  /// Секция доменного error_message задачи (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка задачи'**
+  String get taskDetailSectionErrorMessage;
+
+  /// Секция подзадач (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Подзадачи'**
+  String get taskDetailSectionSubtasks;
+
+  /// Пустой артефакт diff (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет diff'**
+  String get taskDetailNoDiff;
+
+  /// Пустое описание задачи (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет описания'**
+  String get taskDetailNoDescription;
+
+  /// Пустой результат (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет результата'**
+  String get taskDetailNoResult;
+
+  /// Пустая лента сообщений (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Сообщений пока нет'**
+  String get taskDetailNoMessages;
+
+  /// Кнопка возврата к списку (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'К списку задач'**
+  String get taskDetailBackToList;
+
+  /// Несовпадение projectId URL и задачи (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача из другого проекта'**
+  String get taskDetailProjectMismatch;
+
+  /// Блок мутаций из-за realtime (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновление задачи по сети временно недоступно'**
+  String get taskDetailRealtimeMutationBlocked;
+
+  /// Терминальный сбой realtime-сессии (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Проблема сессии realtime'**
+  String get taskDetailRealtimeSessionFailure;
+
+  /// Transient WS / сервис (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Сбой realtime-сервиса'**
+  String get taskDetailRealtimeServiceFailure;
+
+  /// Фоллбэк message_type (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Неизвестный тип сообщения'**
+  String get taskMessageTypeUnknown;
+
+  /// Фоллбэк sender_type (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Неизвестный отправитель'**
+  String get taskSenderTypeUnknown;
+
+  /// Тип сообщения instruction (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Инструкция'**
+  String get taskMessageTypeInstruction;
+
+  /// Тип сообщения result (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Результат'**
+  String get taskMessageTypeResult;
+
+  /// Тип сообщения question (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Вопрос'**
+  String get taskMessageTypeQuestion;
+
+  /// Тип сообщения feedback (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Обратная связь'**
+  String get taskMessageTypeFeedback;
+
+  /// Тип сообщения error (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get taskMessageTypeError;
+
+  /// Тип сообщения comment (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Комментарий'**
+  String get taskMessageTypeComment;
+
+  /// Тип сообщения summary (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Сводка'**
+  String get taskMessageTypeSummary;
+
+  /// Отправитель user (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Пользователь'**
+  String get taskSenderTypeUser;
+
+  /// Отправитель agent (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Агент'**
+  String get taskSenderTypeAgent;
+
+  /// Фоллбэк роли агента (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Неизвестная роль'**
+  String get taskAgentRoleUnknown;
+
+  /// Роль агента worker на детали задачи (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Исполнитель'**
+  String get taskAgentRoleWorker;
+
+  /// Роль агента supervisor (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Супервизор'**
+  String get taskAgentRoleSupervisor;
+
+  /// Роль агента orchestrator (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Оркестратор'**
+  String get taskAgentRoleOrchestrator;
+
+  /// Роль агента planner (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Планировщик'**
+  String get taskAgentRolePlanner;
+
+  /// Роль агента developer (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Разработчик'**
+  String get taskAgentRoleDeveloper;
+
+  /// Роль агента reviewer (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Ревьюер'**
+  String get taskAgentRoleReviewer;
+
+  /// Роль агента tester (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестировщик'**
+  String get taskAgentRoleTester;
+
+  /// Роль агента devops (12.5)
+  ///
+  /// In ru, this message translates to:
+  /// **'DevOps'**
+  String get taskAgentRoleDevops;
 
   /// Подсказка кнопки копирования блока кода в чате
   ///

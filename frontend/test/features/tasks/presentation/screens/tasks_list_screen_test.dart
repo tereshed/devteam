@@ -9,15 +9,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
+import 'package:frontend/features/tasks/data/task_providers.dart';
+import 'package:frontend/features/tasks/domain/models/task_model.dart';
 import 'package:frontend/features/tasks/domain/requests.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
+import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+import 'package:mockito/mockito.dart';
 
 import '../../../projects/helpers/project_dashboard_test_router.dart';
 import '../../../projects/helpers/project_fixtures.dart';
 import '../../../projects/helpers/test_wrappers.dart';
+import '../controllers/task_list_controller_test.mocks.dart';
 import '../../helpers/task_fixtures.dart';
 
 /// Заглушки контроллера: не вызывают реальный [TaskListController.build] с валидацией UUID;
@@ -281,34 +286,100 @@ void main() {
       expect(ctrl.loadMoreCalls, 1);
     });
 
-    testWidgets('тап по задаче: taskDetailNotImplementedYet', (tester) async {
+    testWidgets('тап по задаче: переход на /tasks/:taskId (TaskDetailScreen)', (
+      tester,
+    ) async {
       useViewSize(tester, const Size(480, 800));
+      const taskId = '44444444-4444-4444-4444-444444444444';
+      final mockRepo = MockTaskRepository();
+      when(
+        mockRepo.getTask(taskId, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer(
+        (_) async => TaskModel(
+          id: taskId,
+          projectId: kTaskFixtureProjectId,
+          title: 'TapMeTitle',
+          description: 'd',
+          status: 'pending',
+          priority: 'medium',
+          createdByType: 'user',
+          createdById: '33333333-3333-3333-3333-333333333333',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        mockRepo.listTaskMessages(
+          taskId,
+          messageType: anyNamed('messageType'),
+          senderType: anyNamed('senderType'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskMessageListResponse(
+          messages: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+      when(
+        mockRepo.listTasks(
+          kTaskFixtureProjectId,
+          filter: anyNamed('filter'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskListResponse(tasks: [], total: 0, limit: 50, offset: 0),
+      );
+
       final seed = makeTaskListStateFixture(
         items: [
           makeTaskListItemFixture(
-            id: '44444444-4444-4444-4444-444444444444',
+            id: taskId,
             title: 'TapMeTitle',
           ),
         ],
         total: 1,
       );
+      final router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTaskFixtureProjectId/tasks',
+      );
       await tester.pumpWidget(
-        _tasksScreenHarness(
+        ProviderScope(
+          retry: (_, _) => null,
           overrides: [
+            projectProvider(kTaskFixtureProjectId).overrideWith(
+              (ref) async => makeProject(
+                id: kTaskFixtureProjectId,
+                name: kTestDashboardProjectNameFixtureAlpha,
+              ),
+            ),
             taskListControllerProvider.overrideWith(
               () => _StubTaskListController(seed),
             ),
+            taskRepositoryProvider.overrideWithValue(mockRepo),
           ],
-          child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+          child: MaterialApp.router(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            routerConfig: router,
+          ),
         ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('TapMeTitle'));
       await tester.pumpAndSettle();
-      final l10n = AppLocalizations.of(
-        tester.element(find.byType(TasksListScreen)),
-      )!;
-      expect(find.text(l10n.taskDetailNotImplementedYet), findsOneWidget);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+      expect(
+        router.state.uri.path,
+        '/projects/$kTaskFixtureProjectId/tasks/$taskId',
+      );
     });
 
     testWidgets('wide + empty: без RefreshIndicator (п. 6 UI)', (tester) async {

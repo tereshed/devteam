@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/routing/project_dashboard_routes.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
 import 'package:frontend/features/chat/domain/linked_task_snapshots.dart';
@@ -20,7 +23,72 @@ import 'package:go_router/go_router.dart';
 /// Отступ между пузырём [ChatMessage] и блоком [TaskStatusCard] (ТЗ 11.7).
 const double _kBubbleToCardGap = 8;
 
-Widget _messageTaskStatusCard(ConversationMessageModel message, String taskId) {
+/// Сколько раз ждать [SchedulerBinding.instance.endOfFrame] перед fallback при cross-branch push
+/// (чат → деталь задачи). Должно совпадать с циклом в [_pushTaskDetailWhenTasksNavigatorReady];
+/// виджет-тест «race guard» использует то же число [WidgetTester.pump].
+const int kTasksCrossBranchPushMaxRetries = 3;
+
+/// Открытие детали задачи из чата: переключить shell на ветку **tasks**, затем
+/// `push` с контекстом [projectDashboardShellTasksNavigatorKey] — иначе URL уходит в
+/// chat-navigator и drift вкладки/стека (12.5 review ит.4).
+///
+/// [StatefulNavigationShell.goBranch] с [initialLocation]=**true** сбрасывает стек ветки tasks к
+/// `/projects/:id/tasks` перед push детали: **Back** с экрана задачи ведёт на **список**, а не на
+/// предыдущую задачу в стеке этой вкладки (контракт 12.5 review ит.5 п.2).
+///
+/// **Trade-off (review ит.6):** если пользователь был на `/tasks/A`, перешёл в чат и открыл карточку
+/// задачи **B**, стек **A** сбрасывается — после **Back** с **B** он попадает на список, а не на **A**.
+/// Сохранение **A** потребовало бы [initialLocation]=false и вернуло бы проблему «Back → A вместо
+/// списка» (ит.5 п.2). Гибрид «как подзадачи» возможен позже при явном продуктовом запросе.
+void _openTaskDetailFromChatShell(
+  BuildContext context,
+  String projectId,
+  String taskId,
+) {
+  final shell = StatefulNavigationShell.maybeOf(context);
+  final location = '/projects/$projectId/tasks/$taskId';
+  if (shell != null) {
+    final tasksIdx = projectDashboardShellBranchPaths
+        .indexOf(projectDashboardShellBranchTasksSegment);
+    if (tasksIdx >= 0) {
+      shell.goBranch(tasksIdx, initialLocation: true);
+      unawaited(_pushTaskDetailWhenTasksNavigatorReady(context, location));
+      return;
+    }
+  }
+  context.push(location);
+}
+
+/// После [goBranch] контекст tasks-[Navigator] может появиться только со следующего кадра.
+/// Ждём [kTasksCrossBranchPushMaxRetries] раз [SchedulerBinding.instance.endOfFrame].
+Future<void> _pushTaskDetailWhenTasksNavigatorReady(
+  BuildContext context,
+  String location,
+) async {
+  for (var attempt = 0; attempt < kTasksCrossBranchPushMaxRetries; attempt++) {
+    await SchedulerBinding.instance.endOfFrame;
+    final tasksCtx = projectDashboardShellTasksNavigatorKey.currentContext;
+    if (tasksCtx != null && tasksCtx.mounted) {
+      GoRouter.of(tasksCtx).push(location);
+      return;
+    }
+  }
+  developer.log(
+    'tasks navigator context still null after goBranch (fallback push via chat context — possible shell/tab drift)',
+    name: 'devteam.chat.cross_branch',
+    level: 900,
+  );
+  if (context.mounted) {
+    context.push(location);
+  }
+}
+
+Widget _messageTaskStatusCard(
+  BuildContext context,
+  String projectId,
+  ConversationMessageModel message,
+  String taskId,
+) {
   final snap = linkedTaskSnapshotForMessage(message, taskId);
   return TaskStatusCard(
     key: ValueKey<String>(taskId),
@@ -29,7 +97,7 @@ Widget _messageTaskStatusCard(ConversationMessageModel message, String taskId) {
     status: snap.status,
     errorMessage: snap.errorMessage,
     agentRole: taskCardAgentRoleTryParse(snap.agentRoleRaw),
-    onOpen: null,
+    onOpen: (id) => _openTaskDetailFromChatShell(context, projectId, id),
   );
 }
 
@@ -291,6 +359,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   style: theme.textTheme.titleMedium,
                 ),
                 const SizedBox(height: 16),
+                // TODO(11.x): симметрия с 12.5 — к списку задач проекта
+                // (`/projects/$projectId/tasks`), не глобальный `/projects` (review 12.5 ит.4).
                 FilledButton(
                   onPressed: () => context.go('/projects'),
                   child: Text(l10n.chatScreenNotFoundBack),
@@ -362,6 +432,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : AdaptiveContainer(
                     child: _ChatMessageList(
+                      projectId: widget.projectId,
                       scrollController: _scrollController,
                       chatState: chatState,
                       theme: theme,
@@ -407,6 +478,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
 class _ChatMessageList extends StatelessWidget {
   const _ChatMessageList({
+    required this.projectId,
     required this.scrollController,
     required this.chatState,
     required this.theme,
@@ -415,6 +487,7 @@ class _ChatMessageList extends StatelessWidget {
     required this.onUserScrollInterruptAnimation,
   });
 
+  final String projectId;
   final ScrollController scrollController;
   final ChatState chatState;
   final ThemeData theme;
@@ -459,6 +532,7 @@ class _ChatMessageList extends StatelessWidget {
           if (j < msgCount) {
             final m = msgs[msgCount - 1 - j];
             return _MessageBubble(
+              projectId: projectId,
               message: m,
               theme: theme,
               l10n: l10n,
@@ -511,11 +585,13 @@ bool _metadataStreamingAssistant(Map<String, dynamic>? meta) {
 
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
+    required this.projectId,
     required this.message,
     required this.theme,
     required this.l10n,
   });
 
+  final String projectId;
   final ConversationMessageModel message;
   final ThemeData theme;
   final AppLocalizations l10n;
@@ -569,7 +645,7 @@ class _MessageBubble extends StatelessWidget {
         const SizedBox(height: _kBubbleToCardGap),
         for (var i = 0; i < linked.length; i++) ...[
           if (i > 0) const SizedBox(height: 8),
-          _messageTaskStatusCard(message, linked[i]),
+          _messageTaskStatusCard(context, projectId, message, linked[i]),
         ],
       ],
     ];

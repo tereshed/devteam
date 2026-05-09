@@ -8,13 +8,24 @@ import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/features/chat/data/chat_providers.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
+import 'package:frontend/features/chat/domain/linked_task_snapshots.dart';
 import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/presentation/controllers/chat_controller.dart';
-import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
+import 'package:frontend/features/chat/presentation/screens/chat_screen.dart'
+    show ChatScreen, ChatScreenScroll, kTasksCrossBranchPushMaxRetries;
+import 'package:frontend/features/chat/presentation/widgets/task_status_card.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
+import 'package:frontend/features/tasks/data/task_providers.dart';
+import 'package:frontend/features/tasks/domain/models.dart';
+import 'package:frontend/features/tasks/domain/requests.dart';
+import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
+import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mockito/mockito.dart';
 
+import '../../../tasks/helpers/task_fixtures.dart';
+import '../../../tasks/presentation/controllers/task_list_controller_test.mocks.dart';
 import '../../helpers/chat_fixtures.dart';
 import '../../helpers/chat_mocks.mocks.dart';
 import '../../helpers/chat_test_router.dart';
@@ -22,6 +33,14 @@ import '../../helpers/test_wrappers.dart';
 
 /// Соответствует числу сообщений в первом ответе [getMessages] (сценарий loadOlder).
 const kLoadOlderFirstPageMessageCount = 2;
+
+class _StubTaskListForChatShell extends TaskListController {
+  _StubTaskListForChatShell(this._seed);
+  final TaskListState _seed;
+
+  @override
+  FutureOr<TaskListState> build({required String projectId}) => _seed;
+}
 
 void main() {
   late MockConversationRepository repo;
@@ -636,6 +655,406 @@ void main() {
     expect(find.byType(ChatScreen), findsOneWidget);
     expect(find.text(kChatFixtureDeepLinkAssistantBody), findsOneWidget);
   });
+
+  testWidgets(
+    'TaskStatusCard onOpen: shell tasks + URL; Back → список, вкладка tasks (12.5)',
+    (tester) async {
+      useViewSize(tester, const Size(900, 800));
+      const taskId = '11111111-1111-1111-1111-111111111111';
+      final mockTasks = MockTaskRepository();
+      when(
+        mockTasks.getTask(taskId, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer(
+        (_) async => TaskModel(
+          id: taskId,
+          projectId: kTestChatProjectUuid,
+          title: 'From chat',
+          description: 'd',
+          status: 'pending',
+          priority: 'medium',
+          createdByType: 'user',
+          createdById: kTaskFixtureUserId,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        mockTasks.listTaskMessages(
+          taskId,
+          messageType: anyNamed('messageType'),
+          senderType: anyNamed('senderType'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskMessageListResponse(
+          messages: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+      when(
+        mockTasks.listTasks(
+          kTestChatProjectUuid,
+          filter: anyNamed('filter'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskListResponse(
+          tasks: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+
+      when(
+        repo.getConversation(
+          kTestChatConversationUuid,
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => makeConversation());
+      when(
+        repo.getMessages(
+          kTestChatConversationUuid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => makeMessageListResponse(
+          messages: [
+            makeMessage(
+              id: 'mCard',
+              role: 'assistant',
+              content: 'has task',
+              linkedTaskIds: [taskId],
+              metadata: {
+                kLinkedTaskSnapshotsMetadataKey: {
+                  taskId: {
+                    'title': 'Linked title',
+                    'status': 'pending',
+                  },
+                },
+              },
+            ),
+          ],
+        ),
+      );
+
+      final listSeed = TaskListState(
+        filter: TaskListFilter.defaults(),
+        items: const [],
+        total: 0,
+        offset: 0,
+        isLoadingInitial: false,
+      );
+
+      final router = buildChatTestRouter(
+        initialLocation: chatTestPathConversation(
+          kTestChatProjectUuid,
+          kTestChatConversationUuid,
+        ),
+      );
+
+      await tester.pumpWidget(
+        wrapChatDashboardRouter(
+          router: router,
+          overrides: [
+            ...defaultOverrides(),
+            taskRepositoryProvider.overrideWithValue(mockTasks),
+            taskListControllerProvider.overrideWith(
+              () => _StubTaskListForChatShell(listSeed),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TaskStatusCard));
+      await tester.pumpAndSettle();
+
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestChatProjectUuid/tasks/$taskId',
+      );
+      var rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
+      expect(rail.selectedIndex, 1);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestChatProjectUuid/tasks',
+      );
+      rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
+      expect(rail.selectedIndex, 1);
+    },
+  );
+
+  testWidgets(
+    'TaskStatusCard без StatefulShell: shell==null → push на полный путь',
+    (tester) async {
+      useViewSize(tester, const Size(900, 800));
+      const taskId = '11111111-1111-1111-1111-111111111111';
+      final mockTasks = MockTaskRepository();
+      when(
+        mockTasks.getTask(taskId, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer(
+        (_) async => TaskModel(
+          id: taskId,
+          projectId: kTestChatProjectUuid,
+          title: 'No shell',
+          description: 'd',
+          status: 'pending',
+          priority: 'medium',
+          createdByType: 'user',
+          createdById: kTaskFixtureUserId,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        mockTasks.listTaskMessages(
+          taskId,
+          messageType: anyNamed('messageType'),
+          senderType: anyNamed('senderType'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskMessageListResponse(
+          messages: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+      when(
+        repo.getConversation(
+          kTestChatConversationUuid,
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => makeConversation());
+      when(
+        repo.getMessages(
+          kTestChatConversationUuid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => makeMessageListResponse(
+          messages: [
+            makeMessage(
+              id: 'mShell',
+              role: 'assistant',
+              content: 'x',
+              linkedTaskIds: [taskId],
+              metadata: {
+                kLinkedTaskSnapshotsMetadataKey: {
+                  taskId: {
+                    'title': 'T',
+                    'status': 'pending',
+                  },
+                },
+              },
+            ),
+          ],
+        ),
+      );
+
+      final router = GoRouter(
+        initialLocation: chatTestPathConversation(
+          kTestChatProjectUuid,
+          kTestChatConversationUuid,
+        ),
+        routes: [
+          GoRoute(
+            path: '/projects/:projectId/chat/:conversationId',
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              child: ChatScreen(
+                projectId: state.pathParameters['projectId']!,
+                conversationId: state.pathParameters['conversationId']!,
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/projects/:projectId/tasks/:taskId',
+            pageBuilder: (context, state) => const NoTransitionPage<void>(
+              child: Scaffold(
+                body: Text('__NO_SHELL_TASK_DETAIL__'),
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          overrides: [
+            ...defaultOverrides(),
+            taskRepositoryProvider.overrideWithValue(mockTasks),
+          ],
+          child: MaterialApp.router(
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TaskStatusCard));
+      await tester.pumpAndSettle();
+
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestChatProjectUuid/tasks/$taskId',
+      );
+      expect(find.text('__NO_SHELL_TASK_DETAIL__'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'TaskStatusCard onOpen: detail URL после первых кадров без полного settle (race guard)',
+    (tester) async {
+      useViewSize(tester, const Size(900, 800));
+      const taskId = '11111111-1111-1111-1111-111111111111';
+      final mockTasks = MockTaskRepository();
+      when(
+        mockTasks.getTask(taskId, cancelToken: anyNamed('cancelToken')),
+      ).thenAnswer(
+        (_) async => TaskModel(
+          id: taskId,
+          projectId: kTestChatProjectUuid,
+          title: 'Race',
+          description: 'd',
+          status: 'pending',
+          priority: 'medium',
+          createdByType: 'user',
+          createdById: kTaskFixtureUserId,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        mockTasks.listTaskMessages(
+          taskId,
+          messageType: anyNamed('messageType'),
+          senderType: anyNamed('senderType'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskMessageListResponse(
+          messages: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+      when(
+        mockTasks.listTasks(
+          kTestChatProjectUuid,
+          filter: anyNamed('filter'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskListResponse(
+          tasks: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+
+      when(
+        repo.getConversation(
+          kTestChatConversationUuid,
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => makeConversation());
+      when(
+        repo.getMessages(
+          kTestChatConversationUuid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => makeMessageListResponse(
+          messages: [
+            makeMessage(
+              id: 'mRace',
+              role: 'assistant',
+              content: 'race',
+              linkedTaskIds: [taskId],
+              metadata: {
+                kLinkedTaskSnapshotsMetadataKey: {
+                  taskId: {
+                    'title': 'R',
+                    'status': 'pending',
+                  },
+                },
+              },
+            ),
+          ],
+        ),
+      );
+
+      final listSeed = TaskListState(
+        filter: TaskListFilter.defaults(),
+        items: const [],
+        total: 0,
+        offset: 0,
+        isLoadingInitial: false,
+      );
+
+      final router = buildChatTestRouter(
+        initialLocation: chatTestPathConversation(
+          kTestChatProjectUuid,
+          kTestChatConversationUuid,
+        ),
+      );
+
+      await tester.pumpWidget(
+        wrapChatDashboardRouter(
+          router: router,
+          overrides: [
+            ...defaultOverrides(),
+            taskRepositoryProvider.overrideWithValue(mockTasks),
+            taskListControllerProvider.overrideWith(
+              () => _StubTaskListForChatShell(listSeed),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TaskStatusCard));
+      // По одному pump на каждую попытку endOfFrame в [_pushTaskDetailWhenTasksNavigatorReady].
+      for (var i = 0; i < kTasksCrossBranchPushMaxRetries; i++) {
+        await tester.pump();
+      }
+
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestChatProjectUuid/tasks/$taskId',
+      );
+    },
+  );
 
   testWidgets('маршрут без conversationId: подсказка выбора беседы', (
     tester,
