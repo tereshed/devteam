@@ -14,6 +14,7 @@ import 'package:frontend/features/tasks/presentation/utils/task_message_display.
 import 'package:frontend/features/tasks/presentation/utils/task_message_metadata_redaction.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+import 'package:frontend/shared/widgets/diff_viewer.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -557,12 +558,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             ),
       );
     }
-    return SelectableText(
-      s,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontFamily: 'monospace',
-          ),
-    );
+    return DiffViewer(diff: s);
   }
 
   List<Widget> _realtimeSlivers(
