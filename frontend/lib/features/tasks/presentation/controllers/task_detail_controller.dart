@@ -4,7 +4,9 @@ import 'dart:developer' show log;
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:frontend/core/api/realtime_failure_mapper.dart';
+import 'package:frontend/core/api/realtime_session_failure.dart';
 import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/data/task_providers.dart';
@@ -72,6 +74,8 @@ class TaskDetailController extends _$TaskDetailController {
   /// подтянут карточку).
   bool _wsRefetchInFlight = false;
 
+  StreamSubscription<WsClientEvent>? _wsSubscription;
+
   String get _projectId => projectId;
 
   String get _taskId => taskId;
@@ -92,14 +96,36 @@ class TaskDetailController extends _$TaskDetailController {
 
     _taskHistoryToken = CancelToken();
     _messagesHistoryToken = CancelToken();
-    ref.onDispose(() {
-      _taskHistoryToken?.cancel();
-      _messagesHistoryToken?.cancel();
-    });
-
-    Future.microtask(() {
-      unawaited(_loadInitial());
-    });
+    // Family autoDispose: [build] один раз на инстанс — гард совпадает с первой подпиской (11.9).
+    if (_wsSubscription == null) {
+      ref.onDispose(() {
+        _taskHistoryToken?.cancel();
+        _messagesHistoryToken?.cancel();
+        unawaited(_wsSubscription?.cancel());
+        _wsSubscription = null;
+      });
+      final ws = ref.read(webSocketServiceProvider);
+      _wsSubscription = ws.events.listen(_onWsClientEvent);
+      try {
+        ws.connect(projectId);
+      } on StateError catch (e, st) {
+        log(
+          'WS connect failed at TaskDetailController.build',
+          name: 'TaskDetailController',
+          error: e,
+          stackTrace: st,
+        );
+        Future.microtask(() {
+          if (!ref.mounted) {
+            return;
+          }
+          applyRealtimeFailure(const WsServiceFailure.transient());
+        });
+      }
+      Future.microtask(() {
+        unawaited(_loadInitial());
+      });
+    }
 
     return TaskDetailState.initial();
   }
@@ -212,6 +238,62 @@ class TaskDetailController extends _$TaskDetailController {
 
   void requestRestRefetch() {
     _scheduleWsRefetch(() => refresh(clearRealtimeBlocksOnSuccess: false));
+  }
+
+  /// Терминальный auth по [WsClientEventAuthFailure]; единая точка смены полей (12.9).
+  void applyAuthFailure() {
+    _patchState(
+      (s) => s.copyWith(
+        realtimeSessionFailure: const RealtimeSessionFailure.authenticationLost(),
+        realtimeMutationBlocked: true,
+        realtimeServiceFailure: null,
+      ),
+    );
+  }
+
+  void _clearRealtimeTransientFailure() {
+    if (!state.hasValue) {
+      return;
+    }
+    final v = state.requireValue;
+    if (v.realtimeServiceFailure == null) {
+      return;
+    }
+    _patchState((s) => s.copyWith(realtimeServiceFailure: null));
+  }
+
+  void _onWsClientEvent(WsClientEvent ev) {
+    switch (ev) {
+      case WsClientEventServiceFailure(:final failure):
+        applyRealtimeFailure(failure);
+        return;
+      case WsClientEventAuthFailure():
+        applyAuthFailure();
+        return;
+      case WsClientEventSubprotocolMismatch():
+      case WsClientEventParseError():
+        _clearRealtimeTransientFailure();
+        return;
+      case WsClientEventServer(:final event):
+        // Как [ChatController]: server-кадр сбрасывает transient до фильтра projectId
+        // в payload (возможен ложный сброс при событии другого проекта — как в Chat).
+        _clearRealtimeTransientFailure();
+        event.when(
+          taskStatus: applyWsTaskStatus,
+          taskMessage: applyWsTaskMessage,
+          agentLog: (_) {},
+          error: (err) {
+            if (err.projectId != _projectId) {
+              return;
+            }
+            if (err.needsRestRefetch) {
+              requestRestRefetch();
+            }
+          },
+          unknown: (_) {},
+        );
+        return;
+    }
   }
 
   void applyRealtimeFailure(WsServiceFailure failure) {

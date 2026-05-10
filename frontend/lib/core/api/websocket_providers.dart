@@ -13,8 +13,10 @@ WsConfig wsConfig(Ref ref) {
   return const WsConfig();
 }
 
-/// WebSocket-сервис (единый на приложение): **keepAlive**, чтобы [ChatController]
-/// мог только подписаться на [WebSocketService.events] без `watch` провайдера.
+/// WebSocket-сервис (**keepAlive**): один экземпляр на приложение. [ChatController]
+/// и контроллеры задач (**12.9**) подписываются на [WebSocketService.events], вызывают
+/// [WebSocketService.connect] для проекта и **не** вызывают [WebSocketService.disconnect]
+/// в `onDispose` экрана — иначе рвётся общий сокет (**11.9**).
 ///
 /// **Выход из всех проектов** (список проектов, logout): соединение не закрывается
 /// автоматически — нужен вызов [WebSocketService.disconnect] из shell роутера /

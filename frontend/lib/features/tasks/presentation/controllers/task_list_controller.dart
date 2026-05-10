@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:developer' show log;
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:frontend/core/api/realtime_failure_mapper.dart';
+import 'package:frontend/core/api/realtime_session_failure.dart';
 import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/data/task_providers.dart';
@@ -76,6 +79,7 @@ class TaskListController extends _$TaskListController {
   int _sessionEpoch = 0;
   Future<void>? _loadMoreInFlight;
   bool _wsRefetchInFlight = false;
+  StreamSubscription<WsClientEvent>? _wsSubscription;
 
   String get _projectId => projectId;
 
@@ -90,13 +94,36 @@ class TaskListController extends _$TaskListController {
     }
 
     _listCancelToken = CancelToken();
-    ref.onDispose(() {
-      _listCancelToken?.cancel();
-    });
-
-    Future.microtask(() {
-      unawaited(_loadInitial());
-    });
+    // Один инстанс family + keepAlive: [build] один раз на жизненный цикл — гард на
+    // `_wsSubscription` совпадает с «первая сборка», см. [ChatController.build] (11.9).
+    if (_wsSubscription == null) {
+      ref.onDispose(() {
+        _listCancelToken?.cancel();
+        unawaited(_wsSubscription?.cancel());
+        _wsSubscription = null;
+      });
+      final ws = ref.read(webSocketServiceProvider);
+      _wsSubscription = ws.events.listen(_onWsClientEvent);
+      try {
+        ws.connect(projectId);
+      } on StateError catch (e, st) {
+        log(
+          'WS connect failed at TaskListController.build',
+          name: 'TaskListController',
+          error: e,
+          stackTrace: st,
+        );
+        Future.microtask(() {
+          if (!ref.mounted) {
+            return;
+          }
+          applyRealtimeFailure(const WsServiceFailure.transient());
+        });
+      }
+      Future.microtask(() {
+        unawaited(_loadInitial());
+      });
+    }
 
     return TaskListState.initial();
   }
@@ -144,6 +171,63 @@ class TaskListController extends _$TaskListController {
   /// REST refetch по сигналу WS (`needsRestRefetch`); антишторм (12.3 §59 / §64).
   void requestRestRefetch() {
     _scheduleWsRefetch(() => refresh(clearRealtimeBlocksOnSuccess: false));
+  }
+
+  /// Терминальный auth по [WsClientEventAuthFailure]; единая точка смены полей (12.9).
+  void applyAuthFailure() {
+    _patchState(
+      (s) => s.copyWith(
+        realtimeSessionFailure: const RealtimeSessionFailure.authenticationLost(),
+        realtimeMutationBlocked: true,
+        realtimeServiceFailure: null,
+      ),
+    );
+  }
+
+  void _clearRealtimeTransientFailure() {
+    final v = switch (state) {
+      AsyncData<TaskListState>(:final value) => value,
+      _ => null,
+    };
+    if (v == null || v.realtimeServiceFailure == null) {
+      return;
+    }
+    _patchState((s) => s.copyWith(realtimeServiceFailure: null));
+  }
+
+  void _onWsClientEvent(WsClientEvent ev) {
+    switch (ev) {
+      case WsClientEventServiceFailure(:final failure):
+        applyRealtimeFailure(failure);
+        return;
+      case WsClientEventAuthFailure():
+        applyAuthFailure();
+        return;
+      case WsClientEventSubprotocolMismatch():
+      case WsClientEventParseError():
+        _clearRealtimeTransientFailure();
+        return;
+      case WsClientEventServer(:final event):
+        // Как [ChatController]: любой server-кадр сбрасывает transient до фильтра
+        // `projectId` в payload — шум от другого проекта может преждевременно убрать
+        // баннер (сознательно совпадаем с Chat, не KNOWN-ISSUE для 12.9).
+        _clearRealtimeTransientFailure();
+        event.when(
+          taskStatus: applyWsTaskStatus,
+          taskMessage: (_) {},
+          agentLog: (_) {},
+          error: (err) {
+            if (err.projectId != _projectId) {
+              return;
+            }
+            if (err.needsRestRefetch) {
+              requestRestRefetch();
+            }
+          },
+          unknown: (_) {},
+        );
+        return;
+    }
   }
 
   void applyRealtimeFailure(WsServiceFailure failure) {

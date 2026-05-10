@@ -7,7 +7,10 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
+import 'package:frontend/core/api/realtime_session_failure.dart';
 import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
+import 'package:frontend/core/api/websocket_service.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/data/task_providers.dart';
 import 'package:frontend/features/tasks/data/task_repository.dart';
@@ -20,16 +23,19 @@ import 'package:frontend/l10n/app_localizations_en.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 
-import 'task_list_controller_test.mocks.dart';
 import '../../../../support/task_list_test_helpers.dart';
+import 'task_list_controller_test.mocks.dart';
 
-@GenerateNiceMocks([MockSpec<TaskRepository>()])
+@GenerateNiceMocks([MockSpec<TaskRepository>(), MockSpec<WebSocketService>()])
 void main() {
   const pid = '550e8400-e29b-41d4-a716-446655440000';
+  const otherPid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   const tid = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
   const uid = '33333333-3333-3333-3333-333333333333';
 
   late MockTaskRepository mockRepo;
+  late MockWebSocketService mockWs;
+  late StreamController<WsClientEvent> wsEvents;
   late ProviderContainer container;
 
   TaskListItemModel listItem(
@@ -37,6 +43,7 @@ void main() {
     String status = 'pending',
     DateTime? createdAt,
     DateTime? updatedAt,
+    AgentSummaryModel? assignedAgent,
   }) {
     final c = createdAt ?? DateTime.utc(2026, 1, 1);
     final u = updatedAt ?? DateTime.utc(2026, 1, 2);
@@ -50,10 +57,16 @@ void main() {
       createdById: uid,
       createdAt: c,
       updatedAt: u,
+      assignedAgent: assignedAgent,
     );
   }
 
-  TaskModel taskModel(String id, {String status = 'pending'}) {
+  TaskModel taskModel(
+    String id, {
+    String status = 'pending',
+    AgentSummaryModel? assignedAgent,
+    DateTime? updatedAt,
+  }) {
     return TaskModel(
       id: id,
       projectId: pid,
@@ -64,7 +77,8 @@ void main() {
       createdByType: 'user',
       createdById: uid,
       createdAt: DateTime.utc(2026, 1, 1),
-      updatedAt: DateTime.utc(2026, 1, 2),
+      updatedAt: updatedAt ?? DateTime.utc(2026, 1, 2),
+      assignedAgent: assignedAgent,
     );
   }
 
@@ -83,12 +97,20 @@ void main() {
 
   setUp(() {
     mockRepo = MockTaskRepository();
+    mockWs = MockWebSocketService();
+    wsEvents = StreamController<WsClientEvent>.broadcast();
+    when(mockWs.events).thenAnswer((_) => wsEvents.stream);
+    when(mockWs.connect(any)).thenAnswer((_) => wsEvents.stream);
     container = ProviderContainer(
       overrides: [
         taskRepositoryProvider.overrideWithValue(mockRepo),
+        webSocketServiceProvider.overrideWithValue(mockWs),
       ],
     );
-    addTearDown(container.dispose);
+    addTearDown(() async {
+      await wsEvents.close();
+      container.dispose();
+    });
   });
 
   group('TaskListController', () {
@@ -633,6 +655,544 @@ void main() {
       final ids =
           container.read(taskListControllerProvider(projectId: pid)).requireValue.items.map((e) => e.id).toSet();
       expect(ids, {'a', 'b'});
+    });
+
+    group('12.9 WebSocket bridge', () {
+      test('T1 taskStatus other projectId is no-op', () async {
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => TaskListResponse(
+            tasks: [listItem(tid, status: 'pending')],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          ),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        final before =
+            container.read(taskListControllerProvider(projectId: pid)).requireValue;
+
+        wsEvents.add(
+          WsClientEvent.server(
+            WsServerEvent.taskStatus(
+              WsTaskStatusEvent(
+                ts: DateTime.utc(2026, 1, 3),
+                v: 1,
+                projectId: otherPid,
+                taskId: tid,
+                previousStatus: 'pending',
+                status: 'in_progress',
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        final after =
+            container.read(taskListControllerProvider(projectId: pid)).requireValue;
+        expect(after.items.single.status, before.items.single.status);
+        expect(after.items.single.id, before.items.single.id);
+      });
+
+      test('T2 taskStatus in sync: copyWith only, no getTask', () async {
+        const agent = AgentSummaryModel(
+          id: '77777777-7777-7777-7777-777777777777',
+          name: 'a',
+          role: 'developer',
+        );
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => TaskListResponse(
+            tasks: [
+              listItem(tid, status: 'in_progress', assignedAgent: agent),
+            ],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          ),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        wsEvents.add(
+          WsClientEvent.server(
+            WsServerEvent.taskStatus(
+              WsTaskStatusEvent(
+                ts: DateTime.utc(2026, 1, 3),
+                v: 1,
+                projectId: pid,
+                taskId: tid,
+                previousStatus: 'in_progress',
+                status: 'review',
+                assignedAgentId: agent.id,
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        verifyNever(
+          mockRepo.getTask(any, cancelToken: anyNamed('cancelToken')),
+        );
+        expect(
+          container.read(taskListControllerProvider(projectId: pid)).requireValue.items.single.status,
+          'review',
+        );
+      });
+
+      test('T2b agent change in WS triggers single getTask row refetch', () async {
+        const agentA = AgentSummaryModel(
+          id: '77777777-7777-7777-7777-777777777777',
+          name: 'A',
+          role: 'developer',
+        );
+        const agentB = AgentSummaryModel(
+          id: '88888888-8888-8888-8888-888888888888',
+          name: 'B',
+          role: 'developer',
+        );
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => TaskListResponse(
+            tasks: [
+              listItem(tid, status: 'in_progress', assignedAgent: agentA),
+            ],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          ),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken'))).thenAnswer(
+          (_) async => taskModel(
+            tid,
+            status: 'review',
+            assignedAgent: agentB,
+            updatedAt: DateTime.utc(2026, 1, 20),
+          ),
+        );
+
+        wsEvents.add(
+          WsClientEvent.server(
+            WsServerEvent.taskStatus(
+              WsTaskStatusEvent(
+                ts: DateTime.utc(2026, 1, 3),
+                v: 1,
+                projectId: pid,
+                taskId: tid,
+                previousStatus: 'in_progress',
+                status: 'review',
+                assignedAgentId: agentB.id,
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        verify(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken'))).called(1);
+        final row =
+            container.read(taskListControllerProvider(projectId: pid)).requireValue.items.single;
+        expect(row.status, 'review');
+        expect(row.assignedAgent?.id, agentB.id);
+      });
+
+      test('T3 taskStatus mismatch triggers refetch path via WS', () async {
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => TaskListResponse(
+            tasks: [listItem(tid, status: 'in_progress')],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          ),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
+            .thenAnswer((_) async => taskModel(tid, status: 'paused'));
+
+        wsEvents.add(
+          WsClientEvent.server(
+            WsServerEvent.taskStatus(
+              WsTaskStatusEvent(
+                ts: DateTime.utc(2026, 1, 3),
+                v: 1,
+                projectId: pid,
+                taskId: tid,
+                previousStatus: 'pending',
+                status: 'paused',
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        verify(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken'))).called(1);
+        expect(
+          container.read(taskListControllerProvider(projectId: pid)).requireValue.items.single.status,
+          'paused',
+        );
+      });
+
+      test('T6 five errors needsRestRefetch: one refresh on wave', () async {
+        var calls = 0;
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async {
+            calls++;
+            return TaskListResponse(
+              tasks: [listItem('a')],
+              total: 1,
+              limit: 50,
+              offset: 0,
+            );
+          },
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+        expect(calls, 1);
+
+        for (var i = 0; i < 5; i++) {
+          wsEvents.add(
+            WsClientEvent.server(
+              WsServerEvent.error(
+                WsErrorEvent(
+                  ts: DateTime.utc(2026, 1, 1),
+                  v: i,
+                  projectId: pid,
+                  code: WsErrorCode.streamOverflow,
+                  message: 'overflow',
+                  needsRestRefetch: true,
+                ),
+              ),
+            ),
+          );
+        }
+        await waitTaskListControllerIdle(container, pid);
+        expect(calls, 2);
+      });
+
+      test('T7 after dispose WS event does not trigger listTasks', () async {
+        var calls = 0;
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async {
+            calls++;
+            return TaskListResponse(
+              tasks: [listItem('a')],
+              total: 1,
+              limit: 50,
+              offset: 0,
+            );
+          },
+        );
+
+        final localWs = MockWebSocketService();
+        var cancelCount = 0;
+        final localStream = StreamController<WsClientEvent>.broadcast(
+          onCancel: () => cancelCount++,
+        );
+        when(localWs.events).thenAnswer((_) => localStream.stream);
+        when(localWs.connect(any)).thenAnswer((_) => localStream.stream);
+
+        final localContainer = ProviderContainer(
+          overrides: [
+            taskRepositoryProvider.overrideWithValue(mockRepo),
+            webSocketServiceProvider.overrideWithValue(localWs),
+          ],
+        );
+        addTearDown(() async {
+          await localStream.close();
+        });
+
+        localContainer.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(localContainer, pid);
+        expect(calls, 1);
+
+        localContainer.dispose();
+
+        localStream.add(
+          WsClientEvent.server(
+            WsServerEvent.error(
+              WsErrorEvent(
+                ts: DateTime.utc(2026, 1, 1),
+                v: 1,
+                projectId: pid,
+                code: WsErrorCode.streamOverflow,
+                message: 'overflow',
+                needsRestRefetch: true,
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(cancelCount, 1);
+        expect(calls, 1);
+      });
+
+      test('T8 parseError and unknown: no throw, state stable', () async {
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => const TaskListResponse(tasks: [], total: 0, limit: 50, offset: 0),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        final before =
+            container.read(taskListControllerProvider(projectId: pid)).requireValue;
+
+        wsEvents.add(const WsClientEvent.parseError(WsParseError(message: 'bad')));
+        await Future<void>.delayed(Duration.zero);
+
+        wsEvents.add(
+          WsClientEvent.server(
+            WsServerEvent.unknown(
+              WsUnknownEvent(
+                type: 'x',
+                ts: DateTime.utc(2026, 1, 1),
+                v: 1,
+                projectId: pid,
+                data: const <String, dynamic>{},
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        final after =
+            container.read(taskListControllerProvider(projectId: pid)).requireValue;
+        expect(identical(before, after), isTrue);
+      });
+
+      test('T9 serviceFailure transient sets realtimeServiceFailure', () async {
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => const TaskListResponse(tasks: [], total: 0, limit: 50, offset: 0),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        wsEvents.add(
+          const WsClientEvent.serviceFailure(WsServiceFailure.transient()),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          container
+              .read(taskListControllerProvider(projectId: pid))
+              .requireValue
+              .realtimeServiceFailure,
+          const WsServiceFailure.transient(),
+        );
+      });
+
+      test('T10 onDispose cancels subscription; never disconnect()', () async {
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => const TaskListResponse(tasks: [], total: 0, limit: 50, offset: 0),
+        );
+
+        final localWs = MockWebSocketService();
+        final localStream = StreamController<WsClientEvent>.broadcast();
+        when(localWs.events).thenAnswer((_) => localStream.stream);
+        when(localWs.connect(any)).thenAnswer((_) => localStream.stream);
+
+        final localContainer = ProviderContainer(
+          overrides: [
+            taskRepositoryProvider.overrideWithValue(mockRepo),
+            webSocketServiceProvider.overrideWithValue(localWs),
+          ],
+        );
+        addTearDown(() async {
+          await localStream.close();
+        });
+
+        localContainer.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(localContainer, pid);
+
+        localContainer.dispose();
+
+        verifyNever(localWs.disconnect());
+      });
+
+      test('T11 authFailure: authenticationLost + mutationBlocked', () async {
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => const TaskListResponse(tasks: [], total: 0, limit: 50, offset: 0),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        wsEvents.add(const WsClientEvent.authFailure(WsAuthFailure()));
+        await Future<void>.delayed(Duration.zero);
+
+        final v =
+            container.read(taskListControllerProvider(projectId: pid)).requireValue;
+        expect(v.realtimeSessionFailure, const RealtimeSessionFailure.authenticationLost());
+        expect(v.realtimeMutationBlocked, isTrue);
+        expect(v.realtimeServiceFailure, isNull);
+      });
+
+      test('T12 subprotocolMismatch clears transient service failure only', () async {
+        when(
+          mockRepo.listTasks(
+            pid,
+            filter: anyNamed('filter'),
+            limit: anyNamed('limit'),
+            offset: anyNamed('offset'),
+            cancelToken: anyNamed('cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => const TaskListResponse(tasks: [], total: 0, limit: 50, offset: 0),
+        );
+
+        container.read(taskListControllerProvider(projectId: pid).notifier);
+        await waitTaskListControllerIdle(container, pid);
+
+        container
+            .read(taskListControllerProvider(projectId: pid).notifier)
+            .applyRealtimeFailure(const WsServiceFailure.transient());
+        expect(
+          container.read(taskListControllerProvider(projectId: pid)).requireValue.realtimeServiceFailure,
+          isNotNull,
+        );
+
+        wsEvents.add(
+          const WsClientEvent.subprotocolMismatch(
+            WsSubprotocolMismatch(expected: 'bearer.<jwt>'),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        final v =
+            container.read(taskListControllerProvider(projectId: pid)).requireValue;
+        expect(v.realtimeServiceFailure, isNull);
+        expect(v.realtimeSessionFailure, isNull);
+        expect(v.realtimeMutationBlocked, isFalse);
+      });
+
+      test(
+        'T13 connect() StateError → transient via microtask before listTasks completes',
+        () async {
+          when(mockWs.connect(any)).thenThrow(StateError('paused'));
+          addTearDown(() {
+            when(mockWs.connect(any)).thenAnswer((_) => wsEvents.stream);
+          });
+
+          final hang = Completer<TaskListResponse>();
+          when(
+            mockRepo.listTasks(
+              pid,
+              filter: anyNamed('filter'),
+              limit: anyNamed('limit'),
+              offset: anyNamed('offset'),
+              cancelToken: anyNamed('cancelToken'),
+            ),
+          ).thenAnswer((_) => hang.future);
+
+          container.read(taskListControllerProvider(projectId: pid).notifier);
+
+          await Future<void>.delayed(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(
+            container
+                .read(taskListControllerProvider(projectId: pid))
+                .requireValue
+                .realtimeServiceFailure,
+            const WsServiceFailure.transient(),
+          );
+
+          hang.complete(
+            const TaskListResponse(tasks: [], total: 0, limit: 50, offset: 0),
+          );
+          await waitTaskListControllerIdle(container, pid);
+        },
+      );
     });
   });
 }
