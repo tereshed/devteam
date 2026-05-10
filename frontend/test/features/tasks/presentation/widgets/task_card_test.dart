@@ -7,24 +7,20 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/tasks/domain/models/task_model.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_agent_role_display.dart';
+import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_card.dart';
-import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/l10n/app_localizations_ru.dart';
 import 'package:intl/intl.dart';
 
+import '../../../projects/helpers/test_wrappers.dart';
 import '../../helpers/task_fixtures.dart';
 
-Widget _harness(Widget child, {TextScaler? textScaler}) {
-  return MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
+Widget _wrapTaskCard(Widget child, {TextScaler? textScaler}) {
+  return wrapSimple(
+    child,
     locale: const Locale('ru'),
-    home: Scaffold(
-      body: MediaQuery(
-        data: MediaQueryData(textScaler: textScaler ?? TextScaler.noScaling),
-        child: SingleChildScrollView(child: child),
-      ),
-    ),
+    textScaler: textScaler,
+    scrollableBody: true,
   );
 }
 
@@ -46,7 +42,7 @@ void main() {
     final expectedLine = l10nRu.taskCardAgentLine(name, roleLabel);
 
     await tester.pumpWidget(
-      _harness(TaskCard(task: task, onTap: () {})),
+      _wrapTaskCard(TaskCard(task: task, onTap: () {})),
     );
     await tester.pumpAndSettle();
 
@@ -59,10 +55,31 @@ void main() {
       title: 'Без агента',
     );
 
-    await tester.pumpWidget(_harness(TaskCard(task: task, onTap: () {})));
+    await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task, onTap: () {})));
     await tester.pumpAndSettle();
 
     expect(find.text(l10nRu.taskCardUnassigned), findsOneWidget);
+  });
+
+  testWidgets('12.10 RU-smoke: taskCardUnassigned', (tester) async {
+    final task = makeTaskListItemFixture(
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      title: 'RU smoke title',
+    );
+    await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task, onTap: () {})));
+    await tester.pumpAndSettle();
+    expect(find.text(l10nRu.taskCardUnassigned), findsOneWidget);
+  });
+
+  testWidgets('chip label matches taskStatusLabel from wire status', (tester) async {
+    final task = makeTaskListItemFixture(
+      id: '55555555-5555-5555-5555-555555555555',
+      title: 'Статус',
+      status: 'review',
+    );
+    await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task, onTap: () {})));
+    await tester.pumpAndSettle();
+    expect(find.text(taskStatusLabel(l10nRu, 'review')), findsOneWidget);
   });
 
   testWidgets('updatedAt line uses DateFormat matching dense flag', (tester) async {
@@ -79,7 +96,7 @@ void main() {
     expect(shortFmt, isNot(equals(longFmt)),
         reason: 'Kanban and list formats must differ for this locale');
 
-    await tester.pumpWidget(_harness(TaskCard(task: task, onTap: () {})));
+    await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task, onTap: () {})));
     await tester.pumpAndSettle();
     expect(
       find.text(l10nRu.taskCardUpdatedAt(longFmt)),
@@ -87,7 +104,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      _harness(TaskCard(task: task, dense: true, onTap: () {})),
+      _wrapTaskCard(TaskCard(task: task, dense: true, onTap: () {})),
     );
     await tester.pumpAndSettle();
     expect(
@@ -102,19 +119,39 @@ void main() {
       title: 'Тап',
     );
 
-    await tester.pumpWidget(_harness(TaskCard(task: task, onTap: () {})));
+    await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task, onTap: () {})));
     expect(find.byType(InkWell), findsOneWidget);
 
-    await tester.pumpWidget(_harness(TaskCard(task: task)));
+    await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task)));
     expect(find.byType(InkWell), findsNothing);
+  });
+
+  testWidgets('onTap callback fires on tap', (tester) async {
+    var taps = 0;
+    final task = makeTaskListItemFixture(
+      id: 'faaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      title: 'Tap callback',
+    );
+    await tester.pumpWidget(
+      _wrapTaskCard(
+        TaskCard(task: task, onTap: () => taps++),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tap callback'));
+    await tester.pump();
+    expect(taps, 1);
   });
 
   testWidgets('Semantics: button when onTap; not a button without onTap', (tester) async {
     final handle = tester.ensureSemantics();
     try {
-      final task = makeTaskListItemFixture(id: 'sem-1', title: 'Sem');
+      final task = makeTaskListItemFixture(
+        id: 'c0000001-0000-4000-8000-000000000001',
+        title: 'Sem',
+      );
 
-      await tester.pumpWidget(_harness(TaskCard(task: task, onTap: () {})));
+      await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task, onTap: () {})));
       await tester.pumpAndSettle();
 
       final rootButtonSemantics = find.descendant(
@@ -131,7 +168,7 @@ void main() {
       // ignore: deprecated_member_use — flagsCollection API ещё не везде одинаков в CI
       expect(sem.hasFlag(SemanticsFlag.isButton), isTrue);
 
-      await tester.pumpWidget(_harness(TaskCard(task: task)));
+      await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task)));
       await tester.pumpAndSettle();
       expect(rootButtonSemantics, findsNothing);
 
@@ -148,14 +185,17 @@ void main() {
 
   testWidgets('dense sets title maxLines to 3; default is 4', (tester) async {
     final longTitle = List.filled(20, 'word').join(' ');
-    final task = makeTaskListItemFixture(id: 'mx-1', title: longTitle);
+    final task = makeTaskListItemFixture(
+      id: 'c0000002-0000-4000-8000-000000000002',
+      title: longTitle,
+    );
 
-    await tester.pumpWidget(_harness(TaskCard(task: task, onTap: () {})));
+    await tester.pumpWidget(_wrapTaskCard(TaskCard(task: task, onTap: () {})));
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.text(longTitle)).maxLines, 4);
 
     await tester.pumpWidget(
-      _harness(TaskCard(task: task, dense: true, onTap: () {})),
+      _wrapTaskCard(TaskCard(task: task, dense: true, onTap: () {})),
     );
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.text(longTitle)).maxLines, 3);
@@ -168,7 +208,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      _harness(
+      _wrapTaskCard(
         TaskCard(
           task: task,
           onTap: () {},

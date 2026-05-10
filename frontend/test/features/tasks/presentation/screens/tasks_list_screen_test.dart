@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/tasks/data/task_providers.dart';
 import 'package:frontend/features/tasks/domain/models/task_model.dart';
@@ -16,14 +18,16 @@ import 'package:frontend/features/tasks/presentation/controllers/task_list_contr
 import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
+import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+import 'package:frontend/l10n/app_localizations_ru.dart';
 import 'package:mockito/mockito.dart';
 
 import '../../../projects/helpers/project_dashboard_test_router.dart';
 import '../../../projects/helpers/project_fixtures.dart';
 import '../../../projects/helpers/test_wrappers.dart';
-import '../controllers/task_list_controller_test.mocks.dart';
 import '../../helpers/task_fixtures.dart';
+import '../../helpers/task_mocks.mocks.dart';
 
 /// Заглушки контроллера: не вызывают реальный [TaskListController.build] с валидацией UUID;
 /// проверка невалидного `projectId` — в `task_list_controller_test.dart` (12.3).
@@ -74,18 +78,42 @@ class _ErrorBuildTaskListController extends TaskListController {
   }
 }
 
+/// [setFilter] только обновляет фильтр в состоянии (без сети) — сценарий дебаунса поиска 12.10.
+class _SearchFilterOnlyTaskListController extends TaskListController {
+  _SearchFilterOnlyTaskListController(this._state);
+  TaskListState _state;
+
+  @override
+  FutureOr<TaskListState> build({required String projectId}) => _state;
+
+  @override
+  Future<void> setFilter(TaskListFilter next) async {
+    final cur = switch (state) {
+      AsyncData<TaskListState>(:final value) => value,
+      _ => null,
+    };
+    if (cur == null) {
+      return;
+    }
+    if (cur.filter == next) {
+      return;
+    }
+    _state = cur.copyWith(filter: next);
+    state = AsyncData(_state);
+  }
+}
+
 Widget _tasksScreenHarness({
   required List<Override> overrides,
   required Widget child,
+  Locale locale = const Locale('en'),
 }) {
   return ProviderScope(
     retry: (_, _) => null,
     overrides: overrides,
-    child: MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: const Locale('en'),
-      home: Scaffold(body: child),
+    child: wrapSimple(
+      child,
+      locale: locale,
     ),
   );
 }
@@ -218,7 +246,7 @@ void main() {
         const Offset(0, 400),
       );
       await tester.pumpAndSettle();
-      expect(ctrl.refreshCalls, greaterThan(0));
+      expect(ctrl.refreshCalls, 1);
     });
 
     testWidgets('wide: IconButton.refresh вызывает refresh', (tester) async {
@@ -346,6 +374,11 @@ void main() {
         ],
         total: 1,
       );
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      final mockWs = MockWebSocketService();
+      when(mockWs.events).thenAnswer((_) => wsEvents.stream);
+      when(mockWs.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(wsEvents.close);
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTaskFixtureProjectId/tasks',
       );
@@ -363,6 +396,7 @@ void main() {
               () => _StubTaskListController(seed),
             ),
             taskRepositoryProvider.overrideWithValue(mockRepo),
+            webSocketServiceProvider.overrideWithValue(mockWs),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -397,6 +431,252 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(RefreshIndicator), findsNothing);
+    });
+
+    testWidgets('RU-smoke: tasksEmpty и tasksSearchHint', (tester) async {
+      final seed = makeTaskListStateFixture();
+      final l10nRu = AppLocalizationsRu();
+      await tester.pumpWidget(
+        _tasksScreenHarness(
+          locale: const Locale('ru'),
+          overrides: [
+            taskListControllerProvider.overrideWith(
+              () => _StubTaskListController(seed),
+            ),
+          ],
+          child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(l10nRu.tasksEmpty), findsOneWidget);
+      expect(find.text(l10nRu.tasksSearchHint), findsOneWidget);
+    });
+
+    testWidgets(
+      'wide Kanban: горизонтальный SingleChildScrollView для досок',
+      (tester) async {
+        useViewSize(tester, const Size(1200, 800));
+        final seed = makeTaskListStateFixture(
+          items: [
+            makeTaskListItemFixture(
+              id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+              status: 'pending',
+            ),
+            makeTaskListItemFixture(
+              id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+              status: 'completed',
+            ),
+          ],
+          total: 2,
+        );
+        await tester.pumpWidget(
+          _tasksScreenHarness(
+            overrides: [
+              taskListControllerProvider.overrideWith(
+                () => _StubTaskListController(seed),
+              ),
+            ],
+            child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final horizontalBoard = find.byWidgetPredicate(
+          (w) =>
+              w is SingleChildScrollView &&
+              w.scrollDirection == Axis.horizontal,
+        );
+        expect(horizontalBoard, findsWidgets);
+        final l10n = AppLocalizations.of(
+          tester.element(find.byType(TasksListScreen)),
+        )!;
+        expect(find.text(l10n.taskStatusPending), findsAtLeastNWidgets(2));
+        expect(find.text(l10n.taskStatusCompleted), findsAtLeastNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'narrow список: нет горизонтального SingleChildScrollView досок Kanban',
+      (tester) async {
+        useViewSize(tester, const Size(480, 800));
+        final seed = makeTaskListStateFixture(
+          items: [
+            makeTaskListItemFixture(id: 'cccccccc-cccc-cccc-cccc-cccccccccccc'),
+          ],
+          total: 1,
+        );
+        await tester.pumpWidget(
+          _tasksScreenHarness(
+            overrides: [
+              taskListControllerProvider.overrideWith(
+                () => _StubTaskListController(seed),
+              ),
+            ],
+            child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final horizontalBoard = find.byWidgetPredicate(
+          (w) =>
+              w is SingleChildScrollView &&
+              w.scrollDirection == Axis.horizontal,
+        );
+        expect(horizontalBoard, findsNothing);
+      },
+    );
+
+    testWidgets(
+      'поиск: после дебаунса 400 ms filter.search совпадает с вводом',
+      (tester) async {
+        useViewSize(tester, const Size(480, 800));
+        final seed = makeTaskListStateFixture(
+          items: [
+            makeTaskListItemFixture(id: 'dddddddd-dddd-dddd-dddd-dddddddddddd'),
+          ],
+          total: 1,
+        );
+        await tester.pumpWidget(
+          _tasksScreenHarness(
+            overrides: [
+              taskListControllerProvider.overrideWith(
+                () => _SearchFilterOnlyTaskListController(seed),
+              ),
+            ],
+            child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '  my-query  ');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TasksListScreen)),
+        );
+        final st = container.read(
+          taskListControllerProvider(projectId: kTaskFixtureProjectId),
+        );
+        expect(st.hasValue, isTrue);
+        expect(st.requireValue.filter.search, 'my-query');
+      },
+    );
+
+    testWidgets(
+      'пусто по фильтру: tap tasksEmptyFilteredClear сбрасывает фильтр',
+      (tester) async {
+        final seed = makeTaskListStateFixture(
+          filter: TaskListFilter.defaults().copyWith(search: 'nope'),
+        );
+        await tester.pumpWidget(
+          _tasksScreenHarness(
+            overrides: [
+              taskListControllerProvider.overrideWith(
+                () => _SearchFilterOnlyTaskListController(seed),
+              ),
+            ],
+            child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final l10n = AppLocalizations.of(
+          tester.element(find.byType(TasksListScreen)),
+        )!;
+        await tester.tap(find.text(l10n.tasksEmptyFilteredClear));
+        await tester.pumpAndSettle();
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TasksListScreen)),
+        );
+        final async = container.read(
+          taskListControllerProvider(projectId: kTaskFixtureProjectId),
+        );
+        expect(async.hasValue, isTrue);
+        expect(async.requireValue.filter, TaskListFilter.defaults());
+        final searchField = tester.widget<TextField>(find.byType(TextField).first);
+        expect(searchField.controller?.text ?? '', '');
+      },
+    );
+
+    testWidgets('скролл к низу списка вызывает loadMore', (tester) async {
+      useViewSize(tester, const Size(480, 1200));
+      final items = List.generate(
+        24,
+        (i) => makeTaskListItemFixture(
+          id: 'f0000000-0000-4000-8000-${i.toRadixString(16).padLeft(12, '0')}',
+          title: 'Task $i',
+        ),
+      );
+      final seed = makeTaskListStateFixture(
+        items: items,
+        total: 50,
+        offset: items.length,
+        hasMore: true,
+        isLoadingInitial: false,
+      );
+      late final _TrackingLoadMoreTaskListController ctrl;
+      await tester.pumpWidget(
+        _tasksScreenHarness(
+          overrides: [
+            taskListControllerProvider.overrideWith(() {
+              ctrl = _TrackingLoadMoreTaskListController(seed);
+              return ctrl;
+            }),
+          ],
+          child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, -8000),
+      );
+      await tester.pumpAndSettle();
+      expect(ctrl.loadMoreCalls, greaterThan(0));
+    });
+
+    testWidgets('applyWsTaskStatus обновляет статус карточки', (tester) async {
+      useViewSize(tester, const Size(480, 800));
+      const tid = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+      final seed = makeTaskListStateFixture(
+        items: [
+          makeTaskListItemFixture(id: tid, status: 'pending', title: 'WS row'),
+        ],
+        total: 1,
+      );
+      await tester.pumpWidget(
+        _tasksScreenHarness(
+          overrides: [
+            taskListControllerProvider.overrideWith(
+              () => _StubTaskListController(seed),
+            ),
+          ],
+          child: const TasksListScreen(projectId: kTaskFixtureProjectId),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(TasksListScreen)),
+      )!;
+      expect(find.text(taskStatusLabel(l10n, 'pending')), findsWidgets);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TasksListScreen)),
+      );
+      container
+          .read(taskListControllerProvider(projectId: kTaskFixtureProjectId).notifier)
+          .applyWsTaskStatus(
+            WsTaskStatusEvent(
+              ts: DateTime.utc(2026, 1, 1, 12),
+              v: 1,
+              projectId: kTaskFixtureProjectId,
+              taskId: tid,
+              previousStatus: 'pending',
+              status: 'in_progress',
+              parentTaskId: null,
+              assignedAgentId: null,
+              agentRole: null,
+              errorMessage: null,
+            ),
+          );
+      await tester.pump();
+      expect(find.text(taskStatusLabel(l10n, 'in_progress')), findsWidgets);
     });
   });
 }

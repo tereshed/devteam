@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/realtime_session_failure.dart';
 import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/data/task_providers.dart';
@@ -21,17 +22,19 @@ import 'package:frontend/features/tasks/presentation/controllers/task_errors.dar
 import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
 import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
+import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/l10n/app_localizations_en.dart';
+import 'package:frontend/l10n/app_localizations_ru.dart';
+import 'package:frontend/shared/widgets/diff_viewer.dart';
 import 'package:mockito/mockito.dart';
 
 import '../../../projects/helpers/project_dashboard_test_router.dart';
 import '../../../projects/helpers/project_fixtures.dart';
 import '../../../projects/helpers/test_wrappers.dart';
 import '../../helpers/task_fixtures.dart';
-import '../controllers/task_list_controller_test.mocks.dart';
+import '../../helpers/task_mocks.mocks.dart';
 
-const String _kPid = '550e8400-e29b-41d4-a716-446655440000';
 const String _kTid = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 const String _kOtherProjectId = '44444444-4444-4444-4444-444444444444';
 const String _kChildTid = '11111111-1111-1111-1111-111111111111';
@@ -130,42 +133,38 @@ class _StubTaskListForDetail extends TaskListController {
 
 Future<void> _pumpDetail(
   WidgetTester tester, {
-  required List<Override> overrides,
+  List<Override> overrides = const [],
+  TaskDetailController Function()? detailController,
   Size logicalSize = const Size(900, 800),
+  Locale locale = const Locale('en'),
 }) async {
   useViewSize(tester, logicalSize);
-  await tester.pumpWidget(
-    ProviderScope(
-      retry: (_, _) => null,
-      overrides: overrides,
-      child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: Locale('en'),
-        home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
-      ),
-    ),
-  );
-}
+  final wsEvents = StreamController<WsClientEvent>.broadcast();
+  addTearDown(wsEvents.close);
+  final mockWs = MockWebSocketService();
+  when(mockWs.events).thenAnswer((_) => wsEvents.stream);
+  when(mockWs.connect(any)).thenAnswer((_) => wsEvents.stream);
 
-Future<void> _pumpDetailWithController(
-  WidgetTester tester, {
-  required TaskDetailController Function() controller,
-  Size logicalSize = const Size(900, 800),
-}) async {
-  useViewSize(tester, logicalSize);
+  final built = <Override>[
+    ...overrides,
+    if (detailController != null)
+      taskDetailControllerProvider(
+        projectId: kTaskFixtureProjectId,
+        taskId: _kTid,
+      ).overrideWith(detailController),
+    webSocketServiceProvider.overrideWithValue(mockWs),
+  ];
+
   await tester.pumpWidget(
     ProviderScope(
       retry: (_, _) => null,
-      overrides: [
-        taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
-            .overrideWith(controller),
-      ],
-      child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: Locale('en'),
-        home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
+      overrides: built,
+      child: wrapSimple(
+        const TaskDetailScreen(
+          projectId: kTaskFixtureProjectId,
+          taskId: _kTid,
+        ),
+        locale: locale,
       ),
     ),
   );
@@ -215,7 +214,7 @@ void main() {
     final mockRepo = MockTaskRepository();
     when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
         .thenAnswer(
-      (_) async => _minimalTask(id: _kTid, projectId: _kPid, title: 'Hello Task'),
+      (_) async => _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, title: 'Hello Task'),
     );
     when(
       mockRepo.listTaskMessages(
@@ -250,7 +249,7 @@ void main() {
       final mockRepo = MockTaskRepository();
       when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
           .thenAnswer(
-        (_) async => _minimalTask(id: _kTid, projectId: _kPid, title: 'Narrow'),
+        (_) async => _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, title: 'Narrow'),
       );
       when(
         mockRepo.listTaskMessages(
@@ -311,7 +310,7 @@ void main() {
     final stub = _CountingDetailController(seed);
     final l10n = AppLocalizationsEn();
 
-    await _pumpDetailWithController(tester, controller: () => stub);
+    await _pumpDetail(tester, detailController: () => stub);
     await tester.pumpAndSettle();
 
     expect(find.text(l10n.taskDetailDeletedTitle), findsOneWidget);
@@ -330,10 +329,10 @@ void main() {
     );
     final stub = _CountingDetailController(seed);
 
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => stub,
+      detailController: () => stub,
     );
     await tester.pumpAndSettle();
 
@@ -371,7 +370,7 @@ void main() {
       final mockRepo = MockTaskRepository();
       final parentTask = _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         title: 'Parent task',
         subTasks: [
           const TaskSummaryModel(
@@ -384,7 +383,7 @@ void main() {
       );
       final childTask = _minimalTask(
         id: _kChildTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         title: 'Child full',
       );
 
@@ -418,21 +417,28 @@ void main() {
         isLoadingInitial: false,
       );
 
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      final mockWs = MockWebSocketService();
+      when(mockWs.events).thenAnswer((_) => wsEvents.stream);
+      when(mockWs.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(wsEvents.close);
+
       final router = buildProjectDashboardTestRouter(
-        initialLocation: '/projects/$_kPid/tasks/$_kTid',
+        initialLocation: '/projects/$kTaskFixtureProjectId/tasks/$_kTid',
       );
 
       await tester.pumpWidget(
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
-            projectProvider(_kPid).overrideWith(
-              (ref) async => makeProject(id: _kPid, name: 'P'),
+            projectProvider(kTaskFixtureProjectId).overrideWith(
+              (ref) async => makeProject(id: kTaskFixtureProjectId, name: 'P'),
             ),
             taskListControllerProvider.overrideWith(
               () => _StubTaskListForDetail(listSeed),
             ),
             taskRepositoryProvider.overrideWithValue(mockRepo),
+            webSocketServiceProvider.overrideWithValue(mockWs),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -444,18 +450,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(router.state.uri.path, '/projects/$_kPid/tasks/$_kTid');
+      expect(router.state.uri.path, '/projects/$kTaskFixtureProjectId/tasks/$_kTid');
 
       await tester.tap(find.text('Child subtask title'));
       await tester.pumpAndSettle();
 
-      expect(router.state.uri.path, '/projects/$_kPid/tasks/$_kChildTid');
+      expect(router.state.uri.path, '/projects/$kTaskFixtureProjectId/tasks/$_kChildTid');
       expect(find.text('Child full'), findsWidgets);
 
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
 
-      expect(router.state.uri.path, '/projects/$_kPid/tasks');
+      expect(router.state.uri.path, '/projects/$kTaskFixtureProjectId/tasks');
     },
   );
 
@@ -472,7 +478,7 @@ void main() {
         createdAt: DateTime.utc(2026, 1, 1),
       );
       final seed = TaskDetailState.initial().copyWith(
-        task: _minimalTask(id: _kTid, projectId: _kPid),
+        task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId),
         isLoadingTask: false,
         isLoadingMessages: false,
         messages: [msg],
@@ -483,7 +489,7 @@ void main() {
       );
       final tracking = _CountingDetailController(seed, trackLoadMore: true);
 
-      await _pumpDetailWithController(tester, controller: () => tracking);
+      await _pumpDetail(tester, detailController: () => tracking);
       await tester.pumpAndSettle();
 
       expect(
@@ -504,16 +510,16 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
       realtimeMutationBlocked: true,
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
 
@@ -537,14 +543,14 @@ void main() {
 
   testWidgets('realtimeSessionFailure: баннер', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: _kPid),
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId),
       isLoadingTask: false,
       isLoadingMessages: false,
       realtimeSessionFailure: const RealtimeSessionFailure.authenticationLost(),
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
 
@@ -554,14 +560,14 @@ void main() {
 
   testWidgets('realtimeServiceFailure: баннер', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: _kPid),
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId),
       isLoadingTask: false,
       isLoadingMessages: false,
       realtimeServiceFailure: const WsServiceFailure.transient(),
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
 
@@ -582,7 +588,7 @@ void main() {
       createdAt: DateTime.utc(2026, 1, 1),
     );
     when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
-        .thenAnswer((_) async => _minimalTask(id: _kTid, projectId: _kPid));
+        .thenAnswer((_) async => _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId));
     when(
       mockRepo.listTaskMessages(
         _kTid,
@@ -616,15 +622,15 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -637,16 +643,16 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'paused',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -659,17 +665,17 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'paused',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
     final tracking = _CountingDetailController(seed);
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => tracking,
+      detailController: () => tracking,
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -682,16 +688,16 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'failed',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -703,16 +709,16 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'completed',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -727,16 +733,16 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'future_unknown_status',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -747,14 +753,14 @@ void main() {
 
   testWidgets('12.8 pending narrow: только Cancel', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: _kPid, status: 'pending'),
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'pending'),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => _CountingDetailController(seed),
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -766,7 +772,7 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
@@ -776,7 +782,7 @@ void main() {
       seed,
       pauseResult: TaskMutationOutcome.blockedByRealtime,
     );
-    await _pumpDetailWithController(tester, controller: () => stub);
+    await _pumpDetail(tester, detailController: () => stub);
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
     await tester.tap(find.byTooltip(l10n.taskActionPause));
@@ -792,7 +798,7 @@ void main() {
           .thenAnswer(
         (_) async => _minimalTask(
           id: _kTid,
-          projectId: _kPid,
+          projectId: kTaskFixtureProjectId,
           title: 'Hello Task',
           status: 'planning',
         ),
@@ -849,7 +855,7 @@ void main() {
           .thenAnswer(
         (_) async => _minimalTask(
           id: _kTid,
-          projectId: _kPid,
+          projectId: kTaskFixtureProjectId,
           title: 'Hello Task',
           status: 'planning',
         ),
@@ -894,14 +900,14 @@ void main() {
         tester.element(find.byType(TaskDetailScreen)),
       );
       final notifier = container.read(
-        taskDetailControllerProvider(projectId: _kPid, taskId: _kTid).notifier,
+        taskDetailControllerProvider(projectId: kTaskFixtureProjectId, taskId: _kTid).notifier,
       );
 
       notifier.applyWsTaskMessage(
         WsTaskMessageEvent(
           ts: DateTime.utc(2026, 5, 9),
           v: 1,
-          projectId: _kPid,
+          projectId: kTaskFixtureProjectId,
           taskId: _kTid,
           messageId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
           senderType: 'agent',
@@ -925,17 +931,17 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
     final tracking = _CountingDetailController(seed);
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => tracking,
+      detailController: () => tracking,
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -952,17 +958,17 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
     final tracking = _CountingDetailController(seed);
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => tracking,
+      detailController: () => tracking,
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
@@ -977,7 +983,7 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
@@ -985,10 +991,10 @@ void main() {
       lifecycleMutationInFlight: TaskLifecycleMutation.pause,
     );
     final tracking = _CountingDetailController(seed);
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => tracking,
+      detailController: () => tracking,
     );
     await tester.pump();
     final l10n = AppLocalizationsEn();
@@ -1004,7 +1010,7 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
@@ -1012,10 +1018,10 @@ void main() {
       lifecycleMutationInFlight: TaskLifecycleMutation.cancel,
     );
     final tracking = _CountingDetailController(seed);
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => tracking,
+      detailController: () => tracking,
     );
     await tester.pump();
     final l10n = AppLocalizationsEn();
@@ -1037,7 +1043,7 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'paused',
       ),
       isLoadingTask: false,
@@ -1045,10 +1051,10 @@ void main() {
       lifecycleMutationInFlight: TaskLifecycleMutation.resume,
     );
     final tracking = _CountingDetailController(seed);
-    await _pumpDetailWithController(
+    await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      controller: () => tracking,
+      detailController: () => tracking,
     );
     await tester.pump();
     final l10n = AppLocalizationsEn();
@@ -1073,7 +1079,7 @@ void main() {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
       isLoadingTask: false,
@@ -1081,7 +1087,7 @@ void main() {
       lifecycleMutationInFlight: TaskLifecycleMutation.cancel,
     );
     final tracking = _CountingDetailController(seed);
-    await _pumpDetailWithController(tester, controller: () => tracking);
+    await _pumpDetail(tester, detailController: () => tracking);
     await tester.pump();
     final appBar = find.byType(AppBar);
     final pauseIconInBar = find.descendant(
@@ -1113,7 +1119,7 @@ void main() {
         .thenAnswer(
       (_) async => _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'planning',
       ),
     );
@@ -1140,7 +1146,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       return _minimalTask(
         id: _kTid,
-        projectId: _kPid,
+        projectId: kTaskFixtureProjectId,
         status: 'paused',
       );
     });
@@ -1172,5 +1178,203 @@ void main() {
     await tester.pump();
     expect(pauseCalls, 1);
     await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('12.10 pending narrow: Cancel и подтверждение в диалоге', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'pending'),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetail(
+      tester,
+      logicalSize: const Size(400, 800),
+      detailController: () => tracking,
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.text(l10n.taskActionCancel));
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.taskActionCancelConfirmTitle), findsOneWidget);
+    await tester.tap(find.text(l10n.taskActionConfirm));
+    await tester.pumpAndSettle();
+    expect(tracking.cancelCalls, 1);
+  });
+
+  testWidgets('12.10 applyWsTaskStatus на карточке из stub', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'planning'),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetail(
+      tester,
+      detailController: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(TaskDetailScreen)),
+    );
+    container
+        .read(
+          taskDetailControllerProvider(projectId: kTaskFixtureProjectId, taskId: _kTid).notifier,
+        )
+        .applyWsTaskStatus(
+          WsTaskStatusEvent(
+            ts: DateTime.utc(2026, 2, 1),
+            v: 2,
+            projectId: kTaskFixtureProjectId,
+            taskId: _kTid,
+            previousStatus: 'planning',
+            status: 'in_progress',
+            parentTaskId: null,
+            assignedAgentId: null,
+            agentRole: null,
+            errorMessage: null,
+          ),
+        );
+    await tester.pump();
+    expect(find.text(taskStatusLabel(l10n, 'in_progress')), findsWidgets);
+  });
+
+  testWidgets('12.10 applyWsTaskMessage добавляет содержимое в ленту', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'completed'),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+      messages: const [],
+    );
+    await _pumpDetail(
+      tester,
+      detailController: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(TaskDetailScreen)),
+    );
+    container
+        .read(
+          taskDetailControllerProvider(projectId: kTaskFixtureProjectId, taskId: _kTid).notifier,
+        )
+        .applyWsTaskMessage(
+          WsTaskMessageEvent(
+            ts: DateTime.utc(2026, 1, 1, 12),
+            v: 1,
+            projectId: kTaskFixtureProjectId,
+            taskId: _kTid,
+            messageId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            senderType: 'agent',
+            senderId: kTaskFixtureUserId,
+            senderRole: 'developer',
+            messageType: 'result',
+            content: 'Fixture WS message positive',
+            metadata: const <String, dynamic>{},
+          ),
+        );
+    await tester.pump();
+    expect(find.text('Fixture WS message positive'), findsOneWidget);
+  });
+
+  testWidgets('12.10 in_progress wide: Pause тап вызывает pauseTask', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'in_progress'),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetail(tester, detailController: () => tracking);
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.byTooltip(l10n.taskActionPause));
+    await tester.pumpAndSettle();
+    expect(tracking.pauseCalls, 1);
+  });
+
+  testWidgets('12.10 RU-smoke: секция описания при загрузке из repo', (
+    tester,
+  ) async {
+    final mockRepo = MockTaskRepository();
+    when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
+        .thenAnswer(
+      (_) async => _minimalTask(
+        id: _kTid,
+        projectId: kTaskFixtureProjectId,
+        title: 'RU title',
+      ),
+    );
+    when(
+      mockRepo.listTaskMessages(
+        _kTid,
+        messageType: anyNamed('messageType'),
+        senderType: anyNamed('senderType'),
+        limit: anyNamed('limit'),
+        offset: anyNamed('offset'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => const TaskMessageListResponse(
+        messages: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      ),
+    );
+    await _pumpDetail(
+      tester,
+      overrides: [
+        taskRepositoryProvider.overrideWithValue(mockRepo),
+      ],
+      locale: const Locale('ru'),
+    );
+    await tester.pumpAndSettle();
+    final l10nRu = AppLocalizationsRu();
+    expect(find.text(l10nRu.taskDetailSectionDescription), findsOneWidget);
+  });
+
+  testWidgets('12.10 непустой artifacts.diff показывает DiffViewer', (
+    tester,
+  ) async {
+    final mockRepo = MockTaskRepository();
+    when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
+        .thenAnswer(
+      (_) async => _minimalTask(
+        id: _kTid,
+        projectId: kTaskFixtureProjectId,
+      ).copyWith(
+        artifacts: {
+          'diff': '--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-OLD\n+NEW\n',
+        },
+      ),
+    );
+    when(
+      mockRepo.listTaskMessages(
+        _kTid,
+        messageType: anyNamed('messageType'),
+        senderType: anyNamed('senderType'),
+        limit: anyNamed('limit'),
+        offset: anyNamed('offset'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => const TaskMessageListResponse(
+        messages: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      ),
+    );
+    await _pumpDetail(tester, overrides: [
+      taskRepositoryProvider.overrideWithValue(mockRepo),
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.byType(DiffViewer), findsOneWidget);
   });
 }

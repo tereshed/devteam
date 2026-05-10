@@ -25,8 +25,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mockito/mockito.dart';
 
 import '../../../tasks/helpers/task_fixtures.dart';
-import '../../../tasks/presentation/controllers/task_list_controller_test.mocks.dart'
-    show MockTaskRepository;
+import '../../../tasks/helpers/task_mocks.mocks.dart' show MockTaskRepository;
 import '../../helpers/chat_fixtures.dart';
 import '../../helpers/chat_mocks.mocks.dart';
 import '../../helpers/chat_test_router.dart';

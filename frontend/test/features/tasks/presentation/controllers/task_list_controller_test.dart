@@ -10,23 +10,19 @@ import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/api/realtime_session_failure.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
-import 'package:frontend/core/api/websocket_service.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/data/task_providers.dart';
-import 'package:frontend/features/tasks/data/task_repository.dart';
 import 'package:frontend/features/tasks/domain/models.dart';
 import 'package:frontend/features/tasks/domain/requests.dart';
 import 'package:frontend/features/tasks/domain/task_model_to_list_item.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_errors.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
 import 'package:frontend/l10n/app_localizations_en.dart';
-import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 
 import '../../../../support/task_list_test_helpers.dart';
-import 'task_list_controller_test.mocks.dart';
+import '../../helpers/task_mocks.mocks.dart';
 
-@GenerateNiceMocks([MockSpec<TaskRepository>(), MockSpec<WebSocketService>()])
 void main() {
   const pid = '550e8400-e29b-41d4-a716-446655440000';
   const otherPid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';

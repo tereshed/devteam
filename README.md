@@ -345,7 +345,7 @@ User Message
 | 12.7 | Виджет: `DiffViewer` (отображение git diff с подсветкой) | `frontend/lib/shared/widgets/diff_viewer.dart` | ✅ | [детали](docs/tasks/12.7-diff-viewer-widget.md) |
 | 12.8 | Действия: кнопки Pause/Cancel/Resume на задаче | `frontend/lib/features/tasks/presentation/screens/task_detail_screen.dart` | ✅ | [детали](docs/tasks/12.8-task-detail-actions-pause-cancel-resume.md) |
 | 12.9 | Реалтайм: обновление статусов задач через WebSocket | В controllers | ✅ | [детали](docs/tasks/12.9-realtime-task-status-websocket.md) |
-| 12.10 | Widget-тесты | `frontend/test/features/tasks/` | ⬜ |
+| 12.10 | Widget-тесты | `frontend/test/features/tasks/` | ✅ | [детали](docs/tasks/12.10-tasks-widget-tests.md) |
 
 **Зависимости:** Sprint 3, Sprint 10, Sprint 11
 

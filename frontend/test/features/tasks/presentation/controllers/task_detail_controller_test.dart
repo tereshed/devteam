@@ -22,7 +22,7 @@ import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:mockito/mockito.dart';
 
 import '../../../../support/task_list_test_helpers.dart';
-import 'task_list_controller_test.mocks.dart';
+import '../../helpers/task_mocks.mocks.dart';
 
 void main() {
   const pid = '550e8400-e29b-41d4-a716-446655440000';

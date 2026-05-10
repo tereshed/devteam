@@ -16,13 +16,26 @@ void useViewSize(WidgetTester tester, Size size) {
 Widget wrapSimple(
   Widget child, {
   Locale locale = const Locale('en'),
-}) =>
-    MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: locale,
-      home: Scaffold(body: child),
+  TextScaler? textScaler,
+  bool scrollableBody = false,
+}) {
+  var body = child;
+  if (textScaler != null) {
+    body = MediaQuery(
+      data: MediaQueryData(textScaler: textScaler),
+      child: body,
     );
+  }
+  if (scrollableBody) {
+    body = SingleChildScrollView(child: body);
+  }
+  return MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    locale: locale,
+    home: Scaffold(body: body),
+  );
+}
 
 // Для виджетов с GoRouter (ProjectCard, ProjectsListScreen)
 Widget wrapRouter({
