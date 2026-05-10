@@ -1664,6 +1664,36 @@ abstract class AppLocalizations {
   /// **'DevOps'**
   String get taskAgentRoleDevops;
 
+  /// Вкладка команды: пустой список агентов (13.1)
+  ///
+  /// In ru, this message translates to:
+  /// **'В команде пока нет агентов.'**
+  String get teamEmptyAgents;
+
+  /// Вкладка команды: модель не задана (13.1)
+  ///
+  /// In ru, this message translates to:
+  /// **'Модель по умолчанию'**
+  String get teamAgentModelUnset;
+
+  /// Вкладка команды: пустое имя агента (13.1)
+  ///
+  /// In ru, this message translates to:
+  /// **'Агент без имени'**
+  String get teamAgentNameUnset;
+
+  /// Семантика: агент активен (13.1)
+  ///
+  /// In ru, this message translates to:
+  /// **'Активен'**
+  String get teamAgentActive;
+
+  /// Семантика: агент неактивен (13.1)
+  ///
+  /// In ru, this message translates to:
+  /// **'Неактивен'**
+  String get teamAgentInactive;
+
   /// Подсказка кнопки копирования блока кода в чате
   ///
   /// In ru, this message translates to:

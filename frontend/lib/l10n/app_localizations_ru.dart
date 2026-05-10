@@ -830,6 +830,21 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskAgentRoleDevops => 'DevOps';
 
   @override
+  String get teamEmptyAgents => 'В команде пока нет агентов.';
+
+  @override
+  String get teamAgentModelUnset => 'Модель по умолчанию';
+
+  @override
+  String get teamAgentNameUnset => 'Агент без имени';
+
+  @override
+  String get teamAgentActive => 'Активен';
+
+  @override
+  String get teamAgentInactive => 'Неактивен';
+
+  @override
   String get chatMessageCopyCode => 'Копировать код';
 
   @override

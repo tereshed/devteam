@@ -1,7 +1,7 @@
 import 'package:frontend/l10n/app_localizations.dart';
 
-/// Роль назначенного агента (`assigned_agent.role`) → l10n (12.5).
-String taskAgentRoleLabel(AppLocalizations l10n, String role) {
+/// Роль агента (`AgentModel.role`, `assigned_agent.role`) → l10n (DRY: 12.5, 13.1).
+String agentRoleLabel(AppLocalizations l10n, String role) {
   return switch (role) {
     'worker' => l10n.taskAgentRoleWorker,
     'supervisor' => l10n.taskAgentRoleSupervisor,

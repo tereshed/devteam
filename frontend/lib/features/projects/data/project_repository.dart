@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/api/dio_api_error.dart';
+import 'package:frontend/core/api/dio_repository_error_map.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
@@ -187,54 +188,37 @@ class ProjectRepository {
 
   /// Обработка ошибок Dio
   Exception _handleDioError(DioException error) {
-    final p = parseDioApiError(error);
-    final statusCode = p.statusCode;
-
-    if (p.isCancellation) {
-      return ProjectCancelledException(
-        p.sanitizedMessage,
-        originalError: error,
-      );
-    }
-
-    if (statusCode == null) {
-      return ProjectApiException(
-        p.sanitizedMessage,
-        originalError: error,
-      );
-    }
-
-    switch (statusCode) {
-      case 401:
-        return UnauthorizedException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 403:
-        return ProjectForbiddenException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 404:
-        return ProjectNotFoundException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 409:
-        return ProjectConflictException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      default:
-        return ProjectApiException(
-          p.sanitizedMessage,
-          statusCode: statusCode,
-          originalError: error,
-        );
-    }
+    return mapDioExceptionForRepository(
+      error,
+      onCancelled: (msg, err) => ProjectCancelledException(
+        msg,
+        originalError: err,
+      ),
+      onMissingStatusCode: (msg, err) => ProjectApiException(
+        msg,
+        originalError: err,
+      ),
+      on401: unauthorizedFromDio,
+      on403: (msg, err, code) => ProjectForbiddenException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      on404: (msg, err, code) => ProjectNotFoundException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      on409: (msg, err, code) => ProjectConflictException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      onOtherHttp: (msg, err, code, status) => ProjectApiException(
+        msg,
+        statusCode: status,
+        originalError: err,
+      ),
+    );
   }
 }

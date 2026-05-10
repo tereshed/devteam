@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
+import 'package:frontend/core/widgets/data_load_error_message.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_dashboard_shell.dart';
 import 'package:frontend/l10n/app_localizations.dart';
@@ -35,7 +36,7 @@ class ProjectDashboardScreen extends ConsumerWidget {
           ),
           title: Text(l10n.projectDashboardFallbackTitle),
         ),
-        body: _ProjectDashboardOverlayMessage(
+        body: DataLoadErrorMessage(
           title: l10n.projectDashboardNotFoundTitle,
           actionLabel: l10n.projectDashboardNotFoundBackToList,
           onAction: () => _goProjectsList(context),
@@ -52,7 +53,7 @@ class ProjectDashboardScreen extends ConsumerWidget {
     if (asyncProject.isLoading) {
       overlay = const Center(child: CircularProgressIndicator());
     } else if (asyncProject.hasError) {
-      overlay = _ProjectDashboardOverlayMessage(
+      overlay = DataLoadErrorMessage(
         title: l10n.dataLoadError,
         actionLabel: l10n.retry,
         onAction: () => ref.invalidate(projectProvider(projectId)),
@@ -87,43 +88,6 @@ class _ProjectDashboardBackButton extends StatelessWidget {
           context.go('/projects');
         }
       },
-    );
-  }
-}
-
-class _ProjectDashboardOverlayMessage extends StatelessWidget {
-  const _ProjectDashboardOverlayMessage({
-    required this.title,
-    required this.actionLabel,
-    required this.onAction,
-  });
-
-  final String title;
-  final String actionLabel;
-  final VoidCallback onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ColoredBox(
-      color: theme.colorScheme.surface,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium,
-              ),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: onAction, child: Text(actionLabel)),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

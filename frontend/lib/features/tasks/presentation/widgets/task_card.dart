@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
 import 'package:frontend/features/tasks/domain/models/task_list_item_model.dart';
-import 'package:frontend/features/tasks/presentation/utils/task_agent_role_display.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:intl/intl.dart';
@@ -74,7 +74,7 @@ class TaskCard extends StatelessWidget {
             task.assignedAgent != null
                 ? l10n.taskCardAgentLine(
                     task.assignedAgent!.name,
-                    taskAgentRoleLabel(l10n, task.assignedAgent!.role),
+                    agentRoleLabel(l10n, task.assignedAgent!.role),
                   )
                 : l10n.taskCardUnassigned,
             style: bodyMutedSmall,

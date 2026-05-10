@@ -5,8 +5,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
 import 'package:frontend/features/tasks/domain/models/task_model.dart';
-import 'package:frontend/features/tasks/presentation/utils/task_agent_role_display.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_card.dart';
 import 'package:frontend/l10n/app_localizations_ru.dart';
@@ -38,7 +38,7 @@ void main() {
         role: 'developer',
       ),
     );
-    final roleLabel = taskAgentRoleLabel(l10nRu, 'developer');
+    final roleLabel = agentRoleLabel(l10nRu, 'developer');
     final expectedLine = l10nRu.taskCardAgentLine(name, roleLabel);
 
     await tester.pumpWidget(

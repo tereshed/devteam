@@ -4,12 +4,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/domain/models/task_message_model.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_detail_controller.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_errors.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
-import 'package:frontend/features/tasks/presentation/utils/task_agent_role_display.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_display.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_metadata_redaction.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
@@ -1030,7 +1030,7 @@ class _TaskHeaderSection extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             Text(
-              taskAgentRoleLabel(l10n, agent.role),
+              agentRoleLabel(l10n, agent.role),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

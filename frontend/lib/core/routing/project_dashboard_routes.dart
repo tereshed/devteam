@@ -6,6 +6,7 @@ import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
 import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
+import 'package:frontend/features/team/presentation/screens/team_screen.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
@@ -26,12 +27,16 @@ final GlobalKey<NavigatorState> projectDashboardShellTasksNavigatorKey =
 /// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
 const String projectDashboardShellBranchTasksSegment = 'tasks';
 
+/// Сегмент URL вкладки «Команда» в shell (`/projects/:id/team`).
+/// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
+const String projectDashboardShellBranchTeamSegment = 'team';
+
 /// Сегмент URL после `/projects/:id` для веток shell (порядок = порядок вкладок).
 /// Единственный источник имён путей для [buildProjectDashboardShellBranches] и редиректов.
 const List<String> projectDashboardShellBranchPaths = [
   'chat',
   projectDashboardShellBranchTasksSegment,
-  'team',
+  projectDashboardShellBranchTeamSegment,
   'settings',
 ];
 
@@ -258,6 +263,18 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
                   },
                 ),
               ],
+            )
+          else if (projectDashboardShellBranchPaths[i] ==
+              projectDashboardShellBranchTeamSegment)
+            GoRoute(
+              path: projectDashboardShellBranchTeamSegment,
+              pageBuilder: (context, state) {
+                final projectId = state.pathParameters['id']!;
+                return NoTransitionPage(
+                  key: state.pageKey,
+                  child: TeamScreen(projectId: projectId),
+                );
+              },
             )
           else
             GoRoute(

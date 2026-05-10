@@ -18,11 +18,10 @@ import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:mockito/mockito.dart';
 
-import '../../features/tasks/helpers/task_fixtures.dart';
-
 import '../../features/chat/helpers/chat_mocks.mocks.dart';
 import '../../features/projects/helpers/project_dashboard_test_router.dart';
 import '../../features/projects/helpers/project_fixtures.dart';
+import '../../features/tasks/helpers/task_fixtures.dart';
 
 /// Заглушка списка задач для роут-тестов без HTTP (12.5).
 class _StubTaskListForRedirect extends TaskListController {
@@ -41,6 +40,13 @@ void main() {
   test('projectDashboardShellBranchTasksSegment в projectDashboardShellBranchPaths', () {
     expect(
       projectDashboardShellBranchPaths.contains(projectDashboardShellBranchTasksSegment),
+      isTrue,
+    );
+  });
+
+  test('projectDashboardShellBranchTeamSegment в projectDashboardShellBranchPaths', () {
+    expect(
+      projectDashboardShellBranchPaths.contains(projectDashboardShellBranchTeamSegment),
       isTrue,
     );
   });

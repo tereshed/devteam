@@ -832,6 +832,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskAgentRoleDevops => 'DevOps';
 
   @override
+  String get teamEmptyAgents => 'No agents in this team yet.';
+
+  @override
+  String get teamAgentModelUnset => 'Default model';
+
+  @override
+  String get teamAgentNameUnset => 'Unnamed agent';
+
+  @override
+  String get teamAgentActive => 'Active';
+
+  @override
+  String get teamAgentInactive => 'Inactive';
+
+  @override
   String get chatMessageCopyCode => 'Copy code';
 
   @override
