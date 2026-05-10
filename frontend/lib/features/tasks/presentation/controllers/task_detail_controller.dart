@@ -59,6 +59,10 @@ class TaskDetailController extends _$TaskDetailController {
   int _taskEpoch = 0;
   int _messagesEpoch = 0;
 
+  /// Инвалидирует in-flight lifecycle POST после [refresh] / смены «поколения» UI,
+  /// чтобы поздний ответ не затирал актуальное состояние и не выставлял [AsyncError].
+  int _lifecycleEpoch = 0;
+
   Future<void>? _loadMoreMessagesInFlight;
 
   /// Один guard на все WS-инициированные REST-ходы (12.3 §64): reconcile при FSM mismatch,
@@ -115,15 +119,61 @@ class TaskDetailController extends _$TaskDetailController {
     return null;
   }
 
+  /// [AsyncError] с тем же [error]/[stackTrace], value-слой из [data] (Riverpod
+  /// [AbstractAsyncValueX.copyWithPrevious]).
+  AsyncValue<TaskDetailState> _asyncErrorWithPreservedData(
+    Object error,
+    StackTrace stackTrace,
+    AsyncData<TaskDetailState> data,
+  ) {
+    // ignore: invalid_use_of_internal_member
+    final merged = AsyncError<TaskDetailState>(error, stackTrace).copyWithPrevious(data);
+    return merged;
+  }
+
+  /// Патчит [TaskDetailState] и при [AsyncError] с [copyWithPrevious] сохраняет
+  /// тот же error/stack — иначе WS/REST-апдейты после частичного фейла глотаются.
   void _patchState(TaskDetailState Function(TaskDetailState s) fn) {
-    final v = switch (state) {
+    final cur = state;
+    final v = switch (cur) {
       AsyncData<TaskDetailState>(:final value) => value,
+      AsyncError<TaskDetailState>() when cur.hasValue => cur.requireValue,
+      AsyncLoading<TaskDetailState>() when cur.hasValue => cur.requireValue,
       _ => null,
     };
     if (v == null) {
       return;
     }
-    state = AsyncData(fn(v));
+    final next = fn(v);
+    switch (cur) {
+      case AsyncData<TaskDetailState>():
+        state = AsyncData<TaskDetailState>(next);
+      case AsyncError<TaskDetailState>(:final error, :final stackTrace)
+          when cur.hasValue:
+        state = _asyncErrorWithPreservedData(
+          error,
+          stackTrace,
+          AsyncData<TaskDetailState>(next),
+        );
+      case AsyncLoading<TaskDetailState>() when cur.hasValue:
+        // Редко: invalidate/reload с сохранённым value; иначе WS-патч пропадёт.
+        // ignore: invalid_use_of_internal_member
+        state = const AsyncLoading<TaskDetailState>().copyWithPrevious(
+          AsyncData<TaskDetailState>(next),
+        );
+      default:
+        break;
+    }
+  }
+
+  /// UX: при ошибке POST после успешной загрузки карточки не затираем ленту/шапку ([copyWithPrevious]).
+  void _setAsyncErrorPreservingPrevious(Object e, StackTrace st) {
+    final prev = state;
+    if (prev is AsyncData<TaskDetailState>) {
+      state = _asyncErrorWithPreservedData(e, st, prev);
+    } else {
+      state = AsyncError<TaskDetailState>(e, st);
+    }
   }
 
   void _scheduleWsRefetch(Future<void> Function() job) {
@@ -188,6 +238,7 @@ class TaskDetailController extends _$TaskDetailController {
   Future<void> refresh({bool clearRealtimeBlocksOnSuccess = true}) async {
     _taskEpoch++;
     _messagesEpoch++;
+    _lifecycleEpoch++;
     _taskHistoryToken?.cancel();
     _messagesHistoryToken?.cancel();
     _taskHistoryToken = CancelToken();
@@ -214,6 +265,7 @@ class TaskDetailController extends _$TaskDetailController {
         realtimeSessionFailure: prev?.realtimeSessionFailure,
         realtimeServiceFailure: prev?.realtimeServiceFailure,
         messagesLoadMoreError: null,
+        lifecycleMutationInFlight: null,
       ),
     );
 
@@ -309,11 +361,17 @@ class TaskDetailController extends _$TaskDetailController {
       if (te != _taskEpoch) {
         return;
       }
+      _patchState(
+        (s) => s.copyWith(isLoadingTask: false, isLoadingMessages: false),
+      );
     } catch (e, st) {
       if (te != _taskEpoch) {
         return;
       }
-      state = AsyncError(e, st);
+      _patchState(
+        (s) => s.copyWith(isLoadingTask: false, isLoadingMessages: false),
+      );
+      _setAsyncErrorPreservingPrevious(e, st);
     }
   }
 
@@ -575,7 +633,10 @@ class TaskDetailController extends _$TaskDetailController {
     _patchState((s) => s.copyWith(task: task));
   }
 
-  Future<TaskMutationOutcome> pauseTask() async {
+  Future<TaskMutationOutcome> _runLifecycleMutation(
+    TaskLifecycleMutation kind,
+    Future<TaskModel> Function(TaskRepository repo) run,
+  ) async {
     final guard = _mutationSurfaceGuard();
     if (guard != null) {
       return guard;
@@ -583,63 +644,56 @@ class TaskDetailController extends _$TaskDetailController {
     if (_realtimeBlocksMutations()) {
       return TaskMutationOutcome.blockedByRealtime;
     }
+    _patchState((s) => s.copyWith(lifecycleMutationInFlight: kind));
+    final epoch = ++_lifecycleEpoch;
     try {
       final repo = ref.read(taskRepositoryProvider);
-      final t = await repo.pauseTask(_taskId, cancelToken: null);
+      final t = await run(repo);
+      if (!ref.mounted || epoch != _lifecycleEpoch) {
+        log(
+          'lifecycle mutation late success dropped (epoch changed or disposed)',
+          name: 'TaskDetailController',
+        );
+        return TaskMutationOutcome.completed;
+      }
       _patchState((s) => s.copyWith(task: _pickFresherTask(s.task, t)));
       ref
           .read(taskListControllerProvider(projectId: _projectId).notifier)
           .syncListFromHttpTask(t);
       return TaskMutationOutcome.completed;
     } catch (e, st) {
-      state = AsyncError(e, st);
-      rethrow;
+      if (ref.mounted && epoch == _lifecycleEpoch) {
+        _setAsyncErrorPreservingPrevious(e, st);
+        rethrow;
+      }
+      log(
+        'lifecycle mutation late error dropped (epoch changed or disposed)',
+        name: 'TaskDetailController',
+        error: e,
+        stackTrace: st,
+      );
+      return TaskMutationOutcome.completed;
+    } finally {
+      if (ref.mounted && epoch == _lifecycleEpoch) {
+        _patchState((s) => s.copyWith(lifecycleMutationInFlight: null));
+      }
     }
   }
 
-  Future<TaskMutationOutcome> resumeTask() async {
-    final guard = _mutationSurfaceGuard();
-    if (guard != null) {
-      return guard;
-    }
-    if (_realtimeBlocksMutations()) {
-      return TaskMutationOutcome.blockedByRealtime;
-    }
-    try {
-      final repo = ref.read(taskRepositoryProvider);
-      final t = await repo.resumeTask(_taskId, cancelToken: null);
-      _patchState((s) => s.copyWith(task: _pickFresherTask(s.task, t)));
-      ref
-          .read(taskListControllerProvider(projectId: _projectId).notifier)
-          .syncListFromHttpTask(t);
-      return TaskMutationOutcome.completed;
-    } catch (e, st) {
-      state = AsyncError(e, st);
-      rethrow;
-    }
-  }
+  Future<TaskMutationOutcome> pauseTask() => _runLifecycleMutation(
+        TaskLifecycleMutation.pause,
+        (repo) => repo.pauseTask(_taskId, cancelToken: null),
+      );
 
-  Future<TaskMutationOutcome> cancelTask() async {
-    final guard = _mutationSurfaceGuard();
-    if (guard != null) {
-      return guard;
-    }
-    if (_realtimeBlocksMutations()) {
-      return TaskMutationOutcome.blockedByRealtime;
-    }
-    try {
-      final repo = ref.read(taskRepositoryProvider);
-      final t = await repo.cancelTask(_taskId, cancelToken: null);
-      _patchState((s) => s.copyWith(task: _pickFresherTask(s.task, t)));
-      ref
-          .read(taskListControllerProvider(projectId: _projectId).notifier)
-          .syncListFromHttpTask(t);
-      return TaskMutationOutcome.completed;
-    } catch (e, st) {
-      state = AsyncError(e, st);
-      rethrow;
-    }
-  }
+  Future<TaskMutationOutcome> resumeTask() => _runLifecycleMutation(
+        TaskLifecycleMutation.resume,
+        (repo) => repo.resumeTask(_taskId, cancelToken: null),
+      );
+
+  Future<TaskMutationOutcome> cancelTask() => _runLifecycleMutation(
+        TaskLifecycleMutation.cancel,
+        (repo) => repo.cancelTask(_taskId, cancelToken: null),
+      );
 
   Future<TaskMutationOutcome> correctTask(String text) async {
     if (text.trim().isEmpty) {
@@ -668,7 +722,7 @@ class TaskDetailController extends _$TaskDetailController {
           .syncListFromHttpTask(t);
       return TaskMutationOutcome.completed;
     } catch (e, st) {
-      state = AsyncError(e, st);
+      _setAsyncErrorPreservingPrevious(e, st);
       rethrow;
     }
   }
@@ -693,7 +747,7 @@ class TaskDetailController extends _$TaskDetailController {
           .syncListFromHttpTask(t);
       return TaskMutationOutcome.completed;
     } catch (e, st) {
-      state = AsyncError(e, st);
+      _setAsyncErrorPreservingPrevious(e, st);
       rethrow;
     }
   }
@@ -720,7 +774,7 @@ class TaskDetailController extends _$TaskDetailController {
       );
       return TaskMutationOutcome.completed;
     } catch (e, st) {
-      state = AsyncError(e, st);
+      _setAsyncErrorPreservingPrevious(e, st);
       rethrow;
     }
   }
@@ -747,7 +801,7 @@ class TaskDetailController extends _$TaskDetailController {
       );
       return TaskMutationOutcome.completed;
     } catch (e, st) {
-      state = AsyncError(e, st);
+      _setAsyncErrorPreservingPrevious(e, st);
       rethrow;
     }
   }

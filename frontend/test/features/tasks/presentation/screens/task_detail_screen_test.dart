@@ -17,6 +17,7 @@ import 'package:frontend/features/tasks/domain/models/task_message_model.dart';
 import 'package:frontend/features/tasks/domain/models/task_model.dart';
 import 'package:frontend/features/tasks/domain/requests.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_detail_controller.dart';
+import 'package:frontend/features/tasks/presentation/controllers/task_errors.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
 import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
@@ -40,6 +41,7 @@ TaskModel _minimalTask({
   required String id,
   required String projectId,
   String title = 'Hello Task',
+  String status = 'pending',
   List<TaskSummaryModel> subTasks = const [],
 }) {
   return TaskModel(
@@ -47,7 +49,7 @@ TaskModel _minimalTask({
     projectId: projectId,
     title: title,
     description: 'x',
-    status: 'pending',
+    status: status,
     priority: 'medium',
     createdByType: 'user',
     createdById: kTaskFixtureUserId,
@@ -57,22 +59,21 @@ TaskModel _minimalTask({
   );
 }
 
-/// Заглушка [TaskDetailController] без сети (12.5).
-class _StubTaskDetailController extends TaskDetailController {
-  _StubTaskDetailController(this._seed);
-  final TaskDetailState _seed;
+/// Стаб [TaskDetailController]: фиксированный seed, опционально счётчики lifecycle / loadMore.
+class _CountingDetailController extends TaskDetailController {
+  _CountingDetailController(
+    this._seed, {
+    this.pauseResult = TaskMutationOutcome.completed,
+    this.trackLoadMore = false,
+  });
 
-  @override
-  FutureOr<TaskDetailState> build({
-    required String projectId,
-    required String taskId,
-  }) =>
-      _seed;
-}
-
-class _TrackingLoadMoreTaskDetailController extends TaskDetailController {
-  _TrackingLoadMoreTaskDetailController(this._seed);
   final TaskDetailState _seed;
+  final TaskMutationOutcome pauseResult;
+  final bool trackLoadMore;
+
+  int pauseCalls = 0;
+  int cancelCalls = 0;
+  int resumeCalls = 0;
   int loadMoreCalls = 0;
 
   @override
@@ -84,12 +85,38 @@ class _TrackingLoadMoreTaskDetailController extends TaskDetailController {
 
   @override
   Future<void> loadMoreMessages() async {
-    loadMoreCalls++;
+    if (trackLoadMore) {
+      loadMoreCalls++;
+      return;
+    }
+    await super.loadMoreMessages();
   }
 
   @override
   Future<void> retryMessagesAfterError() async {
-    loadMoreCalls++;
+    if (trackLoadMore) {
+      loadMoreCalls++;
+      return;
+    }
+    await super.retryMessagesAfterError();
+  }
+
+  @override
+  Future<TaskMutationOutcome> pauseTask() async {
+    pauseCalls++;
+    return pauseResult;
+  }
+
+  @override
+  Future<TaskMutationOutcome> cancelTask() async {
+    cancelCalls++;
+    return TaskMutationOutcome.completed;
+  }
+
+  @override
+  Future<TaskMutationOutcome> resumeTask() async {
+    resumeCalls++;
+    return TaskMutationOutcome.completed;
   }
 }
 
@@ -118,6 +145,68 @@ Future<void> _pumpDetail(
         home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
       ),
     ),
+  );
+}
+
+Future<void> _pumpDetailWithController(
+  WidgetTester tester, {
+  required TaskDetailController Function() controller,
+  Size logicalSize = const Size(900, 800),
+}) async {
+  useViewSize(tester, logicalSize);
+  await tester.pumpWidget(
+    ProviderScope(
+      retry: (_, _) => null,
+      overrides: [
+        taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
+            .overrideWith(controller),
+      ],
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('en'),
+        home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
+      ),
+    ),
+  );
+}
+
+Finder _lifecycleButtonForLabel(String label) {
+  const stripKey = ValueKey<String>('task_detail_lifecycle_mobile');
+  final strip = find.byKey(stripKey, skipOffstage: false);
+  final textInStrip = find.descendant(
+    of: strip,
+    matching: find.text(label),
+    skipOffstage: false,
+  );
+  return find.ancestor(
+    of: textInStrip,
+    matching: find.bySubtype<ButtonStyleButton>(),
+  );
+}
+
+void _expectProgressOnFilledLabel(
+  WidgetTester tester, {
+  required String onLabel,
+  required String notOnLabel,
+}) {
+  final onF = _lifecycleButtonForLabel(onLabel);
+  final offF = _lifecycleButtonForLabel(notOnLabel);
+  expect(onF, findsOneWidget);
+  expect(offF, findsOneWidget);
+  expect(
+    find.descendant(
+      of: onF,
+      matching: find.byType(CircularProgressIndicator),
+    ),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(
+      of: offF,
+      matching: find.byType(CircularProgressIndicator),
+    ),
+    findsNothing,
   );
 }
 
@@ -214,30 +303,15 @@ void main() {
   });
 
   testWidgets('taskDeleted: AppBar и тело по l10n', (tester) async {
-    useViewSize(tester, const Size(900, 800));
     final seed = TaskDetailState.initial().copyWith(
       taskDeleted: true,
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    final stub = _StubTaskDetailController(seed);
+    final stub = _CountingDetailController(seed);
     final l10n = AppLocalizationsEn();
 
-    await tester.pumpWidget(
-      ProviderScope(
-        retry: (_, _) => null,
-        overrides: [
-          taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
-              .overrideWith(() => stub),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: Locale('en'),
-          home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
-        ),
-      ),
-    );
+    await _pumpDetailWithController(tester, controller: () => stub);
     await tester.pumpAndSettle();
 
     expect(find.text(l10n.taskDetailDeletedTitle), findsOneWidget);
@@ -249,28 +323,17 @@ void main() {
   testWidgets('taskDeleted: narrow — без RefreshIndicator и без refresh в AppBar', (
     tester,
   ) async {
-    useViewSize(tester, const Size(400, 800));
     final seed = TaskDetailState.initial().copyWith(
       taskDeleted: true,
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    final stub = _StubTaskDetailController(seed);
+    final stub = _CountingDetailController(seed);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        retry: (_, _) => null,
-        overrides: [
-          taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
-              .overrideWith(() => stub),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: Locale('en'),
-          home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
-        ),
-      ),
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => stub,
     );
     await tester.pumpAndSettle();
 
@@ -399,7 +462,6 @@ void main() {
   testWidgets(
     'messagesLoadMoreError: баннер и Retry вызывает loadMoreMessages',
     (tester) async {
-      useViewSize(tester, const Size(900, 800));
       final msg = TaskMessageModel(
         id: _kMsgId,
         taskId: _kTid,
@@ -419,23 +481,9 @@ void main() {
         hasMoreMessages: false,
         messagesLoadMoreError: Exception('pagination failed'),
       );
-      final tracking = _TrackingLoadMoreTaskDetailController(seed);
+      final tracking = _CountingDetailController(seed, trackLoadMore: true);
 
-      await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
-          overrides: [
-            taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
-                .overrideWith(() => tracking),
-          ],
-          child: const MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            locale: Locale('en'),
-            home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
-          ),
-        ),
-      );
+      await _pumpDetailWithController(tester, controller: () => tracking);
       await tester.pumpAndSettle();
 
       expect(
@@ -450,57 +498,53 @@ void main() {
     },
   );
 
-  testWidgets('realtimeMutationBlocked: баннер', (tester) async {
-    useViewSize(tester, const Size(900, 800));
+  testWidgets('realtimeMutationBlocked: баннер и lifecycle-кнопки отключены', (
+    tester,
+  ) async {
     final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: _kPid),
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
       isLoadingTask: false,
       isLoadingMessages: false,
       realtimeMutationBlocked: true,
     );
-    await tester.pumpWidget(
-      ProviderScope(
-        retry: (_, _) => null,
-        overrides: [
-          taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
-              .overrideWith(() => _StubTaskDetailController(seed)),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: Locale('en'),
-          home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
-        ),
-      ),
+    await _pumpDetailWithController(
+      tester,
+      controller: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
 
     final l10n = AppLocalizationsEn();
     expect(find.text(l10n.taskDetailRealtimeMutationBlocked), findsOneWidget);
+    final pause = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byTooltip(l10n.taskActionPause),
+        matching: find.byType(IconButton),
+      ),
+    );
+    final cancel = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byTooltip(l10n.taskActionCancel),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(pause.onPressed, isNull);
+    expect(cancel.onPressed, isNull);
   });
 
   testWidgets('realtimeSessionFailure: баннер', (tester) async {
-    useViewSize(tester, const Size(900, 800));
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(id: _kTid, projectId: _kPid),
       isLoadingTask: false,
       isLoadingMessages: false,
       realtimeSessionFailure: const RealtimeSessionFailure.authenticationLost(),
     );
-    await tester.pumpWidget(
-      ProviderScope(
-        retry: (_, _) => null,
-        overrides: [
-          taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
-              .overrideWith(() => _StubTaskDetailController(seed)),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: Locale('en'),
-          home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
-        ),
-      ),
+    await _pumpDetailWithController(
+      tester,
+      controller: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
 
@@ -509,27 +553,15 @@ void main() {
   });
 
   testWidgets('realtimeServiceFailure: баннер', (tester) async {
-    useViewSize(tester, const Size(900, 800));
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(id: _kTid, projectId: _kPid),
       isLoadingTask: false,
       isLoadingMessages: false,
       realtimeServiceFailure: const WsServiceFailure.transient(),
     );
-    await tester.pumpWidget(
-      ProviderScope(
-        retry: (_, _) => null,
-        overrides: [
-          taskDetailControllerProvider(projectId: _kPid, taskId: _kTid)
-              .overrideWith(() => _StubTaskDetailController(seed)),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: Locale('en'),
-          home: TaskDetailScreen(projectId: _kPid, taskId: _kTid),
-        ),
-      ),
+    await _pumpDetailWithController(
+      tester,
+      controller: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
 
@@ -576,5 +608,569 @@ void main() {
 
     expect(find.textContaining('batch_tag'), findsWidgets);
     expect(find.textContaining('sk-'), findsNothing);
+  });
+
+  testWidgets('12.8 planning wide: Pause и Cancel в AppBar, без Resume', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetailWithController(
+      tester,
+      controller: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    expect(find.byTooltip(l10n.taskActionPause), findsOneWidget);
+    expect(find.byTooltip(l10n.taskActionCancel), findsOneWidget);
+    expect(find.byTooltip(l10n.taskActionResume), findsNothing);
+  });
+
+  testWidgets('12.8 paused narrow: только Resume в теле', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'paused',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionResume), findsOneWidget);
+    expect(find.text(l10n.taskActionPause), findsNothing);
+    expect(find.text(l10n.taskActionCancel), findsNothing);
+  });
+
+  testWidgets('12.8 paused narrow: tap Resume вызывает resumeTask', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'paused',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => tracking,
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.text(l10n.taskActionResume));
+    await tester.pumpAndSettle();
+    expect(tracking.resumeCalls, 1);
+  });
+
+  testWidgets('12.8 failed narrow: Resume как для paused', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'failed',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionResume), findsOneWidget);
+    expect(find.text(l10n.taskActionPause), findsNothing);
+  });
+
+  testWidgets('12.8 completed: панель lifecycle отсутствует', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'completed',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionPause), findsNothing);
+    expect(find.text(l10n.taskActionCancel), findsNothing);
+    expect(find.text(l10n.taskActionResume), findsNothing);
+  });
+
+  testWidgets('12.8 неизвестный статус: панель lifecycle отсутствует', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'future_unknown_status',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionPause), findsNothing);
+    expect(find.text(l10n.taskActionCancel), findsNothing);
+    expect(find.text(l10n.taskActionResume), findsNothing);
+  });
+
+  testWidgets('12.8 pending narrow: только Cancel', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(id: _kTid, projectId: _kPid, status: 'pending'),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionCancel), findsOneWidget);
+    expect(find.text(l10n.taskActionPause), findsNothing);
+  });
+
+  testWidgets('12.8 blockedByRealtime: SnackBar при Pause', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    final stub = _CountingDetailController(
+      seed,
+      pauseResult: TaskMutationOutcome.blockedByRealtime,
+    );
+    await _pumpDetailWithController(tester, controller: () => stub);
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.byTooltip(l10n.taskActionPause));
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.taskActionBlockedByRealtimeSnack), findsOneWidget);
+  });
+
+  testWidgets(
+    '12.8 pause repo throws: SnackBar + Retry, карточка без полноэкранной ошибки',
+    (tester) async {
+      final mockRepo = MockTaskRepository();
+      when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
+          .thenAnswer(
+        (_) async => _minimalTask(
+          id: _kTid,
+          projectId: _kPid,
+          title: 'Hello Task',
+          status: 'planning',
+        ),
+      );
+      when(
+        mockRepo.listTaskMessages(
+          _kTid,
+          messageType: anyNamed('messageType'),
+          senderType: anyNamed('senderType'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskMessageListResponse(
+          messages: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+      when(mockRepo.pauseTask(_kTid, cancelToken: anyNamed('cancelToken')))
+          .thenThrow(Exception('pause failed'));
+
+      await _pumpDetail(
+        tester,
+        logicalSize: const Size(400, 800),
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(mockRepo),
+        ],
+      );
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizationsEn();
+
+      expect(find.text('Hello Task'), findsWidgets);
+      expect(find.text(l10n.taskDetailBackToList), findsNothing);
+
+      await tester.tap(find.text(l10n.taskActionPause));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
+      expect(find.text(l10n.retry), findsOneWidget);
+      expect(find.text('Hello Task'), findsWidgets);
+      expect(find.text(l10n.taskDetailBackToList), findsNothing);
+    },
+  );
+
+  testWidgets(
+    '12.8 pause fail: WS-патчи с тем же error не дублируют snack',
+    (tester) async {
+      final mockRepo = MockTaskRepository();
+      when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
+          .thenAnswer(
+        (_) async => _minimalTask(
+          id: _kTid,
+          projectId: _kPid,
+          title: 'Hello Task',
+          status: 'planning',
+        ),
+      );
+      when(
+        mockRepo.listTaskMessages(
+          _kTid,
+          messageType: anyNamed('messageType'),
+          senderType: anyNamed('senderType'),
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const TaskMessageListResponse(
+          messages: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        ),
+      );
+      when(mockRepo.pauseTask(_kTid, cancelToken: anyNamed('cancelToken')))
+          .thenThrow(Exception('pause failed'));
+
+      await _pumpDetail(
+        tester,
+        logicalSize: const Size(400, 800),
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(mockRepo),
+        ],
+      );
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizationsEn();
+
+      await tester.tap(find.text(l10n.taskActionPause));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TaskDetailScreen)),
+      );
+      final notifier = container.read(
+        taskDetailControllerProvider(projectId: _kPid, taskId: _kTid).notifier,
+      );
+
+      notifier.applyWsTaskMessage(
+        WsTaskMessageEvent(
+          ts: DateTime.utc(2026, 5, 9),
+          v: 1,
+          projectId: _kPid,
+          taskId: _kTid,
+          messageId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          senderType: 'agent',
+          senderId: kTaskFixtureUserId,
+          messageType: 'instruction',
+          content: 'ws',
+        ),
+      );
+      await tester.pump();
+      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
+
+      notifier.applyRealtimeFailure(const WsServiceFailure.transient());
+      await tester.pump();
+      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
+    },
+  );
+
+  testWidgets('12.8 отмена: dismiss диалога не вызывает cancelTask', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => tracking,
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.text(l10n.taskActionCancel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(l10n.cancel));
+    await tester.pumpAndSettle();
+    expect(tracking.cancelCalls, 0);
+  });
+
+  testWidgets('12.8 отмена: подтверждение вызывает cancelTask один раз', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => tracking,
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.text(l10n.taskActionCancel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(l10n.taskActionConfirm));
+    await tester.pumpAndSettle();
+    expect(tracking.cancelCalls, 1);
+  });
+
+  testWidgets('12.8 inflight pause: Cancel отключён', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+      lifecycleMutationInFlight: TaskLifecycleMutation.pause,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => tracking,
+    );
+    await tester.pump();
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.text(l10n.taskActionCancel));
+    await tester.pump();
+    expect(tracking.cancelCalls, 0);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('12.8 inflight cancel: Pause отключён, индикатор на Cancel (narrow)', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+      lifecycleMutationInFlight: TaskLifecycleMutation.cancel,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => tracking,
+    );
+    await tester.pump();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionPause), findsOneWidget);
+    expect(find.text(l10n.taskActionCancel), findsOneWidget);
+    _expectProgressOnFilledLabel(
+      tester,
+      onLabel: l10n.taskActionCancel,
+      notOnLabel: l10n.taskActionPause,
+    );
+    await tester.tap(find.text(l10n.taskActionPause));
+    await tester.pump();
+    expect(tracking.pauseCalls, 0);
+  });
+
+  testWidgets('12.8 inflight resume: кнопка отключена с индикатором (narrow, paused)', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'paused',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+      lifecycleMutationInFlight: TaskLifecycleMutation.resume,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetailWithController(
+      tester,
+      logicalSize: const Size(400, 800),
+      controller: () => tracking,
+    );
+    await tester.pump();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionResume), findsOneWidget);
+    final resumeF = _lifecycleButtonForLabel(l10n.taskActionResume);
+    expect(resumeF, findsOneWidget);
+    expect(
+      find.descendant(
+        of: resumeF,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text(l10n.taskActionResume));
+    await tester.pump();
+    expect(tracking.resumeCalls, 0);
+  });
+
+  testWidgets('12.8 inflight cancel wide: Pause отключён, индикатор на Cancel в AppBar', (
+    tester,
+  ) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+      lifecycleMutationInFlight: TaskLifecycleMutation.cancel,
+    );
+    final tracking = _CountingDetailController(seed);
+    await _pumpDetailWithController(tester, controller: () => tracking);
+    await tester.pump();
+    final appBar = find.byType(AppBar);
+    final pauseIconInBar = find.descendant(
+      of: appBar,
+      matching: find.byIcon(Icons.pause),
+    );
+    final pauseIconButton = find.ancestor(
+      of: pauseIconInBar,
+      matching: find.byType(IconButton),
+    );
+    expect(pauseIconInBar, findsOneWidget);
+    expect(tester.widget<IconButton>(pauseIconButton).onPressed, isNull);
+    expect(
+      find.descendant(
+        of: appBar,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(pauseIconButton);
+    await tester.pump();
+    expect(tracking.pauseCalls, 0);
+  });
+
+  testWidgets('12.8 двойной tap Pause: один вызов API', (tester) async {
+    final mockRepo = MockTaskRepository();
+    var pauseCalls = 0;
+    when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
+        .thenAnswer(
+      (_) async => _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'planning',
+      ),
+    );
+    when(
+      mockRepo.listTaskMessages(
+        _kTid,
+        messageType: anyNamed('messageType'),
+        senderType: anyNamed('senderType'),
+        limit: anyNamed('limit'),
+        offset: anyNamed('offset'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => const TaskMessageListResponse(
+        messages: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      ),
+    );
+    when(mockRepo.pauseTask(_kTid, cancelToken: anyNamed('cancelToken')))
+        .thenAnswer((_) async {
+      pauseCalls++;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      return _minimalTask(
+        id: _kTid,
+        projectId: _kPid,
+        status: 'paused',
+      );
+    });
+
+    final listSeed = TaskListState(
+      filter: TaskListFilter.defaults(),
+      items: const [],
+      total: 0,
+      offset: 0,
+      isLoadingInitial: false,
+    );
+
+    await _pumpDetail(
+      tester,
+      logicalSize: const Size(400, 800),
+      overrides: [
+        taskListControllerProvider.overrideWith(
+          () => _StubTaskListForDetail(listSeed),
+        ),
+        taskRepositoryProvider.overrideWithValue(mockRepo),
+      ],
+    );
+    await tester.pumpAndSettle();
+
+    final l10n = AppLocalizationsEn();
+    await tester.tap(find.text(l10n.taskActionPause));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text(l10n.taskActionPause));
+    await tester.pump();
+    expect(pauseCalls, 1);
+    await tester.pump(const Duration(milliseconds: 600));
   });
 }

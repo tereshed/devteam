@@ -747,6 +747,29 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskDetailRealtimeServiceFailure => 'Сбой realtime-сервиса';
 
   @override
+  String get taskActionPause => 'Пауза';
+
+  @override
+  String get taskActionResume => 'Возобновить';
+
+  @override
+  String get taskActionCancel => 'Отменить задачу';
+
+  @override
+  String get taskActionCancelConfirmTitle => 'Отменить задачу?';
+
+  @override
+  String get taskActionCancelConfirmBody =>
+      'Задача перейдёт в статус «отменена». Это действие нельзя отменить.';
+
+  @override
+  String get taskActionConfirm => 'Да, отменить задачу';
+
+  @override
+  String get taskActionBlockedByRealtimeSnack =>
+      'Сейчас нельзя изменить задачу: обновления по сети временно недоступны.';
+
+  @override
   String get taskMessageTypeUnknown => 'Неизвестный тип сообщения';
 
   @override

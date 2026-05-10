@@ -28,6 +28,92 @@ const int kTaskDetailMessageLoadMoreTrailingThreshold = 3;
 const ValueKey<String> kTaskDetailMessagesLoadMoreErrorBannerKey =
     ValueKey<String>('task_detail_messages_load_more_error_banner');
 
+bool _taskDetailShowPauseForStatus(String status) {
+  const s = {
+    'planning',
+    'in_progress',
+    'review',
+    'changes_requested',
+    'testing',
+  };
+  return s.contains(status);
+}
+
+bool _taskDetailShowCancelForStatus(String status) {
+  const s = {
+    'pending',
+    'planning',
+    'in_progress',
+    'review',
+    'changes_requested',
+    'testing',
+  };
+  return s.contains(status);
+}
+
+bool _taskDetailShowResumeForStatus(String status) =>
+    status == 'paused' || status == 'failed';
+
+/// Панель lifecycle только если есть хотя бы одно действие (12.8; неизвестный статус — без пустого отступа).
+bool taskDetailLifecyclePanelVisibleForStatus(String status) {
+  return _taskDetailShowPauseForStatus(status) ||
+      _taskDetailShowCancelForStatus(status) ||
+      _taskDetailShowResumeForStatus(status);
+}
+
+class _LifecycleActionRow {
+  const _LifecycleActionRow({
+    required this.visible,
+    required this.busy,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final bool visible;
+  final bool busy;
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+}
+
+List<_LifecycleActionRow> _taskDetailLifecycleActionRows(
+  AppLocalizations l10n,
+  TaskDetailState data, {
+  required VoidCallback onPause,
+  required VoidCallback onCancel,
+  required VoidCallback onResume,
+}) {
+  final status = data.task!.status;
+  final rt = data.realtimeMutationBlocked;
+  final inflight = data.lifecycleMutationInFlight;
+  final canPress = !rt && inflight == null;
+
+  return [
+    _LifecycleActionRow(
+      visible: _taskDetailShowPauseForStatus(status),
+      busy: inflight == TaskLifecycleMutation.pause,
+      label: l10n.taskActionPause,
+      icon: Icons.pause,
+      onPressed: canPress ? onPause : null,
+    ),
+    _LifecycleActionRow(
+      visible: _taskDetailShowCancelForStatus(status),
+      busy: inflight == TaskLifecycleMutation.cancel,
+      label: l10n.taskActionCancel,
+      icon: Icons.cancel_outlined,
+      onPressed: canPress ? onCancel : null,
+    ),
+    _LifecycleActionRow(
+      visible: _taskDetailShowResumeForStatus(status),
+      busy: inflight == TaskLifecycleMutation.resume,
+      label: l10n.taskActionResume,
+      icon: Icons.play_arrow,
+      onPressed: canPress ? onResume : null,
+    ),
+  ];
+}
+
 /// Скрыть pull-to-refresh / иконку обновления при удалённой задаче или mismatch проекта.
 bool _hideTaskDetailRefresh(AsyncValue<TaskDetailState> async) {
   final mismatch =
@@ -219,6 +305,62 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         );
   }
 
+  TaskDetailController _taskDetailNotifier() => ref.read(
+        taskDetailControllerProvider(
+          projectId: widget.projectId,
+          taskId: widget.taskId,
+        ).notifier,
+      );
+
+  Future<void> _applyLifecycleMutation(
+    Future<TaskMutationOutcome> Function(TaskDetailController n) call,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final o = await call(_taskDetailNotifier());
+      if (!mounted) {
+        return;
+      }
+      if (o == TaskMutationOutcome.blockedByRealtime) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.taskActionBlockedByRealtimeSnack)),
+        );
+      }
+    } catch (_) {
+      // [TaskDetailController] выставляет AsyncError с copyWithPrevious; snack — через [ref.listen].
+    }
+  }
+
+  Future<void> _onPause() => _applyLifecycleMutation((n) => n.pauseTask());
+
+  Future<void> _onResume() => _applyLifecycleMutation((n) => n.resumeTask());
+
+  Future<void> _onCancelPressed() async {
+    final l10n = AppLocalizations.of(context)!;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.taskActionCancelConfirmTitle),
+        content: Text(l10n.taskActionCancelConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.taskActionConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) {
+      return;
+    }
+    await _applyLifecycleMutation((n) => n.cancelTask());
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -241,6 +383,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         if (next.hasError && next.hasValue && context.mounted) {
           final err = next.error!;
           if (err is TaskDetailProjectMismatchException) {
+            return;
+          }
+          // [_patchState] переиспользует тот же объект ошибки — без этого снек
+          // дублируется на каждое WS-обновление (ит.4 фикс №2).
+          if (prev != null &&
+              prev.hasError &&
+              identical(prev.error, err)) {
             return;
           }
           final detail = taskErrorDetail(err);
@@ -267,30 +416,42 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final isWide = width >= kTaskDetailMobileBreakpointWidth;
 
-    final titleWidget = async.when(
-      data: (d) {
-        if (d.taskDeleted) {
-          return Text(l10n.taskDetailDeletedTitle);
-        }
-        final t = d.task?.title;
-        if (t != null && t.isNotEmpty) {
-          return Text(
-            t,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+    final titleWidget = async.hasError &&
+            async.hasValue &&
+            (async.requireValue.task != null || async.requireValue.taskDeleted)
+        ? _appBarTitleForDetailState(l10n, async.requireValue)
+        : async.when(
+            data: (d) => _appBarTitleForDetailState(l10n, d),
+            error: (e, _) => Text(
+              e is TaskDetailProjectMismatchException
+                  ? l10n.taskDetailProjectMismatch
+                  : taskDetailErrorTitle(l10n, e),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            loading: () => Text(l10n.taskDetailAppBarLoading),
           );
-        }
-        return Text(l10n.taskDetailAppBarLoading);
-      },
-      error: (e, _) => Text(
-        e is TaskDetailProjectMismatchException
-            ? l10n.taskDetailProjectMismatch
-            : taskDetailErrorTitle(l10n, e),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      loading: () => Text(l10n.taskDetailAppBarLoading),
-    );
+
+    final lifecycleAppBarIcons = <Widget>[
+      if (isWide)
+        ...switch (async) {
+          AsyncData<TaskDetailState>(:final value) =>
+            (!value.taskDeleted &&
+                    value.task != null &&
+                    taskDetailLifecyclePanelVisibleForStatus(
+                      value.task!.status,
+                    ))
+                ? _taskDetailLifecycleAppBarActions(
+                    l10n,
+                    value,
+                    onPause: () => unawaited(_onPause()),
+                    onResume: () => unawaited(_onResume()),
+                    onCancel: () => unawaited(_onCancelPressed()),
+                  )
+                : const <Widget>[],
+          _ => const <Widget>[],
+        },
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -299,6 +460,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         leading: const BackButton(),
         title: titleWidget,
         actions: [
+          ...lifecycleAppBarIcons,
           if (isWide && !_hideTaskDetailRefresh(async))
             IconButton(
               tooltip: MaterialLocalizations.of(context)
@@ -309,155 +471,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         ],
       ),
       body: async.when(
-        data: (data) {
-          if (data.taskDeleted) {
-            return _DeletedOrMismatchBody(
-              projectId: widget.projectId,
-              message: l10n.taskDetailDeletedBody,
-            );
-          }
-          if (data.task == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final scrollView = CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              ..._realtimeSlivers(context, l10n, data),
-              SliverToBoxAdapter(
-                child: _TaskHeaderSection(
-                  l10n: l10n,
-                  data: data,
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _SectionBlock(
-                  title: l10n.taskDetailSectionDescription,
-                  child: _descriptionBody(context, l10n, data),
-                ),
-              ),
-              if (_hasErrorMessage(data))
-                SliverToBoxAdapter(
-                  child: _SectionBlock(
-                    title: l10n.taskDetailSectionErrorMessage,
-                    child: Text(
-                      data.task!.errorMessage!.trim(),
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
-                    ),
-                  ),
-                ),
-              SliverToBoxAdapter(
-                child: _SectionBlock(
-                  title: l10n.taskDetailSectionResult,
-                  child: _resultBody(context, l10n, data),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _SectionBlock(
-                  title: l10n.taskDetailSectionDiff,
-                  child: _diffBody(context, l10n, data),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _SubtasksSection(
-                  projectId: widget.projectId,
-                  l10n: l10n,
-                  data: data,
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _MessageFiltersBar(
-                  l10n: l10n,
-                  data: data,
-                  onMessageType: (v) async {
-                    await _applyMessageTypeFilter(v);
-                  },
-                  onSenderType: (v) async {
-                    await _applySenderTypeFilter(v);
-                  },
-                ),
-              ),
-              if (data.messagesLoadMoreError != null)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: _MessagesLoadMoreErrorBanner(
-                      l10n: l10n,
-                      error: data.messagesLoadMoreError!,
-                      onRetry: () => unawaited(
-                        ref
-                            .read(
-                              taskDetailControllerProvider(
-                                projectId: widget.projectId,
-                                taskId: widget.taskId,
-                              ).notifier,
-                            )
-                            .retryMessagesAfterError(),
-                      ),
-                    ),
-                  ),
-                ),
-              if (data.messages.isEmpty && data.isLoadingMessages)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                )
-              else if (data.messages.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      l10n.taskDetailNoMessages,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  sliver: SliverList(
-                    // Future-work (12.9+): при вставках не в конец — добавить findChildIndexCallback.
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        _scheduleLoadMoreIfNeeded(
-                          index: index,
-                          messageCount: data.messages.length,
-                          data: data,
-                        );
-                        final msg = data.messages[index];
-                        return RepaintBoundary(
-                          child: _TaskMessageTile(
-                            l10n: l10n,
-                            message: msg,
-                          ),
-                        );
-                      },
-                      childCount: data.messages.length,
-                    ),
-                  ),
-                ),
-              if (data.isLoadingMessages &&
-                  data.hasMoreMessages &&
-                  data.messages.isNotEmpty)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            ],
-          );
-          if (isWide) {
-            return scrollView;
-          }
-          return RefreshIndicator(
-            onRefresh: _onRefresh,
-            child: scrollView,
-          );
-        },
+        data: (data) => _scrollableTaskDetailBody(
+          context: context,
+          l10n: l10n,
+          data: data,
+          isWide: isWide,
+        ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) {
           if (e is TaskDetailProjectMismatchException) {
@@ -465,6 +484,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               projectId: widget.projectId,
               message: l10n.taskDetailProjectMismatch,
             );
+          }
+          if (async.hasValue) {
+            final preserved = async.requireValue;
+            if (preserved.task != null || preserved.taskDeleted) {
+              return _scrollableTaskDetailBody(
+                context: context,
+                l10n: l10n,
+                data: preserved,
+                isWide: isWide,
+              );
+            }
           }
           final detail = taskErrorDetail(e);
           return Center(
@@ -501,6 +531,191 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _appBarTitleForDetailState(
+    AppLocalizations l10n,
+    TaskDetailState d,
+  ) {
+    if (d.taskDeleted) {
+      return Text(l10n.taskDetailDeletedTitle);
+    }
+    final t = d.task?.title;
+    if (t != null && t.isNotEmpty) {
+      return Text(
+        t,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+    return Text(l10n.taskDetailAppBarLoading);
+  }
+
+  Widget _scrollableTaskDetailBody({
+    required BuildContext context,
+    required AppLocalizations l10n,
+    required TaskDetailState data,
+    required bool isWide,
+  }) {
+    if (data.taskDeleted) {
+      return _DeletedOrMismatchBody(
+        projectId: widget.projectId,
+        message: l10n.taskDetailDeletedBody,
+      );
+    }
+    if (data.task == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final scrollView = CustomScrollView(
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        ..._realtimeSlivers(context, l10n, data),
+        SliverToBoxAdapter(
+          child: _TaskHeaderSection(
+            l10n: l10n,
+            data: data,
+          ),
+        ),
+        if (!isWide &&
+            data.task != null &&
+            taskDetailLifecyclePanelVisibleForStatus(data.task!.status))
+          SliverToBoxAdapter(
+            child: _TaskLifecycleMobileActions(
+              l10n: l10n,
+              data: data,
+              onPause: () => unawaited(_onPause()),
+              onResume: () => unawaited(_onResume()),
+              onCancel: () => unawaited(_onCancelPressed()),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: _SectionBlock(
+            title: l10n.taskDetailSectionDescription,
+            child: _descriptionBody(context, l10n, data),
+          ),
+        ),
+        if (_hasErrorMessage(data))
+          SliverToBoxAdapter(
+            child: _SectionBlock(
+              title: l10n.taskDetailSectionErrorMessage,
+              child: Text(
+                data.task!.errorMessage!.trim(),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: _SectionBlock(
+            title: l10n.taskDetailSectionResult,
+            child: _resultBody(context, l10n, data),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _SectionBlock(
+            title: l10n.taskDetailSectionDiff,
+            child: _diffBody(context, l10n, data),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _SubtasksSection(
+            projectId: widget.projectId,
+            l10n: l10n,
+            data: data,
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _MessageFiltersBar(
+            l10n: l10n,
+            data: data,
+            onMessageType: (v) async {
+              await _applyMessageTypeFilter(v);
+            },
+            onSenderType: (v) async {
+              await _applySenderTypeFilter(v);
+            },
+          ),
+        ),
+        if (data.messagesLoadMoreError != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: _MessagesLoadMoreErrorBanner(
+                l10n: l10n,
+                error: data.messagesLoadMoreError!,
+                onRetry: () => unawaited(
+                  ref
+                      .read(
+                        taskDetailControllerProvider(
+                          projectId: widget.projectId,
+                          taskId: widget.taskId,
+                        ).notifier,
+                      )
+                      .retryMessagesAfterError(),
+                ),
+              ),
+            ),
+          ),
+        if (data.messages.isEmpty && data.isLoadingMessages)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (data.messages.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                l10n.taskDetailNoMessages,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              // Future-work (12.9+): при вставках не в конец — добавить findChildIndexCallback.
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  _scheduleLoadMoreIfNeeded(
+                    index: index,
+                    messageCount: data.messages.length,
+                    data: data,
+                  );
+                  final msg = data.messages[index];
+                  return RepaintBoundary(
+                    child: _TaskMessageTile(
+                      l10n: l10n,
+                      message: msg,
+                    ),
+                  );
+                },
+                childCount: data.messages.length,
+              ),
+            ),
+          ),
+        if (data.isLoadingMessages &&
+            data.hasMoreMessages &&
+            data.messages.isNotEmpty)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+    if (isWide) {
+      return scrollView;
+    }
+    return RefreshIndicator(
+      onRefresh: _onRefresh,
+      child: scrollView,
     );
   }
 
@@ -603,6 +818,102 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     }
     return out;
   }
+}
+
+List<Widget> _taskDetailLifecycleAppBarActions(
+  AppLocalizations l10n,
+  TaskDetailState data, {
+  required VoidCallback onPause,
+  required VoidCallback onResume,
+  required VoidCallback onCancel,
+}) {
+  final rows = _taskDetailLifecycleActionRows(
+    l10n,
+    data,
+    onPause: onPause,
+    onCancel: onCancel,
+    onResume: onResume,
+  );
+  return [
+    for (final r in rows)
+      if (r.visible)
+        IconButton(
+          tooltip: r.label,
+          onPressed: r.onPressed,
+          icon: r.busy
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(r.icon),
+        ),
+  ];
+}
+
+class _TaskLifecycleMobileActions extends StatelessWidget {
+  const _TaskLifecycleMobileActions({
+    required this.l10n,
+    required this.data,
+    required this.onPause,
+    required this.onResume,
+    required this.onCancel,
+  });
+
+  final AppLocalizations l10n;
+  final TaskDetailState data;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _taskDetailLifecycleActionRows(
+      l10n,
+      data,
+      onPause: onPause,
+      onCancel: onCancel,
+      onResume: onResume,
+    );
+
+    return Padding(
+      key: const ValueKey<String>('task_detail_lifecycle_mobile'),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final r in rows)
+            if (r.visible)
+              _taskLifecycleMobileButton(
+                label: r.label,
+                icon: r.icon,
+                isBusy: r.busy,
+                onPressed: r.onPressed,
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _taskLifecycleMobileButton({
+  required String label,
+  required IconData icon,
+  required bool isBusy,
+  required VoidCallback? onPressed,
+}) {
+  return FilledButton.tonalIcon(
+    onPressed: onPressed,
+    icon: isBusy
+        ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : Icon(icon, size: 20),
+    label: Text(label),
+  );
 }
 
 class _BannerStrip extends StatelessWidget {

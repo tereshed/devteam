@@ -749,6 +749,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskDetailRealtimeServiceFailure => 'Realtime service error';
 
   @override
+  String get taskActionPause => 'Pause';
+
+  @override
+  String get taskActionResume => 'Resume';
+
+  @override
+  String get taskActionCancel => 'Cancel task';
+
+  @override
+  String get taskActionCancelConfirmTitle => 'Cancel this task?';
+
+  @override
+  String get taskActionCancelConfirmBody =>
+      'The task will be marked as cancelled. This cannot be undone.';
+
+  @override
+  String get taskActionConfirm => 'Yes, cancel task';
+
+  @override
+  String get taskActionBlockedByRealtimeSnack =>
+      'Can\'t change the task while updates are temporarily unavailable.';
+
+  @override
   String get taskMessageTypeUnknown => 'Unknown message type';
 
   @override

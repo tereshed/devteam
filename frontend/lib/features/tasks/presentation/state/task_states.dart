@@ -6,6 +6,13 @@ import 'package:frontend/features/tasks/domain/requests.dart';
 
 part 'task_states.freezed.dart';
 
+/// Мутация жизненного цикла задачи в полёте (12.8).
+enum TaskLifecycleMutation {
+  pause,
+  cancel,
+  resume,
+}
+
 /// Состояние списка задач проекта (Kanban / таблица — UI в 12.4).
 @freezed
 abstract class TaskListState with _$TaskListState {
@@ -49,6 +56,8 @@ abstract class TaskDetailState with _$TaskDetailState {
     @Default(false) bool taskDeleted,
     /// Ошибка догрузки сообщений (провайдер остаётся AsyncData).
     Object? messagesLoadMoreError,
+    /// Текущая lifecycle-мутация (mutex pause/cancel/resume), только из контроллера (12.8).
+    TaskLifecycleMutation? lifecycleMutationInFlight,
   }) = _TaskDetailState;
 
   const TaskDetailState._();

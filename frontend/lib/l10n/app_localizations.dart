@@ -1502,6 +1502,48 @@ abstract class AppLocalizations {
   /// **'Сбой realtime-сервиса'**
   String get taskDetailRealtimeServiceFailure;
 
+  /// Кнопка Pause на карточке задачи (12.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Пауза'**
+  String get taskActionPause;
+
+  /// Кнопка Resume (12.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Возобновить'**
+  String get taskActionResume;
+
+  /// Кнопка отмены задачи (12.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить задачу'**
+  String get taskActionCancel;
+
+  /// Заголовок диалога подтверждения отмены (12.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить задачу?'**
+  String get taskActionCancelConfirmTitle;
+
+  /// Текст предупреждения перед отменой задачи (12.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача перейдёт в статус «отменена». Это действие нельзя отменить.'**
+  String get taskActionCancelConfirmBody;
+
+  /// Подтверждение деструктивного действия в диалоге (12.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Да, отменить задачу'**
+  String get taskActionConfirm;
+
+  /// SnackBar при отказе мутации из-за realtime (12.8)
+  ///
+  /// In ru, this message translates to:
+  /// **'Сейчас нельзя изменить задачу: обновления по сети временно недоступны.'**
+  String get taskActionBlockedByRealtimeSnack;
+
   /// Фоллбэк message_type (12.5)
   ///
   /// In ru, this message translates to:
