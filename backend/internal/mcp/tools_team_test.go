@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/service"
+	"gorm.io/datatypes"
 )
 
 func TestTeamGet_Success(t *testing.T) {
@@ -32,6 +34,28 @@ func TestTeamGet_Success(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	tid := uuid.MustParse("99999999-9999-4999-8999-999999999999")
+	aid := uuid.New()
+	agent := models.Agent{
+		ID:       aid,
+		Name:     "Agent1",
+		Role:     models.AgentRoleDeveloper,
+		Skills:   datatypes.JSON([]byte("[]")),
+		Settings: datatypes.JSON([]byte("{}")),
+		IsActive: true,
+		ToolBindings: []models.AgentToolBinding{
+			{
+				AgentID:          aid,
+				ToolDefinitionID: tid,
+				ToolDefinition: &models.ToolDefinition{
+					ID:       tid,
+					Name:     "vector_search",
+					Category: "search",
+				},
+			},
+		},
+	}
+	team.Agents = []models.Agent{agent}
 	teamSvc.On("GetByProjectID", mock.Anything, pid).Return(team, nil)
 
 	result, structured, err := h(ctx, nil, &TeamGetParams{ProjectID: pid.String()})
@@ -39,6 +63,11 @@ func TestTeamGet_Success(t *testing.T) {
 	assert.False(t, result.IsError)
 	data := structured.(*Response).Data.(dto.TeamResponse)
 	assert.Equal(t, team.Name, data.Name)
+	require.Len(t, data.Agents, 1)
+	require.Len(t, data.Agents[0].ToolBindings, 1)
+	assert.Equal(t, tid.String(), data.Agents[0].ToolBindings[0].ToolDefinitionID)
+	assert.Equal(t, "vector_search", data.Agents[0].ToolBindings[0].Name)
+	assert.Equal(t, "search", data.Agents[0].ToolBindings[0].Category)
 	projectSvc.AssertExpectations(t)
 	teamSvc.AssertExpectations(t)
 }
@@ -178,4 +207,33 @@ func TestTeamAgentPatchWireJSON_RejectWhitespaceOnlyModel(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "model")
+}
+
+func TestTeamAgentPatchWireJSON_ToolBindings(t *testing.T) {
+	ids := []string{
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+	}
+	raw, err := teamAgentPatchWireJSON(&TeamAgentPatchParams{
+		ProjectID:         "p",
+		AgentID:           "a",
+		ToolDefinitionIDs: &ids,
+	})
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(raw, &m))
+	tb, ok := m["tool_bindings"].([]any)
+	require.True(t, ok)
+	require.Len(t, tb, 2)
+}
+
+func TestTeamAgentPatchWireJSON_InvalidToolDefinitionIDUUID(t *testing.T) {
+	bad := "not-a-uuid"
+	_, err := teamAgentPatchWireJSON(&TeamAgentPatchParams{
+		ProjectID:         "p",
+		AgentID:           "a",
+		ToolDefinitionIDs: &[]string{bad},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid tool_definition_id")
 }

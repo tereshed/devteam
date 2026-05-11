@@ -360,8 +360,8 @@ User Message
 | 13.1 | Экран: Команда проекта (список агентов, их роли, модели, статус) | `frontend/lib/features/team/presentation/screens/team_screen.dart` | ⬜ | [детали](docs/tasks/13.1-team-screen.md) |
 | 13.2 | Виджет: `AgentCard` (роль, модель, code_backend, on/off) | `frontend/lib/features/team/presentation/widgets/agent_card.dart` | ⬜ | [детали](docs/tasks/13.2-agent-card-widget.md) |
 | 13.3 | Диалог: редактирование агента (модель, промпт, активность, code_backend) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` | ✅ | [детали](docs/tasks/13.3-agent-edit-dialog.md) |
-| 13.3.1 | UI: секция «Инструменты» агента (после расширения API) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` | ⬜ | [детали](docs/tasks/13.3.1-agent-tools-section.md) |
-| 13.4 | Экран: Настройки проекта (git credentials, tech stack, vector index) | `frontend/lib/features/projects/presentation/screens/project_settings_screen.dart` | ⬜ | |
+| 13.3.1 | API и UI: секция «Инструменты» агента (реестр tool_definitions + bindings в team/PATCH) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart`, backend — см. [детали](docs/tasks/13.3.1-agent-tools-section.md) | ✅ | [детали](docs/tasks/13.3.1-agent-tools-section.md) |
+| 13.4 | Экран: Настройки проекта (git credentials, tech stack, vector index) | `frontend/lib/features/projects/presentation/screens/project_settings_screen.dart` | ⬜ | [детали](docs/tasks/13.4-project-settings-screen.md) |
 | 13.5 | Экран: Глобальные настройки (API keys для LLM-провайдеров) | `frontend/lib/features/settings/presentation/screens/settings_screen.dart` | ⬜ | |
 | 13.6 | Локализация | `.arb` файлы | ⬜ | |
 | 13.7 | Widget-тесты | `frontend/test/features/team/` | ⬜ | |

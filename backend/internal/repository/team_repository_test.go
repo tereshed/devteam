@@ -301,3 +301,182 @@ func TestTeamRepository_Cascade_ProjectDelete(t *testing.T) {
 	_, err := NewTeamRepository(db).GetByID(ctx, team.ID)
 	assert.ErrorIs(t, err, ErrTeamNotFound)
 }
+
+func TestTeamRepository_SaveAgentWithToolBindings_Replace(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	_, p := teamTestProject(t, db)
+	team := teamRepoCreate(t, db, p.ID, "bind")
+	ctx := context.Background()
+	skills := datatypes.JSON([]byte("[]"))
+	settings := datatypes.JSON([]byte("{}"))
+
+	td1 := models.ToolDefinition{
+		Name:             "tool-" + uuid.NewString(),
+		Description:      "d",
+		Category:         "cat",
+		ParametersSchema: datatypes.JSON([]byte("{}")),
+		IsActive:         true,
+	}
+	td2 := models.ToolDefinition{
+		Name:             "tool2-" + uuid.NewString(),
+		Description:      "d2",
+		Category:         "cat2",
+		ParametersSchema: datatypes.JSON([]byte("{}")),
+		IsActive:         true,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(&td1).Error)
+	require.NoError(t, db.WithContext(ctx).Create(&td2).Error)
+
+	agent := &models.Agent{
+		Name:     "solo",
+		Role:     models.AgentRoleDeveloper,
+		TeamID:   &team.ID,
+		Skills:   skills,
+		Settings: settings,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(agent).Error)
+
+	repo := NewTeamRepository(db)
+	require.NoError(t, repo.SaveAgentWithToolBindings(ctx, agent, true, []uuid.UUID{td1.ID}))
+
+	var n int64
+	require.NoError(t, db.Model(&models.AgentToolBinding{}).Where("agent_id = ?", agent.ID).Count(&n).Error)
+	assert.Equal(t, int64(1), n)
+
+	require.NoError(t, repo.SaveAgentWithToolBindings(ctx, agent, true, []uuid.UUID{td2.ID}))
+	require.NoError(t, db.Model(&models.AgentToolBinding{}).Where("agent_id = ?", agent.ID).Count(&n).Error)
+	assert.Equal(t, int64(1), n)
+	var got models.AgentToolBinding
+	require.NoError(t, db.Where("agent_id = ?", agent.ID).First(&got).Error)
+	assert.Equal(t, td2.ID, got.ToolDefinitionID)
+}
+
+func TestTeamRepository_SaveAgentWithToolBindings_RepeatedSameSetTouchesUpdatedAt(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	_, p := teamTestProject(t, db)
+	team := teamRepoCreate(t, db, p.ID, "touch-upd")
+	ctx := context.Background()
+	skills := datatypes.JSON([]byte("[]"))
+	settings := datatypes.JSON([]byte("{}"))
+
+	td1 := models.ToolDefinition{
+		Name:             "touch-" + uuid.NewString(),
+		Description:      "d",
+		Category:         "c",
+		ParametersSchema: datatypes.JSON([]byte("{}")),
+		IsActive:         true,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(&td1).Error)
+
+	agent := &models.Agent{
+		Name:     "solo",
+		Role:     models.AgentRoleDeveloper,
+		TeamID:   &team.ID,
+		Skills:   skills,
+		Settings: settings,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(agent).Error)
+
+	repo := NewTeamRepository(db)
+	require.NoError(t, repo.SaveAgentWithToolBindings(ctx, agent, true, []uuid.UUID{td1.ID}))
+
+	var a1 models.Agent
+	require.NoError(t, db.WithContext(ctx).First(&a1, "id = ?", agent.ID).Error)
+	t1 := a1.UpdatedAt
+
+	time.Sleep(15 * time.Millisecond)
+	require.NoError(t, db.WithContext(ctx).First(agent, agent.ID).Error)
+	require.NoError(t, repo.SaveAgentWithToolBindings(ctx, agent, true, []uuid.UUID{td1.ID}))
+
+	var a2 models.Agent
+	require.NoError(t, db.WithContext(ctx).First(&a2, "id = ?", agent.ID).Error)
+	assert.True(t, a2.UpdatedAt.After(t1), "updated_at must advance on identical tool_bindings replace (13.3.1 A.5)")
+}
+
+func TestTeamRepository_SaveAgentWithToolBindings_RollbackOnFK(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	_, p := teamTestProject(t, db)
+	team := teamRepoCreate(t, db, p.ID, "rb")
+	ctx := context.Background()
+	skills := datatypes.JSON([]byte("[]"))
+	settings := datatypes.JSON([]byte("{}"))
+
+	td1 := models.ToolDefinition{
+		Name:             "tkeep-" + uuid.NewString(),
+		Description:      "d",
+		Category:         "c",
+		ParametersSchema: datatypes.JSON([]byte("{}")),
+		IsActive:         true,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(&td1).Error)
+
+	agent := &models.Agent{
+		Name:     "solo",
+		Role:     models.AgentRoleDeveloper,
+		TeamID:   &team.ID,
+		Skills:   skills,
+		Settings: settings,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(agent).Error)
+
+	repo := NewTeamRepository(db)
+	require.NoError(t, repo.SaveAgentWithToolBindings(ctx, agent, true, []uuid.UUID{td1.ID}))
+
+	bad := uuid.New()
+	err := repo.SaveAgentWithToolBindings(ctx, agent, true, []uuid.UUID{bad})
+	require.Error(t, err)
+
+	var n int64
+	require.NoError(t, db.Model(&models.AgentToolBinding{}).Where("agent_id = ?", agent.ID).Count(&n).Error)
+	assert.Equal(t, int64(1), n)
+	var got models.AgentToolBinding
+	require.NoError(t, db.Where("agent_id = ?", agent.ID).First(&got).Error)
+	assert.Equal(t, td1.ID, got.ToolDefinitionID)
+}
+
+func TestTeamRepository_GetByProjectID_PreloadsToolBindings(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	_, p := teamTestProject(t, db)
+	team := teamRepoCreate(t, db, p.ID, "preload-tb")
+	ctx := context.Background()
+	skills := datatypes.JSON([]byte("[]"))
+	settings := datatypes.JSON([]byte("{}"))
+
+	td := models.ToolDefinition{
+		Name:             "pre-" + uuid.NewString(),
+		Description:      "d",
+		Category:         "search",
+		ParametersSchema: datatypes.JSON([]byte("{}")),
+		IsActive:         true,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(&td).Error)
+
+	agent := &models.Agent{
+		Name:     "a1",
+		Role:     models.AgentRoleDeveloper,
+		TeamID:   &team.ID,
+		Skills:   skills,
+		Settings: settings,
+	}
+	require.NoError(t, db.WithContext(ctx).Create(agent).Error)
+	require.NoError(t, db.WithContext(ctx).Create(&models.AgentToolBinding{
+		AgentID:          agent.ID,
+		ToolDefinitionID: td.ID,
+		Config:           datatypes.JSON([]byte("{}")),
+	}).Error)
+
+	got, err := NewTeamRepository(db).GetByProjectID(ctx, p.ID)
+	require.NoError(t, err)
+	require.Len(t, got.Agents, 1)
+	require.Len(t, got.Agents[0].ToolBindings, 1)
+	require.NotNil(t, got.Agents[0].ToolBindings[0].ToolDefinition)
+	assert.Equal(t, td.Name, got.Agents[0].ToolBindings[0].ToolDefinition.Name)
+}

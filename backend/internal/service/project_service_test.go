@@ -117,6 +117,11 @@ func (m *MockTeamRepository) SaveAgent(ctx context.Context, agent *models.Agent)
 	return args.Error(0)
 }
 
+func (m *MockTeamRepository) SaveAgentWithToolBindings(ctx context.Context, agent *models.Agent, replaceBindings bool, bindingToolDefIDs []uuid.UUID) error {
+	args := m.Called(ctx, agent, replaceBindings, bindingToolDefIDs)
+	return args.Error(0)
+}
+
 func (m *MockTeamRepository) Update(ctx context.Context, team *models.Team) error {
 	args := m.Called(ctx, team)
 	return args.Error(0)

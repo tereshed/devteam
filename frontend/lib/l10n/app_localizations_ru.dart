@@ -902,6 +902,26 @@ class AppLocalizationsRu extends AppLocalizations {
       'Сохранено, но не удалось обновить команду';
 
   @override
+  String get teamAgentEditFieldTools => 'Инструменты';
+
+  @override
+  String get teamAgentEditToolsLoadError =>
+      'Не удалось загрузить каталог инструментов';
+
+  @override
+  String get teamAgentEditToolsEmpty => 'Нет доступных инструментов в каталоге';
+
+  @override
+  String get teamAgentEditToolsNoneSelected => 'Инструменты не выбраны';
+
+  @override
+  String get teamAgentEditToolsValidationError =>
+      'Некорректный набор инструментов. Проверьте выбор и попробуйте снова.';
+
+  @override
+  String get teamAgentEditToolsRetry => 'Повторить';
+
+  @override
   String get chatMessageCopyCode => 'Копировать код';
 
   @override

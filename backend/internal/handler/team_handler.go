@@ -35,7 +35,8 @@ func writeTeamHandlerError(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusForbidden, apierror.ErrForbidden, err.Error())
 	case errors.Is(err, service.ErrTeamInvalidName),
 		errors.Is(err, service.ErrTeamAgentInvalidModel),
-		errors.Is(err, service.ErrTeamAgentInvalidCodeBackend):
+		errors.Is(err, service.ErrTeamAgentInvalidCodeBackend),
+		errors.Is(err, service.ErrTeamAgentInvalidToolBindings):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTeamAgentConflict):
 		apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, err.Error())
@@ -138,7 +139,7 @@ func (h *TeamHandler) Update(c *gin.Context) {
 
 // PatchAgent частично обновляет агента команды проекта.
 // @Summary Частичное обновление агента
-// @Description PATCH полей агента: model, prompt_id, code_backend, is_active
+// @Description PATCH полей агента: model, prompt_id, code_backend, is_active, tool_bindings (полная замена привязок или [] для снятия всех)
 // @Tags teams
 // @Security BearerAuth
 // @Security ApiKeyAuth

@@ -16,6 +16,7 @@ func TestPatchAgentRequest_Unmarshal_EmptyObject(t *testing.T) {
 	assert.False(t, p.PromptIDPresent())
 	assert.False(t, p.CodeBackendPresent())
 	assert.False(t, p.IsActivePresent())
+	assert.False(t, p.ToolBindingsPresent())
 }
 
 func TestPatchAgentRequest_Unmarshal_ModelNull(t *testing.T) {
@@ -79,5 +80,35 @@ func TestPatchAgentRequest_Unmarshal_IsActive(t *testing.T) {
 func TestPatchAgentRequest_Unmarshal_IsActiveNullRejected(t *testing.T) {
 	var p PatchAgentRequest
 	err := json.Unmarshal([]byte(`{"is_active":null}`), &p)
+	require.Error(t, err)
+}
+
+func TestPatchAgentRequest_Unmarshal_ToolBindingsOmit(t *testing.T) {
+	var p PatchAgentRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"model":"x"}`), &p))
+	assert.False(t, p.ToolBindingsPresent())
+}
+
+func TestPatchAgentRequest_Unmarshal_ToolBindingsEmptyArray(t *testing.T) {
+	var p PatchAgentRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"tool_bindings":[]}`), &p))
+	assert.True(t, p.ToolBindingsPresent())
+	assert.Len(t, p.ToolBindingsRawIDs(), 0)
+}
+
+func TestPatchAgentRequest_Unmarshal_ToolBindingsValues(t *testing.T) {
+	a := uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	b := uuid.MustParse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+	var p PatchAgentRequest
+	require.NoError(t, json.Unmarshal([]byte(
+		`{"tool_bindings":[{"tool_definition_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},{"tool_definition_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}]}`,
+	), &p))
+	assert.True(t, p.ToolBindingsPresent())
+	assert.Equal(t, []uuid.UUID{a, b}, p.ToolBindingsRawIDs())
+}
+
+func TestPatchAgentRequest_Unmarshal_ToolBindingsNullRejected(t *testing.T) {
+	var p PatchAgentRequest
+	err := json.Unmarshal([]byte(`{"tool_bindings":null}`), &p)
 	require.Error(t, err)
 }

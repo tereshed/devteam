@@ -38,7 +38,7 @@ func RegisterTeamTools(server *mcp.Server, projectSvc service.ProjectService, te
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "team_agent_patch",
-		Description: "Частично обновить агента команды (PATCH /projects/:id/team/agents/:agentId). Поля: clear_model / model, clear_prompt_id / prompt_id, clear_code_backend / code_backend, is_active — см. jsonschema.",
+		Description: "Частично обновить агента команды (PATCH /projects/:id/team/agents/:agentId). Поля: clear_model / model, clear_prompt_id / prompt_id, clear_code_backend / code_backend, is_active, tool_definition_ids (опционально: полная замена привязок; [] — снять все).",
 	}, makeTeamAgentPatchHandler(projectSvc, teamSvc))
 }
 
@@ -54,6 +54,10 @@ type TeamAgentPatchParams struct {
 	ClearCodeBackend bool    `json:"clear_code_backend" jsonschema:"description=Сбросить code_backend в NULL"`
 	CodeBackend      *string `json:"code_backend" jsonschema:"description=Значение code_backend"`
 	IsActive         *bool   `json:"is_active" jsonschema:"description=Активен ли агент"`
+
+	// ToolDefinitionIDs — nil: не менять tool_bindings; указатель на пустой срез: снять все;
+	// непустой срез UUID — полная замена набора (объекты {tool_definition_id} в JSON PATCH).
+	ToolDefinitionIDs *[]string `json:"tool_definition_ids,omitempty" jsonschema:"description=Опционально: UUID инструментов для полной замены привязок; [] снимает все; отсутствие ключа — не менять"`
 }
 
 func teamAgentPatchWireJSON(p *TeamAgentPatchParams) ([]byte, error) {
@@ -93,6 +97,21 @@ func teamAgentPatchWireJSON(p *TeamAgentPatchParams) ([]byte, error) {
 	}
 	if p.IsActive != nil {
 		m["is_active"] = *p.IsActive
+	}
+	if p.ToolDefinitionIDs != nil {
+		arr := make([]map[string]string, 0, len(*p.ToolDefinitionIDs))
+		for _, raw := range *p.ToolDefinitionIDs {
+			s := strings.TrimSpace(raw)
+			if s == "" {
+				return nil, fmt.Errorf("tool_definition_id is empty")
+			}
+			id, err := uuid.Parse(s)
+			if err != nil {
+				return nil, fmt.Errorf("invalid tool_definition_id %q: %w", s, err)
+			}
+			arr = append(arr, map[string]string{"tool_definition_id": id.String()})
+		}
+		m["tool_bindings"] = arr
 	}
 	return json.Marshal(m)
 }
@@ -220,7 +239,8 @@ func teamServiceMCPError(err error) (*mcp.CallToolResult, any, error) {
 	case errors.Is(err, service.ErrTeamAgentNotFound):
 		return Err("agent not found", err)
 	case errors.Is(err, service.ErrTeamAgentInvalidModel),
-		errors.Is(err, service.ErrTeamAgentInvalidCodeBackend):
+		errors.Is(err, service.ErrTeamAgentInvalidCodeBackend),
+		errors.Is(err, service.ErrTeamAgentInvalidToolBindings):
 		return ValidationErr(err.Error())
 	case errors.Is(err, service.ErrTeamAgentConflict):
 		return Err("agent update conflict", err)

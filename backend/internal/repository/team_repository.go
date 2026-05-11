@@ -9,6 +9,7 @@ import (
 	"github.com/devteam/backend/internal/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -24,6 +25,8 @@ type TeamRepository interface {
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error)
 	GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error)
 	SaveAgent(ctx context.Context, agent *models.Agent) error
+	// SaveAgentWithToolBindings атомарно сохраняет агента и при replaceBindings полностью заменяет agent_tool_bindings.
+	SaveAgentWithToolBindings(ctx context.Context, agent *models.Agent, replaceBindings bool, bindingToolDefIDs []uuid.UUID) error
 	Update(ctx context.Context, team *models.Team) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -67,6 +70,7 @@ func (r *teamRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Tea
 		Preload("Agents", func(db *gorm.DB) *gorm.DB {
 			return db.Order("role ASC")
 		}).
+		Preload("Agents.ToolBindings.ToolDefinition").
 		Where("id = ?", id).
 		First(&team).Error
 	if err != nil {
@@ -86,6 +90,7 @@ func (r *teamRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID
 			return db.Order("role ASC")
 		}).
 		Preload("Agents.Prompt").
+		Preload("Agents.ToolBindings.ToolDefinition").
 		Where("project_id = ?", projectID).
 		First(&team).Error
 	if err != nil {
@@ -119,6 +124,44 @@ func (r *teamRepository) SaveAgent(ctx context.Context, agent *models.Agent) err
 		return fmt.Errorf("failed to save agent: %w", err)
 	}
 	return nil
+}
+
+// SaveAgentWithToolBindings сохраняет агента; при replaceBindings удаляет все bindings и вставляет новые (config='{}').
+// replaceBindings: сейчас сервис всегда передаёт true при PATCH tool_bindings (13.3.1). Значение false зарезервировано под будущие сценарии без полной замены (TODO: см. редактируемый config в задаче 13.3.1 A.4).
+func (r *teamRepository) SaveAgentWithToolBindings(ctx context.Context, agent *models.Agent, replaceBindings bool, bindingToolDefIDs []uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		sess := tx.Session(&gorm.Session{FullSaveAssociations: false})
+		if err := sess.Save(agent).Error; err != nil {
+			return fmt.Errorf("failed to save agent: %w", err)
+		}
+		if !replaceBindings {
+			return nil
+		}
+		if err := tx.Where("agent_id = ?", agent.ID).Delete(&models.AgentToolBinding{}).Error; err != nil {
+			return fmt.Errorf("failed to delete tool bindings: %w", err)
+		}
+		emptyCfg := datatypes.JSON([]byte("{}"))
+		if len(bindingToolDefIDs) > 0 {
+			rows := make([]models.AgentToolBinding, len(bindingToolDefIDs))
+			for i, tid := range bindingToolDefIDs {
+				rows[i] = models.AgentToolBinding{
+					AgentID:          agent.ID,
+					ToolDefinitionID: tid,
+					Config:           emptyCfg,
+				}
+			}
+			if err := tx.Create(&rows).Error; err != nil {
+				return fmt.Errorf("failed to insert tool bindings: %w", err)
+			}
+		}
+		// touch updated_at: у models.Agent.UpdatedAt нет тега autoUpdateTime (workflow.go), gorm Save
+		// может не изменить updated_at при отсутствии изменённых полей; инвариант A.5 13.3.1 требует bump
+		// и для tool_bindings: [] / совпадающего множества id — явный UPDATE обязателен (не «дубль autoUpdateTime»).
+		if err := tx.Model(&models.Agent{}).Where("id = ?", agent.ID).Update("updated_at", gorm.Expr("CURRENT_TIMESTAMP")).Error; err != nil {
+			return fmt.Errorf("failed to touch agent updated_at: %w", err)
+		}
+		return nil
+	})
 }
 
 // Update перезаписывает строку через Save (все поля модели).

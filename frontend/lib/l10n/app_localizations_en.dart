@@ -903,6 +903,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get teamAgentEditRefetchError => 'Saved, but failed to refresh team';
 
   @override
+  String get teamAgentEditFieldTools => 'Tools';
+
+  @override
+  String get teamAgentEditToolsLoadError => 'Failed to load tools catalog';
+
+  @override
+  String get teamAgentEditToolsEmpty => 'No tools available in the catalog';
+
+  @override
+  String get teamAgentEditToolsNoneSelected => 'No tools selected';
+
+  @override
+  String get teamAgentEditToolsValidationError =>
+      'Invalid tool selection. Review your choices and try again.';
+
+  @override
+  String get teamAgentEditToolsRetry => 'Retry';
+
+  @override
   String get chatMessageCopyCode => 'Copy code';
 
   @override

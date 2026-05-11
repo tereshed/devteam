@@ -12,7 +12,10 @@ import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_repository.dart';
 import 'package:frontend/features/projects/domain/models/agent_model.dart';
+import 'package:frontend/features/team/domain/models/tool_binding_response_model.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
+import 'package:frontend/features/team/data/tools_providers.dart';
+import 'package:frontend/features/team/data/tools_repository.dart';
 import 'package:frontend/features/team/data/team_repository.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_card.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_edit_dialog.dart';
@@ -42,6 +45,7 @@ void main() {
     String? promptId,
     bool isActive = true,
     String? model = 'm1',
+    List<ToolBindingResponseModel>? toolBindings,
   }) {
     return AgentModel(
       id: agentId,
@@ -52,12 +56,13 @@ void main() {
       promptId: promptId,
       codeBackend: 'claude-code',
       isActive: isActive,
+      toolBindings: toolBindings ?? const [],
     );
   }
 
   MockDio createDio() => MockDio();
 
-  void stubPrompts(MockDio dio) {
+  void _stubPrompts(MockDio dio) {
     when(
       dio.get(
         '/prompts',
@@ -70,6 +75,34 @@ void main() {
         requestOptions: RequestOptions(path: '/prompts'),
       ),
     );
+  }
+
+  void stubToolDefinitions(MockDio dio) {
+    when(
+      dio.get(
+        '/tool-definitions',
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => Response<dynamic>(
+        data: <dynamic>[
+          <String, dynamic>{
+            'id': '11111111-1111-4111-8111-111111111111',
+            'name': 'Tool One',
+            'description': 'd1',
+            'category': 'cat',
+            'is_builtin': true,
+          },
+        ],
+        statusCode: 200,
+        requestOptions: RequestOptions(path: '/tool-definitions'),
+      ),
+    );
+  }
+
+  void stubDialogDio(MockDio dio) {
+    _stubPrompts(dio);
+    stubToolDefinitions(dio);
   }
 
   void stubTeamGet(MockDio dio) {
@@ -101,6 +134,7 @@ void main() {
         teamRepositoryProvider.overrideWithValue(TeamRepository(dio: dio)),
         promptsRepositoryProvider
             .overrideWithValue(PromptsRepository(dio: dio)),
+        toolsRepositoryProvider.overrideWithValue(ToolsRepository(dio: dio)),
       ],
       child: wrapSimple(child, locale: locale, scrollableBody: scrollableBody),
     );
@@ -153,7 +187,7 @@ void main() {
 
   testWidgets('форма: поля видны (широкий)', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     await tester.pumpWidget(
       wrap(
         agentEditDialogBodyForTesting(
@@ -171,11 +205,12 @@ void main() {
     expect(find.text(l10n.teamAgentEditFieldModel), findsWidgets);
     expect(find.text(l10n.teamAgentEditFieldPrompt), findsWidgets);
     expect(find.text(l10n.teamAgentEditFieldCodeBackend), findsWidgets);
+    expect(find.text(l10n.teamAgentEditFieldTools), findsOneWidget);
   });
 
   testWidgets('форма: поля видны (узкий)', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     await tester.pumpWidget(
       wrap(
         agentEditDialogBodyForTesting(
@@ -193,7 +228,7 @@ void main() {
 
   testWidgets('Cancel без изменений — PATCH не вызывается (широкий)', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     await tester.pumpWidget(
       dialogPushedHost(
         dio: dio,
@@ -223,7 +258,7 @@ void main() {
 
   testWidgets('Cancel при dirty — discard, без PATCH', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     await tester.pumpWidget(
       dialogPushedHost(
         dio: dio,
@@ -259,7 +294,7 @@ void main() {
 
   testWidgets('успешное сохранение: PATCH затем GET team (verifyInOrder)', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     stubTeamGet(dio);
     when(
       dio.patch(
@@ -307,7 +342,12 @@ void main() {
         '/projects/$projectId/team/agents/$agentId',
         data: argThat(
           isA<Map<String, dynamic>>()
-              .having((m) => m['is_active'], 'is_active', true),
+              .having((m) => m['is_active'], 'is_active', true)
+              .having(
+                (m) => m.containsKey('tool_bindings'),
+                'no tool_bindings',
+                false,
+              ),
           named: 'data',
         ),
         options: anyNamed('options'),
@@ -323,7 +363,7 @@ void main() {
 
   testWidgets('ошибка PATCH 500 — SnackBar, форма остаётся', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     when(
       dio.patch(
         '/projects/$projectId/team/agents/$agentId',
@@ -377,7 +417,7 @@ void main() {
 
   testWidgets('PATCH 409 — конфликт, без GET team после', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     when(
       dio.patch(
         '/projects/$projectId/team/agents/$agentId',
@@ -474,6 +514,7 @@ void main() {
         cancelToken: anyNamed('cancelToken'),
       ),
     ).thenAnswer((_) => completer.future);
+    stubToolDefinitions(dio);
 
     await tester.pumpWidget(
       wrap(
@@ -499,12 +540,186 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('dispose во время загрузки tool-definitions — без exception', (tester) async {
+    final dio = createDio();
+    _stubPrompts(dio);
+    final completer = Completer<Response<dynamic>>();
+    when(
+      dio.get(
+        '/tool-definitions',
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer((_) => completer.future);
+
+    await tester.pumpWidget(
+      wrap(
+        agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(),
+          useAutofocus: false,
+        ),
+        dio: dio,
+        viewSize: const Size(800, 600),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    completer.complete(
+      Response<dynamic>(
+        data: <dynamic>[],
+        statusCode: 200,
+        requestOptions: RequestOptions(path: '/tool-definitions'),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('13.3.1: пустой каталог — teamAgentEditToolsEmpty', (tester) async {
+    final dio = createDio();
+    _stubPrompts(dio);
+    when(
+      dio.get(
+        '/tool-definitions',
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => Response<dynamic>(
+        data: <dynamic>[],
+        statusCode: 200,
+        requestOptions: RequestOptions(path: '/tool-definitions'),
+      ),
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(),
+          useAutofocus: false,
+        ),
+        dio: dio,
+        viewSize: const Size(800, 600),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsRu();
+    expect(find.text(l10n.teamAgentEditToolsEmpty), findsOneWidget);
+  });
+
+  testWidgets(
+    '13.3.1 B.6: первый GET каталога ок, после тоггла повторный GET падает — PATCH сохраняет локальный выбор',
+    (tester) async {
+      useViewSize(tester, const Size(800, 1200));
+      final dio = createDio();
+      _stubPrompts(dio);
+      final toolsErr = DioException(
+        requestOptions: RequestOptions(path: '/tool-definitions'),
+        type: DioExceptionType.badResponse,
+        response: Response<dynamic>(
+          statusCode: 500,
+          requestOptions: RequestOptions(path: '/tool-definitions'),
+        ),
+      );
+      var toolsGetCount = 0;
+      when(
+        dio.get(
+          '/tool-definitions',
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        toolsGetCount++;
+        if (toolsGetCount == 1) {
+          return Response<dynamic>(
+            data: <dynamic>[
+              <String, dynamic>{
+                'id': '11111111-1111-4111-8111-111111111111',
+                'name': 'Tool One',
+                'description': 'd1',
+                'category': 'cat',
+                'is_builtin': true,
+              },
+            ],
+            statusCode: 200,
+            requestOptions: RequestOptions(path: '/tool-definitions'),
+          );
+        }
+        throw toolsErr;
+      });
+
+      stubTeamGet(dio);
+      when(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: anyNamed('data'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: teamJson(),
+          statusCode: 200,
+          requestOptions: RequestOptions(path: '/p'),
+        ),
+      );
+
+      final agent = sampleAgent(
+        toolBindings: const [
+          ToolBindingResponseModel(
+            toolDefinitionId: '11111111-1111-4111-8111-111111111111',
+            name: 'Tool One',
+            category: 'cat',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        dialogPushedHost(
+          dio: dio,
+          viewSize: const Size(800, 1200),
+          body: agentEditDialogBodyForTesting(
+            projectId: projectId,
+            agent: agent,
+            useAutofocus: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('__open_dialog__'));
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizationsRu();
+      expect(find.byType(FilterChip), findsOneWidget);
+      await tester.tap(find.byType(FilterChip));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('agentEditToolsRefreshCatalog')));
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.teamAgentEditToolsLoadError), findsOneWidget);
+      await tester.tap(find.text(l10n.teamAgentEditSave));
+      await tester.pumpAndSettle();
+      verify(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: argThat(
+            isA<Map<String, dynamic>>().having(
+              (m) => m['tool_bindings'],
+              'tool_bindings',
+              isA<List<dynamic>>().having((l) => l.length, 'len', 0),
+            ),
+            named: 'data',
+          ),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).called(1);
+    },
+  );
+
   // П. 11 (канон): Padding(viewInsets) на узком shell — в showAgentEditDialog; тесты
   // помпают только тело формы — регрессию оболочки см. интеграцию / экран команды.
 
   testWidgets('автофокус поля модели при useAutofocus true', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     await tester.pumpWidget(
       wrap(
         agentEditDialogBodyForTesting(
@@ -522,7 +737,7 @@ void main() {
 
   testWidgets('без автофокуса при useAutofocus false', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     await tester.pumpWidget(
       wrap(
         agentEditDialogBodyForTesting(
@@ -540,7 +755,7 @@ void main() {
 
   testWidgets('двойной Save — один PATCH', (tester) async {
     final dio = createDio();
-    stubPrompts(dio);
+    stubDialogDio(dio);
     stubTeamGet(dio);
     when(
       dio.patch(
@@ -583,6 +798,146 @@ void main() {
       dio.patch(
         any,
         data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).called(1);
+  });
+
+  testWidgets('13.3.1: каталог — FilterChip после загрузки', (tester) async {
+    final dio = createDio();
+    stubDialogDio(dio);
+    await tester.pumpWidget(
+      wrap(
+        agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(),
+          useAutofocus: false,
+        ),
+        dio: dio,
+        viewSize: const Size(800, 600),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FilterChip), findsOneWidget);
+  });
+
+  testWidgets('13.3.1: снять инструмент — PATCH с пустым tool_bindings', (tester) async {
+    final dio = createDio();
+    stubDialogDio(dio);
+    stubTeamGet(dio);
+    when(
+      dio.patch(
+        '/projects/$projectId/team/agents/$agentId',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => Response<dynamic>(
+        data: teamJson(),
+        statusCode: 200,
+        requestOptions: RequestOptions(path: '/p'),
+      ),
+    );
+
+    final agent = sampleAgent(
+      toolBindings: const [
+        ToolBindingResponseModel(
+          toolDefinitionId: '11111111-1111-4111-8111-111111111111',
+          name: 'Tool One',
+          category: 'cat',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      dialogPushedHost(
+        dio: dio,
+        viewSize: const Size(800, 600),
+        body: agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: agent,
+          useAutofocus: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('__open_dialog__'));
+    await tester.pumpAndSettle();
+
+    final chip = find.byType(FilterChip);
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+
+    final l10n = AppLocalizationsRu();
+    await tester.tap(find.text(l10n.teamAgentEditSave));
+    await tester.pumpAndSettle();
+
+    verify(
+      dio.patch(
+        '/projects/$projectId/team/agents/$agentId',
+        data: argThat(
+          isA<Map<String, dynamic>>().having(
+            (m) => m['tool_bindings'],
+            'tool_bindings',
+            isA<List<dynamic>>().having((l) => l.length, 'len', 0),
+          ),
+          named: 'data',
+        ),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).called(1);
+  });
+
+  testWidgets('13.3.1: выбрать инструмент — PATCH с tool_bindings', (tester) async {
+    final dio = createDio();
+    stubDialogDio(dio);
+    stubTeamGet(dio);
+    when(
+      dio.patch(
+        '/projects/$projectId/team/agents/$agentId',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => Response<dynamic>(
+        data: teamJson(),
+        statusCode: 200,
+        requestOptions: RequestOptions(path: '/p'),
+      ),
+    );
+
+    await tester.pumpWidget(
+      dialogPushedHost(
+        dio: dio,
+        viewSize: const Size(800, 600),
+        body: agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(),
+          useAutofocus: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('__open_dialog__'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FilterChip));
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsRu();
+    await tester.tap(find.text(l10n.teamAgentEditSave));
+    await tester.pumpAndSettle();
+
+    verify(
+      dio.patch(
+        '/projects/$projectId/team/agents/$agentId',
+        data: argThat(
+          isA<Map<String, dynamic>>()
+              .having((m) => m.containsKey('tool_bindings'), 'has tb', true),
+          named: 'data',
+        ),
         options: anyNamed('options'),
         cancelToken: anyNamed('cancelToken'),
       ),

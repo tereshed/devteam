@@ -9,7 +9,11 @@ import 'package:frontend/features/projects/domain/models/agent_model.dart'
     show AgentModel, codeBackends;
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
+import 'package:frontend/features/team/data/tools_providers.dart';
+import 'package:frontend/features/team/domain/models/tool_definition_model.dart';
 import 'package:frontend/features/team/domain/team_exceptions.dart';
+import 'package:frontend/features/team/domain/tool_binding_patch_item.dart';
+import 'package:frontend/features/team/domain/tools_exceptions.dart';
 import 'package:frontend/features/team/domain/update_agent_patch.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
@@ -102,9 +106,17 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
 
   CancelToken? _promptsCancel;
   CancelToken? _patchCancel;
+  CancelToken? _toolsCancel;
   bool _promptsLoading = true;
   Object? _promptsError;
   List<Prompt> _prompts = [];
+
+  bool _toolsLoading = true;
+  Object? _toolsError;
+  List<ToolDefinitionModel> _toolDefinitions = [];
+
+  late final Set<String> _initialToolBindingIds;
+  final Set<String> _selectedToolDefIds = {};
 
   String? _promptId;
   bool _promptTouched = false;
@@ -125,11 +137,22 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     _promptId = widget.agent.promptId;
     _codeBackend = widget.agent.codeBackend;
     _isActive = widget.agent.isActive;
-    _promptsCancel = CancelToken();
     _loadPrompts();
+    _initialToolBindingIds = widget.agent.toolBindings
+        .map((b) => b.toolDefinitionId)
+        .toSet();
+    _selectedToolDefIds.addAll(_initialToolBindingIds);
+    _loadToolDefinitions();
   }
 
+  // Ревью: _loadPrompts и _loadToolDefinitions структурно похожи (DRY) — выносить общий шаблон
+  // только при появлении третьей boot-секции (например MCP из миграции 016), YAGNI.
+  //
+  // Повторный параллельный вызов loader из виджета сейчас не используется (нет didUpdateWidget);
+  // отмена предыдущего CancelToken в начале каждого _load* покрывает refresh/retry.
   Future<void> _loadPrompts() async {
+    _promptsCancel?.cancel();
+    _promptsCancel = CancelToken();
     final token = _promptsCancel;
     setState(() {
       _promptsLoading = true;
@@ -168,10 +191,45 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     }
   }
 
+  Future<void> _loadToolDefinitions() async {
+    _toolsCancel?.cancel();
+    _toolsCancel = CancelToken();
+    final token = _toolsCancel;
+    setState(() {
+      _toolsLoading = true;
+      _toolsError = null;
+    });
+    try {
+      final list = await ref.read(toolsRepositoryProvider).fetchToolDefinitions(
+            cancelToken: token,
+          );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _toolDefinitions = list;
+        _toolsLoading = false;
+      });
+      _recomputeDirty();
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      if (e is ToolsCancelledException) {
+        return;
+      }
+      setState(() {
+        _toolsError = e;
+        _toolsLoading = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _promptsCancel?.cancel();
     _patchCancel?.cancel();
+    _toolsCancel?.cancel();
     _modelController.removeListener(_recomputeDirty);
     _modelController.dispose();
     _modelFocus.dispose();
@@ -189,10 +247,25 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     final cbDirty = (_codeBackend ?? '') != (_initial.codeBackend ?? '');
     final activeDirty = _isActive != _initial.isActive;
 
-    final next = modelDirty || promptDirty || cbDirty || activeDirty;
+    final toolsDirty = !_sameToolIdSet(_selectedToolDefIds, _initialToolBindingIds);
+
+    final next =
+        modelDirty || promptDirty || cbDirty || activeDirty || toolsDirty;
     if (next != _dirty) {
       setState(() => _dirty = next);
     }
+  }
+
+  bool _sameToolIdSet(Set<String> a, Set<String> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (final id in a) {
+      if (!b.contains(id)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<bool> _confirmDiscard() async {
@@ -274,11 +347,24 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       activePatch = const Patch<bool>.omit();
     }
 
+    final Patch<List<ToolBindingPatchItem>> toolsPatch;
+    if (!_sameToolIdSet(_selectedToolDefIds, _initialToolBindingIds)) {
+      final sorted = _selectedToolDefIds.toList()..sort();
+      toolsPatch = Patch.value(
+        sorted
+            .map((id) => ToolBindingPatchItem(toolDefinitionId: id))
+            .toList(),
+      );
+    } else {
+      toolsPatch = const Patch<List<ToolBindingPatchItem>>.omit();
+    }
+
     return UpdateAgentPatch(
       model: modelPatch,
       promptId: promptPatch,
       codeBackend: cbPatch,
       isActive: activePatch,
+      toolBindings: toolsPatch,
     );
   }
 
@@ -307,6 +393,21 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
             body,
             cancelToken: patchToken,
           );
+    } on TeamApiException catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        final sentTools = patch.toWireJson().containsKey('tool_bindings');
+        if (e.statusCode == 400 && sentTools) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.teamAgentEditToolsValidationError)),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.teamAgentEditSaveError)),
+          );
+        }
+      }
+      return;
     } on TeamConflictException {
       if (mounted) {
         setState(() => _saving = false);
@@ -455,6 +556,8 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                     _recomputeDirty();
                   },
                 ),
+                const SizedBox(height: 16),
+                _buildToolsSection(l10n, theme),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -499,6 +602,105 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolsSection(AppLocalizations l10n, ThemeData theme) {
+    return KeyedSubtree(
+      key: const Key('agentEditToolsSection'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  l10n.teamAgentEditFieldTools,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              if (!_toolsLoading)
+                IconButton(
+                  key: const Key('agentEditToolsRefreshCatalog'),
+                  tooltip: l10n.teamAgentEditToolsRetry,
+                  onPressed: _saving ? null : () => _loadToolDefinitions(),
+                  icon: const Icon(Icons.refresh_outlined),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_toolsLoading)
+            const SizedBox(
+              height: 56,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (_toolsError != null)
+            InputDecorator(
+              decoration: InputDecoration(
+                labelText: l10n.teamAgentEditFieldTools,
+                border: const OutlineInputBorder(),
+                errorText: l10n.teamAgentEditToolsLoadError,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _saving ? null : () => _loadToolDefinitions(),
+                  child: Text(l10n.teamAgentEditToolsRetry),
+                ),
+              ),
+            )
+          else if (_toolDefinitions.isEmpty)
+            Text(
+              l10n.teamAgentEditToolsEmpty,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else ...[
+            if (_selectedToolDefIds.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  l10n.teamAgentEditToolsNoneSelected,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in _toolDefinitions)
+                  FilterChip(
+                    label: Text('${t.name} (${t.category})'),
+                    selected: _selectedToolDefIds.contains(t.id),
+                    onSelected: _saving
+                        ? null
+                        : (sel) {
+                            setState(() {
+                              if (sel) {
+                                _selectedToolDefIds.add(t.id);
+                              } else {
+                                _selectedToolDefIds.remove(t.id);
+                              }
+                            });
+                            _recomputeDirty();
+                          },
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

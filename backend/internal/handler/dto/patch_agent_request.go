@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -22,6 +23,9 @@ type PatchAgentRequest struct {
 
 	isActiveSet bool
 	isActiveVal bool
+
+	toolBindingsSet bool
+	toolBindingsIDs []uuid.UUID // raw order from JSON; dedup в сервисе
 }
 
 // UnmarshalJSON реализует различие отсутствующего ключа и explicit null.
@@ -86,6 +90,29 @@ func (p *PatchAgentRequest) UnmarshalJSON(data []byte) error {
 		}
 		p.isActiveVal = b
 	}
+	if v, ok := raw["tool_bindings"]; ok {
+		p.toolBindingsSet = true
+		if isJSONNull(v) {
+			return errors.New("tool_bindings cannot be null")
+		}
+		var elems []json.RawMessage
+		if err := json.Unmarshal(v, &elems); err != nil {
+			return err
+		}
+		for _, elem := range elems {
+			var obj struct {
+				ToolDefinitionID string `json:"tool_definition_id"`
+			}
+			if err := json.Unmarshal(elem, &obj); err != nil {
+				return err
+			}
+			id, err := uuid.Parse(strings.TrimSpace(obj.ToolDefinitionID))
+			if err != nil {
+				return err
+			}
+			p.toolBindingsIDs = append(p.toolBindingsIDs, id)
+		}
+	}
 	return nil
 }
 
@@ -142,4 +169,15 @@ func (p PatchAgentRequest) IsActiveValue() (bool, bool) {
 		return false, false
 	}
 	return p.isActiveVal, true
+}
+
+// ToolBindingsPresent true если ключ "tool_bindings" был в JSON.
+func (p PatchAgentRequest) ToolBindingsPresent() bool { return p.toolBindingsSet }
+
+// ToolBindingsRawIDs возвращает распарсенные id (возможны дубликаты; dedup в сервисе).
+func (p PatchAgentRequest) ToolBindingsRawIDs() []uuid.UUID {
+	if !p.toolBindingsSet {
+		return nil
+	}
+	return p.toolBindingsIDs
 }

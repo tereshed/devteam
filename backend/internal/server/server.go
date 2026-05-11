@@ -40,8 +40,9 @@ type Dependencies struct {
 	LLMHandler       *handler.LLMHandler
 	PromptHandler    *handler.PromptHandler
 	ProjectHandler   *handler.ProjectHandler
-	TeamHandler      *handler.TeamHandler
-	TaskHandler      *handler.TaskHandler
+	TeamHandler           *handler.TeamHandler
+	ToolDefinitionHandler *handler.ToolDefinitionHandler
+	TaskHandler           *handler.TaskHandler
 	WorkflowHandler  *handler.WorkflowHandler
 	WebhookHandler   *handler.WebhookHandler
 	JWTManager       *jwt.Manager
@@ -116,6 +117,9 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				authProtected.DELETE("/api-keys/:id", deps.ApiKeyHandler.Delete)
 			}
 		}
+
+		// Каталог tool_definitions (тот же auth, что у /projects)
+		api.GET("/tool-definitions", authMW, deps.ToolDefinitionHandler.List)
 
 		// Projects (авторизованный пользователь)
 		projects := api.Group("/projects")

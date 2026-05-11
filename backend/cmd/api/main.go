@@ -115,6 +115,7 @@ func main() {
 	promptRepo := repository.NewPromptRepository(db)
 	projectRepo := repository.NewProjectRepository(db)
 	teamRepo := repository.NewTeamRepository(db)
+	toolDefRepo := repository.NewToolDefinitionRepository(db)
 	gitCredRepo := repository.NewGitCredentialRepository(db)
 	txManager := repository.NewTransactionManager(db)
 	workflowRepo := repository.NewWorkflowRepository(db)
@@ -203,7 +204,8 @@ func main() {
 		codeIndexer,
 		cfg.Git.ImportDir,
 	)
-	teamService := service.NewTeamService(teamRepo)
+	toolDefinitionService := service.NewToolDefinitionService(toolDefRepo)
+	teamService := service.NewTeamService(teamRepo, toolDefRepo)
 	taskIndexer := indexer.NewTaskIndexer(taskRepo, taskMsgRepo, vectorRepo, slog.Default())
 	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService, txManager, eventBus, taskIndexer, slog.Default())
 
@@ -331,6 +333,7 @@ func main() {
 	promptHandler := handler.NewPromptHandler(promptService)
 	projectHandler := handler.NewProjectHandler(projectService)
 	teamHandler := handler.NewTeamHandler(teamService, projectService)
+	toolDefinitionHandler := handler.NewToolDefinitionHandler(toolDefinitionService)
 	taskHandler := handler.NewTaskHandler(taskService, orchestratorService, taskControlBus)
 	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
@@ -357,6 +360,7 @@ func main() {
 		PromptHandler:    promptHandler,
 		ProjectHandler:   projectHandler,
 		TeamHandler:      teamHandler,
+		ToolDefinitionHandler: toolDefinitionHandler,
 		TaskHandler:      taskHandler,
 		WorkflowHandler:  workflowHandler,
 		WebhookHandler:   webhookHandler,
@@ -383,6 +387,7 @@ func main() {
 			ProjectService:  projectService,
 			TeamService:     teamService,
 			TaskService:     taskService,
+			ToolDefinitionService: toolDefinitionService,
 			OrchestratorSvc: orchestratorService,
 			ApiKeyService:   apiKeyService,
 		})

@@ -40,6 +40,8 @@ CREATE INDEX idx_tool_definitions_is_active ON tool_definitions(is_active) WHERE
 -- === 3. agent_tool_bindings ===
 CREATE TABLE agent_tool_bindings (
     agent_id           UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    -- FK на tool_definitions: имя ограничения по умолчанию в PostgreSQL — agent_tool_bindings_tool_definition_id_fkey
+    -- (см. mapAgentPatchPostgresFK / 13.3.1 A.8).
     tool_definition_id UUID NOT NULL REFERENCES tool_definitions(id) ON DELETE CASCADE,
     config             JSONB NOT NULL DEFAULT '{}',
     created_at         TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

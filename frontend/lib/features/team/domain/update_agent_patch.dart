@@ -1,4 +1,5 @@
 import 'package:frontend/core/json/patch.dart';
+import 'package:frontend/features/team/domain/tool_binding_patch_item.dart';
 
 /// Тело `PATCH /projects/:id/team/agents/:agentId` (зеркало Go `PatchAgentRequest`).
 class UpdateAgentPatch {
@@ -7,12 +8,14 @@ class UpdateAgentPatch {
     this.promptId = const Patch<String?>.omit(),
     this.codeBackend = const Patch<String?>.omit(),
     this.isActive = const Patch<bool>.omit(),
+    this.toolBindings = const Patch<List<ToolBindingPatchItem>>.omit(),
   });
 
   final Patch<String> model;
   final Patch<String?> promptId;
   final Patch<String?> codeBackend;
   final Patch<bool> isActive;
+  final Patch<List<ToolBindingPatchItem>> toolBindings;
 
   Map<String, dynamic> toWireJson() {
     final m = <String, dynamic>{};
@@ -33,6 +36,9 @@ class UpdateAgentPatch {
     }
     if (isActive.isValue) {
       m['is_active'] = isActive.requireValue;
+    }
+    if (toolBindings.isValue) {
+      m['tool_bindings'] = toolBindings.requireValue.map((e) => e.toJson()).toList();
     }
     return m;
   }

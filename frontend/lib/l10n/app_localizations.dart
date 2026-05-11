@@ -1802,6 +1802,42 @@ abstract class AppLocalizations {
   /// **'Сохранено, но не удалось обновить команду'**
   String get teamAgentEditRefetchError;
 
+  /// 13.3.1 заголовок секции инструментов
+  ///
+  /// In ru, this message translates to:
+  /// **'Инструменты'**
+  String get teamAgentEditFieldTools;
+
+  /// 13.3.1 ошибка GET /tool-definitions
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить каталог инструментов'**
+  String get teamAgentEditToolsLoadError;
+
+  /// 13.3.1 пустой каталог
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет доступных инструментов в каталоге'**
+  String get teamAgentEditToolsEmpty;
+
+  /// 13.3.1 подсказка при пустом выборе
+  ///
+  /// In ru, this message translates to:
+  /// **'Инструменты не выбраны'**
+  String get teamAgentEditToolsNoneSelected;
+
+  /// 13.3.1 HTTP 400 при сохранении привязок
+  ///
+  /// In ru, this message translates to:
+  /// **'Некорректный набор инструментов. Проверьте выбор и попробуйте снова.'**
+  String get teamAgentEditToolsValidationError;
+
+  /// 13.3.1 повторная загрузка каталога
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить'**
+  String get teamAgentEditToolsRetry;
+
   /// Подсказка кнопки копирования блока кода в чате
   ///
   /// In ru, this message translates to:

@@ -17,16 +17,24 @@ type TeamResponse struct {
 	UpdatedAt time.Time       `json:"updated_at"`
 }
 
+// ToolBindingResponse — привязка инструмента к агенту (read, HTTP / MCP team).
+type ToolBindingResponse struct {
+	ToolDefinitionID string `json:"tool_definition_id"`
+	Name             string `json:"name"`
+	Category         string `json:"category"`
+}
+
 // AgentResponse — краткое представление агента в составе команды.
 type AgentResponse struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Role        string  `json:"role"`
-	Model       *string `json:"model"`
-	PromptID    *string `json:"prompt_id,omitempty"`
-	PromptName  *string `json:"prompt_name"`
-	CodeBackend *string `json:"code_backend"`
-	IsActive    bool    `json:"is_active"`
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	Role         string                 `json:"role"`
+	Model        *string                `json:"model"`
+	PromptID     *string                `json:"prompt_id,omitempty"`
+	PromptName   *string                `json:"prompt_name"`
+	CodeBackend  *string                `json:"code_backend"`
+	IsActive     bool                   `json:"is_active"`
+	ToolBindings []ToolBindingResponse `json:"tool_bindings"`
 }
 
 // UpdateTeamRequest — частичное обновление команды (пока только имя).
@@ -74,14 +82,30 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 		s := string(*agent.CodeBackend)
 		codeBackend = &s
 	}
+	tb := make([]ToolBindingResponse, 0, len(agent.ToolBindings))
+	for i := range agent.ToolBindings {
+		b := &agent.ToolBindings[i]
+		name := ""
+		category := ""
+		if b.ToolDefinition != nil {
+			name = b.ToolDefinition.Name
+			category = b.ToolDefinition.Category
+		}
+		tb = append(tb, ToolBindingResponse{
+			ToolDefinitionID: b.ToolDefinitionID.String(),
+			Name:             name,
+			Category:         category,
+		})
+	}
 	return AgentResponse{
-		ID:          agent.ID.String(),
-		Name:        agent.Name,
-		Role:        string(agent.Role),
-		Model:       agent.Model,
-		PromptID:    promptID,
-		PromptName:  promptName,
-		CodeBackend: codeBackend,
-		IsActive:    agent.IsActive,
+		ID:           agent.ID.String(),
+		Name:         agent.Name,
+		Role:         string(agent.Role),
+		Model:        agent.Model,
+		PromptID:     promptID,
+		PromptName:   promptName,
+		CodeBackend:  codeBackend,
+		IsActive:     agent.IsActive,
+		ToolBindings: tb,
 	}
 }

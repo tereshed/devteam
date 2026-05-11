@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:frontend/features/team/domain/models/tool_binding_response_model.dart';
 
 part 'agent_model.freezed.dart';
 part 'agent_model.g.dart';
@@ -36,6 +37,11 @@ abstract class AgentModel with _$AgentModel {
     /// Активен ли агент
     @JsonKey(name: 'is_active')
     required bool isActive,
+
+    /// Привязанные инструменты (read-only из GET …/team)
+    @Default(<ToolBindingResponseModel>[])
+    @JsonKey(name: 'tool_bindings')
+    List<ToolBindingResponseModel> toolBindings,
   }) = _AgentModel;
 
   const AgentModel._();

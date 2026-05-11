@@ -175,6 +175,20 @@ func (m *mockTeamService) PatchAgent(ctx context.Context, projectID, agentID uui
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+// --- ToolDefinitionService mock ---
+
+type mockToolDefinitionService struct {
+	mock.Mock
+}
+
+func (m *mockToolDefinitionService) ListActiveCatalog(ctx context.Context) ([]dto.ToolDefinitionListItemResponse, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]dto.ToolDefinitionListItemResponse), args.Error(1)
+}
+
 // --- TaskService mock ---
 
 type mockTaskService struct {
