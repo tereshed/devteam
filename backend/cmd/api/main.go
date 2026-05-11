@@ -10,31 +10,32 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/client"
-	"github.com/pressly/goose/v3"
 	"github.com/devteam/backend/docs"
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler"
 	"github.com/devteam/backend/internal/indexer"
 	mcpserver "github.com/devteam/backend/internal/mcp"
+	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/sandbox"
 	"github.com/devteam/backend/internal/server"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/internal/ws"
+	"github.com/devteam/backend/pkg/agentprompts"
+	"github.com/devteam/backend/pkg/agentsloader"
 	"github.com/devteam/backend/pkg/crypto"
 	"github.com/devteam/backend/pkg/gitprovider"
 	"github.com/devteam/backend/pkg/jwt"
 	"github.com/devteam/backend/pkg/llm/factory"
 	"github.com/devteam/backend/pkg/password"
-	"github.com/devteam/backend/internal/domain/events"
-	"github.com/devteam/backend/internal/ws"
-	"github.com/devteam/backend/pkg/secrets"
-	"github.com/devteam/backend/pkg/agentprompts"
-	"github.com/devteam/backend/pkg/agentsloader"
 	"github.com/devteam/backend/pkg/promptsloader"
+	"github.com/devteam/backend/pkg/secrets"
 	"github.com/devteam/backend/pkg/workflowloader"
+	"github.com/docker/docker/client"
+	"github.com/pressly/goose/v3"
 	"log/slog"
 	"sync"
 
@@ -339,6 +340,11 @@ func main() {
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
 
+	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
+	llmCredRL := middleware.NewLlmCredentialsPatchRateLimiter(30, time.Minute)
+	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
+	llmCredHandler := handler.NewUserLlmCredentialHandler(llmCredSvc)
+
 	// WebSocket Handler
 	wsHandler := ws.NewWebSocketHandler(hub, projectService, ws.HandlerConfig{
 		AllowedOrigins:         cfg.WebSocket.AllowedOrigins,
@@ -354,19 +360,22 @@ func main() {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}, server.Dependencies{
-		AuthHandler:      authHandler,
-		ApiKeyHandler:    apiKeyHandler,
-		LLMHandler:       llmHandler,
-		PromptHandler:    promptHandler,
-		ProjectHandler:   projectHandler,
-		TeamHandler:      teamHandler,
+		AuthHandler:           authHandler,
+		ApiKeyHandler:         apiKeyHandler,
+		LLMHandler:            llmHandler,
+		PromptHandler:         promptHandler,
+		ProjectHandler:        projectHandler,
+		TeamHandler:           teamHandler,
 		ToolDefinitionHandler: toolDefinitionHandler,
-		TaskHandler:      taskHandler,
-		WorkflowHandler:  workflowHandler,
-		WebhookHandler:   webhookHandler,
-		JWTManager:       jwtManager,
-		ApiKeyService:    apiKeyService,
-		WebSocketHandler: wsHandler,
+		TaskHandler:           taskHandler,
+		WorkflowHandler:       workflowHandler,
+		WebhookHandler:        webhookHandler,
+		JWTManager:            jwtManager,
+		ApiKeyService:         apiKeyService,
+		WebSocketHandler:      wsHandler,
+
+		UserLlmCredentialHandler: llmCredHandler,
+		LlmCredentialsPatchRL:    llmCredRL,
 	})
 
 	go func() {
@@ -380,16 +389,16 @@ func main() {
 
 	if cfg.MCP.Enabled {
 		mcpSrv := mcpserver.NewMCPServer(mcpserver.Dependencies{
-			Config:          cfg.MCP,
-			LLMService:      llmService,
-			WorkflowEngine:  workflowEngine,
-			PromptService:   promptService,
-			ProjectService:  projectService,
-			TeamService:     teamService,
-			TaskService:     taskService,
+			Config:                cfg.MCP,
+			LLMService:            llmService,
+			WorkflowEngine:        workflowEngine,
+			PromptService:         promptService,
+			ProjectService:        projectService,
+			TeamService:           teamService,
+			TaskService:           taskService,
 			ToolDefinitionService: toolDefinitionService,
-			OrchestratorSvc: orchestratorService,
-			ApiKeyService:   apiKeyService,
+			OrchestratorSvc:       orchestratorService,
+			ApiKeyService:         apiKeyService,
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)

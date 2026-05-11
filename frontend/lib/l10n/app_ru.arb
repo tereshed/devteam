@@ -334,6 +334,17 @@
   "apiKeysManage": "API-ключи",
   "@apiKeysManage": { "description": "Кнопка перехода к управлению ключами" },
 
+  "globalSettingsScreenTitle": "Глобальные настройки LLM",
+  "@globalSettingsScreenTitle": { "description": "13.5: заголовок экрана и кнопки входа" },
+  "globalSettingsStubIntro": "Ключи LLM-провайдеров (OpenAI, Anthropic, Gemini и др.) для агентов пока настраиваются на сервере. Полный экран с сохранением появится после готовности API.",
+  "@globalSettingsStubIntro": { "description": "13.5 режим B: пояснение" },
+  "globalSettingsBlockedByLabel": "Задача backend в репозитории:",
+  "@globalSettingsBlockedByLabel": { "description": "13.5 режим B: подпись к пути" },
+  "globalSettingsStubApiKeysNote": "Ниже — ключи доступа к приложению DevTeam (MCP). Это не ключи LLM-провайдеров.",
+  "@globalSettingsStubApiKeysNote": { "description": "13.5: отличие от ApiKeysScreen" },
+  "globalSettingsOpenDevTeamApiKeys": "Ключи API приложения",
+  "@globalSettingsOpenDevTeamApiKeys": { "description": "13.5: кнопка на /profile/api-keys" },
+
   "mcpConfigTitle": "Конфигурация MCP",
   "@mcpConfigTitle": { "description": "Заголовок секции MCP" },
   "mcpConfigDescription": "Используйте эту конфигурацию для подключения вашего LLM-клиента (Cursor, Claude Desktop, VS Code Copilot) к этому серверу",

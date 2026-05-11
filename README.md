@@ -362,9 +362,9 @@ User Message
 | 13.3 | Диалог: редактирование агента (модель, промпт, активность, code_backend) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` | ✅ | [детали](docs/tasks/13.3-agent-edit-dialog.md) |
 | 13.3.1 | API и UI: секция «Инструменты» агента (реестр tool_definitions + bindings в team/PATCH) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart`, backend — см. [детали](docs/tasks/13.3.1-agent-tools-section.md) | ✅ | [детали](docs/tasks/13.3.1-agent-tools-section.md) |
 | 13.4 | Экран: Настройки проекта (git credentials, tech stack, vector index) | `frontend/lib/features/projects/presentation/screens/project_settings_screen.dart` | ✅ | [детали](docs/tasks/13.4-project-settings-screen.md) |
-| 13.5 | Экран: Глобальные настройки (API keys для LLM-провайдеров) | `frontend/lib/features/settings/presentation/screens/settings_screen.dart` | ⬜ | |
+| 13.5 | Экран: Глобальные настройки (API keys для LLM-провайдеров) | `frontend/lib/features/settings/presentation/screens/global_settings_screen.dart`, `frontend/test/features/settings/presentation/screens/global_settings_screen_test.dart` | ✅ | [детали](docs/tasks/13.5-global-settings-screen.md) |
 | 13.6 | Локализация | `.arb` файлы | ⬜ | |
-| 13.7 | Widget-тесты | `frontend/test/features/team/` | ⬜ | |
+| 13.7 | Widget-тесты (команда проекта; доп. сценарии для `settings` — только сверх обязательного набора **13.5**, см. [13.5](docs/tasks/13.5-global-settings-screen.md)) | `frontend/test/features/team/`, при расширении — `frontend/test/features/settings/` | ⬜ | |
 
 **Зависимости:** Sprint 2, Sprint 10.
 

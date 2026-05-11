@@ -342,6 +342,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get apiKeysManage => 'API Keys';
 
   @override
+  String get globalSettingsScreenTitle => 'Global LLM settings';
+
+  @override
+  String get globalSettingsStubIntro =>
+      'LLM provider keys (OpenAI, Anthropic, Gemini, etc.) for agents are configured on the server for now. Full editing will be available after the API ships.';
+
+  @override
+  String get globalSettingsBlockedByLabel => 'Backend task in repo:';
+
+  @override
+  String get globalSettingsStubApiKeysNote =>
+      'Below: DevTeam application API keys (MCP). These are not LLM provider keys.';
+
+  @override
+  String get globalSettingsOpenDevTeamApiKeys => 'Application API keys';
+
+  @override
   String get mcpConfigTitle => 'MCP Configuration';
 
   @override

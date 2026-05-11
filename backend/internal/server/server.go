@@ -6,15 +6,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/devteam/backend/internal/handler"
 	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/internal/ws"
 	"github.com/devteam/backend/pkg/jwt"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
 )
 
@@ -35,19 +35,22 @@ type ServerConfig struct {
 
 // Dependencies содержит все зависимости для сервера
 type Dependencies struct {
-	AuthHandler      *handler.AuthHandler
-	ApiKeyHandler    *handler.ApiKeyHandler
-	LLMHandler       *handler.LLMHandler
-	PromptHandler    *handler.PromptHandler
-	ProjectHandler   *handler.ProjectHandler
+	AuthHandler           *handler.AuthHandler
+	ApiKeyHandler         *handler.ApiKeyHandler
+	LLMHandler            *handler.LLMHandler
+	PromptHandler         *handler.PromptHandler
+	ProjectHandler        *handler.ProjectHandler
 	TeamHandler           *handler.TeamHandler
 	ToolDefinitionHandler *handler.ToolDefinitionHandler
 	TaskHandler           *handler.TaskHandler
-	WorkflowHandler  *handler.WorkflowHandler
-	WebhookHandler   *handler.WebhookHandler
-	JWTManager       *jwt.Manager
-	ApiKeyService    service.ApiKeyService
-	WebSocketHandler *ws.WebSocketHandler
+	WorkflowHandler       *handler.WorkflowHandler
+	WebhookHandler        *handler.WebhookHandler
+	JWTManager            *jwt.Manager
+	ApiKeyService         service.ApiKeyService
+	WebSocketHandler      *ws.WebSocketHandler
+
+	UserLlmCredentialHandler *handler.UserLlmCredentialHandler
+	LlmCredentialsPatchRL    *middleware.LlmCredentialsPatchRateLimiter
 }
 
 // New создает новый экземпляр сервера
@@ -116,6 +119,14 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				authProtected.POST("/api-keys/:id/revoke", deps.ApiKeyHandler.Revoke)
 				authProtected.DELETE("/api-keys/:id", deps.ApiKeyHandler.Delete)
 			}
+		}
+
+		// /me/* — канон путей для глобальных настроек пользователя (Sprint 13.5)
+		me := api.Group("/me")
+		me.Use(authMW)
+		{
+			me.GET("/llm-credentials", deps.UserLlmCredentialHandler.Get)
+			me.PATCH("/llm-credentials", deps.LlmCredentialsPatchRL.Handler(), deps.UserLlmCredentialHandler.Patch)
 		}
 
 		// Каталог tool_definitions (тот же auth, что у /projects)

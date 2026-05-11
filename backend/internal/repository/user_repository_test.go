@@ -41,6 +41,8 @@ func cleanupTestDB(t *testing.T, db *gorm.DB) {
 		DELETE FROM executions;
 		DELETE FROM workflows;
 		DELETE FROM agents;
+		DELETE FROM user_llm_credential_audit;
+		DELETE FROM user_llm_credentials;
 		DELETE FROM users;
 		DELETE FROM prompts;
 		DELETE FROM refresh_tokens;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
@@ -67,6 +68,17 @@ class DashboardScreen extends ConsumerWidget {
                         ),
                       ),
                       SizedBox(height: Spacing.medium(context)),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          context.go(AppRoutePaths.settings);
+                        },
+                        icon: const Icon(Icons.tune),
+                        label: Text(l10n.globalSettingsScreenTitle),
+                        style: ElevatedButton.styleFrom(
+                          padding: Spacing.buttonPadding(context),
+                        ),
+                      ),
+                      SizedBox(height: Spacing.small(context)),
                       ElevatedButton.icon(
                         onPressed: () {
                           context.go('/profile');

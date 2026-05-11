@@ -127,6 +127,17 @@
   "apiKeyEmptyHint": "Create a key to use the API from your applications",
   "apiKeysManage": "API Keys",
 
+  "globalSettingsScreenTitle": "Global LLM settings",
+  "@globalSettingsScreenTitle": { "description": "13.5 screen title and entry button" },
+  "globalSettingsStubIntro": "LLM provider keys (OpenAI, Anthropic, Gemini, etc.) for agents are configured on the server for now. Full editing will be available after the API ships.",
+  "@globalSettingsStubIntro": { "description": "13.5 mode B intro" },
+  "globalSettingsBlockedByLabel": "Backend task in repo:",
+  "@globalSettingsBlockedByLabel": { "description": "13.5 mode B label before path" },
+  "globalSettingsStubApiKeysNote": "Below: DevTeam application API keys (MCP). These are not LLM provider keys.",
+  "@globalSettingsStubApiKeysNote": { "description": "13.5 distinction from LLM keys" },
+  "globalSettingsOpenDevTeamApiKeys": "Application API keys",
+  "@globalSettingsOpenDevTeamApiKeys": { "description": "13.5 navigate to /profile/api-keys" },
+
   "mcpConfigTitle": "MCP Configuration",
   "mcpConfigDescription": "Use this configuration to connect your LLM client (Cursor, Claude Desktop, VS Code Copilot) to this server",
   "mcpConfigCopy": "Copy Config",

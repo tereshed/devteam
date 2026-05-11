@@ -29,6 +29,10 @@ const (
 	ErrConflict            = "conflict"
 	ErrUnprocessable       = "unprocessable"
 	ErrTooManyRequests     = "too_many_requests"
+	// ErrUnsupportedMediaType — неверный Content-Type (например PATCH не application/json).
+	ErrUnsupportedMediaType = "unsupported_media_type"
+	// ErrRequestEntityTooLarge — тело запроса превысило лимит (например 8 KiB для LLM credentials PATCH).
+	ErrRequestEntityTooLarge = "request_entity_too_large"
 	// ErrExternalService — сбой внешнего сервиса (GitHub API, git remote и т.д.), HTTP 502.
 	ErrExternalService = "external_service_error"
 )

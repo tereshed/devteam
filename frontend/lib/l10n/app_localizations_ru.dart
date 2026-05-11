@@ -341,6 +341,23 @@ class AppLocalizationsRu extends AppLocalizations {
   String get apiKeysManage => 'API-ключи';
 
   @override
+  String get globalSettingsScreenTitle => 'Глобальные настройки LLM';
+
+  @override
+  String get globalSettingsStubIntro =>
+      'Ключи LLM-провайдеров (OpenAI, Anthropic, Gemini и др.) для агентов пока настраиваются на сервере. Полный экран с сохранением появится после готовности API.';
+
+  @override
+  String get globalSettingsBlockedByLabel => 'Задача backend в репозитории:';
+
+  @override
+  String get globalSettingsStubApiKeysNote =>
+      'Ниже — ключи доступа к приложению DevTeam (MCP). Это не ключи LLM-провайдеров.';
+
+  @override
+  String get globalSettingsOpenDevTeamApiKeys => 'Ключи API приложения';
+
+  @override
   String get mcpConfigTitle => 'Конфигурация MCP';
 
   @override

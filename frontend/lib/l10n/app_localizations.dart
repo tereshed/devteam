@@ -734,6 +734,36 @@ abstract class AppLocalizations {
   /// **'API-ключи'**
   String get apiKeysManage;
 
+  /// 13.5: заголовок экрана и кнопки входа
+  ///
+  /// In ru, this message translates to:
+  /// **'Глобальные настройки LLM'**
+  String get globalSettingsScreenTitle;
+
+  /// 13.5 режим B: пояснение
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключи LLM-провайдеров (OpenAI, Anthropic, Gemini и др.) для агентов пока настраиваются на сервере. Полный экран с сохранением появится после готовности API.'**
+  String get globalSettingsStubIntro;
+
+  /// 13.5 режим B: подпись к пути
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача backend в репозитории:'**
+  String get globalSettingsBlockedByLabel;
+
+  /// 13.5: отличие от ApiKeysScreen
+  ///
+  /// In ru, this message translates to:
+  /// **'Ниже — ключи доступа к приложению DevTeam (MCP). Это не ключи LLM-провайдеров.'**
+  String get globalSettingsStubApiKeysNote;
+
+  /// 13.5: кнопка на /profile/api-keys
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключи API приложения'**
+  String get globalSettingsOpenDevTeamApiKeys;
+
   /// Заголовок секции MCP
   ///
   /// In ru, this message translates to:

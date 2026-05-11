@@ -29,6 +29,8 @@ func cleanupProjectIntegrationDB(t *testing.T, db *gorm.DB) {
 		DELETE FROM teams;
 		DELETE FROM projects;
 		DELETE FROM git_credentials;
+		DELETE FROM user_llm_credential_audit;
+		DELETE FROM user_llm_credentials;
 		DELETE FROM llm_logs;
 		DELETE FROM scheduled_workflows;
 		DELETE FROM execution_steps;

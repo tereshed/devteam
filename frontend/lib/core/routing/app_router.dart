@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/core/routing/auth_guard.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
 import 'package:frontend/core/routing/root_router_redirect.dart';
@@ -17,6 +18,7 @@ import 'package:frontend/features/landing/presentation/screens/landing_screen.da
 import 'package:frontend/features/projects/presentation/screens/create_project_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/project_dashboard_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/projects_list_screen.dart';
+import 'package:frontend/features/settings/presentation/screens/global_settings_screen.dart';
 import 'package:go_router/go_router.dart';
 
 /// Ключи вложенных [Navigator] для веток дашборда проекта (StatefulShellRoute).
@@ -86,11 +88,20 @@ class AppRouter {
             MaterialPage(key: state.pageKey, child: const ProfileScreen()),
       ),
       GoRoute(
-        path: '/profile/api-keys',
+        path: AppRoutePaths.profileApiKeys,
         name: 'api_keys',
         redirect: authGuard,
         pageBuilder: (context, state) =>
             MaterialPage(key: state.pageKey, child: const ApiKeysScreen()),
+      ),
+      GoRoute(
+        path: AppRoutePaths.settings,
+        name: AppRouteNames.globalSettings,
+        redirect: authGuard,
+        pageBuilder: (context, state) => MaterialPage(
+          key: state.pageKey,
+          child: const GlobalSettingsScreen(),
+        ),
       ),
 
       GoRoute(
