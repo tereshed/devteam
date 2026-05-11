@@ -24,6 +24,10 @@ abstract class AgentModel with _$AgentModel {
     @JsonKey(name: 'prompt_name')
     String? promptName,
 
+    /// UUID промпта (wire `prompt_id`); для PATCH и выбора в UI
+    @JsonKey(name: 'prompt_id')
+    String? promptId,
+
     /// Бэкенд для выполнения (claude-code | aider | custom)
     /// Nullable: не все агенты выполняют код в sandbox
     @JsonKey(name: 'code_backend')

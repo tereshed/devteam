@@ -164,7 +164,7 @@ void main() {
       );
     });
 
-    test('409 maps to TeamApiException (GET без конфликта до 13.3)', () async {
+    test('409 maps to TeamConflictException', () async {
       when(
         mockDio.get(
           '/projects/$projectId/team',
@@ -184,13 +184,7 @@ void main() {
 
       expect(
         () => repository.getTeam(projectId),
-        throwsA(
-          isA<TeamApiException>().having(
-            (e) => e.statusCode,
-            'statusCode',
-            409,
-          ),
-        ),
+        throwsA(isA<TeamConflictException>()),
       );
     });
 
@@ -314,6 +308,74 @@ void main() {
       expect(
         () => repository.getTeam(projectId),
         throwsA(isA<TeamCancelledException>()),
+      );
+    });
+  });
+
+  group('patchAgent', () {
+    const agentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    test('success', () async {
+      when(
+        mockDio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: anyNamed('data'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: teamJson(),
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/$projectId/team/agents/$agentId',
+          ),
+        ),
+      );
+
+      final team = await repository.patchAgent(
+        projectId,
+        agentId,
+        <String, dynamic>{'is_active': false},
+      );
+      expect(team.name, 'Dev Team');
+      verify(
+        mockDio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: {'is_active': false},
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).called(1);
+    });
+
+    test('409 TeamConflictException', () async {
+      when(
+        mockDio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: anyNamed('data'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenThrow(
+        DioException(
+          requestOptions: RequestOptions(
+            path: '/projects/$projectId/team/agents/$agentId',
+          ),
+          response: Response<Map<String, dynamic>>(
+            data: {'error': 'conflict', 'message': 'x'},
+            statusCode: 409,
+            requestOptions: RequestOptions(
+              path: '/projects/$projectId/team/agents/$agentId',
+            ),
+          ),
+          type: DioExceptionType.badResponse,
+        ),
+      );
+
+      expect(
+        () => repository.patchAgent(projectId, agentId, {'model': 'x'}),
+        throwsA(isA<TeamConflictException>()),
       );
     });
   });

@@ -104,6 +104,19 @@ func (m *MockTeamRepository) GetByProjectID(ctx context.Context, projectID uuid.
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+func (m *MockTeamRepository) GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, projectID, agentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *MockTeamRepository) SaveAgent(ctx context.Context, agent *models.Agent) error {
+	args := m.Called(ctx, agent)
+	return args.Error(0)
+}
+
 func (m *MockTeamRepository) Update(ctx context.Context, team *models.Team) error {
 	args := m.Called(ctx, team)
 	return args.Error(0)

@@ -60,6 +60,7 @@ void main() {
         role: 'developer',
         model: 'claude-opus-4-7',
         promptName: 'Dev',
+        promptId: null,
         codeBackend: 'claude-code',
         isActive: true,
       );

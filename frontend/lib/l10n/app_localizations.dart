@@ -1694,6 +1694,114 @@ abstract class AppLocalizations {
   /// **'Неактивен'**
   String get teamAgentInactive;
 
+  /// 13.3 заголовок диалога
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактирование агента'**
+  String get teamAgentEditTitle;
+
+  /// 13.3 подпись поля
+  ///
+  /// In ru, this message translates to:
+  /// **'Модель LLM'**
+  String get teamAgentEditFieldModel;
+
+  /// 13.3 подпись поля
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпт'**
+  String get teamAgentEditFieldPrompt;
+
+  /// 13.3 подпись поля
+  ///
+  /// In ru, this message translates to:
+  /// **'Code backend'**
+  String get teamAgentEditFieldCodeBackend;
+
+  /// 13.3 переключатель
+  ///
+  /// In ru, this message translates to:
+  /// **'Активен'**
+  String get teamAgentEditFieldActive;
+
+  /// 13.3 кнопка сохранить
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get teamAgentEditSave;
+
+  /// 13.3 кнопка отмена
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get teamAgentEditCancel;
+
+  /// 13.3 заголовок discard
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить изменения?'**
+  String get teamAgentEditDiscardTitle;
+
+  /// 13.3 текст discard
+  ///
+  /// In ru, this message translates to:
+  /// **'Черновик будет потерян.'**
+  String get teamAgentEditDiscardBody;
+
+  /// 13.3 общая ошибка сохранения
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить агента'**
+  String get teamAgentEditSaveError;
+
+  /// 13.3 HTTP 403 при сохранении агента
+  ///
+  /// In ru, this message translates to:
+  /// **'Недостаточно прав для сохранения агента'**
+  String get teamAgentEditSaveForbidden;
+
+  /// 13.3 снек при 409
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменение отклонено (конфликт). Попробуйте снова.'**
+  String get teamAgentEditConflictError;
+
+  /// 13.3 пустой список промптов
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет доступных промптов'**
+  String get teamAgentEditNoPrompts;
+
+  /// 13.3 ошибка GET промптов
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить промпты'**
+  String get teamAgentEditPromptsLoadError;
+
+  /// 13.3 пункт сброса промпта
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпт не выбран'**
+  String get teamAgentEditPromptNone;
+
+  /// 13.3 сброс опционального поля (code backend)
+  ///
+  /// In ru, this message translates to:
+  /// **'Не задано'**
+  String get teamAgentEditUnset;
+
+  /// 13.3 подтверждение discard
+  ///
+  /// In ru, this message translates to:
+  /// **'Сбросить'**
+  String get teamAgentEditDiscardConfirm;
+
+  /// 13.3 снек после закрытия при ошибке перезагрузки
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранено, но не удалось обновить команду'**
+  String get teamAgentEditRefetchError;
+
   /// Подсказка кнопки копирования блока кода в чате
   ///
   /// In ru, this message translates to:

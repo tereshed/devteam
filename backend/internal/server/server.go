@@ -131,6 +131,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			// Вложенный ресурс team — до /:id, иначе Gin сопоставит "team" как :id
 			projects.GET("/:id/team", deps.TeamHandler.GetByProjectID)
 			projects.PUT("/:id/team", deps.TeamHandler.Update)
+			projects.PATCH("/:id/team/agents/:agentId", deps.TeamHandler.PatchAgent)
 
 			projects.POST("/:id/tasks", deps.TaskHandler.Create)
 			projects.GET("/:id/tasks", deps.TaskHandler.List)

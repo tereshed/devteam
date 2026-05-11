@@ -25,7 +25,7 @@ class TeamRepository {
   /// Throws [TeamProjectMismatchException] если `project_id` в ответе ≠ [projectId].
   /// Throws [TeamNotFoundException] на 404, [TeamForbiddenException] на 403,
   /// [UnauthorizedException] на 401, [TeamCancelledException] при отмене,
-  /// [TeamApiException] на прочие ошибки HTTP, в т.ч. 409 до появления PUT в 13.3.
+  /// [TeamApiException] на прочие ошибки HTTP (GET **409** → [TeamConflictException]).
   Future<TeamModel> getTeam(
     String projectId, {
     CancelToken? cancelToken,
@@ -37,6 +37,39 @@ class TeamRepository {
     try {
       final response = await _dio.get(
         '/projects/$projectId/team',
+        cancelToken: cancelToken,
+      );
+      final team = TeamModel.fromJson(_jsonBody(response));
+      if (team.projectId != projectId) {
+        throw TeamProjectMismatchException(
+          'expected projectId $projectId, got ${team.projectId}',
+        );
+      }
+      return team;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Throws [TeamConflictException] на **409**.
+  Future<TeamModel> patchAgent(
+    String projectId,
+    String agentId,
+    Map<String, dynamic> body, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+    if (agentId.isEmpty) {
+      throw ArgumentError('agentId is required');
+    }
+
+    try {
+      final response = await _dio.patch(
+        '/projects/$projectId/team/agents/$agentId',
+        data: body,
+        options: Options(contentType: 'application/json'),
         cancelToken: cancelToken,
       );
       final team = TeamModel.fromJson(_jsonBody(response));
@@ -73,7 +106,10 @@ class TeamRepository {
         originalError: err,
         apiErrorCode: code,
       ),
-      on409: null,
+      on409: (msg, err, code) => TeamConflictException(
+        msg,
+        originalError: err,
+      ),
       onOtherHttp: (msg, err, code, status) => TeamApiException(
         msg,
         statusCode: status,

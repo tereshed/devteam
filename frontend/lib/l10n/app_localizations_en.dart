@@ -847,6 +847,62 @@ class AppLocalizationsEn extends AppLocalizations {
   String get teamAgentInactive => 'Inactive';
 
   @override
+  String get teamAgentEditTitle => 'Edit agent';
+
+  @override
+  String get teamAgentEditFieldModel => 'LLM model';
+
+  @override
+  String get teamAgentEditFieldPrompt => 'Prompt';
+
+  @override
+  String get teamAgentEditFieldCodeBackend => 'Code backend';
+
+  @override
+  String get teamAgentEditFieldActive => 'Active';
+
+  @override
+  String get teamAgentEditSave => 'Save';
+
+  @override
+  String get teamAgentEditCancel => 'Cancel';
+
+  @override
+  String get teamAgentEditDiscardTitle => 'Discard changes?';
+
+  @override
+  String get teamAgentEditDiscardBody => 'Your edits will be lost.';
+
+  @override
+  String get teamAgentEditSaveError => 'Could not save agent';
+
+  @override
+  String get teamAgentEditSaveForbidden =>
+      'You do not have permission to save this agent';
+
+  @override
+  String get teamAgentEditConflictError =>
+      'Update rejected (conflict). Try again.';
+
+  @override
+  String get teamAgentEditNoPrompts => 'No prompts available';
+
+  @override
+  String get teamAgentEditPromptsLoadError => 'Failed to load prompts';
+
+  @override
+  String get teamAgentEditPromptNone => 'No prompt';
+
+  @override
+  String get teamAgentEditUnset => 'Not set';
+
+  @override
+  String get teamAgentEditDiscardConfirm => 'Discard';
+
+  @override
+  String get teamAgentEditRefetchError => 'Saved, but failed to refresh team';
+
+  @override
   String get chatMessageCopyCode => 'Copy code';
 
   @override

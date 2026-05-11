@@ -12,6 +12,7 @@ var (
 	ErrProjectNotFound = errors.New("project not found")
 	ErrProjectNameExists = errors.New("project with this name already exists")
 	ErrAgentNotFound   = errors.New("agent not found")
+	ErrTeamAgentNotFound = errors.New("agent not found for project team")
 
 	// Ошибки Conversation
 	ErrConversationNotFound      = errors.New("conversation not found")

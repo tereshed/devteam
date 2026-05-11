@@ -24,8 +24,7 @@ class PromptsListScreen extends ConsumerWidget {
           },
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) =>
-            Center(child: Text('${l10n.dataLoadError}: $err')),
+        error: (err, stack) => Center(child: Text(l10n.dataLoadError)),
       ),
     );
   }

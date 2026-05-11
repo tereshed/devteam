@@ -845,6 +845,63 @@ class AppLocalizationsRu extends AppLocalizations {
   String get teamAgentInactive => 'Неактивен';
 
   @override
+  String get teamAgentEditTitle => 'Редактирование агента';
+
+  @override
+  String get teamAgentEditFieldModel => 'Модель LLM';
+
+  @override
+  String get teamAgentEditFieldPrompt => 'Промпт';
+
+  @override
+  String get teamAgentEditFieldCodeBackend => 'Code backend';
+
+  @override
+  String get teamAgentEditFieldActive => 'Активен';
+
+  @override
+  String get teamAgentEditSave => 'Сохранить';
+
+  @override
+  String get teamAgentEditCancel => 'Отмена';
+
+  @override
+  String get teamAgentEditDiscardTitle => 'Отменить изменения?';
+
+  @override
+  String get teamAgentEditDiscardBody => 'Черновик будет потерян.';
+
+  @override
+  String get teamAgentEditSaveError => 'Не удалось сохранить агента';
+
+  @override
+  String get teamAgentEditSaveForbidden =>
+      'Недостаточно прав для сохранения агента';
+
+  @override
+  String get teamAgentEditConflictError =>
+      'Изменение отклонено (конфликт). Попробуйте снова.';
+
+  @override
+  String get teamAgentEditNoPrompts => 'Нет доступных промптов';
+
+  @override
+  String get teamAgentEditPromptsLoadError => 'Не удалось загрузить промпты';
+
+  @override
+  String get teamAgentEditPromptNone => 'Промпт не выбран';
+
+  @override
+  String get teamAgentEditUnset => 'Не задано';
+
+  @override
+  String get teamAgentEditDiscardConfirm => 'Сбросить';
+
+  @override
+  String get teamAgentEditRefetchError =>
+      'Сохранено, но не удалось обновить команду';
+
+  @override
   String get chatMessageCopyCode => 'Копировать код';
 
   @override

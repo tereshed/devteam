@@ -49,6 +49,7 @@ AgentModel _baseAgent({
     role: role,
     model: model,
     promptName: promptName,
+    promptId: null,
     codeBackend: codeBackend,
     isActive: isActive,
   );

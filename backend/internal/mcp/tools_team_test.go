@@ -123,3 +123,59 @@ func TestTeamUpdate_InvalidName(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 }
+
+func TestTeamAgentPatch_Success(t *testing.T) {
+	projectSvc := new(mockProjectService)
+	teamSvc := new(mockTeamService)
+	h := makeTeamAgentPatchHandler(projectSvc, teamSvc)
+	ctx := testUserCtx(t)
+	uid, _ := UserIDFromContext(ctx)
+
+	pid := uuid.New()
+	aid := uuid.New()
+	now := time.Now().UTC()
+	projectSvc.On("GetByID", mock.Anything, uid, models.RoleUser, pid).Return(&models.Project{ID: pid, UserID: uid}, nil)
+
+	updated := &models.Team{
+		ID:        uuid.New(),
+		Name:      "T",
+		ProjectID: pid,
+		Type:      models.TeamTypeDevelopment,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	teamSvc.On("PatchAgent", mock.Anything, pid, aid, mock.AnythingOfType("dto.PatchAgentRequest")).Return(updated, nil)
+
+	active := true
+	result, structured, err := h(ctx, nil, &TeamAgentPatchParams{
+		ProjectID: pid.String(),
+		AgentID:   aid.String(),
+		IsActive:  &active,
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	data := structured.(*Response).Data.(dto.TeamResponse)
+	assert.Equal(t, updated.Name, data.Name)
+}
+
+func TestTeamAgentPatchWireJSON_RejectEmptyPromptID(t *testing.T) {
+	empty := ""
+	_, err := teamAgentPatchWireJSON(&TeamAgentPatchParams{
+		ProjectID: "p",
+		AgentID:   "a",
+		PromptID:  &empty,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "prompt_id")
+}
+
+func TestTeamAgentPatchWireJSON_RejectWhitespaceOnlyModel(t *testing.T) {
+	spaces := "   "
+	_, err := teamAgentPatchWireJSON(&TeamAgentPatchParams{
+		ProjectID: "p",
+		AgentID:   "a",
+		Model:     &spaces,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "model")
+}

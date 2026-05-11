@@ -40,6 +40,14 @@ func (m *MockTeamService) Update(ctx context.Context, projectID uuid.UUID, req d
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+func (m *MockTeamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UUID, req dto.PatchAgentRequest) (*models.Team, error) {
+	args := m.Called(ctx, projectID, agentID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
 func setupTeamRouter(teamMock *MockTeamService, projectMock *MockProjectService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -54,6 +62,7 @@ func setupTeamRouter(teamMock *MockTeamService, projectMock *MockProjectService,
 	}
 	g.GET("/:id/team", h.GetByProjectID)
 	g.PUT("/:id/team", h.Update)
+	g.PATCH("/:id/team/agents/:agentId", h.PatchAgent)
 	return r
 }
 
@@ -76,10 +85,12 @@ func sampleTeamWithAgents(projectID uuid.UUID, nAgents int) *models.Team {
 	for i := 0; i < nAgents && i < len(agentIDs); i++ {
 		name := "agent"
 		cb := models.CodeBackendClaudeCode
+		tid := team.ID
 		team.Agents = append(team.Agents, models.Agent{
 			ID:          agentIDs[i],
 			Name:        name,
 			Role:        models.AgentRoleDeveloper,
+			TeamID:      &tid,
 			Model:       &name,
 			CodeBackend: &cb,
 			IsActive:    true,
@@ -293,4 +304,59 @@ func TestTeam_Update_TeamNotFound(t *testing.T) {
 	setupTeamRouter(teamMock, projectMock, true).ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestTeam_PatchAgent_InvalidAgentUUID(t *testing.T) {
+	teamMock := new(MockTeamService)
+	projectMock := new(MockProjectService)
+	pid := sampleProject().ID
+	projectMock.On("GetByID", mock.Anything, testProjectUserID, models.RoleUser, pid).Return(sampleProject(), nil)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/projects/"+pid.String()+"/team/agents/bad", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	setupTeamRouter(teamMock, projectMock, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	teamMock.AssertNotCalled(t, "PatchAgent")
+}
+
+func TestTeam_PatchAgent_Success(t *testing.T) {
+	teamMock := new(MockTeamService)
+	projectMock := new(MockProjectService)
+	pid := sampleProject().ID
+	aid := uuid.MustParse("44444444-4444-4444-4444-444444444441")
+	team := sampleTeamWithAgents(pid, 1)
+
+	projectMock.On("GetByID", mock.Anything, testProjectUserID, models.RoleUser, pid).Return(sampleProject(), nil)
+	teamMock.On("PatchAgent", mock.Anything, pid, aid, mock.AnythingOfType("dto.PatchAgentRequest")).Return(team, nil)
+
+	w := httptest.NewRecorder()
+	body := `{"is_active":false}`
+	req := httptest.NewRequest(http.MethodPatch, "/projects/"+pid.String()+"/team/agents/"+aid.String(), bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	setupTeamRouter(teamMock, projectMock, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var got dto.TeamResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Equal(t, team.Name, got.Name)
+	teamMock.AssertExpectations(t)
+}
+
+func TestTeam_PatchAgent_Conflict(t *testing.T) {
+	teamMock := new(MockTeamService)
+	projectMock := new(MockProjectService)
+	pid := sampleProject().ID
+	aid := uuid.MustParse("44444444-4444-4444-4444-444444444441")
+
+	projectMock.On("GetByID", mock.Anything, testProjectUserID, models.RoleUser, pid).Return(sampleProject(), nil)
+	teamMock.On("PatchAgent", mock.Anything, pid, aid, mock.Anything).Return(nil, service.ErrTeamAgentConflict)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/projects/"+pid.String()+"/team/agents/"+aid.String(), bytes.NewBufferString(`{"model":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	setupTeamRouter(teamMock, projectMock, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
 }

@@ -4,6 +4,7 @@ import 'package:frontend/core/widgets/data_load_error_message.dart';
 import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_card.dart';
+import 'package:frontend/features/team/presentation/widgets/agent_edit_dialog.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
 /// Вкладка «Команда»: состав без второго [Scaffold] (13.1).
@@ -75,6 +76,11 @@ class TeamScreen extends ConsumerWidget {
                   child: AgentCard(
                     key: ValueKey(agent.id),
                     agent: agent,
+                    onTap: () => showAgentEditDialog(
+                      context,
+                      projectId: projectId,
+                      agent: agent,
+                    ),
                   ),
                 );
               },

@@ -22,6 +22,8 @@ type TeamRepository interface {
 	Create(ctx context.Context, team *models.Team) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Team, error)
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error)
+	GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error)
+	SaveAgent(ctx context.Context, agent *models.Agent) error
 	Update(ctx context.Context, team *models.Team) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -93,6 +95,30 @@ func (r *teamRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID
 		return nil, fmt.Errorf("failed to get team by project id: %w", err)
 	}
 	return &team, nil
+}
+
+// GetAgentInProject возвращает агента, если он принадлежит команде указанного проекта.
+func (r *teamRepository) GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error) {
+	var agent models.Agent
+	err := r.db.WithContext(ctx).
+		Joins("INNER JOIN teams ON teams.id = agents.team_id").
+		Where("teams.project_id = ? AND agents.id = ?", projectID, agentID).
+		First(&agent).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTeamAgentNotFound
+		}
+		return nil, fmt.Errorf("failed to get agent in project: %w", err)
+	}
+	return &agent, nil
+}
+
+// SaveAgent сохраняет поля агента без каскада на связи.
+func (r *teamRepository) SaveAgent(ctx context.Context, agent *models.Agent) error {
+	if err := r.db.WithContext(ctx).Session(&gorm.Session{FullSaveAssociations: false}).Save(agent).Error; err != nil {
+		return fmt.Errorf("failed to save agent: %w", err)
+	}
+	return nil
 }
 
 // Update перезаписывает строку через Save (все поля модели).

@@ -81,6 +81,24 @@ class TeamNotFoundException extends TeamRepositoryException {
   int get hashCode => Object.hash(runtimeType, message, apiErrorCode);
 }
 
+/// Конфликт при сохранении агента (**409**).
+@immutable
+class TeamConflictException extends TeamRepositoryException {
+  TeamConflictException(String detail, {Object? originalError})
+      : super('Conflict: $detail', originalError: originalError);
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is TeamConflictException && message == other.message;
+  }
+
+  @override
+  int get hashCode => Object.hash(runtimeType, message);
+}
+
 /// Общая ошибка API (4xx/5xx).
 @immutable
 class TeamApiException extends TeamRepositoryException {

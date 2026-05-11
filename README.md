@@ -359,17 +359,18 @@ User Message
 |---|--------|-------|--------|
 | 13.1 | Экран: Команда проекта (список агентов, их роли, модели, статус) | `frontend/lib/features/team/presentation/screens/team_screen.dart` | ⬜ | [детали](docs/tasks/13.1-team-screen.md) |
 | 13.2 | Виджет: `AgentCard` (роль, модель, code_backend, on/off) | `frontend/lib/features/team/presentation/widgets/agent_card.dart` | ⬜ | [детали](docs/tasks/13.2-agent-card-widget.md) |
-| 13.3 | Диалог: редактирование агента (модель, промпт, tools) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` | ⬜ | |
+| 13.3 | Диалог: редактирование агента (модель, промпт, активность, code_backend) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` | ✅ | [детали](docs/tasks/13.3-agent-edit-dialog.md) |
+| 13.3.1 | UI: секция «Инструменты» агента (после расширения API) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` | ⬜ | [детали](docs/tasks/13.3.1-agent-tools-section.md) |
 | 13.4 | Экран: Настройки проекта (git credentials, tech stack, vector index) | `frontend/lib/features/projects/presentation/screens/project_settings_screen.dart` | ⬜ | |
 | 13.5 | Экран: Глобальные настройки (API keys для LLM-провайдеров) | `frontend/lib/features/settings/presentation/screens/settings_screen.dart` | ⬜ | |
 | 13.6 | Локализация | `.arb` файлы | ⬜ | |
 | 13.7 | Widget-тесты | `frontend/test/features/team/` | ⬜ | |
 
-**Зависимости:** Sprint 2, Sprint 10
+**Зависимости:** Sprint 2, Sprint 10.
 
-**Отдельный PR (не смешивать со скоупом экранов 13.1–13.4):** DRY для Dio — довести `mapDioExceptionForRepository` (`frontend/lib/core/api/dio_repository_error_map.dart`) до **`TaskRepository`**, **`ConversationRepository`** и любых оставшихся копий `_handleDioError` (сейчас на хелпере уже `ProjectRepository` и `TeamRepository`). В том же или следующем PR — **юнит-тесты на сам хелпер** (ветки switch, в первую очередь **`on409: null` → `onOtherHttp` с `statusCode == 409`**), чтобы контракт не зависел только от транзитивного покрытия через `team_repository_test`.
+**Отдельный PR (не смешивать со скоупом экранов 13.1–13.4):** DRY для Dio — довести `mapDioExceptionForRepository` (`frontend/lib/core/api/dio_repository_error_map.dart`) до **`TaskRepository`**, **`ConversationRepository`**, **`PromptsRepository`** и любых оставшихся копий `_handleDioError` (сейчас на хелпере уже `ProjectRepository` и `TeamRepository`). Канон для репозиториев — **`TeamRepository`**: общий маппинг, **`CancelToken`**, типизированные исключения, **freezed**-модели где применимо. Порядок работы **`PromptsRepository`** с **13.3** — **`docs/tasks/13.3-agent-edit-dialog.md`**, раздел **«PromptsRepository (канон)»**. В том же или следующем PR — **юнит-тесты на сам хелпер** (ветки switch, в первую очередь **`on409: null` → `onOtherHttp` с `statusCode == 409`**), чтобы контракт не зависел только от транзитивного покрытия через `team_repository_test`.
 
-**Решения по дизайну (не менять без отдельной задачи):** `TeamApiException` без поля `apiErrorCode` — намеренное зеркало `ProjectApiException` (стабильный код из JSON пока не протаскиваем). **404 команды** в UI — общий `dataLoadError` + retry, без отдельного экрана как у `ProjectNotFoundException` на дашборде (404 команды при живом проекте — аномалия; отдельный UX не входил в 13.1). В **`AgentCard`** связка `Semantics` + `Chip(label: Text(...))` оставлена для a11y; в 13.3 при добавлении tooltip / `excludeSemantics` не плодить лишние источники озвучивания.
+**Решения по дизайну (не менять без отдельной задачи):** `TeamApiException` без поля `apiErrorCode` — намеренное зеркало `ProjectApiException` (стабильный код из JSON пока не протаскиваем). **404 команды** в UI — общий `dataLoadError` + retry, без отдельного экрана как у `ProjectNotFoundException` на дашборде (404 команды при живом проекте — аномалия; отдельный UX не входил в 13.1). В **`AgentCard`** связка `Semantics` + `Chip(label: Text(...))` оставлена для a11y; в 13.3 при добавлении tooltip / `excludeSemantics` не плодить лишние источники озвучивания. **Переключатель `is_active` только в диалоге 13.3** (не на карточке, **13.2**): осознанный trade-off — ~5 шагов (тап → диалог → switch → сохранить → закрыть) ради защиты от случайных мутаций; inline-toggle на **`AgentCard`** — отдельная задача после метрик/обоснования.
 
 ---
 

@@ -23,6 +23,7 @@ type AgentResponse struct {
 	Name        string  `json:"name"`
 	Role        string  `json:"role"`
 	Model       *string `json:"model"`
+	PromptID    *string `json:"prompt_id,omitempty"`
 	PromptName  *string `json:"prompt_name"`
 	CodeBackend *string `json:"code_backend"`
 	IsActive    bool    `json:"is_active"`
@@ -63,6 +64,11 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 		n := agent.Prompt.Name
 		promptName = &n
 	}
+	var promptID *string
+	if agent.PromptID != nil {
+		s := agent.PromptID.String()
+		promptID = &s
+	}
 	var codeBackend *string
 	if agent.CodeBackend != nil {
 		s := string(*agent.CodeBackend)
@@ -73,6 +79,7 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 		Name:        agent.Name,
 		Role:        string(agent.Role),
 		Model:       agent.Model,
+		PromptID:    promptID,
 		PromptName:  promptName,
 		CodeBackend: codeBackend,
 		IsActive:    agent.IsActive,

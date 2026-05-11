@@ -167,6 +167,14 @@ func (m *mockTeamService) Update(ctx context.Context, projectID uuid.UUID, req d
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+func (m *mockTeamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UUID, req dto.PatchAgentRequest) (*models.Team, error) {
+	args := m.Called(ctx, projectID, agentID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
 // --- TaskService mock ---
 
 type mockTaskService struct {
