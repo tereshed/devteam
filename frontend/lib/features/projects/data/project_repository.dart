@@ -144,7 +144,8 @@ class ProjectRepository {
       throw ArgumentError('id is required');
     }
 
-    if (request.gitCredentialId != null && request.removeGitCredential) {
+    if (request.gitCredentialId != null &&
+        request.removeGitCredential == true) {
       throw ArgumentError('cannot set and remove credential simultaneously');
     }
 
@@ -155,6 +156,41 @@ class ProjectRepository {
         cancelToken: cancelToken,
       );
       return ProjectModel.fromJson(_jsonBody(response));
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Запускает переиндексацию проекта ([POST /projects/:id/reindex]).
+  ///
+  /// Успех — ответ **202** без маппинга тела в [ProjectModel].
+  /// [CancelToken.cancel] отменяет только HTTP; после **202** пайплайн на бэкенде продолжается.
+  ///
+  /// Throws [ProjectConflictException] при **409** (индексация уже идёт).
+  /// Throws [ProjectForbiddenException] при **403**.
+  /// Throws [UnauthorizedException] при **401**.
+  /// Throws [ProjectCancelledException] при отмене запроса.
+  /// Throws [ProjectApiException] при других ошибках API.
+  Future<void> reindex(
+    String projectId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/projects/$projectId/reindex',
+        cancelToken: cancelToken,
+      );
+      final code = response.statusCode;
+      if (code != null && code != 202) {
+        throw ProjectApiException(
+          'Unexpected status for reindex: $code',
+          statusCode: code,
+        );
+      }
     } on DioException catch (e) {
       throw _handleDioError(e);
     }

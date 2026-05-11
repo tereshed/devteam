@@ -511,6 +511,109 @@ class AppLocalizationsRu extends AppLocalizations {
   String get projectDashboardNotFoundBackToList => 'К списку проектов';
 
   @override
+  String get projectSettingsSectionGit => 'Git-репозиторий';
+
+  @override
+  String get projectSettingsSectionVector => 'Векторный индекс';
+
+  @override
+  String get projectSettingsSectionTechStack => 'Технологический стек';
+
+  @override
+  String get projectSettingsGitDefaultBranchLabel => 'Ветка по умолчанию';
+
+  @override
+  String get projectSettingsGitCredentialCardTitle =>
+      'Привязанный Git credential';
+
+  @override
+  String get projectSettingsUnlinkCredential => 'Отвязать credential';
+
+  @override
+  String get projectSettingsUnlinkPendingHint =>
+      'Отвязка выполнится после сохранения.';
+
+  @override
+  String get projectSettingsVectorCollectionLabel => 'Имя коллекции Weaviate';
+
+  @override
+  String get projectSettingsVectorCollectionHint => 'например ProjectCode';
+
+  @override
+  String get projectSettingsVectorCollectionInvalid =>
+      'Сначала заглавная латинская буква, далее буквы, цифры или подчёркивание.';
+
+  @override
+  String get projectSettingsVectorCollectionRenamed =>
+      'Имя коллекции изменилось. Запустите переиндексацию — векторы не переносятся в новую коллекцию автоматически.';
+
+  @override
+  String get projectSettingsReindex => 'Переиндексировать';
+
+  @override
+  String get projectSettingsReindexInProgress => 'Идёт индексация…';
+
+  @override
+  String get projectSettingsReindexUnavailable =>
+      'Переиндексация недоступна для локального проекта или при пустом URL репозитория.';
+
+  @override
+  String get projectSettingsReindexStarted => 'Запущена переиндексация';
+
+  @override
+  String get projectSettingsReindexConflict =>
+      'Индексация уже выполняется или возник конфликт.';
+
+  @override
+  String get projectSettingsReindexGenericError =>
+      'Не удалось запустить переиндексацию';
+
+  @override
+  String get projectSettingsReindexValidationError =>
+      'Запрос переиндексации отклонён';
+
+  @override
+  String get projectSettingsTechStackAddRow => 'Добавить строку';
+
+  @override
+  String get projectSettingsTechStackClear => 'Очистить tech stack';
+
+  @override
+  String get projectSettingsTechStackKeyLabel => 'Ключ';
+
+  @override
+  String get projectSettingsTechStackValueLabel => 'Значение';
+
+  @override
+  String get projectSettingsSave => 'Сохранить';
+
+  @override
+  String get projectSettingsSaved => 'Настройки сохранены';
+
+  @override
+  String get projectSettingsNoChanges => 'Нет изменений для сохранения';
+
+  @override
+  String get projectSettingsGitRemoteAccessFailed =>
+      'Не удалось обратиться к Git remote (ошибка клонирования или проверки).';
+
+  @override
+  String get projectSettingsActionForbidden =>
+      'Действие запрещено для вашей учётной записи.';
+
+  @override
+  String get projectSettingsSaveConflict =>
+      'Сохранение отклонено из‑за конфликта.';
+
+  @override
+  String get projectSettingsSaveGenericError =>
+      'Не удалось сохранить настройки';
+
+  @override
+  String get projectSettingsSaveValidationError =>
+      'Некорректные данные — проверьте форму и попробуйте снова.';
+
+  @override
   String get chatErrorGeneric => 'Не удалось загрузить чат';
 
   @override

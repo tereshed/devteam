@@ -3,6 +3,7 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
+import 'package:frontend/features/projects/presentation/screens/project_settings_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
 import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
@@ -31,13 +32,17 @@ const String projectDashboardShellBranchTasksSegment = 'tasks';
 /// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
 const String projectDashboardShellBranchTeamSegment = 'team';
 
+/// Сегмент URL вкладки «Настройки» в shell (`/projects/:id/settings`).
+/// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
+const String projectDashboardShellBranchSettingsSegment = 'settings';
+
 /// Сегмент URL после `/projects/:id` для веток shell (порядок = порядок вкладок).
 /// Единственный источник имён путей для [buildProjectDashboardShellBranches] и редиректов.
 const List<String> projectDashboardShellBranchPaths = [
   'chat',
   projectDashboardShellBranchTasksSegment,
   projectDashboardShellBranchTeamSegment,
-  'settings',
+  projectDashboardShellBranchSettingsSegment,
 ];
 
 /// Дефолтная ветка после `/projects/:id` (редирект с корня дашборда и «неизвестного» сегмента).
@@ -273,6 +278,18 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
                 return NoTransitionPage(
                   key: state.pageKey,
                   child: TeamScreen(projectId: projectId),
+                );
+              },
+            )
+          else if (projectDashboardShellBranchPaths[i] ==
+              projectDashboardShellBranchSettingsSegment)
+            GoRoute(
+              path: projectDashboardShellBranchSettingsSegment,
+              pageBuilder: (context, state) {
+                final projectId = state.pathParameters['id']!;
+                return NoTransitionPage(
+                  key: state.pageKey,
+                  child: ProjectSettingsScreen(projectId: projectId),
                 );
               },
             )

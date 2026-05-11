@@ -96,15 +96,13 @@ abstract class UpdateProjectRequest with _$UpdateProjectRequest {
     @JsonKey(name: 'tech_stack')
     Map<String, dynamic>? techStack,
     Map<String, dynamic>? settings,
+    /// Только `true` попадает в JSON ([includeIfNull: false]); иначе ключ отсутствует.
     @JsonKey(name: 'remove_git_credential')
-    @Default(false)
-    bool removeGitCredential,
+    bool? removeGitCredential,
     @JsonKey(name: 'clear_tech_stack')
-    @Default(false)
-    bool clearTechStack,
+    bool? clearTechStack,
     @JsonKey(name: 'clear_settings')
-    @Default(false)
-    bool clearSettings,
+    bool? clearSettings,
   }) = _UpdateProjectRequest;
 
   const UpdateProjectRequest._();

@@ -512,6 +512,105 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectDashboardNotFoundBackToList => 'Back to projects';
 
   @override
+  String get projectSettingsSectionGit => 'Git repository';
+
+  @override
+  String get projectSettingsSectionVector => 'Vector index';
+
+  @override
+  String get projectSettingsSectionTechStack => 'Tech stack';
+
+  @override
+  String get projectSettingsGitDefaultBranchLabel => 'Default branch';
+
+  @override
+  String get projectSettingsGitCredentialCardTitle => 'Linked Git credential';
+
+  @override
+  String get projectSettingsUnlinkCredential => 'Unlink credential';
+
+  @override
+  String get projectSettingsUnlinkPendingHint =>
+      'Credential will be removed when you save.';
+
+  @override
+  String get projectSettingsVectorCollectionLabel => 'Weaviate collection name';
+
+  @override
+  String get projectSettingsVectorCollectionHint => 'e.g. ProjectCode';
+
+  @override
+  String get projectSettingsVectorCollectionInvalid =>
+      'Use a capital Latin letter first, then letters, digits, or underscores.';
+
+  @override
+  String get projectSettingsVectorCollectionRenamed =>
+      'The collection name changed. Run reindex so vectors are written to the new collection; the old collection is not migrated automatically.';
+
+  @override
+  String get projectSettingsReindex => 'Reindex';
+
+  @override
+  String get projectSettingsReindexInProgress => 'Indexing…';
+
+  @override
+  String get projectSettingsReindexUnavailable =>
+      'Reindex is unavailable for local projects or when the repository URL is empty.';
+
+  @override
+  String get projectSettingsReindexStarted => 'Reindexing started';
+
+  @override
+  String get projectSettingsReindexConflict =>
+      'Indexing is already running or another conflict occurred.';
+
+  @override
+  String get projectSettingsReindexGenericError => 'Could not start reindex';
+
+  @override
+  String get projectSettingsReindexValidationError =>
+      'Reindex request was rejected';
+
+  @override
+  String get projectSettingsTechStackAddRow => 'Add row';
+
+  @override
+  String get projectSettingsTechStackClear => 'Clear tech stack';
+
+  @override
+  String get projectSettingsTechStackKeyLabel => 'Key';
+
+  @override
+  String get projectSettingsTechStackValueLabel => 'Value';
+
+  @override
+  String get projectSettingsSave => 'Save';
+
+  @override
+  String get projectSettingsSaved => 'Settings saved';
+
+  @override
+  String get projectSettingsNoChanges => 'No changes to save';
+
+  @override
+  String get projectSettingsGitRemoteAccessFailed =>
+      'Could not reach the Git remote (clone or validation failed).';
+
+  @override
+  String get projectSettingsActionForbidden =>
+      'This action is not allowed for your account.';
+
+  @override
+  String get projectSettingsSaveConflict => 'Save failed due to a conflict.';
+
+  @override
+  String get projectSettingsSaveGenericError => 'Could not save settings';
+
+  @override
+  String get projectSettingsSaveValidationError =>
+      'Invalid data — check the form and try again.';
+
+  @override
   String get chatErrorGeneric => 'Could not load chat';
 
   @override

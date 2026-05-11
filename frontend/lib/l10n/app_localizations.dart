@@ -1064,6 +1064,186 @@ abstract class AppLocalizations {
   /// **'К списку проектов'**
   String get projectDashboardNotFoundBackToList;
 
+  /// Заголовок секции Git (13.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-репозиторий'**
+  String get projectSettingsSectionGit;
+
+  /// Секция Weaviate (13.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Векторный индекс'**
+  String get projectSettingsSectionVector;
+
+  /// Секция tech stack (13.4)
+  ///
+  /// In ru, this message translates to:
+  /// **'Технологический стек'**
+  String get projectSettingsSectionTechStack;
+
+  /// Поле default branch
+  ///
+  /// In ru, this message translates to:
+  /// **'Ветка по умолчанию'**
+  String get projectSettingsGitDefaultBranchLabel;
+
+  /// Карточка read-only credential
+  ///
+  /// In ru, this message translates to:
+  /// **'Привязанный Git credential'**
+  String get projectSettingsGitCredentialCardTitle;
+
+  /// Кнопка отвязки
+  ///
+  /// In ru, this message translates to:
+  /// **'Отвязать credential'**
+  String get projectSettingsUnlinkCredential;
+
+  /// Подсказка после выбора отвязки
+  ///
+  /// In ru, this message translates to:
+  /// **'Отвязка выполнится после сохранения.'**
+  String get projectSettingsUnlinkPendingHint;
+
+  /// Поле vector_collection
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя коллекции Weaviate'**
+  String get projectSettingsVectorCollectionLabel;
+
+  /// Подсказка имени коллекции
+  ///
+  /// In ru, this message translates to:
+  /// **'например ProjectCode'**
+  String get projectSettingsVectorCollectionHint;
+
+  /// Ошибка regex валидации
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала заглавная латинская буква, далее буквы, цифры или подчёркивание.'**
+  String get projectSettingsVectorCollectionInvalid;
+
+  /// Баннер после смены vector_collection
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя коллекции изменилось. Запустите переиндексацию — векторы не переносятся в новую коллекцию автоматически.'**
+  String get projectSettingsVectorCollectionRenamed;
+
+  /// Кнопка POST reindex
+  ///
+  /// In ru, this message translates to:
+  /// **'Переиндексировать'**
+  String get projectSettingsReindex;
+
+  /// Состояние status indexing
+  ///
+  /// In ru, this message translates to:
+  /// **'Идёт индексация…'**
+  String get projectSettingsReindexInProgress;
+
+  /// Пояснение disabled reindex
+  ///
+  /// In ru, this message translates to:
+  /// **'Переиндексация недоступна для локального проекта или при пустом URL репозитория.'**
+  String get projectSettingsReindexUnavailable;
+
+  /// SnackBar после 202 reindex
+  ///
+  /// In ru, this message translates to:
+  /// **'Запущена переиндексация'**
+  String get projectSettingsReindexStarted;
+
+  /// 409 reindex
+  ///
+  /// In ru, this message translates to:
+  /// **'Индексация уже выполняется или возник конфликт.'**
+  String get projectSettingsReindexConflict;
+
+  /// Общая ошибка reindex
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось запустить переиндексацию'**
+  String get projectSettingsReindexGenericError;
+
+  /// 400 reindex
+  ///
+  /// In ru, this message translates to:
+  /// **'Запрос переиндексации отклонён'**
+  String get projectSettingsReindexValidationError;
+
+  /// Кнопка добавления пары key-value
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить строку'**
+  String get projectSettingsTechStackAddRow;
+
+  /// Явная очистка tech stack
+  ///
+  /// In ru, this message translates to:
+  /// **'Очистить tech stack'**
+  String get projectSettingsTechStackClear;
+
+  /// Поле ключа tech stack
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключ'**
+  String get projectSettingsTechStackKeyLabel;
+
+  /// Поле значения tech stack
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение'**
+  String get projectSettingsTechStackValueLabel;
+
+  /// Кнопка PUT
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get projectSettingsSave;
+
+  /// Успешный PUT
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки сохранены'**
+  String get projectSettingsSaved;
+
+  /// Пустой dirty-патч
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет изменений для сохранения'**
+  String get projectSettingsNoChanges;
+
+  /// 502 Save/reindex Git
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось обратиться к Git remote (ошибка клонирования или проверки).'**
+  String get projectSettingsGitRemoteAccessFailed;
+
+  /// Нейтральный 403 (в т.ч. reindex)
+  ///
+  /// In ru, this message translates to:
+  /// **'Действие запрещено для вашей учётной записи.'**
+  String get projectSettingsActionForbidden;
+
+  /// 409 при сохранении
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранение отклонено из‑за конфликта.'**
+  String get projectSettingsSaveConflict;
+
+  /// Общая ошибка Save
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить настройки'**
+  String get projectSettingsSaveGenericError;
+
+  /// 400 при сохранении
+  ///
+  /// In ru, this message translates to:
+  /// **'Некорректные данные — проверьте форму и попробуйте снова.'**
+  String get projectSettingsSaveValidationError;
+
   /// Общая ошибка чата (ChatController)
   ///
   /// In ru, this message translates to:

@@ -13,6 +13,7 @@ import 'package:frontend/features/chat/domain/requests.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
+import 'package:frontend/features/projects/presentation/screens/project_settings_screen.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/l10n/app_localizations.dart';
@@ -51,6 +52,15 @@ void main() {
     );
   });
 
+  test('projectDashboardShellBranchSettingsSegment в projectDashboardShellBranchPaths', () {
+    expect(
+      projectDashboardShellBranchPaths.contains(
+        projectDashboardShellBranchSettingsSegment,
+      ),
+      isTrue,
+    );
+  });
+
   test('projectDashboardDefaultBranch совпадает с первой веткой (SSOT)', () {
     expect(
       projectDashboardDefaultBranch,
@@ -84,6 +94,33 @@ void main() {
       await tester.pumpAndSettle();
       expect(router.state.uri.path, '/projects/new');
       expect(find.text('__TEST_PROJECTS_NEW__'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    '/projects/:id/settings показывает ProjectSettingsScreen',
+    (tester) async {
+      final router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/settings',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid),
+            ),
+          ],
+          child: MaterialApp.router(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(router.state.uri.path, '/projects/$kTestProjectUuid/settings');
+      expect(find.byType(ProjectSettingsScreen), findsOneWidget);
     },
   );
 
