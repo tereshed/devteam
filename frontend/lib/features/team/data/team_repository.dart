@@ -91,7 +91,7 @@ class TeamRepository {
         msg,
         originalError: err,
       ),
-      onMissingStatusCode: (msg, err) => TeamApiException(
+      onMissingStatusCode: (msg, err, _) => TeamApiException(
         msg,
         originalError: err,
       ),

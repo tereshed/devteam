@@ -230,7 +230,7 @@ class ProjectRepository {
         msg,
         originalError: err,
       ),
-      onMissingStatusCode: (msg, err) => ProjectApiException(
+      onMissingStatusCode: (msg, err, _) => ProjectApiException(
         msg,
         originalError: err,
       ),

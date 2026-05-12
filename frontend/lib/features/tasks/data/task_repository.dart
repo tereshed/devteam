@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/api/dio_api_error.dart';
 import 'package:frontend/core/api/dio_message_path.dart';
+import 'package:frontend/core/api/dio_repository_error_map.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/domain/models.dart';
@@ -356,77 +357,62 @@ class TaskRepository {
   }
 
   Exception _handleDioError(DioException error) {
-    final p = parseDioApiError(error);
-    final statusCode = p.statusCode;
-
-    if (p.isCancellation) {
-      return TaskCancelledException(
-        p.sanitizedMessage,
-        originalError: error,
-      );
-    }
-
-    if (statusCode == null) {
-      return TaskApiException(
-        p.sanitizedMessage,
-        originalError: error,
-        isNetworkTransportError: p.isNetworkTransportError,
-      );
-    }
-
-    switch (statusCode) {
-      case 401:
-        return UnauthorizedException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 403:
-        return TaskForbiddenException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 404:
-        if (isProjectTasksListPath(p.requestPath)) {
+    return mapDioExceptionForRepository(
+      error,
+      onCancelled: (msg, err) => TaskCancelledException(
+        msg,
+        originalError: err,
+      ),
+      onMissingStatusCode: (msg, err, isTransport) => TaskApiException(
+        msg,
+        originalError: err,
+        isNetworkTransportError: isTransport,
+      ),
+      on401: unauthorizedFromDio,
+      on403: (msg, err, code) => TaskForbiddenException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      on404: (msg, err, code) {
+        final path = err.requestOptions.path;
+        if (isProjectTasksListPath(path)) {
           return ProjectNotFoundException(
-            p.sanitizedMessage,
-            originalError: error,
-            apiErrorCode: p.stableErrorCode,
+            msg,
+            originalError: err,
+            apiErrorCode: code,
           );
         }
-        if (isTaskResourceApiPath(p.requestPath)) {
+        if (isTaskResourceApiPath(path)) {
           return TaskNotFoundException(
-            p.sanitizedMessage,
-            originalError: error,
-            apiErrorCode: p.stableErrorCode,
+            msg,
+            originalError: err,
+            apiErrorCode: code,
           );
         }
         return TaskApiException(
-          p.sanitizedMessage,
-          statusCode: statusCode,
-          apiErrorCode: p.stableErrorCode,
-          originalError: error,
+          msg,
+          statusCode: 404,
+          apiErrorCode: code,
+          originalError: err,
         );
-      case 409:
-        return TaskConflictException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 422:
-        return TaskUnprocessableException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      default:
-        return TaskApiException(
-          p.sanitizedMessage,
-          statusCode: statusCode,
-          apiErrorCode: p.stableErrorCode,
-          originalError: error,
-        );
-    }
+      },
+      on409: (msg, err, code) => TaskConflictException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      on422: (msg, err, code) => TaskUnprocessableException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      onOtherHttp: (msg, err, code, status) => TaskApiException(
+        msg,
+        statusCode: status,
+        apiErrorCode: code,
+        originalError: err,
+      ),
+    );
   }
 }

@@ -3,12 +3,19 @@ import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/api/dio_api_error.dart';
 
 /// Единый разбор [DioException] для репозиториев (401 — [UnauthorizedException], остальное — фабрики).
+///
+/// [onMissingStatusCode] получает [isNetworkTransportError] — для репозиториев,
+/// у которых базовое API-исключение различает транспортную ошибку и прочее
+/// (см. [TaskApiException], [ConversationApiException]).
 Exception mapDioExceptionForRepository(
   DioException error, {
   required Exception Function(String message, DioException original)
       onCancelled,
-  required Exception Function(String message, DioException original)
-      onMissingStatusCode,
+  required Exception Function(
+    String message,
+    DioException original,
+    bool isNetworkTransportError,
+  ) onMissingStatusCode,
   required Exception Function(
     String message,
     DioException original,
@@ -29,6 +36,16 @@ Exception mapDioExceptionForRepository(
     DioException original,
     String? apiErrorCode,
   )? on409,
+  Exception Function(
+    String message,
+    DioException original,
+    String? apiErrorCode,
+  )? on422,
+  Exception Function(
+    String message,
+    DioException original,
+    String? apiErrorCode,
+  )? on429,
   required Exception Function(
     String message,
     DioException original,
@@ -44,7 +61,11 @@ Exception mapDioExceptionForRepository(
 
   final statusCode = p.statusCode;
   if (statusCode == null) {
-    return onMissingStatusCode(p.sanitizedMessage, error);
+    return onMissingStatusCode(
+      p.sanitizedMessage,
+      error,
+      p.isNetworkTransportError,
+    );
   }
 
   switch (statusCode) {
@@ -70,6 +91,36 @@ Exception mapDioExceptionForRepository(
       final map409 = on409;
       if (map409 != null) {
         return map409(
+          p.sanitizedMessage,
+          error,
+          p.stableErrorCode,
+        );
+      }
+      return onOtherHttp(
+        p.sanitizedMessage,
+        error,
+        p.stableErrorCode,
+        statusCode,
+      );
+    case 422:
+      final map422 = on422;
+      if (map422 != null) {
+        return map422(
+          p.sanitizedMessage,
+          error,
+          p.stableErrorCode,
+        );
+      }
+      return onOtherHttp(
+        p.sanitizedMessage,
+        error,
+        p.stableErrorCode,
+        statusCode,
+      );
+    case 429:
+      final map429 = on429;
+      if (map429 != null) {
+        return map429(
           p.sanitizedMessage,
           error,
           p.stableErrorCode,

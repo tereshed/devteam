@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/api/dio_api_error.dart';
 import 'package:frontend/core/api/dio_message_path.dart';
+import 'package:frontend/core/api/dio_repository_error_map.dart';
 import 'package:frontend/core/utils/uuid.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
 import 'package:frontend/features/chat/domain/models.dart';
@@ -245,63 +246,48 @@ class ConversationRepository {
   }
 
   Exception _handleDioError(DioException error) {
-    final p = parseDioApiError(error);
-    final statusCode = p.statusCode;
-
-    if (p.isCancellation) {
-      return ConversationCancelledException(
-        p.sanitizedMessage,
-        originalError: error,
-      );
-    }
-
-    if (statusCode == null) {
-      return ConversationApiException(
-        p.sanitizedMessage,
-        originalError: error,
-        isNetworkTransportError: p.isNetworkTransportError,
-      );
-    }
-
-    switch (statusCode) {
-      case 401:
-        return UnauthorizedException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 403:
-        return ConversationForbiddenException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      case 404:
-        if (isProjectConversationsListPath(p.requestPath)) {
+    return mapDioExceptionForRepository(
+      error,
+      onCancelled: (msg, err) => ConversationCancelledException(
+        msg,
+        originalError: err,
+      ),
+      onMissingStatusCode: (msg, err, isTransport) => ConversationApiException(
+        msg,
+        originalError: err,
+        isNetworkTransportError: isTransport,
+      ),
+      on401: unauthorizedFromDio,
+      on403: (msg, err, code) => ConversationForbiddenException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      on404: (msg, err, code) {
+        if (isProjectConversationsListPath(err.requestOptions.path)) {
           return ProjectNotFoundException(
-            p.sanitizedMessage,
-            originalError: error,
-            apiErrorCode: p.stableErrorCode,
+            msg,
+            originalError: err,
+            apiErrorCode: code,
           );
         }
         return ConversationNotFoundException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
+          msg,
+          originalError: err,
+          apiErrorCode: code,
         );
-      case 429:
-        return ConversationRateLimitedException(
-          p.sanitizedMessage,
-          originalError: error,
-          apiErrorCode: p.stableErrorCode,
-        );
-      default:
-        return ConversationApiException(
-          p.sanitizedMessage,
-          statusCode: statusCode,
-          apiErrorCode: p.stableErrorCode,
-          originalError: error,
-        );
-    }
+      },
+      on429: (msg, err, code) => ConversationRateLimitedException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      onOtherHttp: (msg, err, code, status) => ConversationApiException(
+        msg,
+        statusCode: status,
+        apiErrorCode: code,
+        originalError: err,
+      ),
+    );
   }
 }

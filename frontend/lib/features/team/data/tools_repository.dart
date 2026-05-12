@@ -14,7 +14,7 @@ class ToolsRepository {
       error,
       onCancelled: (msg, err) =>
           ToolsCancelledException(msg, originalError: err),
-      onMissingStatusCode: (msg, err) =>
+      onMissingStatusCode: (msg, err, _) =>
           ToolsApiException(msg, originalError: err),
       on401: unauthorizedFromDio,
       on403: (msg, err, code) => ToolsApiException(

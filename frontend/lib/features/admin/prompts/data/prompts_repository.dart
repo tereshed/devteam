@@ -24,7 +24,7 @@ class PromptsRepository {
       error,
       onCancelled: (msg, err) =>
           PromptCancelledException(msg, originalError: err),
-      onMissingStatusCode: (msg, err) =>
+      onMissingStatusCode: (msg, err, _) =>
           PromptApiException(msg, originalError: err),
       on401: unauthorizedFromDio,
       on403: (msg, err, code) => PromptForbiddenException(
