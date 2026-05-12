@@ -460,6 +460,7 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		CreatedByID:   userID,
 		Context:       ctxJSON,
 		Artifacts:     datatypes.JSON([]byte("{}")),
+		BranchName:    req.BranchName,
 	}
 
 	var created *models.Task

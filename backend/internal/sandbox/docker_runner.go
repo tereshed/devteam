@@ -279,10 +279,15 @@ func buildPromptContextTar(instruction, contextText string) (io.ReadCloser, erro
 			{"prompt.txt", instruction},
 			{"context.txt", contextText},
 		} {
+			// Контейнер запускается под non-root user sandbox (uid 1001, см. Dockerfile).
+			// CopyToContainer сохраняет uid/gid/mode из tar-заголовка; без явных Uid/Gid
+			// файл создаётся как root:root и недоступен на чтение sandbox-пользователю.
 			hdr := &tar.Header{
 				Typeflag: tar.TypeReg,
 				Name:     f.name,
-				Mode:     0o600,
+				Mode:     0o644,
+				Uid:      1001,
+				Gid:      1001,
 				Size:     int64(len(f.content)),
 				ModTime:  now,
 			}

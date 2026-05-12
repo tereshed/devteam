@@ -81,6 +81,15 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	if in.PromptName != "" {
 		envVars["DEVTEAM_AGENT_PROMPT_NAME"] = in.PromptName
 	}
+	// Reviewer/Tester должны стартовать с уже пушнутой Developer'ом ветки,
+	// а не с main, иначе они не увидят его коммита. Developer — наоборот:
+	// стартует с main (default — START_REF не выставляем, entrypoint падёт на BASE_REF).
+	switch in.Role {
+	case "reviewer", "tester":
+		if in.BranchName != "" {
+			envVars["START_REF"] = in.BranchName
+		}
+	}
 
 	opts := sandbox.SandboxOptions{
 		TaskID:      in.TaskID,

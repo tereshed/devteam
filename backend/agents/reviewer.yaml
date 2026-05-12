@@ -3,5 +3,5 @@ role: reviewer
 prompt_name: reviewer_prompt
 model_config:
   temperature: 0.1
-  model: "gpt-4o"
+  model: "claude-haiku-4-5-20251001"
 is_active: true

@@ -56,6 +56,11 @@ output_contract:
         type: boolean
 
 user_message_template: |
-  Review the provided change context. Output JSON only with decision and optional comments.
+  You are running inside a sandbox container with the developer's branch already checked out.
+  Use Read/Glob/Bash to inspect the changed files in context (not just the diff):
+    - `git diff --stat origin/main..HEAD` to see what was changed,
+    - `git diff origin/main..HEAD` for the full diff,
+    - Read the relevant files end-to-end to judge style, naming, edge cases.
+  Output JSON only per output_contract with "decision" ("approve" or "changes_requested") and "comments".
 
 notes_for_maintainers: "1.0.0 — matches ReviewerProcessor (decision approve|changes_requested)."

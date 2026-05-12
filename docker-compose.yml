@@ -77,10 +77,9 @@ services:
       DB_NAME: yugabyte
       DB_SSLMODE: disable
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
-      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
-      LLM_API_KEY: ${LLM_API_KEY}
-      LLM_BASE_URL: ${LLM_BASE_URL}
-      LLM_MODEL: ${LLM_MODEL}
+      # LLM_PROVIDER / LLM_MODEL / LLM_API_KEY и провайдер-специфичные
+      # ключи (ANTHROPIC_API_KEY, OPENAI_API_KEY, ...) подхватываются из
+      # ./backend/.env через env_file выше — здесь не переопределяем.
       # MCP Server
       MCP_ENABLED: ${MCP_ENABLED:-false}
       MCP_PORT: 8081

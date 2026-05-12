@@ -3,5 +3,5 @@ role: planner
 prompt_name: planner_prompt
 model_config:
   temperature: 0.2
-  model: "gpt-4o"
+  model: "claude-haiku-4-5-20251001"
 is_active: true

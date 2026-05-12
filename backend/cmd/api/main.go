@@ -264,10 +264,10 @@ func main() {
 	// Sandbox Runner (учитываем лимиты из конфига)
 	sandboxLogAdapter := ws.NewSandboxLogAdapter(eventBus, secrets.NewScrubber())
 	sandboxRunner := sandbox.NewDockerSandboxRunner(dockerCli, []string{
-		"devteam/sandbox-claude:latest",
-		"devteam/sandbox-aider:latest",
+		"devteam/sandbox-claude:local",
+		"devteam/sandbox-aider:local",
 	}, sandbox.WithLogPublisher(sandboxLogAdapter))
-	sandboxAgentExecutor := agent.NewSandboxAgentExecutor(sandboxRunner, "devteam/sandbox-claude:latest")
+	sandboxAgentExecutor := agent.NewSandboxAgentExecutor(sandboxRunner, "devteam/sandbox-claude:local")
 
 	// Orchestrator Components
 	orchestratorPipeline := service.NewPipelineEngine(5)
@@ -288,7 +288,13 @@ func main() {
 		pipelinePromptComposer = pc
 		log.Println("Pipeline agent prompts: loaded base + role composition (backend/prompts)")
 	}
-	orchestratorContextBuilder := service.NewContextBuilder(encryptor, pipelinePromptComposer, agentConfigCache)
+	// В sandbox прокидываем только API-ключ: claude-code CLI 2.x использует свой
+	// канонический endpoint, а наш LLMService — собственный (ANTHROPIC_BASE_URL с "/v1").
+	// Пробрасывать BASE_URL в контейнер опасно: CLI собирает путь по-другому и фейлится 404.
+	sandboxSecrets := map[string]string{
+		"ANTHROPIC_API_KEY": cfg.LLM.Anthropic.APIKey,
+	}
+	orchestratorContextBuilder := service.NewContextBuilderFull(encryptor, pipelinePromptComposer, agentConfigCache, sandboxSecrets, taskMsgRepo)
 
 	taskControlBus := service.NewUserTaskControlBus()
 
@@ -307,6 +313,8 @@ func main() {
 		codeIndexer,
 		sandboxRunner,
 		taskControlBus,
+		service.WithTeamRepository(teamRepo),
+		service.WithPullRequestPublisher(service.NewGitPRPublisher(gitFactory, encryptor, slog.Default())),
 	)
 
 	// Запускаем оркестратор (очистка зомби-задач)

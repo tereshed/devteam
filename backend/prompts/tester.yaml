@@ -61,6 +61,13 @@ output_contract:
         type: boolean
 
 user_message_template: |
-  Report test execution results as JSON only per output_contract.
+  You are running inside a sandbox container that has already checked out the developer's branch.
+  Use the Bash tool to detect and run the project's tests against the current working tree:
+    - if package.json with a "test" script: `npm test --silent`
+    - if go.mod: `go test ./...`
+    - if pyproject.toml or setup.py: `pytest -q` (or `python -m unittest`)
+    - if no test framework is present: list the changed files (`git diff --name-only origin/main..HEAD`) and verify each requirement in the task description is satisfied by reading the files with Read.
+  Capture command exit code and last lines of output.
+  Report results as JSON only per output_contract — set "decision":"passed" only when tests actually ran and all passed, or (no tests found) all requirements verifiably met.
 
 notes_for_maintainers: "1.0.0 — decision for pipeline; test_result for TesterProcessor."

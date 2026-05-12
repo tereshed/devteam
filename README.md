@@ -380,7 +380,7 @@ User Message
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 14.1 | E2E тест (backend): создать проект → отправить запрос → Orchestrator создаёт задачи → Developer выполняет → Reviewer одобряет → Completed | `backend/internal/service/orchestrator_integration_test.go` | ⬜ |
+| 14.1 | E2E тест (backend): создать проект → отправить запрос → Orchestrator создаёт задачи → Developer выполняет → Reviewer одобряет → Completed | `backend/internal/service/orchestrator_integration_test.go` | ✅ |
 | 14.2 | E2E тест (frontend): интеграционный тест полного flow в UI | `frontend/integration_test/full_flow_test.dart` | ⬜ |
 | 14.3 | Нагрузочное тестирование: 5 параллельных sandbox-контейнеров | Скрипт | ⬜ |
 | 14.4 | Тест безопасности: sandbox не может выйти за пределы `/workspace` | Тест | ⬜ |

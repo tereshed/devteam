@@ -27,7 +27,7 @@ RUN groupadd --gid 1001 sandbox \
 WORKDIR /workspace
 
 # Версия CLI и лейбл — только перед установкой npm: смена CLAUDE_CODE_VERSION не сбрасывает apt/user слои
-ARG CLAUDE_CODE_VERSION=0.2.37
+ARG CLAUDE_CODE_VERSION=2.1.126
 LABEL devteam.sandbox.claude-code.version="${CLAUDE_CODE_VERSION}"
 
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \

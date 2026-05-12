@@ -53,6 +53,23 @@ func WithGracefulPauseTimeout(d time.Duration) OrchestratorOption {
 	}
 }
 
+// WithTeamRepository позволяет оркестратору автоматически переключать
+// task.AssignedAgentID на агента следующей по pipeline роли при Transition.
+// Без этого опционала pipeline остаётся с первоначальным агентом до конца.
+func WithTeamRepository(teamRepo repository.TeamRepository) OrchestratorOption {
+	return func(s *orchestratorService) {
+		s.teamRepo = teamRepo
+	}
+}
+
+// WithPullRequestPublisher включает автосоздание PR после перехода задачи в completed.
+// Если publisher == nil, шаг тихо пропускается.
+func WithPullRequestPublisher(p PullRequestPublisher) OrchestratorOption {
+	return func(s *orchestratorService) {
+		s.prPublisher = p
+	}
+}
+
 // OrchestratorService управляет жизненным циклом выполнения задач через агентов.
 type OrchestratorService interface {
 	// ProcessTask запускает или продолжает выполнение задачи.
@@ -77,6 +94,8 @@ type orchestratorService struct {
 
 	sandboxStop TaskSandboxStopper
 	controlBus  *UserTaskControlBus
+	teamRepo    repository.TeamRepository
+	prPublisher PullRequestPublisher
 
 	// Настройки
 	zombieTimeout          time.Duration
@@ -558,12 +577,15 @@ func (s *orchestratorService) prepareExecution(ctx context.Context, task *models
 		return nil, nil, ErrOrchestratorAgentNotFound
 	}
 
-	// Выбираем Executor на основе роли и CodeBackend
+	// Выбираем Executor на основе роли и CodeBackend.
+	// Orchestrator и Planner — всегда LLM (короткое декомпозирующее рассуждение).
+	// Developer/Tester/Reviewer — sandbox, если у агента выставлен code_backend != custom:
+	// reviewer'у нужен полный контекст репозитория (Read/Glob/Bash), а не только diff.
 	var executor agent.AgentExecutor
 	switch assignedAgent.Role {
-	case models.AgentRolePlanner, models.AgentRoleReviewer, models.AgentRoleOrchestrator:
+	case models.AgentRolePlanner, models.AgentRoleOrchestrator:
 		executor = s.llmExecutor
-	case models.AgentRoleDeveloper, models.AgentRoleTester:
+	case models.AgentRoleDeveloper, models.AgentRoleTester, models.AgentRoleReviewer:
 		if assignedAgent.CodeBackend != nil && *assignedAgent.CodeBackend != models.CodeBackendCustom {
 			executor = s.sandboxExecutor
 		} else {
@@ -609,6 +631,50 @@ func (s *orchestratorService) prepareExecution(ctx context.Context, task *models
 	return executor, input, nil
 }
 
+// pipelineRoleForStatus — ожидаемая роль агента для следующего шага.
+// Для терминальных статусов и pending возвращает "".
+func pipelineRoleForStatus(status models.TaskStatus) models.AgentRole {
+	switch status {
+	case models.TaskStatusPlanning:
+		return models.AgentRolePlanner
+	case models.TaskStatusInProgress, models.TaskStatusChangesRequested:
+		return models.AgentRoleDeveloper
+	case models.TaskStatusReview:
+		return models.AgentRoleReviewer
+	case models.TaskStatusTesting:
+		return models.AgentRoleTester
+	default:
+		return ""
+	}
+}
+
+// resolveNextAgentID лукапит в команде проекта активного агента нужной роли.
+// Возвращает nil, если teamRepo не сконфигурирован, роль терминальная или агент не найден —
+// в этом случае оркестратор сохраняет текущий AssignedAgentID (поведение до фикса).
+func (s *orchestratorService) resolveNextAgentID(ctx context.Context, projectID uuid.UUID, nextStatus models.TaskStatus) *uuid.UUID {
+	if s.teamRepo == nil {
+		return nil
+	}
+	role := pipelineRoleForStatus(nextStatus)
+	if role == "" {
+		return nil
+	}
+	team, err := s.teamRepo.GetByProjectID(ctx, projectID)
+	if err != nil {
+		slog.Warn("resolveNextAgentID: team not found", "project_id", projectID, "error", err)
+		return nil
+	}
+	for i := range team.Agents {
+		a := &team.Agents[i]
+		if a.Role == role && a.IsActive {
+			id := a.ID
+			return &id
+		}
+	}
+	slog.Warn("resolveNextAgentID: no active agent for role", "project_id", projectID, "role", role)
+	return nil
+}
+
 func (s *orchestratorService) handleExecutionResult(ctx context.Context, task *models.Task, result *agent.ExecutionResult) error {
 	// Определяем следующий статус
 	nextStatus, err := s.pipeline.DetermineNextStatus(task, result)
@@ -628,7 +694,7 @@ func (s *orchestratorService) handleExecutionResult(ctx context.Context, task *m
 	}
 
 	// Выполняем переход и сохранение сообщения агента в одной транзакции
-	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+	transitionErr := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		senderID := uuid.Nil
 		if task.AssignedAgentID != nil {
 			senderID = *task.AssignedAgentID
@@ -654,10 +720,54 @@ func (s *orchestratorService) handleExecutionResult(ctx context.Context, task *m
 		if nextStatus == models.TaskStatusChangesRequested {
 			opts.Context = &newContext
 		}
+		// Переключаем задачу на агента следующей по pipeline роли (см. WithTeamRepository).
+		if nextAgentID := s.resolveNextAgentID(txCtx, task.ProjectID, nextStatus); nextAgentID != nil {
+			opts.AssignedAgentID = nextAgentID
+		}
 
 		slog.Info("Transitioning task", "project_id", task.ProjectID, "task_id", task.ID, "from", task.Status, "to", nextStatus)
 
 		_, err = s.taskSvc.Transition(txCtx, task.ID, nextStatus, opts)
 		return err
 	})
+
+	if transitionErr != nil {
+		return transitionErr
+	}
+
+	// После успешного перехода в completed — открываем PR в git-провайдере проекта.
+	// Ошибки PR не валят pipeline (задача уже completed); только лог.
+	if nextStatus == models.TaskStatusCompleted && s.prPublisher != nil {
+		go func(taskID uuid.UUID, projectID uuid.UUID) {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("panic in PR publisher", "task_id", taskID, "panic", r)
+				}
+			}()
+			prCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			t, err := s.taskRepo.GetByID(prCtx, taskID)
+			if err != nil {
+				slog.Warn("PR publisher: task fetch failed", "task_id", taskID, "error", err)
+				return
+			}
+			proj, err := s.projectSvc.GetByID(prCtx, uuid.Nil, models.RoleAdmin, projectID)
+			if err != nil {
+				slog.Warn("PR publisher: project fetch failed", "task_id", taskID, "error", err)
+				return
+			}
+			pr, err := s.prPublisher.Publish(prCtx, t, proj)
+			if err != nil {
+				if errors.Is(err, ErrPullRequestSkipped) {
+					slog.Info("PR publisher: skipped", "task_id", taskID, "reason", err)
+					return
+				}
+				slog.Error("PR publisher: failed", "task_id", taskID, "error", err)
+				return
+			}
+			_ = pr // pr.Number / pr.HTMLURL уже залогированы в Publish()
+		}(task.ID, task.ProjectID)
+	}
+
+	return nil
 }

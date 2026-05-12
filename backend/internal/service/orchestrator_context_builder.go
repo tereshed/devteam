@@ -11,6 +11,7 @@ import (
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/agentsloader"
 	"github.com/devteam/backend/pkg/llm"
 )
@@ -28,10 +29,17 @@ type PipelinePromptComposer interface {
 	UserTemplate(role string) (string, error)
 }
 
+// previousStepMessagesLimit — сколько последних agent-сообщений из task_messages
+// показывать следующему агенту pipeline (developer→reviewer и т.п.). Слишком много
+// раздуют prompt и токен-бюджет; слишком мало — reviewer/tester не увидят diff.
+const previousStepMessagesLimit = 6
+
 type contextBuilder struct {
-	encryptor Encryptor
-	composer  PipelinePromptComposer
-	agentCfg  *agentsloader.Cache
+	encryptor      Encryptor
+	composer       PipelinePromptComposer
+	agentCfg       *agentsloader.Cache
+	sandboxSecrets map[string]string
+	taskMsgRepo    repository.TaskMessageRepository
 }
 
 // NewContextBuilder создаёт сборщик контекста. agentCfg — предзагруженный кэш backend/agents (6.9); nil в тестах.
@@ -40,6 +48,46 @@ func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptCompose
 		encryptor: encryptor,
 		composer:  promptComposer,
 		agentCfg:  agentCfg,
+	}
+}
+
+// NewContextBuilderWithSandboxSecrets — тот же ContextBuilder, плюс набор секретов,
+// которые попадут в EnvSecrets для агентов с CodeBackend != "" (Developer/Tester в sandbox).
+// Используется для проброса ANTHROPIC_API_KEY и т.п. в entrypoint sandbox-контейнера.
+// Пустые значения и nil-карта игнорируются.
+func NewContextBuilderWithSandboxSecrets(encryptor Encryptor, promptComposer PipelinePromptComposer, agentCfg *agentsloader.Cache, sandboxSecrets map[string]string) ContextBuilder {
+	cleaned := make(map[string]string, len(sandboxSecrets))
+	for k, v := range sandboxSecrets {
+		if k == "" || v == "" {
+			continue
+		}
+		cleaned[k] = v
+	}
+	return &contextBuilder{
+		encryptor:      encryptor,
+		composer:       promptComposer,
+		agentCfg:       agentCfg,
+		sandboxSecrets: cleaned,
+	}
+}
+
+// NewContextBuilderFull — полная конфигурация: секреты sandbox + репозиторий сообщений
+// (для подмешивания результата предыдущего шага pipeline в prompt следующего агента).
+// Если taskMsgRepo == nil, история не подтягивается (поведение как у двух предыдущих конструкторов).
+func NewContextBuilderFull(encryptor Encryptor, promptComposer PipelinePromptComposer, agentCfg *agentsloader.Cache, sandboxSecrets map[string]string, taskMsgRepo repository.TaskMessageRepository) ContextBuilder {
+	cleaned := make(map[string]string, len(sandboxSecrets))
+	for k, v := range sandboxSecrets {
+		if k == "" || v == "" {
+			continue
+		}
+		cleaned[k] = v
+	}
+	return &contextBuilder{
+		encryptor:      encryptor,
+		composer:       promptComposer,
+		agentCfg:       agentCfg,
+		sandboxSecrets: cleaned,
+		taskMsgRepo:    taskMsgRepo,
 	}
 }
 
@@ -100,6 +148,11 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 
 	if assignedAgent.CodeBackend != nil {
 		input.CodeBackend = string(*assignedAgent.CodeBackend)
+		// Sandbox-исполнителю (Developer/Tester c CodeBackend=claude-code) нужны
+		// провайдер-ключи внутри контейнера (entrypoint.sh fast-fail'ит без них).
+		for k, v := range b.sandboxSecrets {
+			input.EnvSecrets[k] = v
+		}
 	}
 
 	// Git информация из проекта
@@ -130,10 +183,69 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		}
 	}
 
-	// Сбор дополнительного контекста (Vector DB, история сообщений)
-	// TODO: Интеграция с VectorRepository и TaskMessageRepository
+	// Подмешиваем артефакты предыдущего шага и недавнюю переписку — иначе
+	// reviewer/tester получают только title+description и не видят diff/output от developer.
+	b.appendPipelineHandoff(ctx, input, task, assignedAgent)
 
 	return input, nil
+}
+
+// appendPipelineHandoff добавляет в PromptUser блок XML-tags с результатом
+// предыдущего шага: task.Artifacts (последний result агента) + до N последних
+// agent-сообщений из task_messages. Все строки маскируются от секретов.
+//
+// Для первого шага (pending → orchestrator) artifacts пустые и сообщений нет —
+// функция тогда ничего не добавляет.
+func (b *contextBuilder) appendPipelineHandoff(ctx context.Context, input *agent.ExecutionInput, task *models.Task, currentAgent *models.Agent) {
+	var sb strings.Builder
+
+	// 1) Артефакты последнего шага (raw JSON: diff, decision, branch_name, ...).
+	if len(task.Artifacts) > 0 && string(task.Artifacts) != "{}" && string(task.Artifacts) != "null" {
+		artJSON := b.scrubJSON(task.Artifacts)
+		sb.WriteString("\n\n<previous_step_artifacts encoding=\"json\">\n")
+		sb.Write(artJSON)
+		sb.WriteString("\n</previous_step_artifacts>\n")
+	}
+
+	// 2) Последние agent-сообщения (история pipeline). Только если репозиторий есть.
+	if b.taskMsgRepo != nil {
+		senderAgent := models.SenderTypeAgent
+		msgs, _, err := b.taskMsgRepo.ListByTaskID(ctx, task.ID, repository.TaskMessageFilter{
+			SenderType: &senderAgent,
+			Limit:      previousStepMessagesLimit,
+		})
+		if err != nil {
+			slog.Warn("ContextBuilder: failed to load previous messages", "task_id", task.ID, "error", err)
+		} else if len(msgs) > 0 {
+			// ListByTaskID сортирует ASC; берём последние N в хронологическом порядке.
+			start := 0
+			if len(msgs) > previousStepMessagesLimit {
+				start = len(msgs) - previousStepMessagesLimit
+			}
+			sb.WriteString("\n<previous_steps>\n")
+			for _, m := range msgs[start:] {
+				// Пропускаем сообщения от самого себя (при ре-итерациях
+				// developer ↔ reviewer — себя в истории показывать смысла мало).
+				if currentAgent != nil && m.SenderID == currentAgent.ID {
+					continue
+				}
+				fmt.Fprintf(&sb, "<step agent_id=%q type=%q at=%q>\n",
+					m.SenderID.String(), string(m.MessageType), m.CreatedAt.Format("2006-01-02T15:04:05Z"))
+				sb.WriteString(b.scrub(m.Content))
+				sb.WriteString("\n</step>\n")
+			}
+			sb.WriteString("</previous_steps>\n")
+		}
+	}
+
+	if sb.Len() == 0 {
+		return
+	}
+	if input.PromptUser != "" {
+		input.PromptUser = input.PromptUser + sb.String()
+	} else {
+		input.PromptUser = sb.String()
+	}
 }
 
 func (b *contextBuilder) resolveDefaultAgentConfig(agent *models.Agent) *agentsloader.AgentConfig {

@@ -16,6 +16,10 @@ type CreateTaskRequest struct {
 	ParentTaskID    *uuid.UUID     `json:"parent_task_id"`
 	AssignedAgentID *uuid.UUID     `json:"assigned_agent_id"`
 	Context         datatypes.JSON `json:"context" swaggertype:"string"`
+	// BranchName — необязательное имя git-ветки, которое sandbox-исполнитель
+	// (Developer/Tester c claude-code) использует при clone в контейнере.
+	// Без него orchestrator не сможет дойти до in_progress→review.
+	BranchName *string `json:"branch_name"`
 }
 
 // ListTasksRequest фильтры и пагинация списка задач проекта.

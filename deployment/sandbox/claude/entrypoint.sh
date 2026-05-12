@@ -218,6 +218,16 @@ if is_blank "$BASE_REF_RESOLVED"; then
 fi
 export BASE_REF_RESOLVED
 
+# START_REF — с какой ветки начинать локально. Developer стартует с BASE_REF
+# (обычно main) и строит feature-ветку; reviewer/tester получают START_REF =
+# имя ветки задачи и видят уже пушнутый код developer'а. Если START_REF не
+# задан — fallback на BASE_REF (старое поведение).
+START_REF="${START_REF:-${BASE_REF_RESOLVED}}"
+if is_blank "$START_REF"; then
+  START_REF="$BASE_REF_RESOLVED"
+fi
+export START_REF
+
 # Инструкция и контекст: приоритет файлов от раннера (CopyToContainer); иначе маленький TASK_* для отладки.
 PHASE="prepare_files"
 if [[ -f "$PROMPT_FILE" ]] && [[ -s "$PROMPT_FILE" ]]; then
@@ -257,7 +267,9 @@ fi
 
 cd "$REPO_DIR"
 
-# Обеспечиваем объекты для базы (shallow): догоняем ветку на origin
+# Обеспечиваем объекты для базы (shallow): догоняем BASE_REF (база для diff)
+# и START_REF (точка старта локальной ветки). Если START_REF == BASE_REF —
+# второй fetch почти бесплатен (Git вернёт «Already up to date»).
 PHASE="fetch_base"
 if ! git fetch origin --depth=50 -- "${BASE_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
   echo "entrypoint: git fetch failed for BASE_REF=${BASE_REF_RESOLVED} (see ${AGENT_LOG})" >&2
@@ -266,12 +278,25 @@ if ! git fetch origin --depth=50 -- "${BASE_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; 
   exit 1
 fi
 
-# --- branch: рабочая ветка от origin/<BASE_REF> ---
+START_REF_RESOLVED="$START_REF"
+if [[ "$START_REF_RESOLVED" != "$BASE_REF_RESOLVED" ]]; then
+  PHASE="fetch_start"
+  # Явный refspec — иначе `git fetch origin -- <branch>` обновляет только FETCH_HEAD
+  # и refs/remotes/origin/<branch> не создаётся (последующий switch -C origin/<branch> падает).
+  # Если ветки на remote нет (developer ещё не пушнул) — мягко падаем на BASE_REF.
+  if ! git fetch origin --depth=50 "+refs/heads/${START_REF_RESOLVED}:refs/remotes/origin/${START_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
+    echo "entrypoint: START_REF=${START_REF_RESOLVED} not found on origin, falling back to BASE_REF=${BASE_REF_RESOLVED}" >>"$AGENT_LOG"
+    START_REF_RESOLVED="$BASE_REF_RESOLVED"
+  fi
+fi
+export START_REF_RESOLVED
+
+# --- branch: рабочая ветка от origin/<START_REF> ---
 # git switch -C: создать ветку или переключиться с reset на ref (если имя совпадает с дефолтной после clone — не падаем).
 # «--» перед start-point: не истолковать пользовательский ref как опцию (5.4).
 PHASE="branch"
-if ! git switch -C "$BRANCH_NAME" -- "origin/${BASE_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
-  echo "entrypoint: could not create/switch to branch ${BRANCH_NAME} at origin/${BASE_REF_RESOLVED}" >&2
+if ! git switch -C "$BRANCH_NAME" -- "origin/${START_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
+  echo "entrypoint: could not create/switch to branch ${BRANCH_NAME} at origin/${START_REF_RESOLVED}" >&2
   LAST_EXIT_CODE=1
   MESSAGE="git switch -C failed"
   exit 1
@@ -285,17 +310,26 @@ PHASE="agent"
 # Headless: без TTY не ждём интерактива и телеметрию-приглашения (зависания по таймауту оркестратора).
 export CLAUDE_INTERACTIVE=0
 export ANTHROPIC_TELEMETRY_DISABLED=1
-# Claude Code 0.2.37: неинтерактивный режим -p; stdin добавляется к запросу (см. документацию non-interactive).
+# Claude Code 2.x: флаг --cwd удалён, рабочая директория задаётся через cd;
+# --bare снимает hooks/keychain/CLAUDE.md auto-discovery (sandbox изолирован).
 # --dangerously-skip-permissions: допустимо в изолированном контейнере (сеть к LLM — политика хоста).
-{
-  cat "$PROMPT_FILE"
-  printf '\n---\n'
-  cat "$CONTEXT_FILE"
-} | claude -p "DevTeam sandbox: полные инструкции и контекст переданы через stdin; работай только в этом репозитории." \
-  --cwd "$REPO_DIR" \
-  --dangerously-skip-permissions \
-  --allowedTools "Bash,Edit,Replace,Read,Write,Glob,NotebookEdit" \
-  >>"$AGENT_LOG" 2>&1 &
+CLAUDE_MODEL_ARGS=()
+if [[ -n "${DEVTEAM_AGENT_MODEL:-}" ]]; then
+  CLAUDE_MODEL_ARGS+=("--model" "${DEVTEAM_AGENT_MODEL}")
+fi
+(
+  cd "$REPO_DIR"
+  {
+    cat "$PROMPT_FILE"
+    printf '\n---\n'
+    cat "$CONTEXT_FILE"
+  } | claude -p "DevTeam sandbox: полные инструкции и контекст переданы через stdin; работай только в этом репозитории." \
+    --bare \
+    --dangerously-skip-permissions \
+    "${CLAUDE_MODEL_ARGS[@]}" \
+    --allowedTools "Bash,Edit,Read,Write,Glob,NotebookEdit" \
+    >>"$AGENT_LOG" 2>&1
+) &
 CLAUDE_PID=$!
 
 set +e
@@ -344,7 +378,46 @@ if ! git diff --cached --stat "${ORIGIN_BASE}" -- >"$CHANGES_TXT" 2>>"$AGENT_LOG
   exit 1
 fi
 
+# --- commit: если агент что-то изменил (есть staged-изменения), коммитим ---
+PHASE="commit"
+COMMITTED=0
+if ! git diff --cached --quiet; then
+  if ! git commit -m "DevTeam agent: ${BRANCH_NAME}" >>"$AGENT_LOG" 2>&1; then
+    echo "entrypoint: git commit failed" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="git commit failed"
+    exit 1
+  fi
+  COMMITTED=1
+fi
+
 COMMIT_HASH="$(git rev-parse HEAD)"
+
+# --- push: пушим ветку на origin только если был свой коммит.
+# Tester/Reviewer ничего не меняют → push'ить нечего (и было бы non-fast-forward
+# поверх ветки, уже пушнутой Developer'ом).
+# Сам токен НИКОГДА не уходит в agent.log: подменяем remote во временной переменной и стрипаем stderr через sed.
+PHASE="push"
+PUSHED=0
+if [[ "$COMMITTED" -eq 1 && -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
+  PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
+  # Запушим в /tmp и затем стрипнем токен в agent.log; на STDOUT/ERR ничего токено-содержащего не выводим.
+  PUSH_LOG="$(mktemp)"
+  set +e
+  git push "$PUSH_URL" "$BRANCH_NAME" >"$PUSH_LOG" 2>&1
+  PUSH_EXIT=$?
+  set -e
+  # Маскируем токен в логе перед добавлением в AGENT_LOG (на случай, если git напечатал часть URL).
+  sed -E "s|x-access-token:[^@]+@|x-access-token:***@|g" "$PUSH_LOG" >>"$AGENT_LOG"
+  rm -f "$PUSH_LOG"
+  if [[ "$PUSH_EXIT" -ne 0 ]]; then
+    echo "entrypoint: git push failed (exit=${PUSH_EXIT})" >&2
+    LAST_EXIT_CODE="$PUSH_EXIT"
+    MESSAGE="git push failed"
+    exit "$PUSH_EXIT"
+  fi
+  PUSHED=1
+fi
 
 PHASE="done"
 if [[ "${AGENT_FAILED:-0}" -eq 1 ]]; then
