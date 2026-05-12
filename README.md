@@ -391,6 +391,89 @@ User Message
 
 ---
 
+### Sprint 15 — Авторизация Claude Code, мультипровайдерный LLM и кастомизация агентов
+
+**Цель:** Освободиться от жёсткой завязки на Anthropic API-ключи: разрешить логин Claude Code по подписке (OAuth), подключить альтернативные LLM-провайдеры через прокси `free-claude-code`, и дать пользователю UI для тонкой настройки каждого агента (модель/провайдер, MCP-серверы, Skills, разрешения Claude Code для sandbox).
+
+**Контекст:** в sandbox-контейнере (Sprint 5) Claude Code сейчас запускается с `ANTHROPIC_API_KEY` и спотыкается на интерактивных подтверждениях операций (write/bash/network) — оркестратор зависает в ожидании. Нужно: (а) разрешить аутентификацию подпиской вместо API-ключа, (б) поддержать совместимые провайдеры через [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) как Anthropic-совместимый прокси (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`), (в) пробросить per-agent `settings.json` с `permissions.allow` / `permissions.defaultMode` и `--dangerously-skip-permissions` там, где это безопасно (изолированный контейнер).
+
+#### 15.A — Backend: модель данных и провайдеры
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 15.1 | Миграция: таблица `llm_providers` (id, kind: `anthropic`/`anthropic_oauth`/`openrouter`/`deepseek`/`moonshot`/`ollama`/`zhipu`/`free_claude_proxy`, base_url, auth_type, credentials_encrypted, default_model, enabled) | `backend/migrations/020_create_llm_providers.sql` | ⬜ |
+| 15.2 | Миграция: таблица `claude_code_subscriptions` (id, user_id, oauth_access_token, oauth_refresh_token, expires_at, scopes — всё AES-256-GCM) | `backend/migrations/021_create_claude_code_subscriptions.sql` | ⬜ |
+| 15.3 | Миграция: `ALTER TABLE agents` — добавить `llm_provider_id`, `code_backend_settings JSONB` (модель, MCP-сервера, Skills, claude code permissions), `sandbox_permissions JSONB` (allow/deny/defaultMode) | `backend/migrations/022_alter_agents_provider_and_settings.sql` | ⬜ |
+| 15.4 | Миграция: таблица `mcp_servers_registry` (id, name, transport: `stdio`/`http`/`sse`, command/url, env_template, scope: `global`/`project`/`agent`) — расширение существующей `mcp_server_configs` или новая | `backend/migrations/023_create_mcp_servers_registry.sql` | ⬜ |
+| 15.5 | Миграция: таблица `agent_skills` (id, agent_id, skill_name, skill_source: `builtin`/`plugin`/`path`, config_json) | `backend/migrations/024_create_agent_skills.sql` | ⬜ |
+| 15.6 | Go-модели: `LLMProvider`, `ClaudeCodeSubscription`, `MCPServer`, `AgentSkill`, расширение `Agent` | `backend/internal/models/` | ⬜ |
+| 15.7 | Интерфейс `LLMProviderClient` (`Chat`, `Embed`, `HealthCheck`, `ResolveBaseURL`) — для `LLMAgentExecutor` (6.2) | `backend/internal/llm/provider.go` | ⬜ |
+| 15.8 | Реализации провайдеров: `OpenRouterClient`, `DeepSeekClient`, `MoonshotClient`, `OllamaClient`, `ZhipuClient` (OpenAI-compatible REST) + `AnthropicClient` (OAuth и API-key режимы) | `backend/internal/llm/openrouter.go`, `deepseek.go`, `moonshot.go`, `ollama.go`, `zhipu.go`, `anthropic.go` | ⬜ |
+| 15.9 | Фабрика: `NewLLMClient(provider *LLMProvider, secrets Resolver)` — выбор реализации по `kind`, дешифровка кредов | `backend/internal/llm/factory.go` | ⬜ |
+| 15.10 | Repository + Service: `LLMProviderService` (CRUD, health-check, тест подключения) | `backend/internal/repository/llm_provider_repository.go`, `backend/internal/service/llm_provider_service.go` | ⬜ |
+| 15.11 | Unit-тесты: провайдеры (с моками HTTP) + фабрика | `backend/internal/llm/*_test.go` | ⬜ |
+
+#### 15.B — Авторизация Claude Code по подписке (OAuth)
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 15.12 | OAuth flow: `POST /api/v1/claude-code/auth/init` → возвращает device-code URL; `POST /api/v1/claude-code/auth/callback` → сохраняет токен в `claude_code_subscriptions` | `backend/internal/handler/claude_code_auth_handler.go`, `backend/internal/service/claude_code_auth_service.go` | ⬜ |
+| 15.13 | Refresh-токен: фоновый воркер обновляет токены до `expires_at - 5m` | `backend/internal/service/claude_code_token_refresher.go` | ⬜ |
+| 15.14 | Проброс OAuth-токена в sandbox: entrypoint получает `CLAUDE_CODE_OAUTH_TOKEN` env вместо `ANTHROPIC_API_KEY` | `deployment/sandbox/claude/entrypoint.sh`, `backend/internal/sandbox/docker_runner.go` | ⬜ |
+| 15.15 | Swagger + MCP-инструменты: `claude_code_auth_status`, `claude_code_auth_revoke` | handler + `backend/internal/mcp/tools_claude_code_auth.go` | ⬜ |
+
+#### 15.C — free-claude-code прокси для не-Anthropic провайдеров
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 15.16 | Sidecar/сервис `free-claude-proxy` в `docker-compose.yml` (образ собирается из репозитория Alishahryar1/free-claude-code; пробрасывает Anthropic-совместимый API поверх OpenRouter/DeepSeek/Moonshot/Ollama/Zhipu) | `docker-compose.yml`, `deployment/free-claude-proxy/` | ⬜ |
+| 15.17 | Конфиг прокси: маппинг "модель → провайдер" из БД (`llm_providers`) в `config.yaml` прокси, перегенерация при изменениях | `backend/internal/service/free_claude_proxy_config.go` | ⬜ |
+| 15.18 | Sandbox entrypoint: если `code_backend == "claude_code_via_proxy"`, выставлять `ANTHROPIC_BASE_URL=http://free-claude-proxy:PORT` и `ANTHROPIC_AUTH_TOKEN=<service-token>` вместо реального ключа Anthropic | `deployment/sandbox/claude/entrypoint.sh`, `backend/internal/sandbox/docker_runner.go` | ⬜ |
+| 15.19 | Health-check прокси при старте оркестратора (fail-fast, если выбран `claude_code_via_proxy`, а прокси недоступен) | `backend/internal/service/orchestrator_service.go` | ⬜ |
+| 15.20 | Документация: how-to для каждого провайдера (где взять ключ, какие модели поддерживаются) | `docs/llm-providers.md` | ⬜ |
+
+#### 15.D — Кастомизация агентов: MCP, Skills, Permissions
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 15.21 | Service: `AgentSettingsService` — генерация `~/.claude/settings.json` для агента в sandbox (permissions.allow/deny/defaultMode, env, hooks) | `backend/internal/service/agent_settings_service.go` | ⬜ |
+| 15.22 | Sandbox entrypoint: монтирование per-task `settings.json` + `.mcp.json` + `~/.claude/skills/` из `code_backend_settings` агента; запуск `claude` с `--permission-mode acceptEdits` (или `bypassPermissions` для изолированного контейнера — настраивается per-agent) | `deployment/sandbox/claude/entrypoint.sh`, `backend/internal/sandbox/docker_runner.go` | ⬜ |
+| 15.23 | API: `GET/PUT /api/v1/agents/:id/settings` — JSON-схема для `code_backend_settings` + валидация (allowedTools regex, MCP transport, известные Skills) | `backend/internal/handler/agent_settings_handler.go` | ⬜ |
+| 15.24 | MCP-инструменты: `agent_settings_get`, `agent_settings_update`, `mcp_server_list`, `skill_list` | `backend/internal/mcp/tools_agent_settings.go` | ⬜ |
+| 15.25 | Дефолтные пресеты ролей: `developer.yaml`, `reviewer.yaml`, `tester.yaml` — обновить с разумными `permissions.allow` (`Read`, `Edit`, `Write`, `Bash(git diff:*)`, `Bash(go test:*)` и т.д.) и `defaultMode: acceptEdits` | `backend/agents/*.yaml` | ⬜ |
+| 15.26 | Unit-тесты: `AgentSettingsService` (генерация settings.json), валидация permission-паттернов | `backend/internal/service/agent_settings_service_test.go` | ⬜ |
+| 15.27 | Интеграционный тест: sandbox с агентом, у которого `bypassPermissions` — задача с `Edit` + `Bash` проходит без зависания на подтверждениях | `backend/internal/sandbox/integration_permissions_test.go` | ⬜ |
+
+#### 15.E — Frontend: UI для провайдеров и настройки агентов
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 15.28 | Freezed-модели: `LLMProviderModel`, `ClaudeCodeAuthStatus`, `AgentSettingsModel` (MCP, Skills, permissions) | `frontend/lib/features/settings/domain/`, `frontend/lib/features/team/domain/` | ⬜ |
+| 15.29 | Repository + providers: `LLMProvidersRepository`, `ClaudeCodeAuthRepository`, `AgentSettingsRepository` | `frontend/lib/features/settings/data/`, `frontend/lib/features/team/data/` | ⬜ |
+| 15.30 | Экран: Глобальные настройки → вкладка «LLM-провайдеры»: список, добавление (OpenRouter/DeepSeek/Moonshot/Ollama/Zhipu), тест подключения, переключатель «использовать free-claude-proxy» | `frontend/lib/features/settings/presentation/screens/global_settings_screen.dart` (расширение) | ⬜ |
+| 15.31 | Экран: Глобальные настройки → вкладка «Claude Code» с кнопкой «Войти по подписке» (OAuth device flow), статус токена, отзыв | `frontend/lib/features/settings/presentation/widgets/claude_code_auth_section.dart` | ⬜ |
+| 15.32 | Диалог редактирования агента (расширение 13.3): вкладки «Модель/провайдер», «MCP-серверы», «Skills», «Разрешения Claude Code» (UI для `allow/deny/defaultMode`) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` (расширение) | ⬜ |
+| 15.33 | Локализация (ru, en) для всех новых строк | `frontend/lib/l10n/app_ru.arb`, `app_en.arb` | ⬜ |
+| 15.34 | Widget-тесты: новые секции global settings + новые вкладки agent edit dialog | `frontend/test/features/settings/`, `frontend/test/features/team/` | ⬜ |
+
+#### 15.F — E2E и безопасность
+
+| # | Задача | Файлы | Статус |
+|---|--------|-------|--------|
+| 15.35 | E2E: создать агента с провайдером DeepSeek через free-claude-proxy → sandbox-задача выполняется без `ANTHROPIC_API_KEY` в env | `backend/internal/service/orchestrator_provider_e2e_test.go` | ⬜ |
+| 15.36 | E2E: агент с `bypassPermissions` в Docker делает `Edit` + `Bash(git commit)` без интерактивного блокирования | расширение 14.4 / новый тест | ⬜ |
+| 15.37 | Security-аудит: OAuth-токены и API-ключи провайдеров не логируются (grep по логам в тесте), `settings.json` не уезжает в индекс Weaviate | `backend/internal/...` (тесты + аудит) | ⬜ |
+
+**Зависимости:** Sprint 5 (sandbox), Sprint 6 (Orchestrator/LLMAgentExecutor 6.2), Sprint 13 (Frontend настройки и agent edit dialog 13.3).
+
+**Важно (стек / правила):**
+- Backend строго следует Clean Architecture (handler → service → repository); никаких глобалов, миграции — только Goose (`make migrate-create`), `gorm.AutoMigrate` запрещён.
+- Все новые публичные ручки получают MCP-инструмент в `backend/internal/mcp/` + Swagger-аннотации (`make swagger`).
+- Frontend: абсолютные импорты `package:frontend/...`, Freezed `abstract class`, никакого хардкода строк — только `.arb` + `flutter gen-l10n`; `make frontend-codegen` после изменения моделей.
+- Все секреты (OAuth-токены, ключи провайдеров) — AES-256-GCM через `backend/pkg/crypto/encrypt.go` (4.7), никогда не в plaintext в БД и не в логах.
+
+---
+
 ## Порядок выполнения
 
 ```
@@ -414,6 +497,9 @@ Sprint 1 (модели + миграции)
             │               └── Sprint 11 (Frontend: чат)
             │
             └── Sprint 14 (E2E тесты) ← зависит от всех
+                    │
+                    └── Sprint 15 (Auth + LLM providers + кастомизация агентов)
+                         ← зависит от 5, 6, 13
 ```
 
 **Параллельные потоки:**
@@ -421,7 +507,7 @@ Sprint 1 (модели + миграции)
 - **Поток B (Backend Tasks):** 1 → 3 → 6 → 7 → 8
 - **Поток C (Sandbox):** 5 (параллельно, объединяется в Sprint 6)
 - **Поток D (Frontend):** 10 → 11 → 12 → 13
-- **Финал:** 14
+- **Финал:** 14 → 15 (расширение sandbox/UI: OAuth Claude Code, мультипровайдерный LLM, MCP/Skills/permissions per agent)
 
 ---
 
@@ -433,7 +519,7 @@ Sprint 1 (модели + миграции)
 | **Frontend** | Flutter 3.x, Riverpod 2.0, GoRouter, Dio, Freezed |
 | **БД** | YugabyteDB (PostgreSQL-совместимая, порт 5433) |
 | **Векторная БД** | Weaviate + sentence-transformers |
-| **LLM** | OpenAI, Anthropic, Gemini, Deepseek, Qwen |
+| **LLM** | Anthropic (API-ключ или OAuth-подписка Claude Code), OpenAI, Gemini, DeepSeek, Qwen, OpenRouter, Moonshot AI, Ollama, Zhipu AI (через free-claude-proxy для Anthropic-совместимости — Sprint 15) |
 | **Sandbox** | Docker containers (Claude Code CLI, Aider) |
 | **Инфраструктура** | Docker, Docker Compose, Makefile |
 
