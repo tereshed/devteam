@@ -932,31 +932,31 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskSenderTypeAgent => 'Агент';
 
   @override
-  String get taskAgentRoleUnknown => 'Неизвестная роль';
+  String get agentRoleUnknown => 'Неизвестная роль';
 
   @override
-  String get taskAgentRoleWorker => 'Исполнитель';
+  String get agentRoleWorker => 'Исполнитель';
 
   @override
-  String get taskAgentRoleSupervisor => 'Супервизор';
+  String get agentRoleSupervisor => 'Супервизор';
 
   @override
-  String get taskAgentRoleOrchestrator => 'Оркестратор';
+  String get agentRoleOrchestrator => 'Оркестратор';
 
   @override
-  String get taskAgentRolePlanner => 'Планировщик';
+  String get agentRolePlanner => 'Планировщик';
 
   @override
-  String get taskAgentRoleDeveloper => 'Разработчик';
+  String get agentRoleDeveloper => 'Разработчик';
 
   @override
-  String get taskAgentRoleReviewer => 'Ревьюер';
+  String get agentRoleReviewer => 'Ревьюер';
 
   @override
-  String get taskAgentRoleTester => 'Тестировщик';
+  String get agentRoleTester => 'Тестировщик';
 
   @override
-  String get taskAgentRoleDevops => 'DevOps';
+  String get agentRoleDevops => 'DevOps';
 
   @override
   String get teamEmptyAgents => 'В команде пока нет агентов.';

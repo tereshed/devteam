@@ -1838,59 +1838,59 @@ abstract class AppLocalizations {
   /// **'Агент'**
   String get taskSenderTypeAgent;
 
-  /// Фоллбэк роли агента (12.5)
+  /// Фоллбэк для неизвестной роли агента в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Неизвестная роль'**
-  String get taskAgentRoleUnknown;
+  String get agentRoleUnknown;
 
-  /// Роль агента worker на детали задачи (12.5)
+  /// Подпись роли агента «worker» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Исполнитель'**
-  String get taskAgentRoleWorker;
+  String get agentRoleWorker;
 
-  /// Роль агента supervisor (12.5)
+  /// Подпись роли агента «supervisor» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Супервизор'**
-  String get taskAgentRoleSupervisor;
+  String get agentRoleSupervisor;
 
-  /// Роль агента orchestrator (12.5)
+  /// Подпись роли агента «orchestrator» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Оркестратор'**
-  String get taskAgentRoleOrchestrator;
+  String get agentRoleOrchestrator;
 
-  /// Роль агента planner (12.5)
+  /// Подпись роли агента «planner» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Планировщик'**
-  String get taskAgentRolePlanner;
+  String get agentRolePlanner;
 
-  /// Роль агента developer (12.5)
+  /// Подпись роли агента «developer» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Разработчик'**
-  String get taskAgentRoleDeveloper;
+  String get agentRoleDeveloper;
 
-  /// Роль агента reviewer (12.5)
+  /// Подпись роли агента «reviewer» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Ревьюер'**
-  String get taskAgentRoleReviewer;
+  String get agentRoleReviewer;
 
-  /// Роль агента tester (12.5)
+  /// Подпись роли агента «tester» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'Тестировщик'**
-  String get taskAgentRoleTester;
+  String get agentRoleTester;
 
-  /// Роль агента devops (12.5)
+  /// Подпись роли агента «devops» в UI (карточка задачи, детали задачи, команда).
   ///
   /// In ru, this message translates to:
   /// **'DevOps'**
-  String get taskAgentRoleDevops;
+  String get agentRoleDevops;
 
   /// Вкладка команды: пустой список агентов (13.1)
   ///

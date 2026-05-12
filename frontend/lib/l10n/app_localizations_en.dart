@@ -930,31 +930,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskSenderTypeAgent => 'Agent';
 
   @override
-  String get taskAgentRoleUnknown => 'Unknown role';
+  String get agentRoleUnknown => 'Unknown role';
 
   @override
-  String get taskAgentRoleWorker => 'Worker';
+  String get agentRoleWorker => 'Worker';
 
   @override
-  String get taskAgentRoleSupervisor => 'Supervisor';
+  String get agentRoleSupervisor => 'Supervisor';
 
   @override
-  String get taskAgentRoleOrchestrator => 'Orchestrator';
+  String get agentRoleOrchestrator => 'Orchestrator';
 
   @override
-  String get taskAgentRolePlanner => 'Planner';
+  String get agentRolePlanner => 'Planner';
 
   @override
-  String get taskAgentRoleDeveloper => 'Developer';
+  String get agentRoleDeveloper => 'Developer';
 
   @override
-  String get taskAgentRoleReviewer => 'Reviewer';
+  String get agentRoleReviewer => 'Reviewer';
 
   @override
-  String get taskAgentRoleTester => 'Tester';
+  String get agentRoleTester => 'Tester';
 
   @override
-  String get taskAgentRoleDevops => 'DevOps';
+  String get agentRoleDevops => 'DevOps';
 
   @override
   String get teamEmptyAgents => 'No agents in this team yet.';

@@ -10,12 +10,12 @@ import 'package:frontend/l10n/app_localizations_en.dart';
 void main() {
   final l10n = AppLocalizationsEn();
 
-  test('каждая agentRoles → осмысленный taskAgentRole* (не unknown)', () {
+  test('каждая agentRoles → осмысленный agentRole* (не Unknown)', () {
     for (final r in agentRoles) {
       final label = agentRoleLabel(l10n, r);
-      expect(label, isNot(l10n.taskAgentRoleUnknown));
+      expect(label, isNot(l10n.agentRoleUnknown));
       expect(label, isNotEmpty);
     }
-    expect(agentRoleLabel(l10n, 'future_role'), l10n.taskAgentRoleUnknown);
+    expect(agentRoleLabel(l10n, 'future_role'), l10n.agentRoleUnknown);
   });
 }
