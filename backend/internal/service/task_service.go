@@ -364,6 +364,11 @@ func (s *taskService) indexTaskAsync(ctx context.Context, task *models.Task) {
 	if task == nil {
 		return
 	}
+	// indexer не сконфигурирован (dev/test без Weaviate) → пропускаем индексирование,
+	// чтобы async.ExecuteWithRetry не упал в nil pointer panic.
+	if s.indexer == nil {
+		return
+	}
 
 	// Глубокое копирование задачи для предотвращения data race
 	taskCopy := *task
@@ -417,6 +422,9 @@ func (s *taskService) indexTaskAsync(ctx context.Context, task *models.Task) {
 }
 
 func (s *taskService) deleteTaskAsync(ctx context.Context, taskID uuid.UUID) {
+	if s.indexer == nil {
+		return
+	}
 	async.ExecuteWithRetry(ctx, &s.wg, async.TaskOptions{
 		Timeout: 1 * time.Minute,
 		Retries: 3,

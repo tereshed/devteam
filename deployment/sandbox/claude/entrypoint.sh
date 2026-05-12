@@ -396,12 +396,19 @@ COMMIT_HASH="$(git rev-parse HEAD)"
 # --- push: пушим ветку на origin только если был свой коммит.
 # Tester/Reviewer ничего не меняют → push'ить нечего (и было бы non-fast-forward
 # поверх ветки, уже пушнутой Developer'ом).
-# Сам токен НИКОГДА не уходит в agent.log: подменяем remote во временной переменной и стрипаем stderr через sed.
+# https:// требует GIT_TOKEN (PAT); file:// / ssh:// — без авторизации (локальные интеграционные тесты).
+# Токен НИКОГДА не уходит в agent.log: подменяем remote во временной переменной и стрипаем stderr через sed.
 PHASE="push"
 PUSHED=0
-if [[ "$COMMITTED" -eq 1 && -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
-  PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
-  # Запушим в /tmp и затем стрипнем токен в agent.log; на STDOUT/ERR ничего токено-содержащего не выводим.
+PUSH_URL=""
+if [[ "$COMMITTED" -eq 1 ]]; then
+  if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
+    PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
+  elif [[ "${REPO_URL}" =~ ^file:// || "${REPO_URL}" =~ ^ssh:// || "${REPO_URL}" =~ ^git@ ]]; then
+    PUSH_URL="$REPO_URL"
+  fi
+fi
+if [[ -n "$PUSH_URL" ]]; then
   PUSH_LOG="$(mktemp)"
   set +e
   git push "$PUSH_URL" "$BRANCH_NAME" >"$PUSH_LOG" 2>&1

@@ -381,11 +381,12 @@ User Message
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
 | 14.1 | E2E тест (backend): создать проект → отправить запрос → Orchestrator создаёт задачи → Developer выполняет → Reviewer одобряет → Completed | `backend/internal/service/orchestrator_integration_test.go` | ✅ |
-| 14.2 | E2E тест (frontend): интеграционный тест полного flow в UI | `frontend/integration_test/full_flow_test.dart` | ⬜ |
-| 14.3 | Нагрузочное тестирование: 5 параллельных sandbox-контейнеров | Скрипт | ⬜ |
-| 14.4 | Тест безопасности: sandbox не может выйти за пределы `/workspace` | Тест | ⬜ |
-| 14.5 | Тест отмены: пользователь нажимает Cancel → контейнер убивается | Тест | ⬜ |
-| 14.6 | Документация: обновить README, API.md, env.example | Корень | ⬜ |
+| 14.2 | E2E тест (frontend): интеграционный тест полного flow в UI | `frontend/integration_test/full_flow_test.dart` | ✅ |
+| 14.3 | Нагрузочное тестирование: 5 параллельных sandbox-контейнеров | `backend/internal/sandbox/sandbox_real_test.go` (`TestSandbox_LoadFiveParallel`) | ✅ |
+| 14.4 | Тест безопасности: sandbox не может выйти за пределы `/workspace` | `backend/internal/sandbox/sandbox_real_test.go` (`TestSandbox_Isolation_AgentCannotWriteOutsideWorkspace`) | ✅ |
+| 14.5 | Тест отмены: пользователь нажимает Cancel → контейнер убивается | `backend/internal/sandbox/sandbox_real_test.go` (`TestSandbox_Cancel_StopSignalKillsRunningContainer`) | ✅ |
+| 14.6 | Документация: обновить README, API.md, env.example | Корень | ✅ |
+| 14.7 | Full-stack smoke: реальный pipeline → PR на GitHub | `scripts/e2e_smoke.sh` + `make e2e-smoke` | ✅ |
 
 **Зависимости:** Все предыдущие спринты
 
@@ -528,13 +529,19 @@ Sprint 1 (модели + миграции)
 ## Быстрый старт
 
 ```bash
+# 0. Конфиг
+cp backend/env.example backend/.env
+#    Заполните ANTHROPIC_API_KEY и сгенерируйте ENCRYPTION_KEY:
+#    `openssl rand -hex 32`
+
 # 1. Запуск инфраструктуры
 make build && make up
 
-# 2. Подождать ~30 сек (инициализация YugabyteDB)
-
-# 3. Миграции
+# 2. Подождать ~30 сек (инициализация YugabyteDB) и применить миграции
 make migrate-up
+
+# 3. Собрать sandbox-образ для агентов (developer/reviewer/tester)
+make sandbox-build
 
 # 4. Frontend
 make frontend-setup
@@ -581,8 +588,25 @@ make frontend-setup                  # Первоначальная настро
 make frontend-codegen                # Кодогенерация (Riverpod, Freezed, l10n)
 make frontend-run-web                # Запуск Flutter в Chrome
 make frontend-test                   # Flutter тесты
+make frontend-test-integration       # Flutter integration_test (полный UI flow, Sprint 14.2)
+make e2e-smoke                       # Full-stack smoke на поднятом стеке (Sprint 14.7)
 make help                            # Все команды
 ```
+
+## Тестирование (Sprint 14)
+
+| Уровень | Команда | Покрытие |
+|---|---|---|
+| Backend unit | `make test-unit` | сервисы, репозитории, pipeline без БД |
+| Backend integration | `make test-integration` | + Yugabyte, + Docker sandbox (если есть образ `devteam/sandbox-claude:local`): orchestrator pipeline (14.1), sandbox real-push / isolation / cancel / 5-parallel (14.3-14.5) |
+| Backend full-stack smoke | `GITHUB_PAT=ghp_xxx make e2e-smoke` | реальный POST `/tasks` → ожидаем `completed` → проверяем PR на GitHub (14.7) |
+| Frontend unit/widget | `make frontend-test` | компоненты, контроллеры с моками |
+| Frontend integration | `make frontend-test-integration` | полный UI flow на реальном backend: register → создание проекта → проект виден в списке (14.2) |
+
+Подробности по тестовым артефактам — в `backend/API.md` (раздел «Sprint 14 — тестовые сценарии»).
+Для full-stack smoke (`e2e-smoke`) в `backend/.env` должен быть валидный
+`ANTHROPIC_API_KEY` и в env shell — `GITHUB_PAT` с правами `Contents: RW`,
+`Pull requests: RW` на репозиторий из `--repo` (по умолчанию `tereshed/kt-test-repo`).
 
 ---
 

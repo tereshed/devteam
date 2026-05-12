@@ -66,6 +66,17 @@ sandbox-build: sandbox-build-claude
 
 test-all: test-integration
 
+# === Full-stack smoke (Sprint 14, C-block) ===
+# Прогоняет реальный E2E на поднятом стеке: register → project → agents →
+# task → poll до completed → проверяет, что в указанном GitHub-репо открыт PR.
+# Требует: docker compose up (backend + yugabyte + sandbox-claude:local образ),
+# реальный ANTHROPIC_API_KEY в backend/.env, GITHUB_PAT в env.
+e2e-smoke:
+	@test -n "$$GITHUB_PAT" || { echo "GITHUB_PAT env is required"; exit 2; }
+	./scripts/e2e_smoke.sh
+
+# === Тестирование (Frontend) ===
+
 # === Тестирование (Frontend) ===
 frontend-test:
 	cd frontend && flutter pub get && dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n && flutter test

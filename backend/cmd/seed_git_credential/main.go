@@ -71,7 +71,8 @@ func main() {
 	fmt.Println("credential_id:", cred.ID)
 
 	// Привязываем к проекту + переключаем провайдер на github
-	if err := db.Exec(`UPDATE projects SET git_credential_id = ?, git_provider = 'github' WHERE id = ?`, cred.ID, projectID).Error; err != nil {
+	// (колонка `git_credentials_id` — мн.ч., см. миграцию 014_create_projects.sql).
+	if err := db.Exec(`UPDATE projects SET git_credentials_id = ?, git_provider = 'github' WHERE id = ?`, cred.ID, projectID).Error; err != nil {
 		log.Fatalf("attach to project: %v", err)
 	}
 	fmt.Println("attached to project:", projectID)

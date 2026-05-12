@@ -23,6 +23,7 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/gitprovider"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
@@ -32,17 +33,19 @@ import (
 
 // orchestratorE2ESetup собирает реальный стек репозиториев/сервисов и тестовые сущности.
 type orchestratorE2ESetup struct {
-	db          *gorm.DB
-	user        *models.User
-	project     *models.Project
-	team        *models.Team
-	agents      map[models.AgentRole]*models.Agent
-	taskRepo    repository.TaskRepository
-	taskMsgRepo repository.TaskMessageRepository
+	db           *gorm.DB
+	user         *models.User
+	project      *models.Project
+	team         *models.Team
+	agents       map[models.AgentRole]*models.Agent
+	taskRepo     repository.TaskRepository
+	taskMsgRepo  repository.TaskMessageRepository
+	teamRepo     repository.TeamRepository
 	workflowRepo repository.WorkflowRepository
-	taskService TaskService
-	projectSvc  ProjectService
-	orch        OrchestratorService
+	txManager    repository.TransactionManager
+	taskService  TaskService
+	projectSvc   ProjectService
+	orch         OrchestratorService
 }
 
 func orchestratorIntegrationDB(t *testing.T) *gorm.DB {
@@ -242,7 +245,9 @@ func setupOrchestratorE2E(t *testing.T) *orchestratorE2ESetup {
 		agents:       agents,
 		taskRepo:     taskRepo,
 		taskMsgRepo:  taskMsgRepo,
+		teamRepo:     teamRepo,
 		workflowRepo: workflowRepo,
+		txManager:    txManager,
 		taskService:  taskSvc,
 		projectSvc:   projectSvc,
 		orch: NewOrchestratorService(
@@ -391,4 +396,376 @@ func TestOrchestratorE2E_ReviewerApprovesAdvancesToTester(t *testing.T) {
 	final, err := s.taskRepo.GetByID(context.Background(), task.ID)
 	require.NoError(t, err)
 	require.Equal(t, models.TaskStatusCompleted, final.Status)
+}
+
+// passiveAgentExecutor — простой исполнитель: возвращает заготовленный по роли
+// результат и НЕ трогает assigned_agent_id в БД. Используется для проверки,
+// что переключение агента действительно делает оркестратор (WithTeamRepository).
+type passiveAgentExecutor struct {
+	callOrder *[]string
+	calls     *atomic.Int32
+}
+
+func (e *passiveAgentExecutor) Execute(_ context.Context, in agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	e.calls.Add(1)
+	*e.callOrder = append(*e.callOrder, in.Role)
+	var artifacts json.RawMessage
+	output := in.Role + ": ok"
+	switch models.AgentRole(in.Role) {
+	case models.AgentRoleOrchestrator:
+		artifacts = json.RawMessage(`{"plan":"decompose"}`)
+	case models.AgentRolePlanner:
+		artifacts = json.RawMessage(`{"steps":["impl","tests"]}`)
+	case models.AgentRoleDeveloper:
+		artifacts = json.RawMessage(`{"diff":"+ new line","branch_name":"feature/x"}`)
+	case models.AgentRoleReviewer:
+		artifacts = json.RawMessage(`{"decision":"approved"}`)
+	case models.AgentRoleTester:
+		artifacts = json.RawMessage(`{"decision":"passed"}`)
+	default:
+		return nil, errors.New("passive executor: unknown role " + in.Role)
+	}
+	return &agent.ExecutionResult{Success: true, Output: output, ArtifactsJSON: artifacts}, nil
+}
+
+// TestOrchestratorE2E_WithTeamRepository_AutoAdvancesAgent — оркестратор сам
+// (через WithTeamRepository → resolveNextAgentID) проставляет AssignedAgentID на
+// агента следующей по pipeline роли. Без scripted-executor'а pipeline должен
+// проходить только за счёт этого механизма.
+func TestOrchestratorE2E_WithTeamRepository_AutoAdvancesAgent(t *testing.T) {
+	s := setupOrchestratorE2E(t)
+	defer cleanupOrchestratorE2E(t, s.db, s.user.ID, s.project.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	orchAgentID := s.agents[models.AgentRoleOrchestrator].ID
+	task, err := s.taskService.Create(ctx, s.user.ID, models.RoleUser, s.project.ID, dto.CreateTaskRequest{
+		Title:           "Auto-advance smoke",
+		Description:     "Verify orchestrator switches assigned_agent_id by role at each transition.",
+		AssignedAgentID: &orchAgentID,
+	})
+	require.NoError(t, err)
+
+	callOrder := make([]string, 0, 5)
+	var calls atomic.Int32
+	exec := &passiveAgentExecutor{callOrder: &callOrder, calls: &calls}
+
+	orch := NewOrchestratorService(
+		s.taskRepo, s.taskMsgRepo, s.workflowRepo, s.projectSvc, s.txManager,
+		exec, exec,
+		s.taskService, NewPipelineEngine(5), NewContextBuilder(NoopEncryptor{}, nil, nil), nil,
+		noopSandboxStopper{}, nil,
+		WithStepPollInterval(0),
+		WithTeamRepository(s.teamRepo), // ← главный объект теста
+	)
+
+	require.NoError(t, orch.ProcessTask(ctx, task.ID))
+	require.Equal(t, []string{
+		string(models.AgentRoleOrchestrator),
+		string(models.AgentRolePlanner),
+		string(models.AgentRoleDeveloper),
+		string(models.AgentRoleReviewer),
+		string(models.AgentRoleTester),
+	}, callOrder)
+
+	final, err := s.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.TaskStatusCompleted, final.Status)
+	require.NotNil(t, final.AssignedAgentID)
+	require.Equal(t, s.agents[models.AgentRoleTester].ID, *final.AssignedAgentID,
+		"after testing→completed, assigned_agent_id should be tester (последний шаг pipeline)")
+}
+
+// TestOrchestratorE2E_ContextBuilder_InjectsArtifactsForNextAgent — проверяем,
+// что ContextBuilder.appendPipelineHandoff подмешивает в PromptUser следующего
+// агента артефакты предыдущего шага (например, diff developer'а для reviewer'а).
+func TestOrchestratorE2E_ContextBuilder_InjectsArtifactsForNextAgent(t *testing.T) {
+	s := setupOrchestratorE2E(t)
+	defer cleanupOrchestratorE2E(t, s.db, s.user.ID, s.project.ID)
+
+	ctx := context.Background()
+
+	// Готовим задачу в статусе review с artifacts от developer и одним
+	// сообщением-результатом developer'а в task_messages.
+	devAgent := s.agents[models.AgentRoleDeveloper]
+	revAgent := s.agents[models.AgentRoleReviewer]
+	branch := "feature/ctx-handoff"
+	diffArtifacts := datatypes.JSON([]byte(`{"diff":"diff --git a/HELLO.md b/HELLO.md\nnew file","commit_hash":"abc1234","branch_name":"feature/ctx-handoff"}`))
+
+	task := &models.Task{
+		ProjectID:       s.project.ID,
+		Title:           "Ctx handoff",
+		Description:     "Reviewer must see developer's diff in prompt.",
+		Status:          models.TaskStatusReview,
+		Priority:        models.TaskPriorityMedium,
+		AssignedAgentID: &revAgent.ID,
+		CreatedByType:   models.CreatedByUser,
+		CreatedByID:     s.user.ID,
+		Context:         datatypes.JSON([]byte("{}")),
+		Artifacts:       diffArtifacts,
+		BranchName:      &branch,
+	}
+	require.NoError(t, s.taskRepo.Create(ctx, task))
+
+	devMsg := &models.TaskMessage{
+		TaskID:      task.ID,
+		SenderType:  models.SenderTypeAgent,
+		SenderID:    devAgent.ID,
+		Content:     "developer: implemented HELLO.md with two lines",
+		MessageType: models.MessageTypeResult,
+		Metadata:    diffArtifacts,
+	}
+	require.NoError(t, s.taskMsgRepo.Create(ctx, devMsg))
+
+	cb := NewContextBuilderFull(NoopEncryptor{}, nil, nil, nil, s.taskMsgRepo)
+	input, err := cb.Build(ctx, task, revAgent, s.project)
+	require.NoError(t, err)
+
+	require.Contains(t, input.PromptUser, "<previous_step_artifacts",
+		"reviewer prompt must include developer's artifacts block")
+	require.Contains(t, input.PromptUser, "HELLO.md",
+		"reviewer prompt must contain developer's diff content")
+	require.Contains(t, input.PromptUser, "<previous_steps>",
+		"reviewer prompt must include prior task_messages history")
+	require.Contains(t, input.PromptUser, "developer: implemented HELLO.md",
+		"reviewer prompt must contain developer's message content")
+}
+
+// recordingPRPublisher — запоминает вызов Publish для проверки в тесте.
+type recordingPRPublisher struct {
+	called    atomic.Int32
+	lastTask  *models.Task
+	lastProj  *models.Project
+	donePR    chan struct{}
+}
+
+func newRecordingPRPublisher() *recordingPRPublisher {
+	return &recordingPRPublisher{donePR: make(chan struct{}, 1)}
+}
+
+func (p *recordingPRPublisher) Publish(_ context.Context, task *models.Task, project *models.Project) (*gitprovider.PullRequest, error) {
+	p.called.Add(1)
+	p.lastTask = task
+	p.lastProj = project
+	select {
+	case p.donePR <- struct{}{}:
+	default:
+	}
+	return &gitprovider.PullRequest{Number: 42, HTMLURL: "https://example.com/pr/42"}, nil
+}
+
+// TestOrchestratorE2E_PullRequestPublisher_FiresOnCompleted — после перехода
+// задачи в completed оркестратор должен вызвать PullRequestPublisher.Publish
+// ровно один раз с этой задачей и её проектом.
+func TestOrchestratorE2E_PullRequestPublisher_FiresOnCompleted(t *testing.T) {
+	s := setupOrchestratorE2E(t)
+	defer cleanupOrchestratorE2E(t, s.db, s.user.ID, s.project.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	orchAgentID := s.agents[models.AgentRoleOrchestrator].ID
+	task, err := s.taskService.Create(ctx, s.user.ID, models.RoleUser, s.project.ID, dto.CreateTaskRequest{
+		Title:           "PR after completed",
+		Description:     "Publisher must be invoked once on terminal completed transition.",
+		AssignedAgentID: &orchAgentID,
+	})
+	require.NoError(t, err)
+
+	callOrder := make([]string, 0, 5)
+	var calls atomic.Int32
+	exec := &scriptedAgentExecutor{db: s.db, agents: s.agents, callOrder: &callOrder, calls: &calls}
+
+	publisher := newRecordingPRPublisher()
+	orch := NewOrchestratorService(
+		s.taskRepo, s.taskMsgRepo, s.workflowRepo, s.projectSvc, s.txManager,
+		exec, exec,
+		s.taskService, NewPipelineEngine(5), NewContextBuilder(NoopEncryptor{}, nil, nil), nil,
+		noopSandboxStopper{}, nil,
+		WithStepPollInterval(0),
+		WithPullRequestPublisher(publisher),
+	)
+
+	require.NoError(t, orch.ProcessTask(ctx, task.ID))
+
+	// Publisher вызывается в отдельной горутине — ждём её.
+	select {
+	case <-publisher.donePR:
+	case <-time.After(3 * time.Second):
+		t.Fatal("PR publisher was not invoked within 3s after completed")
+	}
+	require.Equal(t, int32(1), publisher.called.Load(),
+		"publisher must be called exactly once per completed pipeline")
+	require.NotNil(t, publisher.lastTask)
+	require.Equal(t, task.ID, publisher.lastTask.ID)
+	require.NotNil(t, publisher.lastProj)
+	require.Equal(t, s.project.ID, publisher.lastProj.ID)
+}
+
+// changesRequestedThenApproveExecutor — reviewer первый раз отвечает
+// "changes_requested", после повторного прогона developer'а — "approved".
+// НЕ трогает assigned_agent_id (это делает оркестратор через WithTeamRepository).
+type changesRequestedThenApproveExecutor struct {
+	callOrder   *[]string
+	reviewCount atomic.Int32
+}
+
+func (e *changesRequestedThenApproveExecutor) Execute(_ context.Context, in agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	*e.callOrder = append(*e.callOrder, in.Role)
+	var (
+		artifacts json.RawMessage
+		output    string
+	)
+	switch models.AgentRole(in.Role) {
+	case models.AgentRoleDeveloper:
+		artifacts = json.RawMessage(`{"diff":"+ work"}`)
+		output = "developer: changes"
+	case models.AgentRoleReviewer:
+		if e.reviewCount.Add(1) == 1 {
+			artifacts = json.RawMessage(`{"decision":"changes_requested"}`)
+			output = "reviewer: please fix X"
+		} else {
+			artifacts = json.RawMessage(`{"decision":"approved"}`)
+			output = "reviewer: ok"
+		}
+	case models.AgentRoleTester:
+		artifacts = json.RawMessage(`{"decision":"passed"}`)
+		output = "tester: green"
+	default:
+		return nil, errors.New("unexpected role " + in.Role)
+	}
+	return &agent.ExecutionResult{Success: true, Output: output, ArtifactsJSON: artifacts}, nil
+}
+
+// TestOrchestratorE2E_ChangesRequested_LoopThenApprove — проверяем полную петлю
+// review→changes_requested→in_progress→review→testing→completed и инкремент
+// iteration_count в task.Context.
+func TestOrchestratorE2E_ChangesRequested_LoopThenApprove(t *testing.T) {
+	s := setupOrchestratorE2E(t)
+	defer cleanupOrchestratorE2E(t, s.db, s.user.ID, s.project.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	devAgent := s.agents[models.AgentRoleDeveloper]
+	branch := "feature/loop"
+	task := &models.Task{
+		ProjectID:       s.project.ID,
+		Title:           "Loop test",
+		Description:     "Reviewer first says changes_requested, then approves on retry.",
+		Status:          models.TaskStatusInProgress,
+		Priority:        models.TaskPriorityMedium,
+		AssignedAgentID: &devAgent.ID,
+		CreatedByType:   models.CreatedByUser,
+		CreatedByID:     s.user.ID,
+		Context:         datatypes.JSON([]byte("{}")),
+		Artifacts:       datatypes.JSON([]byte("{}")),
+		BranchName:      &branch,
+	}
+	require.NoError(t, s.taskRepo.Create(context.Background(), task))
+
+	callOrder := make([]string, 0, 6)
+	exec := &changesRequestedThenApproveExecutor{callOrder: &callOrder}
+
+	orch := NewOrchestratorService(
+		s.taskRepo, s.taskMsgRepo, s.workflowRepo, s.projectSvc, s.txManager,
+		exec, exec,
+		s.taskService, NewPipelineEngine(5), NewContextBuilder(NoopEncryptor{}, nil, nil), nil,
+		noopSandboxStopper{}, nil,
+		WithStepPollInterval(0),
+		WithTeamRepository(s.teamRepo), // оркестратор сам выбирает агента по роли nextStatus
+	)
+
+	require.NoError(t, orch.ProcessTask(ctx, task.ID))
+	// Pipeline зовёт executor на каждом не-терминальном статусе. Для одной петли
+	// changes_requested это: in_progress→review, review→changes_requested,
+	// changes_requested→in_progress (developer-ack), in_progress→review,
+	// review→testing, testing→completed.
+	require.Equal(t, []string{
+		string(models.AgentRoleDeveloper), // in_progress → review
+		string(models.AgentRoleReviewer),  // review → changes_requested
+		string(models.AgentRoleDeveloper), // changes_requested → in_progress
+		string(models.AgentRoleDeveloper), // in_progress → review (retry)
+		string(models.AgentRoleReviewer),  // review → testing (approve)
+		string(models.AgentRoleTester),    // testing → completed
+	}, callOrder)
+
+	final, err := s.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.TaskStatusCompleted, final.Status)
+
+	// iteration_count должен быть инкрементирован хотя бы один раз
+	// (попадание в changes_requested обновляет счётчик).
+	require.Regexp(t, `"iteration_count"\s*:\s*1`, string(final.Context),
+		"iteration_count must be incremented after a changes_requested loop")
+}
+
+// alwaysChangesRequestedExecutor — reviewer бесконечно требует правок;
+// агента переключает оркестратор через WithTeamRepository.
+type alwaysChangesRequestedExecutor struct {
+	callOrder *[]string
+}
+
+func (e *alwaysChangesRequestedExecutor) Execute(_ context.Context, in agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	*e.callOrder = append(*e.callOrder, in.Role)
+	var artifacts json.RawMessage
+	switch models.AgentRole(in.Role) {
+	case models.AgentRoleDeveloper:
+		artifacts = json.RawMessage(`{"diff":"+ work"}`)
+	case models.AgentRoleReviewer:
+		artifacts = json.RawMessage(`{"decision":"changes_requested"}`)
+	default:
+		return nil, errors.New("unexpected role " + in.Role)
+	}
+	return &agent.ExecutionResult{Success: true, Output: in.Role + ": loop", ArtifactsJSON: artifacts}, nil
+}
+
+// TestOrchestratorE2E_IterationLimit_FailsAfterMax — если reviewer всегда
+// отвечает changes_requested, после maxIterations задача должна перейти в failed
+// с ErrOrchestratorIterationLimitReached, а не крутиться вечно.
+func TestOrchestratorE2E_IterationLimit_FailsAfterMax(t *testing.T) {
+	s := setupOrchestratorE2E(t)
+	defer cleanupOrchestratorE2E(t, s.db, s.user.ID, s.project.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	devAgent := s.agents[models.AgentRoleDeveloper]
+	branch := "feature/limit"
+	task := &models.Task{
+		ProjectID:       s.project.ID,
+		Title:           "Limit test",
+		Description:     "Reviewer keeps requesting changes; pipeline must give up after max.",
+		Status:          models.TaskStatusInProgress,
+		Priority:        models.TaskPriorityMedium,
+		AssignedAgentID: &devAgent.ID,
+		CreatedByType:   models.CreatedByUser,
+		CreatedByID:     s.user.ID,
+		Context:         datatypes.JSON([]byte("{}")),
+		Artifacts:       datatypes.JSON([]byte("{}")),
+		BranchName:      &branch,
+	}
+	require.NoError(t, s.taskRepo.Create(context.Background(), task))
+
+	callOrder := make([]string, 0, 8)
+	exec := &alwaysChangesRequestedExecutor{callOrder: &callOrder}
+
+	const maxIter = 2
+	orch := NewOrchestratorService(
+		s.taskRepo, s.taskMsgRepo, s.workflowRepo, s.projectSvc, s.txManager,
+		exec, exec,
+		s.taskService, NewPipelineEngine(maxIter), NewContextBuilder(NoopEncryptor{}, nil, nil), nil,
+		noopSandboxStopper{}, nil,
+		WithStepPollInterval(0),
+		WithTeamRepository(s.teamRepo),
+	)
+
+	err := orch.ProcessTask(ctx, task.ID)
+	require.ErrorIs(t, err, ErrOrchestratorIterationLimitReached)
+
+	final, e2 := s.taskRepo.GetByID(context.Background(), task.ID)
+	require.NoError(t, e2)
+	require.Equal(t, models.TaskStatusFailed, final.Status,
+		"task must terminate as failed once iteration limit is reached")
 }
