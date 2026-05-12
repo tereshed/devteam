@@ -5,3 +5,32 @@ model_config:
   temperature: 0.2
   model: "claude-haiku-4-5-20251001"
 is_active: true
+# Sprint 15.25 — рекомендуемые permissions для разработчика.
+# Developer пишет код и часто запускает git/test/build; defaultMode=acceptEdits разрешает Edit/Write без подтверждения.
+# Эти значения копируются в Agent.sandbox_permissions при создании команды (см. team_service).
+sandbox_permissions:
+  defaultMode: acceptEdits
+  allow:
+    - Read
+    - Edit
+    - Write
+    - Glob
+    - Grep
+    - LS
+    - "Bash(git status:*)"
+    - "Bash(git diff:*)"
+    - "Bash(git add:*)"
+    - "Bash(git commit:*)"
+    - "Bash(git log:*)"
+    - "Bash(go build:*)"
+    - "Bash(go test:*)"
+    - "Bash(go mod:*)"
+    - "Bash(make:*)"
+    - "Bash(npm:*)"
+    - "Bash(yarn:*)"
+    - "Bash(pnpm:*)"
+    - "Bash(flutter:*)"
+    - "Bash(dart:*)"
+  deny:
+    - "Bash(rm -rf:*)"
+    - "Bash(sudo:*)"

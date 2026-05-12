@@ -51,6 +51,29 @@
     "limits": {
       "type": "object",
       "additionalProperties": true
+    },
+    "sandbox_permissions": {
+      "description": "Sprint 15.25 — рекомендуемые значения permissions Claude Code CLI для этой роли. Поля совпадают с settings.json.permissions; могут быть скопированы в Agent.sandbox_permissions при создании команды.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "deny": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "ask": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "defaultMode": {
+          "type": "string",
+          "enum": ["default", "acceptEdits", "plan", "bypassPermissions"]
+        }
+      }
     }
   }
 }

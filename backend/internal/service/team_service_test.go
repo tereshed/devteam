@@ -41,6 +41,13 @@ func (m *mockTeamRepo) GetAgentInProject(ctx context.Context, projectID, agentID
 	}
 	return args.Get(0).(*models.Agent), args.Error(1)
 }
+func (m *mockTeamRepo) GetAgentByID(ctx context.Context, agentID uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, agentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
 func (m *mockTeamRepo) SaveAgent(ctx context.Context, agent *models.Agent) error {
 	return m.Called(ctx, agent).Error(0)
 }

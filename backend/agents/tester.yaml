@@ -5,3 +5,30 @@ model_config:
   temperature: 0.1
   model: "claude-haiku-4-5-20251001"
 is_active: true
+# Sprint 15.25 — tester пишет/запускает тесты и читает результаты.
+# Edit/Write — для добавления test-файлов; Bash — make/go test/npm test/flutter test и т.п.
+sandbox_permissions:
+  defaultMode: acceptEdits
+  allow:
+    - Read
+    - Edit
+    - Write
+    - Grep
+    - Glob
+    - LS
+    - "Bash(git diff:*)"
+    - "Bash(git status:*)"
+    - "Bash(go test:*)"
+    - "Bash(go vet:*)"
+    - "Bash(make test:*)"
+    - "Bash(make test-unit:*)"
+    - "Bash(make test-integration:*)"
+    - "Bash(npm test:*)"
+    - "Bash(yarn test:*)"
+    - "Bash(pnpm test:*)"
+    - "Bash(pytest:*)"
+    - "Bash(flutter test:*)"
+  deny:
+    - "Bash(git push:*)"
+    - "Bash(rm -rf:*)"
+    - "Bash(sudo:*)"

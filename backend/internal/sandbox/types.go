@@ -20,7 +20,18 @@ const (
 	EnvGitDefaultBranch = "GIT_DEFAULT_BRANCH"
 	EnvBackend          = "BACKEND"
 	EnvAnthropicAPIKey  = "ANTHROPIC_API_KEY"
-	EnvMaxTurns         = "MAX_TURNS"
+	// EnvClaudeCodeOAuthToken — OAuth-токен Claude Code (Sprint 15.14). Альтернатива
+	// EnvAnthropicAPIKey: entrypoint считает аутентификацию валидной, если задан хотя бы один из них.
+	EnvClaudeCodeOAuthToken = "CLAUDE_CODE_OAUTH_TOKEN"
+	// EnvAnthropicBaseURL — переопределение Anthropic API endpoint (Sprint 15.18,
+	// проброс на free-claude-proxy). Если задан вместе с EnvAnthropicAuthToken — Claude Code
+	// будет ходить на прокси.
+	EnvAnthropicBaseURL   = "ANTHROPIC_BASE_URL"
+	EnvAnthropicAuthToken = "ANTHROPIC_AUTH_TOKEN"
+	// EnvClaudeCodePermissionMode — режим разрешений Claude Code CLI (Sprint 15.22).
+	// Допустимые значения совпадают с CLI: default | acceptEdits | plan | bypassPermissions.
+	EnvClaudeCodePermissionMode = "CLAUDE_CODE_PERMISSION_MODE"
+	EnvMaxTurns                 = "MAX_TURNS"
 )
 
 // Фиксированные пути артефактов внутри контейнера (не из env — защита от path injection).
@@ -108,6 +119,19 @@ type SandboxOptions struct {
 	// false — контейнер в изолированной bridge-сети без доступа к внутренним сервисам хоста (БД, Redis и т.д.);
 	// детали политики маршрутизации и egress — в реализации 5.5/compose.
 	DisableNetwork bool
+
+	// AgentSettings — per-agent артефакты (Sprint 15.22): ~/.claude/settings.json, .mcp.json,
+	// permission-mode (флаг CLI). Если nil — настройки агента не пробрасываются (legacy-поведение).
+	AgentSettings *AgentSettingsBundle
+}
+
+// AgentSettingsBundle — то, что копируется в контейнер при RunTask (Sprint 15.22).
+// SandboxRunner кладёт SettingsJSON в /workspace/.claude/settings.json, MCPJSON в /workspace/repo/.mcp.json,
+// и пробрасывает PermissionMode через env CLAUDE_CODE_PERMISSION_MODE (entrypoint подставит в флаг claude).
+type AgentSettingsBundle struct {
+	SettingsJSON   []byte
+	MCPJSON        []byte
+	PermissionMode string
 }
 
 // Clone возвращает копию опций с глубокой копией EnvVars. Используйте в начале RunTask до чтения/передачи opts в горутины.

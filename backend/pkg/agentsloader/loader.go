@@ -19,6 +19,16 @@ type AgentConfig struct {
 	ModelConfig ModelConfig
 	IsActive    bool
 	Limits      map[string]interface{}
+	// SandboxPermissions — Sprint 15.25: рекомендуемые permissions Claude Code CLI для роли.
+	SandboxPermissions *SandboxPermissions `yaml:"sandbox_permissions,omitempty"`
+}
+
+// SandboxPermissions — структура совпадает с settings.json.permissions Claude Code CLI.
+type SandboxPermissions struct {
+	Allow       []string `yaml:"allow,omitempty"`
+	Deny        []string `yaml:"deny,omitempty"`
+	Ask         []string `yaml:"ask,omitempty"`
+	DefaultMode string   `yaml:"defaultMode,omitempty"`
 }
 
 // ModelConfig holds LLM parameters for an agent.
@@ -31,12 +41,13 @@ type ModelConfig struct {
 
 // agentRawYAML is used to unmarshal YAML before schema validation.
 type agentRawYAML struct {
-	Name        string      `yaml:"name"`
-	Role        string      `yaml:"role"`
-	PromptName  string      `yaml:"prompt_name"`
-	ModelConfig ModelConfig `yaml:"model_config"`
-	IsActive    bool        `yaml:"is_active"`
-	Limits      interface{} `yaml:"limits"`
+	Name        string              `yaml:"name"`
+	Role        string              `yaml:"role"`
+	PromptName  string              `yaml:"prompt_name"`
+	ModelConfig ModelConfig         `yaml:"model_config"`
+	IsActive    bool                `yaml:"is_active"`
+	Limits      interface{}         `yaml:"limits"`
+	SandboxPermissions *SandboxPermissions `yaml:"sandbox_permissions"`
 }
 
 var promptNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
@@ -140,12 +151,13 @@ func parseAgentConfig(path string) (*AgentConfig, error) {
 	}
 
 	return &AgentConfig{
-		Name:        raw.Name,
-		Role:        raw.Role,
-		PromptName:  raw.PromptName,
-		ModelConfig: raw.ModelConfig,
-		IsActive:    raw.IsActive,
-		Limits:      limits,
+		Name:               raw.Name,
+		Role:               raw.Role,
+		PromptName:         raw.PromptName,
+		ModelConfig:        raw.ModelConfig,
+		IsActive:           raw.IsActive,
+		Limits:             limits,
+		SandboxPermissions: raw.SandboxPermissions,
 	}, nil
 }
 

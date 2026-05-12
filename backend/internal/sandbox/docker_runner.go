@@ -172,6 +172,10 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 		EnvBranchName+"="+opts.Branch,
 		EnvBackend+"="+string(opts.Backend),
 	)
+	// Sprint 15.22: permission-mode для claude code CLI; пробрасываем только если задан в AgentSettings.
+	if opts.AgentSettings != nil && opts.AgentSettings.PermissionMode != "" {
+		out = append(out, EnvClaudeCodePermissionMode+"="+opts.AgentSettings.PermissionMode)
+	}
 	return out
 }
 
@@ -264,8 +268,11 @@ func (r *DockerSandboxRunner) removeNetworkBestEffort(ctx context.Context, netID
 	slog.Warn("sandbox: network remove retries exhausted", "network_id", netID)
 }
 
-// buildPromptContextTar упаковывает prompt.txt и context.txt в tar для CopyToContainer (без лишнего I/O на диске хоста).
-func buildPromptContextTar(instruction, contextText string) (io.ReadCloser, error) {
+// buildPromptContextTar упаковывает prompt.txt + context.txt (+ опционально settings.json и .mcp.json
+// из AgentSettingsBundle, Sprint 15.22) в tar для CopyToContainer.
+// Все пути относительно /workspace; settings.json кладётся в .claude/settings.json, .mcp.json — в repo/.mcp.json
+// (entrypoint после clone положит его в корень репозитория).
+func buildPromptContextTar(instruction, contextText string, settings *AgentSettingsBundle) (io.ReadCloser, error) {
 	pr, pw := io.Pipe()
 	go func() {
 		var err error
@@ -275,27 +282,54 @@ func buildPromptContextTar(instruction, contextText string) (io.ReadCloser, erro
 			_ = pw.CloseWithError(err)
 		}()
 		now := time.Now()
-		for _, f := range []struct{ name, content string }{
-			{"prompt.txt", instruction},
-			{"context.txt", contextText},
-		} {
+
+		type entry struct {
+			name    string
+			content []byte
+			isDir   bool
+		}
+		entries := []entry{
+			{name: "prompt.txt", content: []byte(instruction)},
+			{name: "context.txt", content: []byte(contextText)},
+		}
+		if settings != nil {
+			if len(settings.SettingsJSON) > 0 {
+				entries = append(entries,
+					entry{name: ".claude", isDir: true},
+					entry{name: ".claude/settings.json", content: settings.SettingsJSON},
+				)
+			}
+			if len(settings.MCPJSON) > 0 {
+				// Сохраняем .mcp.json в /workspace; entrypoint после clone переносит его в repo/.
+				entries = append(entries, entry{name: ".mcp.json", content: settings.MCPJSON})
+			}
+		}
+
+		for _, f := range entries {
 			// Контейнер запускается под non-root user sandbox (uid 1001, см. Dockerfile).
 			// CopyToContainer сохраняет uid/gid/mode из tar-заголовка; без явных Uid/Gid
 			// файл создаётся как root:root и недоступен на чтение sandbox-пользователю.
 			hdr := &tar.Header{
-				Typeflag: tar.TypeReg,
-				Name:     f.name,
-				Mode:     0o644,
-				Uid:      1001,
-				Gid:      1001,
-				Size:     int64(len(f.content)),
-				ModTime:  now,
+				Name:    f.name,
+				Mode:    0o644,
+				Uid:     1001,
+				Gid:     1001,
+				ModTime: now,
+			}
+			if f.isDir {
+				hdr.Typeflag = tar.TypeDir
+				hdr.Mode = 0o755
+			} else {
+				hdr.Typeflag = tar.TypeReg
+				hdr.Size = int64(len(f.content))
 			}
 			if err = tw.WriteHeader(hdr); err != nil {
 				return
 			}
-			if _, err = io.Copy(tw, strings.NewReader(f.content)); err != nil {
-				return
+			if !f.isDir {
+				if _, err = io.Copy(tw, strings.NewReader(string(f.content))); err != nil {
+					return
+				}
 			}
 		}
 	}()
@@ -497,7 +531,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	st.containerID = containerID
 	st.mu.Unlock()
 
-	tarRC, err := buildPromptContextTar(opts.Instruction, opts.Context)
+	tarRC, err := buildPromptContextTar(opts.Instruction, opts.Context, opts.AgentSettings)
 	if err != nil {
 		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "before_copy_tar")
 		return nil, err

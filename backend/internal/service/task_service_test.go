@@ -210,6 +210,22 @@ func (m *mockTaskTeamService) PatchAgent(ctx context.Context, projectID, agentID
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+func (m *mockTaskTeamService) GetAgentSettings(ctx context.Context, agentID uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, agentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *mockTaskTeamService) UpdateAgentSettings(ctx context.Context, agentID uuid.UUID, req dto.UpdateAgentSettingsRequest) (*models.Agent, error) {
+	args := m.Called(ctx, agentID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
 type mockTransactionManager struct{ mock.Mock }
 
 func (m *mockTransactionManager) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {

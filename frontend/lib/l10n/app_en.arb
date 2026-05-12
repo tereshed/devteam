@@ -539,6 +539,78 @@
     "placeholders": {
       "alt": { "type": "String" }
     }
-  }
+  },
+
+  "refresh": "Refresh",
+  "copy": "Copy",
+  "openInBrowser": "Open in browser",
+  "fieldRequired": "Required",
+
+  "globalSettingsTabLLMProviders": "LLM providers",
+  "globalSettingsTabClaudeCode": "Claude Code",
+  "globalSettingsTabDevTeam": "DevTeam",
+
+  "llmProvidersSectionTitle": "LLM providers",
+  "llmProvidersAdd": "Add",
+  "llmProvidersEmpty": "No LLM providers configured yet.",
+  "llmProvidersLoadError": "Failed to load LLM providers",
+  "llmProvidersHealthTooltip": "Health check",
+  "llmProvidersEditTooltip": "Edit",
+  "llmProvidersDeleteTooltip": "Delete",
+  "llmProvidersHealthOK": "Provider is healthy",
+  "llmProvidersHealthFail": "Health check failed",
+  "llmProvidersDeleteTitle": "Delete LLM provider?",
+  "llmProvidersDeleteConfirm": "Delete provider \"{name}\"? Agents pointing at it will be left without a provider.",
+  "@llmProvidersDeleteConfirm": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "llmProvidersDeleteFail": "Delete failed",
+  "llmProvidersAddTitle": "Add LLM provider",
+  "llmProvidersEditTitle": "Edit LLM provider",
+  "llmProvidersFieldName": "Name",
+  "llmProvidersFieldKind": "Kind",
+  "llmProvidersFieldBaseURL": "Base URL (optional)",
+  "llmProvidersFieldCredential": "API key / token",
+  "llmProvidersFieldCredentialOptional": "API key / token (leave empty to keep current)",
+  "llmProvidersFieldDefaultModel": "Default model",
+  "llmProvidersFieldUseProxy": "Route via free-claude-proxy",
+  "llmProvidersFieldEnabled": "Enabled",
+  "llmProvidersTest": "Test",
+  "llmProvidersTestOK": "Test connection succeeded",
+  "llmProvidersTestFail": "Test connection failed",
+
+  "claudeCodeAuthLoadError": "Failed to load Claude Code subscription status",
+  "claudeCodeAuthConnectedTitle": "Claude Code subscription connected",
+  "claudeCodeAuthTokenType": "Token type",
+  "claudeCodeAuthScopes": "Scopes",
+  "claudeCodeAuthExpiresAt": "Expires at",
+  "claudeCodeAuthLastRefreshedAt": "Last refreshed at",
+  "claudeCodeAuthRevoke": "Revoke",
+  "claudeCodeAuthRevokeOK": "Subscription revoked",
+  "claudeCodeAuthDisconnectedTitle": "Claude Code subscription",
+  "claudeCodeAuthDisconnectedHint": "Sign in with your Claude Code subscription to let agents authenticate via OAuth instead of a long-lived API key.",
+  "claudeCodeAuthLogin": "Sign in with subscription",
+  "claudeCodeAuthDeviceFlowTitle": "Authorize on Anthropic",
+  "claudeCodeAuthEnterCodeHint": "Open the link below in any browser and enter this code to authorize DevTeam:",
+  "claudeCodeAuthWaiting": "Waiting for authorization…",
+
+  "agentSandboxSettingsTitle": "Agent advanced settings",
+  "agentSandboxSettingsLoadError": "Failed to load agent settings",
+  "agentSandboxSettingsTabProvider": "Model / provider",
+  "agentSandboxSettingsTabMCP": "MCP servers",
+  "agentSandboxSettingsTabSkills": "Skills",
+  "agentSandboxSettingsTabPermissions": "Permissions",
+  "agentSandboxSettingsProviderLabel": "LLM provider",
+  "agentSandboxSettingsProviderNone": "— none —",
+  "agentSandboxSettingsCodeBackendLabel": "Code backend",
+  "agentSandboxSettingsMCPHelper": "JSON array of MCP server bindings: [{\"name\":\"github\",\"env\":{}}]",
+  "agentSandboxSettingsSkillsHelper": "JSON array of skill refs: [{\"name\":\"pdf\",\"source\":\"builtin\"}]",
+  "agentSandboxSettingsDefaultMode": "Default mode",
+  "agentSandboxSettingsAllow": "Allow",
+  "agentSandboxSettingsDeny": "Deny",
+  "agentSandboxSettingsAsk": "Ask",
+  "agentSandboxSettingsJsonInvalid": "JSON is invalid",
+
+  "teamAgentEditAdvanced": "Advanced"
 }
 

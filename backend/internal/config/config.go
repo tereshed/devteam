@@ -27,6 +27,35 @@ type Config struct {
 	WebSocket WebSocketConfig
 	// WorkflowWorkerEnabled — фоновый worker, раз в секунду ищет pending/running executions.
 	WorkflowWorkerEnabled bool
+	// ClaudeCodeOAuth — настройки OAuth-провайдера Claude Code (Sprint 15.12).
+	ClaudeCodeOAuth ClaudeCodeOAuthConfig
+	// FreeClaudeProxy — настройки free-claude-proxy sidecar (Sprint 15.16).
+	FreeClaudeProxy FreeClaudeProxyConfig
+}
+
+// ClaudeCodeOAuthConfig — env CLAUDE_CODE_OAUTH_*. Пустой ClientID отключает фичу
+// (хендлеры вернут 503, MCP-инструменты не зарегистрируются).
+type ClaudeCodeOAuthConfig struct {
+	ClientID      string
+	DeviceCodeURL string
+	TokenURL      string
+	RevokeURL     string
+	Scopes        string
+}
+
+// FreeClaudeProxyConfig — env FREE_CLAUDE_PROXY_* (Sprint 15.16/15.19).
+// Пустой BaseURL отключает фичу (claude-code-via-proxy агенты не получают валидную аутентификацию,
+// health-check оркестратора пропускается).
+type FreeClaudeProxyConfig struct {
+	// BaseURL — URL прокси внутри сети docker-compose (по умолчанию http://free-claude-proxy:8787).
+	BaseURL string
+	// ServiceToken — Bearer, который sandbox-агенты передают в Authorization прокси.
+	ServiceToken string
+	// ConfigPath — путь, по которому бэкенд пишет config.yaml для прокси
+	// (Sprint 15.17). По умолчанию /etc/free-claude-proxy/config.yaml (volume).
+	ConfigPath string
+	// Enabled — если true и BaseURL задан, оркестратор делает fail-fast health-check при старте (15.19).
+	Enabled bool
 }
 
 // WebSocketConfig содержит конфигурацию WebSocket
@@ -176,6 +205,19 @@ func Load() (*Config, error) {
 			ImportDir: getEnv("GIT_IMPORT_DIR", "/tmp/devteam-import"),
 		},
 		WorkflowWorkerEnabled: getBoolEnv("WORKFLOW_WORKER_ENABLED", true),
+		ClaudeCodeOAuth: ClaudeCodeOAuthConfig{
+			ClientID:      getEnv("CLAUDE_CODE_OAUTH_CLIENT_ID", ""),
+			DeviceCodeURL: getEnv("CLAUDE_CODE_OAUTH_DEVICE_URL", "https://console.anthropic.com/v1/oauth/device"),
+			TokenURL:      getEnv("CLAUDE_CODE_OAUTH_TOKEN_URL", "https://console.anthropic.com/v1/oauth/token"),
+			RevokeURL:     getEnv("CLAUDE_CODE_OAUTH_REVOKE_URL", ""),
+			Scopes:        getEnv("CLAUDE_CODE_OAUTH_SCOPES", "org:create_api_key user:profile user:inference"),
+		},
+		FreeClaudeProxy: FreeClaudeProxyConfig{
+			BaseURL:      getEnv("FREE_CLAUDE_PROXY_URL", ""),
+			ServiceToken: getEnv("FREE_CLAUDE_PROXY_SERVICE_TOKEN", ""),
+			ConfigPath:   getEnv("FREE_CLAUDE_PROXY_CONFIG_PATH", "/etc/free-claude-proxy/config.yaml"),
+			Enabled:      getBoolEnv("FREE_CLAUDE_PROXY_ENABLED", false),
+		},
 	}
 
 	encKeyRaw := strings.TrimSpace(getEnv("ENCRYPTION_KEY", ""))

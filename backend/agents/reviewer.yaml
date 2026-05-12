@@ -5,3 +5,22 @@ model_config:
   temperature: 0.1
   model: "claude-haiku-4-5-20251001"
 is_active: true
+# Sprint 15.25 — reviewer работает в основном на чтение: Read/Grep/Glob/LS + git diff/log/show.
+# defaultMode=acceptEdits разрешает только Edit (для комментариев в коде ревью), записи в репо нет.
+sandbox_permissions:
+  defaultMode: acceptEdits
+  allow:
+    - Read
+    - Grep
+    - Glob
+    - LS
+    - Edit
+    - "Bash(git diff:*)"
+    - "Bash(git log:*)"
+    - "Bash(git show:*)"
+    - "Bash(git status:*)"
+  deny:
+    - "Bash(git push:*)"
+    - "Bash(git reset:*)"
+    - "Bash(rm -rf:*)"
+    - "Bash(sudo:*)"

@@ -70,6 +70,19 @@ func WithPullRequestPublisher(p PullRequestPublisher) OrchestratorOption {
 	}
 }
 
+// FreeClaudeProxyHealthChecker — fail-fast проверка прокси при старте оркестратора (Sprint 15.19).
+// Если хоть один агент использует CodeBackend=claude-code-via-proxy, проверяем прокси /healthz.
+type FreeClaudeProxyHealthChecker interface {
+	Check(ctx context.Context) error
+}
+
+// WithFreeClaudeProxyHealthChecker подключает проверку прокси.
+func WithFreeClaudeProxyHealthChecker(checker FreeClaudeProxyHealthChecker) OrchestratorOption {
+	return func(s *orchestratorService) {
+		s.proxyHealthChecker = checker
+	}
+}
+
 // OrchestratorService управляет жизненным циклом выполнения задач через агентов.
 type OrchestratorService interface {
 	// ProcessTask запускает или продолжает выполнение задачи.
@@ -96,6 +109,8 @@ type orchestratorService struct {
 	controlBus  *UserTaskControlBus
 	teamRepo    repository.TeamRepository
 	prPublisher PullRequestPublisher
+	// Sprint 15.19 — fail-fast health check для free-claude-proxy.
+	proxyHealthChecker FreeClaudeProxyHealthChecker
 
 	// Настройки
 	zombieTimeout          time.Duration
@@ -155,6 +170,19 @@ func (s *orchestratorService) Start(ctx context.Context) error {
 
 	if s.controlBus != nil {
 		s.controlBus.SubscribeCommands(s.handleControlCommand)
+	}
+
+	// Sprint 15.19 — fail-fast health check для free-claude-proxy.
+	// Подключается только если хотя бы один агент использует CodeBackend=claude-code-via-proxy
+	// (главное приложение wire'ит чекер именно в этом случае).
+	if s.proxyHealthChecker != nil {
+		hcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err := s.proxyHealthChecker.Check(hcCtx)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("free-claude-proxy health check failed: %w", err)
+		}
+		slog.Info("free-claude-proxy: health check passed")
 	}
 
 	// Первичная очистка

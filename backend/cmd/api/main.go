@@ -296,6 +296,31 @@ func main() {
 	}
 	orchestratorContextBuilder := service.NewContextBuilderFull(encryptor, pipelinePromptComposer, agentConfigCache, sandboxSecrets, taskMsgRepo)
 
+	// Sprint 15.B/C — OAuth Claude Code subscription + free-claude-proxy.
+	// Создаём заранее (до orchestrator), чтобы динамический резолвер аутентификации sandbox-а
+	// (Sprint 15.18) мог опираться на ClaudeCodeAuthService.
+	claudeCodeSubRepo := repository.NewClaudeCodeSubscriptionRepository(db)
+	claudeCodeOAuthProvider := service.NewClaudeCodeOAuthProvider(service.ClaudeCodeOAuthConfig{
+		ClientID:      cfg.ClaudeCodeOAuth.ClientID,
+		DeviceCodeURL: cfg.ClaudeCodeOAuth.DeviceCodeURL,
+		TokenURL:      cfg.ClaudeCodeOAuth.TokenURL,
+		RevokeURL:     cfg.ClaudeCodeOAuth.RevokeURL,
+		Scopes:        cfg.ClaudeCodeOAuth.Scopes,
+	})
+	claudeCodeAuthSvc := service.NewClaudeCodeAuthService(claudeCodeSubRepo, encryptor, claudeCodeOAuthProvider)
+
+	// Sprint 15.18 — динамический резолвер аутентификации sandbox (OAuth subscription / free-claude-proxy / api key).
+	sandboxAuthResolver := service.NewSandboxAuthEnvResolver(
+		claudeCodeAuthSvc,
+		service.FreeClaudeProxyAccess{
+			BaseURL:      cfg.FreeClaudeProxy.BaseURL,
+			ServiceToken: cfg.FreeClaudeProxy.ServiceToken,
+		},
+		cfg.LLM.Anthropic.APIKey,
+		slog.Default(),
+	)
+	orchestratorContextBuilder = service.WithSandboxAuthResolver(orchestratorContextBuilder, sandboxAuthResolver)
+
 	taskControlBus := service.NewUserTaskControlBus()
 
 	// Orchestrator Service
@@ -315,6 +340,7 @@ func main() {
 		taskControlBus,
 		service.WithTeamRepository(teamRepo),
 		service.WithPullRequestPublisher(service.NewGitPRPublisher(gitFactory, encryptor, slog.Default())),
+		service.WithFreeClaudeProxyHealthChecker(buildFreeClaudeProxyHealthChecker(cfg.FreeClaudeProxy)),
 	)
 
 	// Запускаем оркестратор (очистка зомби-задач)
@@ -353,6 +379,15 @@ func main() {
 	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
 	llmCredHandler := handler.NewUserLlmCredentialHandler(llmCredSvc)
 
+	claudeCodeAuthHandler := handler.NewClaudeCodeAuthHandler(claudeCodeAuthSvc)
+	if cfg.ClaudeCodeOAuth.ClientID != "" {
+		refresher := service.NewClaudeCodeTokenRefresher(claudeCodeSubRepo, claudeCodeAuthSvc, slog.Default())
+		go refresher.Run(ctxWorker)
+		log.Println("Claude Code token refresher: started")
+	} else {
+		log.Println("Claude Code OAuth: disabled (set CLAUDE_CODE_OAUTH_CLIENT_ID to enable)")
+	}
+
 	// WebSocket Handler
 	wsHandler := ws.NewWebSocketHandler(hub, projectService, ws.HandlerConfig{
 		AllowedOrigins:         cfg.WebSocket.AllowedOrigins,
@@ -384,6 +419,9 @@ func main() {
 
 		UserLlmCredentialHandler: llmCredHandler,
 		LlmCredentialsPatchRL:    llmCredRL,
+
+		ClaudeCodeAuthHandler: claudeCodeAuthHandler,
+		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
 	})
 
 	go func() {
@@ -407,6 +445,9 @@ func main() {
 			ToolDefinitionService: toolDefinitionService,
 			OrchestratorSvc:       orchestratorService,
 			ApiKeyService:         apiKeyService,
+			ClaudeCodeAuthService: claudeCodeAuthSvc,
+			MCPServerRegistryRepo: repository.NewMCPServerRegistryRepository(db),
+			AgentSkillRepo:        repository.NewAgentSkillRepository(db),
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)
@@ -546,4 +587,13 @@ func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	}
 
 	return db, nil
+}
+
+// buildFreeClaudeProxyHealthChecker — fail-fast health-check для free-claude-proxy (Sprint 15.19).
+// Возвращает nil, если фича не включена (FREE_CLAUDE_PROXY_ENABLED=false) или BaseURL не задан.
+func buildFreeClaudeProxyHealthChecker(cfg config.FreeClaudeProxyConfig) service.FreeClaudeProxyHealthChecker {
+	if !cfg.Enabled || cfg.BaseURL == "" {
+		return nil
+	}
+	return service.NewFreeClaudeProxyHealthCheck(cfg.BaseURL)
 }

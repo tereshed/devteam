@@ -854,6 +854,78 @@
     "placeholders": {
       "alt": { "type": "String" }
     }
-  }
+  },
+
+  "refresh": "Обновить",
+  "copy": "Скопировать",
+  "openInBrowser": "Открыть в браузере",
+  "fieldRequired": "Обязательное поле",
+
+  "globalSettingsTabLLMProviders": "LLM-провайдеры",
+  "globalSettingsTabClaudeCode": "Claude Code",
+  "globalSettingsTabDevTeam": "DevTeam",
+
+  "llmProvidersSectionTitle": "LLM-провайдеры",
+  "llmProvidersAdd": "Добавить",
+  "llmProvidersEmpty": "Провайдеры ещё не настроены.",
+  "llmProvidersLoadError": "Не удалось загрузить список провайдеров",
+  "llmProvidersHealthTooltip": "Проверка здоровья",
+  "llmProvidersEditTooltip": "Редактировать",
+  "llmProvidersDeleteTooltip": "Удалить",
+  "llmProvidersHealthOK": "Провайдер доступен",
+  "llmProvidersHealthFail": "Проверка не пройдена",
+  "llmProvidersDeleteTitle": "Удалить провайдера?",
+  "llmProvidersDeleteConfirm": "Удалить «{name}»? Агенты, привязанные к нему, останутся без провайдера.",
+  "@llmProvidersDeleteConfirm": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "llmProvidersDeleteFail": "Ошибка удаления",
+  "llmProvidersAddTitle": "Новый LLM-провайдер",
+  "llmProvidersEditTitle": "Редактирование провайдера",
+  "llmProvidersFieldName": "Имя",
+  "llmProvidersFieldKind": "Тип",
+  "llmProvidersFieldBaseURL": "Base URL (опционально)",
+  "llmProvidersFieldCredential": "API-ключ / токен",
+  "llmProvidersFieldCredentialOptional": "API-ключ / токен (пусто — не менять)",
+  "llmProvidersFieldDefaultModel": "Модель по умолчанию",
+  "llmProvidersFieldUseProxy": "Маршрутизировать через free-claude-proxy",
+  "llmProvidersFieldEnabled": "Включён",
+  "llmProvidersTest": "Тест",
+  "llmProvidersTestOK": "Тестовое подключение успешно",
+  "llmProvidersTestFail": "Тест подключения не пройден",
+
+  "claudeCodeAuthLoadError": "Не удалось загрузить статус подписки Claude Code",
+  "claudeCodeAuthConnectedTitle": "Подписка Claude Code подключена",
+  "claudeCodeAuthTokenType": "Тип токена",
+  "claudeCodeAuthScopes": "Scopes",
+  "claudeCodeAuthExpiresAt": "Истекает",
+  "claudeCodeAuthLastRefreshedAt": "Последнее обновление",
+  "claudeCodeAuthRevoke": "Отозвать",
+  "claudeCodeAuthRevokeOK": "Подписка отозвана",
+  "claudeCodeAuthDisconnectedTitle": "Подписка Claude Code",
+  "claudeCodeAuthDisconnectedHint": "Войдите по подписке Claude Code, чтобы агенты использовали OAuth-токен вместо долгоживущего API-ключа.",
+  "claudeCodeAuthLogin": "Войти по подписке",
+  "claudeCodeAuthDeviceFlowTitle": "Подтверждение на стороне Anthropic",
+  "claudeCodeAuthEnterCodeHint": "Откройте ссылку ниже в любом браузере и введите этот код, чтобы авторизовать DevTeam:",
+  "claudeCodeAuthWaiting": "Ожидание подтверждения…",
+
+  "agentSandboxSettingsTitle": "Дополнительные настройки агента",
+  "agentSandboxSettingsLoadError": "Не удалось загрузить настройки агента",
+  "agentSandboxSettingsTabProvider": "Модель / провайдер",
+  "agentSandboxSettingsTabMCP": "MCP-серверы",
+  "agentSandboxSettingsTabSkills": "Skills",
+  "agentSandboxSettingsTabPermissions": "Разрешения",
+  "agentSandboxSettingsProviderLabel": "LLM-провайдер",
+  "agentSandboxSettingsProviderNone": "— нет —",
+  "agentSandboxSettingsCodeBackendLabel": "Code backend",
+  "agentSandboxSettingsMCPHelper": "JSON-массив привязок MCP: [{\"name\":\"github\",\"env\":{}}]",
+  "agentSandboxSettingsSkillsHelper": "JSON-массив Skills: [{\"name\":\"pdf\",\"source\":\"builtin\"}]",
+  "agentSandboxSettingsDefaultMode": "Режим по умолчанию",
+  "agentSandboxSettingsAllow": "Allow",
+  "agentSandboxSettingsDeny": "Deny",
+  "agentSandboxSettingsAsk": "Ask",
+  "agentSandboxSettingsJsonInvalid": "Некорректный JSON",
+
+  "teamAgentEditAdvanced": "Дополнительно"
 }
 

@@ -504,7 +504,7 @@ func TestBuildPromptContextTar_OnlyLiteralFileNames(t *testing.T) {
 	t.Parallel()
 	instruction := `; rm -rf / --upload-pack=id`
 	ctx := `../../../etc/passwd`
-	rc, err := buildPromptContextTar(instruction, ctx)
+	rc, err := buildPromptContextTar(instruction, ctx, nil)
 	require.NoError(t, err)
 	defer rc.Close()
 

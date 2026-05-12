@@ -96,7 +96,10 @@ func maskEnvVarsForLog(m map[string]string) string {
 
 func sensitiveEnvKey(k string) bool {
 	ku := strings.ToUpper(k)
-	if ku == strings.ToUpper(EnvAnthropicAPIKey) {
+	switch ku {
+	case strings.ToUpper(EnvAnthropicAPIKey),
+		strings.ToUpper(EnvClaudeCodeOAuthToken),
+		strings.ToUpper(EnvAnthropicAuthToken):
 		return true
 	}
 	return strings.Contains(ku, "API_KEY") ||

@@ -25,4 +25,15 @@ var (
 	// Ошибки Task
 	ErrTaskNotFound         = errors.New("task not found")
 	ErrTaskConcurrentUpdate = errors.New("task was modified concurrently, please retry")
+
+	// Ошибки LLMProvider (Sprint 15.10)
+	ErrLLMProviderNotFound   = errors.New("llm provider not found")
+	ErrLLMProviderNameExists = errors.New("llm provider with this name already exists")
+
+	// Ошибки ClaudeCodeSubscription (Sprint 15.12)
+	ErrClaudeCodeSubscriptionNotFound = errors.New("claude code subscription not found")
+
+	// Sprint 15.24 — реестр MCP-серверов и agent_skills.
+	ErrMCPServerRegistryNotFound = errors.New("mcp server registry entry not found")
+	ErrAgentSkillNotFound        = errors.New("agent skill not found")
 )

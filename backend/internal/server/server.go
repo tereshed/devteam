@@ -51,6 +51,11 @@ type Dependencies struct {
 
 	UserLlmCredentialHandler *handler.UserLlmCredentialHandler
 	LlmCredentialsPatchRL    *middleware.LlmCredentialsPatchRateLimiter
+
+	ClaudeCodeAuthHandler *handler.ClaudeCodeAuthHandler
+
+	// Sprint 15.23 — per-agent settings.
+	AgentSettingsHandler *handler.AgentSettingsHandler
 }
 
 // New создает новый экземпляр сервера
@@ -131,6 +136,28 @@ func (s *Server) setupRoutes(deps Dependencies) {
 
 		// Каталог tool_definitions (тот же auth, что у /projects)
 		api.GET("/tool-definitions", authMW, deps.ToolDefinitionHandler.List)
+
+		// Agents settings (Sprint 15.23)
+		if deps.AgentSettingsHandler != nil {
+			agents := api.Group("/agents")
+			agents.Use(authMW)
+			{
+				agents.GET("/:id/settings", deps.AgentSettingsHandler.Get)
+				agents.PUT("/:id/settings", deps.AgentSettingsHandler.Update)
+			}
+		}
+
+		// Claude Code OAuth (Sprint 15.12)
+		if deps.ClaudeCodeAuthHandler != nil {
+			cc := api.Group("/claude-code/auth")
+			cc.Use(authMW)
+			{
+				cc.POST("/init", deps.ClaudeCodeAuthHandler.Init)
+				cc.POST("/callback", deps.ClaudeCodeAuthHandler.Callback)
+				cc.GET("/status", deps.ClaudeCodeAuthHandler.Status)
+				cc.DELETE("", deps.ClaudeCodeAuthHandler.Revoke)
+			}
+		}
 
 		// Projects (авторизованный пользователь)
 		projects := api.Group("/projects")

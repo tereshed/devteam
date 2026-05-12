@@ -40,6 +40,9 @@ type contextBuilder struct {
 	agentCfg       *agentsloader.Cache
 	sandboxSecrets map[string]string
 	taskMsgRepo    repository.TaskMessageRepository
+	// Sprint 15.18: динамический резолвер аутентификации sandbox-а (OAuth/proxy/api-key).
+	// Если задан, имеет приоритет над sandboxSecrets для ключей ANTHROPIC_*/CLAUDE_CODE_OAUTH_TOKEN.
+	authResolver SandboxAuthEnvResolver
 }
 
 // NewContextBuilder создаёт сборщик контекста. agentCfg — предзагруженный кэш backend/agents (6.9); nil в тестах.
@@ -89,6 +92,19 @@ func NewContextBuilderFull(encryptor Encryptor, promptComposer PipelinePromptCom
 		sandboxSecrets: cleaned,
 		taskMsgRepo:    taskMsgRepo,
 	}
+}
+
+// WithSandboxAuthResolver — опциональный апгрейд контекст-билдера: динамический резолвер
+// аутентификации sandbox-а (Sprint 15.18). Если задан, ANTHROPIC_*/CLAUDE_CODE_OAUTH_TOKEN
+// для агента с CodeBackend != nil заполняются через резолвер вместо статических sandboxSecrets.
+// Возвращает self, чтобы упростить сборку в main.go.
+func WithSandboxAuthResolver(builder ContextBuilder, resolver SandboxAuthEnvResolver) ContextBuilder {
+	cb, ok := builder.(*contextBuilder)
+	if !ok || cb == nil {
+		return builder
+	}
+	cb.authResolver = resolver
+	return cb
 }
 
 func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project) (*agent.ExecutionInput, error) {
@@ -148,10 +164,18 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 
 	if assignedAgent.CodeBackend != nil {
 		input.CodeBackend = string(*assignedAgent.CodeBackend)
-		// Sandbox-исполнителю (Developer/Tester c CodeBackend=claude-code) нужны
-		// провайдер-ключи внутри контейнера (entrypoint.sh fast-fail'ит без них).
-		for k, v := range b.sandboxSecrets {
-			input.EnvSecrets[k] = v
+		// Sandbox-исполнителю (Developer/Tester c CodeBackend=claude-code/claude-code-via-proxy) нужны
+		// аутентификационные креды внутри контейнера (entrypoint.sh fast-fail'ит без них).
+		// Если есть динамический резолвер (Sprint 15.18) — используем его (OAuth/proxy/api-key).
+		// Иначе — статические sandboxSecrets из конфига (legacy: только ANTHROPIC_API_KEY).
+		if b.authResolver != nil {
+			for k, v := range b.authResolver.Resolve(ctx, project, assignedAgent).ToEnv() {
+				input.EnvSecrets[k] = v
+			}
+		} else {
+			for k, v := range b.sandboxSecrets {
+				input.EnvSecrets[k] = v
+			}
 		}
 	}
 

@@ -112,6 +112,14 @@ func (m *MockTeamRepository) GetAgentInProject(ctx context.Context, projectID, a
 	return args.Get(0).(*models.Agent), args.Error(1)
 }
 
+func (m *MockTeamRepository) GetAgentByID(ctx context.Context, agentID uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, agentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
 func (m *MockTeamRepository) SaveAgent(ctx context.Context, agent *models.Agent) error {
 	args := m.Called(ctx, agent)
 	return args.Error(0)

@@ -10,7 +10,12 @@
 #   BASE_REF           — база для diff (ветка на origin), по умолчанию GIT_DEFAULT_BRANCH или main
 #   GIT_DEFAULT_BRANCH — fallback, если BASE_REF не задан
 #   BACKEND            — ожидается claude-code (по умолчанию claude-code)
-#   ANTHROPIC_API_KEY  — обязательно для claude-code (проверка до clone — fast fail)
+#   Аутентификация Claude Code (Sprint 15.14): обязателен ровно один из вариантов —
+#     1) ANTHROPIC_API_KEY        — классический API-ключ Anthropic
+#     2) CLAUDE_CODE_OAUTH_TOKEN  — OAuth-токен от подписки Claude Code (приоритет, если задан)
+#     3) ANTHROPIC_AUTH_TOKEN     — Bearer-токен для free-claude-proxy (вместе с ANTHROPIC_BASE_URL,
+#        Sprint 15.18); прокси сам ходит к нужному LLM-провайдеру.
+#   ANTHROPIC_BASE_URL — опционально, переопределяет endpoint Anthropic API (для free-claude-proxy).
 #   MAX_TURNS          — зарезервировано (CLI 0.2.37 не поддерживает --max-turns; игнорируется)
 #
 # Артефакты (стабильные пути для оркестратора):
@@ -204,12 +209,20 @@ if [[ "$BACKEND" != "claude-code" ]]; then
   exit 1
 fi
 
-if [[ "$BACKEND" == "claude-code" ]] && is_blank "${ANTHROPIC_API_KEY:-}"; then
-  echo "entrypoint: ANTHROPIC_API_KEY is required for claude-code" >&2
-  LAST_EXIT_CODE=1
-  PHASE="validation"
-  MESSAGE="ANTHROPIC_API_KEY is required"
-  exit 1
+if [[ "$BACKEND" == "claude-code" ]]; then
+  # Sprint 15.14: принимаем любую из трёх форм аутентификации:
+  #   - CLAUDE_CODE_OAUTH_TOKEN (подписка Claude Code)
+  #   - ANTHROPIC_AUTH_TOKEN    (Bearer для free-claude-proxy, обычно с ANTHROPIC_BASE_URL)
+  #   - ANTHROPIC_API_KEY       (API-ключ)
+  if is_blank "${CLAUDE_CODE_OAUTH_TOKEN:-}" \
+    && is_blank "${ANTHROPIC_AUTH_TOKEN:-}" \
+    && is_blank "${ANTHROPIC_API_KEY:-}"; then
+    echo "entrypoint: claude-code requires one of CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY" >&2
+    LAST_EXIT_CODE=1
+    PHASE="validation"
+    MESSAGE="claude-code authentication is required"
+    exit 1
+  fi
 fi
 
 BASE_REF_RESOLVED="${BASE_REF:-${GIT_DEFAULT_BRANCH:-main}}"
@@ -250,6 +263,16 @@ else
   : > "$CONTEXT_FILE"
 fi
 : > "$AGENT_LOG"
+
+# Sprint 15.22 — per-agent settings.json и .mcp.json (если поставлены раннером).
+# Раннер кладёт их в /workspace/.claude/settings.json и /workspace/.mcp.json.
+# Перенесём их в ожидаемые claude-code локации.
+PHASE="prepare_agent_settings"
+if [[ -f /workspace/.claude/settings.json ]]; then
+  mkdir -p "$HOME/.claude"
+  cp /workspace/.claude/settings.json "$HOME/.claude/settings.json"
+  chmod 0600 "$HOME/.claude/settings.json"
+fi
 
 # --- Идемпотентная подготовка каталога клона ---
 PHASE="prepare_repo_dir"
@@ -305,6 +328,11 @@ fi
 git config --global user.name "DevTeam Agent"
 git config --global user.email "agent@devteam.local"
 
+# Sprint 15.22: положить .mcp.json в репозиторий, если раннер его прислал (claude-code читает в cwd).
+if [[ -f /workspace/.mcp.json ]]; then
+  cp /workspace/.mcp.json "$REPO_DIR/.mcp.json"
+fi
+
 # --- agent: stdin = prompt + разделитель + context; короткий -p (без больших argv) ---
 PHASE="agent"
 # Headless: без TTY не ждём интерактива и телеметрию-приглашения (зависания по таймауту оркестратора).
@@ -317,6 +345,27 @@ CLAUDE_MODEL_ARGS=()
 if [[ -n "${DEVTEAM_AGENT_MODEL:-}" ]]; then
   CLAUDE_MODEL_ARGS+=("--model" "${DEVTEAM_AGENT_MODEL}")
 fi
+
+# Sprint 15.22 — per-agent permission mode. Если задан через CLAUDE_CODE_PERMISSION_MODE,
+# используем его и НЕ передаём --dangerously-skip-permissions (mode уже описывает поведение).
+# Без env остаётся прежнее поведение (--dangerously-skip-permissions, обратная совместимость).
+CLAUDE_PERMS_ARGS=()
+case "${CLAUDE_CODE_PERMISSION_MODE:-}" in
+  "")
+    CLAUDE_PERMS_ARGS+=("--dangerously-skip-permissions")
+    ;;
+  bypassPermissions)
+    CLAUDE_PERMS_ARGS+=("--dangerously-skip-permissions")
+    ;;
+  acceptEdits|plan|default)
+    CLAUDE_PERMS_ARGS+=("--permission-mode" "${CLAUDE_CODE_PERMISSION_MODE}")
+    ;;
+  *)
+    echo "entrypoint: invalid CLAUDE_CODE_PERMISSION_MODE=${CLAUDE_CODE_PERMISSION_MODE}; falling back to --dangerously-skip-permissions" >&2
+    CLAUDE_PERMS_ARGS+=("--dangerously-skip-permissions")
+    ;;
+esac
+
 (
   cd "$REPO_DIR"
   {
@@ -325,7 +374,7 @@ fi
     cat "$CONTEXT_FILE"
   } | claude -p "DevTeam sandbox: полные инструкции и контекст переданы через stdin; работай только в этом репозитории." \
     --bare \
-    --dangerously-skip-permissions \
+    "${CLAUDE_PERMS_ARGS[@]}" \
     "${CLAUDE_MODEL_ARGS[@]}" \
     --allowedTools "Bash,Edit,Read,Write,Glob,NotebookEdit" \
     >>"$AGENT_LOG" 2>&1

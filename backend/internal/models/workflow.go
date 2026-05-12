@@ -37,15 +37,16 @@ func (r AgentRole) IsValid() bool {
 type CodeBackend string
 
 const (
-	CodeBackendClaudeCode CodeBackend = "claude-code"
-	CodeBackendAider      CodeBackend = "aider"
-	CodeBackendCustom     CodeBackend = "custom"
+	CodeBackendClaudeCode         CodeBackend = "claude-code"
+	CodeBackendClaudeCodeViaProxy CodeBackend = "claude-code-via-proxy"
+	CodeBackendAider              CodeBackend = "aider"
+	CodeBackendCustom             CodeBackend = "custom"
 )
 
 // IsValid проверяет валидность code backend
 func (cb CodeBackend) IsValid() bool {
 	switch cb {
-	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendCustom:
+	case CodeBackendClaudeCode, CodeBackendClaudeCodeViaProxy, CodeBackendAider, CodeBackendCustom:
 		return true
 	default:
 		return false
@@ -66,6 +67,11 @@ type Agent struct {
 	CodeBackend *CodeBackend   `gorm:"type:varchar(50)" json:"code_backend"`
 	Settings    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
 	ModelConfig datatypes.JSON `gorm:"type:jsonb" json:"model_config"`
+	// Sprint 15.3 — связь с llm_providers и per-agent code-backend настройки.
+	LLMProviderID       *uuid.UUID     `gorm:"type:uuid" json:"llm_provider_id"`
+	LLMProvider         *LLMProvider   `gorm:"foreignKey:LLMProviderID" json:"llm_provider,omitempty"`
+	CodeBackendSettings datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"code_backend_settings"`
+	SandboxPermissions  datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions"`
 	IsActive            bool           `gorm:"default:true" json:"is_active"`
 	RequiresCodeContext bool           `gorm:"default:false" json:"requires_code_context"`
 	CreatedAt           time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
@@ -73,6 +79,7 @@ type Agent struct {
 
 	ToolBindings []AgentToolBinding `gorm:"foreignKey:AgentID" json:"tool_bindings,omitempty"`
 	MCPBindings  []AgentMCPBinding  `gorm:"foreignKey:AgentID" json:"mcp_bindings,omitempty"`
+	AgentSkills  []AgentSkill       `gorm:"foreignKey:AgentID" json:"agent_skills,omitempty"`
 }
 
 // Workflow представляет шаблон процесса

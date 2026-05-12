@@ -175,6 +175,22 @@ func (m *mockTeamService) PatchAgent(ctx context.Context, projectID, agentID uui
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+func (m *mockTeamService) GetAgentSettings(ctx context.Context, agentID uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, agentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *mockTeamService) UpdateAgentSettings(ctx context.Context, agentID uuid.UUID, req dto.UpdateAgentSettingsRequest) (*models.Agent, error) {
+	args := m.Called(ctx, agentID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
 // --- ToolDefinitionService mock ---
 
 type mockToolDefinitionService struct {

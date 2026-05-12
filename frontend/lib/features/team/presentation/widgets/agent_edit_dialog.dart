@@ -16,6 +16,7 @@ import 'package:frontend/features/team/domain/team_exceptions.dart';
 import 'package:frontend/features/team/domain/tool_binding_patch_item.dart';
 import 'package:frontend/features/team/domain/tools_exceptions.dart';
 import 'package:frontend/features/team/domain/update_agent_patch.dart';
+import 'package:frontend/features/team/presentation/widgets/agent_sandbox_settings_dialog.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
 /// Только для `test/` — в продакшене используйте [showAgentEditDialog].
@@ -568,6 +569,18 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                     TextButton(
                       onPressed: _saving ? null : _onCancel,
                       child: Text(l10n.teamAgentEditCancel),
+                    ),
+                    const SizedBox(width: 8),
+                    // Sprint 15.32 — advanced-настройки (модель/MCP/Skills/permissions).
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.tune),
+                      onPressed: _saving
+                          ? null
+                          : () => showAgentSandboxSettingsDialog(
+                                context,
+                                agentID: widget.agent.id,
+                              ),
+                      label: Text(l10n.teamAgentEditAdvanced),
                     ),
                     const Spacer(),
                     if (_saving)

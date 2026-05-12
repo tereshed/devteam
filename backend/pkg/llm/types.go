@@ -16,11 +16,17 @@ const (
 type ProviderType string
 
 const (
-	ProviderOpenAI    ProviderType = "openai"
-	ProviderAnthropic ProviderType = "anthropic"
-	ProviderGemini    ProviderType = "gemini"
-	ProviderDeepseek  ProviderType = "deepseek"
-	ProviderQwen      ProviderType = "qwen"
+	ProviderOpenAI          ProviderType = "openai"
+	ProviderAnthropic       ProviderType = "anthropic"
+	ProviderAnthropicOAuth  ProviderType = "anthropic_oauth"
+	ProviderGemini          ProviderType = "gemini"
+	ProviderDeepseek        ProviderType = "deepseek"
+	ProviderQwen            ProviderType = "qwen"
+	ProviderOpenRouter      ProviderType = "openrouter"
+	ProviderMoonshot        ProviderType = "moonshot"
+	ProviderOllama          ProviderType = "ollama"
+	ProviderZhipu           ProviderType = "zhipu"
+	ProviderFreeClaudeProxy ProviderType = "free_claude_proxy"
 )
 
 // Config represents the configuration for a provider

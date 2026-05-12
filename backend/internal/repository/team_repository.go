@@ -24,6 +24,7 @@ type TeamRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Team, error)
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error)
 	GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error)
+	GetAgentByID(ctx context.Context, agentID uuid.UUID) (*models.Agent, error)
 	SaveAgent(ctx context.Context, agent *models.Agent) error
 	// SaveAgentWithToolBindings атомарно сохраняет агента и при replaceBindings полностью заменяет agent_tool_bindings.
 	SaveAgentWithToolBindings(ctx context.Context, agent *models.Agent, replaceBindings bool, bindingToolDefIDs []uuid.UUID) error
@@ -100,6 +101,19 @@ func (r *teamRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID
 		return nil, fmt.Errorf("failed to get team by project id: %w", err)
 	}
 	return &team, nil
+}
+
+// GetAgentByID возвращает агента по ID без привязки к проекту (Sprint 15.23 — settings handler).
+func (r *teamRepository) GetAgentByID(ctx context.Context, agentID uuid.UUID) (*models.Agent, error) {
+	var agent models.Agent
+	err := r.db.WithContext(ctx).Where("id = ?", agentID).First(&agent).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTeamAgentNotFound
+		}
+		return nil, fmt.Errorf("failed to get agent by id: %w", err)
+	}
+	return &agent, nil
 }
 
 // GetAgentInProject возвращает агента, если он принадлежит команде указанного проекта.

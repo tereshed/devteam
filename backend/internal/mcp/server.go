@@ -5,6 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
 )
 
@@ -21,6 +22,13 @@ type Dependencies struct {
 	ConversationSvc service.ConversationService
 	OrchestratorSvc service.OrchestratorService
 	ApiKeyService   service.ApiKeyService
+
+	// Sprint 15.15: опционально. nil — инструменты не регистрируются.
+	ClaudeCodeAuthService service.ClaudeCodeAuthService
+
+	// Sprint 15.24 — реестр MCP-серверов и Claude Code skills (опционально).
+	MCPServerRegistryRepo repository.MCPServerRegistryRepository
+	AgentSkillRepo        repository.AgentSkillRepository
 }
 
 // NewMCPServer создает MCP-сервер с зарегистрированными инструментами
@@ -39,6 +47,8 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterToolDefinitionTools(server, deps.ToolDefinitionService)
 	RegisterTaskTools(server, deps.TaskService, deps.OrchestratorSvc)
 	RegisterConversationTools(server, deps.ConversationSvc)
+	RegisterClaudeCodeAuthTools(server, deps.ClaudeCodeAuthService)
+	RegisterAgentSettingsTools(server, deps.TeamService, deps.MCPServerRegistryRepo, deps.AgentSkillRepo)
 
 	return server
 }
