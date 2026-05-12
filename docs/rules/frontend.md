@@ -53,7 +53,7 @@ alwaysApply: true
 
   * **Обязательно:** Весь текст, видимый пользователю, должен поддерживать локализацию.
   * **Инструменты:** Используйте стандартный подход `flutter_localizations` с `.arb` файлами или проверенные пакеты (например, `easy_localization` или `slang`).
-  * **Запрет хардкода (CRITICAL):** В коде виджетов **СТРОГО ЗАПРЕЩЕНО** использовать строковые литералы (например, `Text("Login")`). Весь текст **ОБЯЗАН** быть вынесен в файлы локализации. Вместо этого используйте `context.l10n.loginButton` (или аналогичный метод вашего менеджера локализации).
+  * **Запрет хардкода (CRITICAL):** В коде виджетов **СТРОГО ЗАПРЕЩЕНО** использовать строковые литералы (например, `Text("Login")`). Весь текст **ОБЯЗАН** быть вынесен в файлы локализации. Получайте `AppLocalizations` через **`requireAppLocalizations(context, where: '…')`** из **`package:frontend/core/l10n/require.dart`**, затем вызывайте геттеры ключей ARB (например `final l10n = requireAppLocalizations(context, where: 'loginScreen');` … `l10n.login`). Параметр **`where`** указывайте для диагностики (попадает в текст ошибки, если под деревом нет `AppLocalizations.delegate`). Extension **`context.l10n`** в проекте **не** используется. **`AppLocalizations.of(context)!`** допустим в легаси до точечной миграции.
 
 #### КРИТИЧНО: Порядок генерации кода
 
@@ -84,7 +84,7 @@ cd frontend && flutter gen-l10n
   * Исходники **`frontend/lib/l10n/*.arb`** — в git; **`template-arb-file`** в `l10n.yaml` — обычно `app_ru.arb`.
   * Файлы **`frontend/lib/l10n/app_localizations.dart`**, **`app_localizations_ru.dart`**, **`app_localizations_en.dart`** генерируются **`flutter gen-l10n`** и в этом репозитории **коммитятся в git** (в `frontend/.gitignore` исключён каталог **`lib/generated/`**, а не `lib/l10n/`). После любых правок `.arb` обязательно выполните **`make frontend-codegen`** (или `flutter gen-l10n` в корректном порядке с `build_runner`) и **закоммитьте обновлённый триплет** `app_localizations*.dart`, иначе CI и другие клоны соберутся со старыми геттерами.
   * Перед первым запуском выполнить: `make frontend-setup`
-  * Автопроверка паритета ключей и зеркала плейсхолдеров (ru→en и en→ru): **`make frontend-l10n-check`** (исполняемый скрипт **`./scripts/check_l10n_parity.sh`**).
+  * Автопроверка паритета ключей и зеркала плейсхолдеров (ru↔en; наличие блоков `@*.placeholders`; совпадение имён и полей `type` в placeholders — см. этап «имена и типы» в **`./scripts/check_l10n_parity.sh`**): **`make frontend-l10n-check`**.
   * **Mockito (`*.mocks.dart`):** файлы, сгенерированные `build_runner` из `@GenerateNiceMocks` рядом с тестами (например `create_project_screen_test.mocks.dart`), **коммитятся в git** вместе с тестами — как и артефакты `build_runner` для приложения (`*.g.dart`, `*.freezed.dart` в `lib/`): без них `flutter test` на чистом клоне не соберётся. Порядок регенерации — тот же, что в абзаце выше (`build_runner` → `gen-l10n`). В `analysis_options.yaml` `*.mocks.dart` **не** исключены из анализа (в отличие от `*.g.dart` / `*.freezed.dart` в `exclude`), поэтому `flutter analyze` проверяет и тесты.
 
 ### 2.4. Управление контентом (Data Flow)

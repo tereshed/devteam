@@ -224,6 +224,24 @@ abstract class AppLocalizations {
   /// **'Dashboard'**
   String get dashboard;
 
+  /// 13.6 кнопка на dashboard: админ — промпты
+  ///
+  /// In ru, this message translates to:
+  /// **'Управление промптами (Админ)'**
+  String get dashboardAdminManagePrompts;
+
+  /// 13.6 кнопка на dashboard: админ — воркфлоу
+  ///
+  /// In ru, this message translates to:
+  /// **'Управление воркфлоу (Админ)'**
+  String get dashboardAdminManageWorkflows;
+
+  /// 13.6 кнопка на dashboard: админ — журнал LLM
+  ///
+  /// In ru, this message translates to:
+  /// **'Логи LLM (Админ)'**
+  String get dashboardAdminViewLlmLogs;
+
   /// Заголовок экрана профиля
   ///
   /// In ru, this message translates to:
@@ -2047,6 +2065,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Повторить'**
   String get teamAgentEditToolsRetry;
+
+  /// Подпись чипа инструмента в секции «Инструменты» агента: имя + категория
+  ///
+  /// In ru, this message translates to:
+  /// **'{name} ({category})'**
+  String teamAgentEditToolsListEntryLabel(String name, String category);
 
   /// Подсказка кнопки копирования блока кода в чате
   ///

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
 import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_card.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_edit_dialog.dart';
-import 'package:frontend/l10n/app_localizations.dart';
 
 /// Вкладка «Команда»: состав без второго [Scaffold] (13.1).
 class TeamScreen extends ConsumerWidget {
@@ -16,7 +16,7 @@ class TeamScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     assert(projectId.isNotEmpty);
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(context, where: 'teamScreen');
     final asyncTeam = ref.watch(teamProvider(projectId));
 
     if (asyncTeam.hasError) {

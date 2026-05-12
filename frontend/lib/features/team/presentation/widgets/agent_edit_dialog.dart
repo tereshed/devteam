@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/json/patch.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/domain/prompt_exceptions.dart';
 import 'package:frontend/features/admin/prompts/domain/prompt_model.dart';
@@ -269,7 +270,10 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
   }
 
   Future<bool> _confirmDiscard() async {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(
+      context,
+      where: 'agentEditDialog.confirmDiscard',
+    );
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -372,7 +376,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     if (_saving) {
       return;
     }
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(context, where: 'agentEditDialog.save');
     final patch = _buildPatch();
     final body = patch.toWireJson();
     if (body.isEmpty) {
@@ -474,7 +478,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(context, where: 'agentEditDialog.body');
     final theme = Theme.of(context);
 
     return PopScope(
@@ -683,7 +687,9 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
               children: [
                 for (final t in _toolDefinitions)
                   FilterChip(
-                    label: Text('${t.name} (${t.category})'),
+                    label: Text(
+                      l10n.teamAgentEditToolsListEntryLabel(t.name, t.category),
+                    ),
                     selected: _selectedToolDefIds.contains(t.id),
                     onSelected: _saving
                         ? null

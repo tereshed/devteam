@@ -4,20 +4,32 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
 import 'package:frontend/features/projects/domain/models.dart';
-import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/presentation/screens/project_dashboard_screen.dart';
-import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
+import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
+import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
+import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../../../tasks/helpers/task_fixtures.dart';
 import '../../helpers/project_dashboard_test_router.dart';
 import '../../helpers/project_fixtures.dart';
 import '../../helpers/test_wrappers.dart';
+
+/// Список задач без HTTP — ветка shell «Tasks» монтирует [TasksListScreen] (12.4+).
+class _StubTaskListForDashboardShellTest extends TaskListController {
+  _StubTaskListForDashboardShellTest(this._seed);
+  final TaskListState _seed;
+
+  @override
+  FutureOr<TaskListState> build({required String projectId}) => _seed;
+}
 
 class MockProjectRepository extends Mock implements ProjectRepository {}
 
@@ -359,49 +371,53 @@ void main() {
       expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat');
     });
 
-    testWidgets('смена раздела shell: Tasks показывает плейсхолдер задач', (
-      tester,
-    ) async {
-      useViewSize(tester, const Size(400, 800));
-      final router = buildProjectDashboardTestRouter(
-        initialLocation: '/projects/$kTestProjectUuid/chat',
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
-          overrides: [
-            projectProvider(
-              kTestProjectUuid,
-            ).overrideWith((ref) async => makeProject(id: kTestProjectUuid)),
-          ],
-          child: MaterialApp.router(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            locale: const Locale('en'),
-            routerConfig: router,
+    testWidgets(
+      'смена раздела shell: Tasks показывает TasksListScreen (stub)',
+      (tester) async {
+        useViewSize(tester, const Size(400, 800));
+        final router = buildProjectDashboardTestRouter(
+          initialLocation: '/projects/$kTestProjectUuid/chat',
+        );
+        final taskSeed = makeTaskListStateFixture(
+          isLoadingInitial: false,
+          items: const [],
+          total: 0,
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            retry: (_, _) => null,
+            overrides: [
+              projectProvider(
+                kTestProjectUuid,
+              ).overrideWith((ref) async => makeProject(id: kTestProjectUuid)),
+              taskListControllerProvider.overrideWith(
+                () => _StubTaskListForDashboardShellTest(taskSeed),
+              ),
+            ],
+            child: MaterialApp.router(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('en'),
+              routerConfig: router,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final l10n = AppLocalizations.of(
-        tester.element(find.byType(ProjectDashboardScreen)),
-      )!;
-      await tester.tap(
-        find.descendant(
-          of: find.byType(NavigationBar),
-          matching: find.text(l10n.projectDashboardTasks),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(router.state.uri.path, '/projects/$kTestProjectUuid/tasks');
-      expect(
-        find.descendant(
-          of: find.byType(ProjectDestinationPlaceholder),
-          matching: find.text(l10n.projectDashboardTasks),
-        ),
-        findsOneWidget,
-      );
-    });
+        );
+        await tester.pumpAndSettle();
+        final l10n = AppLocalizations.of(
+          tester.element(find.byType(ProjectDashboardScreen)),
+        )!;
+        await tester.tap(
+          find.descendant(
+            of: find.byType(NavigationBar),
+            matching: find.text(l10n.projectDashboardTasks),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(router.state.uri.path, '/projects/$kTestProjectUuid/tasks');
+        expect(find.byType(TasksListScreen), findsOneWidget);
+        expect(find.text(l10n.tasksEmpty), findsOneWidget);
+      },
+    );
 
     testWidgets('dispose: CancelToken отменяется при снятии дерева', (
       tester,

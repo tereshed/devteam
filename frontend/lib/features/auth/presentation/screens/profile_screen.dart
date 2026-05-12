@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/auth/presentation/widgets/logout_button.dart';
-import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 /// ProfileScreen - экран профиля пользователя
@@ -16,7 +16,7 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(context, where: 'profileScreen');
     final authState = ref.watch(authControllerProvider);
 
     return Scaffold(

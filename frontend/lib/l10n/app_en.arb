@@ -28,6 +28,9 @@
   "registerTitle": "Register",
   "createAccount": "Create Account",
   "dashboard": "Dashboard",
+  "dashboardAdminManagePrompts": "Manage Prompts (Admin)",
+  "dashboardAdminManageWorkflows": "Manage Workflows (Admin)",
+  "dashboardAdminViewLlmLogs": "View LLM Logs (Admin)",
   "profile": "Profile",
   "userInfo": "User Information",
   "role": "Role",
@@ -526,6 +529,13 @@
   "@teamAgentEditToolsValidationError": { "description": "13.3.1 HTTP 400 when saving bindings" },
   "teamAgentEditToolsRetry": "Retry",
   "@teamAgentEditToolsRetry": { "description": "13.3.1 retry catalog load" },
+  "teamAgentEditToolsListEntryLabel": "{name} ({category})",
+  "@teamAgentEditToolsListEntryLabel": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "category": { "type": "String" }
+    }
+  },
   "chatMessageCopyCode": "Copy code",
   "@chatMessageCopyCode": { "description": "Tooltip for fenced code copy button in chat" },
   "chatMessageStreamingPlaceholder": "Typing…",

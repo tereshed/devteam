@@ -109,6 +109,18 @@
   "@dashboard": {
     "description": "Заголовок экрана dashboard"
   },
+  "dashboardAdminManagePrompts": "Управление промптами (Админ)",
+  "@dashboardAdminManagePrompts": {
+    "description": "13.6 кнопка на dashboard: админ — промпты"
+  },
+  "dashboardAdminManageWorkflows": "Управление воркфлоу (Админ)",
+  "@dashboardAdminManageWorkflows": {
+    "description": "13.6 кнопка на dashboard: админ — воркфлоу"
+  },
+  "dashboardAdminViewLlmLogs": "Логи LLM (Админ)",
+  "@dashboardAdminViewLlmLogs": {
+    "description": "13.6 кнопка на dashboard: админ — журнал LLM"
+  },
   
   "profile": "Профиль",
   "@profile": {
@@ -822,6 +834,14 @@
   "@teamAgentEditToolsValidationError": { "description": "13.3.1 HTTP 400 при сохранении привязок" },
   "teamAgentEditToolsRetry": "Повторить",
   "@teamAgentEditToolsRetry": { "description": "13.3.1 повторная загрузка каталога" },
+  "teamAgentEditToolsListEntryLabel": "{name} ({category})",
+  "@teamAgentEditToolsListEntryLabel": {
+    "description": "Подпись чипа инструмента в секции «Инструменты» агента: имя + категория",
+    "placeholders": {
+      "name": { "type": "String" },
+      "category": { "type": "String" }
+    }
+  },
   "chatMessageCopyCode": "Копировать код",
   "@chatMessageCopyCode": { "description": "Подсказка кнопки копирования блока кода в чате" },
   "chatMessageStreamingPlaceholder": "Печатает…",

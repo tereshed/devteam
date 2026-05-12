@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/projects/domain/models/agent_model.dart';
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
 import 'package:frontend/l10n/app_localizations.dart';
@@ -37,7 +38,7 @@ class AgentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(context, where: 'agentCard');
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final roleText = agentRoleLabel(l10n, agent.role);

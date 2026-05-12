@@ -74,6 +74,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboard => 'Dashboard';
 
   @override
+  String get dashboardAdminManagePrompts => 'Manage Prompts (Admin)';
+
+  @override
+  String get dashboardAdminManageWorkflows => 'Manage Workflows (Admin)';
+
+  @override
+  String get dashboardAdminViewLlmLogs => 'View LLM Logs (Admin)';
+
+  @override
   String get profile => 'Profile';
 
   @override
@@ -1036,6 +1045,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get teamAgentEditToolsRetry => 'Retry';
+
+  @override
+  String teamAgentEditToolsListEntryLabel(String name, String category) {
+    return '$name ($category)';
+  }
 
   @override
   String get chatMessageCopyCode => 'Copy code';

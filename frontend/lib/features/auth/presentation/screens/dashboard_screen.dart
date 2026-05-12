@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/auth/presentation/widgets/logout_button.dart';
-import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 /// DashboardScreen - главный экран после авторизации
@@ -16,7 +16,7 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(context, where: 'dashboardScreen');
     final authState = ref.watch(authControllerProvider);
 
     return Scaffold(
@@ -94,7 +94,7 @@ class DashboardScreen extends ConsumerWidget {
                         ElevatedButton.icon(
                           onPressed: () => context.go('/admin/prompts'),
                           icon: const Icon(Icons.settings_system_daydream),
-                          label: const Text('Manage Prompts (Admin)'),
+                          label: Text(l10n.dashboardAdminManagePrompts),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Theme.of(
                               context,
@@ -109,7 +109,7 @@ class DashboardScreen extends ConsumerWidget {
                         ElevatedButton.icon(
                           onPressed: () => context.go('/admin/workflows'),
                           icon: const Icon(Icons.play_circle_outline),
-                          label: const Text('Manage Workflows (Admin)'),
+                          label: Text(l10n.dashboardAdminManageWorkflows),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Theme.of(
                               context,
@@ -124,7 +124,7 @@ class DashboardScreen extends ConsumerWidget {
                         ElevatedButton.icon(
                           onPressed: () => context.go('/admin/logs'),
                           icon: const Icon(Icons.receipt_long),
-                          label: const Text('View LLM Logs (Admin)'),
+                          label: Text(l10n.dashboardAdminViewLlmLogs),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Theme.of(
                               context,

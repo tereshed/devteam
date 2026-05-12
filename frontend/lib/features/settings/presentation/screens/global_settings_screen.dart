@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/auth/presentation/widgets/logout_button.dart';
 import 'package:frontend/features/settings/domain/global_settings_backend_gate.dart';
-import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 /// Экран глобальных настроек LLM-провайдеров (13.5).
@@ -16,7 +16,10 @@ class GlobalSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(
+      context,
+      where: 'globalSettingsScreen',
+    );
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurface.withValues(alpha: 0.72);
 

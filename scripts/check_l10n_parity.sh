@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Паритет ключей app_en.arb / app_ru.arb и зеркало @*.placeholders для строк с {placeholder} в обе стороны (ru↔en).
+# Паритет ключей app_en.arb / app_ru.arb; для строк с {…} — наличие @*.placeholders в обе стороны и совпадение
+# имён и полей type в placeholders между ru и en (построчно: name=type, сортировка по имени).
 # Запуск из корня репозитория: ./scripts/check_l10n_parity.sh  или  make frontend-l10n-check
 set -euo pipefail
 
@@ -54,5 +55,40 @@ done < <(jq -r '
   | select(.value | test("\\{[a-zA-Z_]"))
   | .key
 ' app_en.arb)
+
+echo "check_l10n_parity: имена и типы placeholders (ru ↔ en)…"
+while IFS= read -r k; do
+  tmpa="$(mktemp)"
+  tmpb="$(mktemp)"
+  jq -r --arg k "$k" '
+    (.["@" + $k].placeholders // {}) | to_entries | sort_by(.key) | .[] | "\(.key)=\(.value.type // "")"
+  ' app_ru.arb >"$tmpa"
+  jq -r --arg k "$k" '
+    (.["@" + $k].placeholders // {}) | to_entries | sort_by(.key) | .[] | "\(.key)=\(.value.type // "")"
+  ' app_en.arb >"$tmpb"
+  if ! cmp -s "$tmpa" "$tmpb"; then
+    echo "check_l10n_parity: расхождение placeholders для «${k}» (ru vs en):" >&2
+    diff -u "$tmpa" "$tmpb" >&2 || true
+    bad=1
+  fi
+  rm -f "$tmpa" "$tmpb"
+done < <(
+  {
+    jq -r '
+  to_entries[]
+  | select(.key | test("^@") | not)
+  | select(.value | type == "string")
+  | select(.value | test("\\{[a-zA-Z_]"))
+  | .key
+' app_ru.arb
+    jq -r '
+  to_entries[]
+  | select(.key | test("^@") | not)
+  | select(.value | type == "string")
+  | select(.value | test("\\{[a-zA-Z_]"))
+  | .key
+' app_en.arb
+  } | sort -u
+)
 
 exit "$bad"

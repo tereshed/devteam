@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
@@ -10,7 +11,6 @@ import 'package:frontend/features/projects/presentation/widgets/project_settings
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_field_row.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_stack_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_vector_section.dart';
-import 'package:frontend/l10n/app_localizations.dart';
 
 TextStyle? _projectSettingsSnackBarDetailStyle(ThemeData theme) {
   return theme.textTheme.bodySmall?.copyWith(
@@ -139,7 +139,10 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
 
   Future<void> _onSave(ProjectModel baseline) async {
     final messenger = ScaffoldMessenger.of(context);
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(
+      context,
+      where: 'projectSettingsScreen.save',
+    );
     final theme = Theme.of(context);
     if (_saveBusy) {
       return;
@@ -219,7 +222,10 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
 
   Future<void> _onReindex() async {
     final messenger = ScaffoldMessenger.of(context);
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(
+      context,
+      where: 'projectSettingsScreen.reindex',
+    );
     final theme = Theme.of(context);
     setState(() => _reindexBusy = true);
     try {
@@ -293,7 +299,10 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = requireAppLocalizations(
+      context,
+      where: 'projectSettingsScreen.body',
+    );
     final theme = Theme.of(context);
     final asyncProject = ref.watch(projectProvider(widget.projectId));
 

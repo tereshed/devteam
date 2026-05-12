@@ -177,7 +177,7 @@ help:
 	@echo "  make frontend-analyze        - Run Flutter analyze"
 	@echo "  make frontend-codegen        - Run code generation (build_runner)"
 	@echo "  make frontend-codegen-watch   - Watch mode for code generation"
-	@echo "  make frontend-l10n-check     - Verify ARB key parity (ru/en) and placeholder mirrors"
+	@echo "  make frontend-l10n-check     - Verify ARB key parity (ru/en), placeholder blocks, name/type match"
 	@echo "  make frontend-run-web        - Run frontend on Chrome (with auto-setup)"
 	@echo "  make frontend-run-android    - Run frontend on Android (with auto-setup)"
 	@echo "  make frontend-run-ios        - Run frontend on iOS (with auto-setup)"
