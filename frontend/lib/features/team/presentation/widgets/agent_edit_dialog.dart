@@ -960,6 +960,7 @@ class _ProviderKindField extends StatelessWidget {
       ),
     ];
     return DropdownButtonFormField<String?>(
+      key: const Key('agentEditDialog_providerKindField'),
       decoration: InputDecoration(
         labelText: l10n.teamAgentEditFieldProviderKind,
         helperText: l10n.teamAgentEditFieldProviderKindHelp,

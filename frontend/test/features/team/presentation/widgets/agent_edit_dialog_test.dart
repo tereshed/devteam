@@ -46,6 +46,7 @@ void main() {
     bool isActive = true,
     String? model = 'm1',
     List<ToolBindingResponseModel>? toolBindings,
+    String? providerKind,
   }) {
     return AgentModel(
       id: agentId,
@@ -55,6 +56,7 @@ void main() {
       promptName: null,
       promptId: promptId,
       codeBackend: 'claude-code',
+      providerKind: providerKind,
       isActive: isActive,
       toolBindings: toolBindings ?? const [],
     );
@@ -257,12 +259,13 @@ void main() {
   });
 
   testWidgets('Cancel при dirty — discard, без PATCH', (tester) async {
+    useViewSize(tester, const Size(800, 900));
     final dio = createDio();
     stubDialogDio(dio);
     await tester.pumpWidget(
       dialogPushedHost(
         dio: dio,
-        viewSize: const Size(800, 600),
+        viewSize: const Size(800, 900),
         body: agentEditDialogBodyForTesting(
           projectId: projectId,
           agent: sampleAgent(isActive: false),
@@ -293,6 +296,7 @@ void main() {
   });
 
   testWidgets('успешное сохранение: PATCH затем GET team (verifyInOrder)', (tester) async {
+    useViewSize(tester, const Size(800, 900));
     final dio = createDio();
     stubDialogDio(dio);
     stubTeamGet(dio);
@@ -316,7 +320,7 @@ void main() {
     await tester.pumpWidget(
       dialogPushedHost(
         dio: dio,
-        viewSize: const Size(800, 600),
+        viewSize: const Size(800, 900),
         body: agentEditDialogBodyForTesting(
           projectId: projectId,
           agent: sampleAgent(isActive: false),
@@ -362,6 +366,7 @@ void main() {
   });
 
   testWidgets('ошибка PATCH 500 — SnackBar, форма остаётся', (tester) async {
+    useViewSize(tester, const Size(800, 900));
     final dio = createDio();
     stubDialogDio(dio);
     when(
@@ -416,6 +421,7 @@ void main() {
   });
 
   testWidgets('PATCH 409 — конфликт, без GET team после', (tester) async {
+    useViewSize(tester, const Size(800, 900));
     final dio = createDio();
     stubDialogDio(dio);
     when(
@@ -754,6 +760,7 @@ void main() {
   });
 
   testWidgets('двойной Save — один PATCH', (tester) async {
+    useViewSize(tester, const Size(800, 900));
     final dio = createDio();
     stubDialogDio(dio);
     stubTeamGet(dio);
@@ -823,6 +830,7 @@ void main() {
   });
 
   testWidgets('13.3.1: снять инструмент — PATCH с пустым tool_bindings', (tester) async {
+    useViewSize(tester, const Size(800, 900));
     final dio = createDio();
     stubDialogDio(dio);
     stubTeamGet(dio);
@@ -892,6 +900,7 @@ void main() {
   });
 
   testWidgets('13.3.1: выбрать инструмент — PATCH с tool_bindings', (tester) async {
+    useViewSize(tester, const Size(800, 900));
     final dio = createDio();
     stubDialogDio(dio);
     stubTeamGet(dio);
@@ -960,4 +969,249 @@ void main() {
       findsNothing,
     );
   });
+
+  // --- Sprint 15.e2e: provider_kind dropdown ----------------------------------
+  // Регресс-страховка: dropdown отрисован, выбор kind улетает в PATCH,
+  // сброс на «—» (Unset) приходит как provider_kind: null.
+
+  const providerFieldKey = Key('agentEditDialog_providerKindField');
+
+  testWidgets('provider_kind: dropdown отрисован с локализованным label',
+      (tester) async {
+    final dio = createDio();
+    stubDialogDio(dio);
+    await tester.pumpWidget(
+      wrap(
+        agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(),
+          useAutofocus: false,
+        ),
+        dio: dio,
+        viewSize: const Size(800, 700),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsRu();
+    expect(find.byKey(providerFieldKey), findsOneWidget);
+    expect(find.text(l10n.teamAgentEditFieldProviderKind), findsOneWidget);
+    expect(find.text(l10n.teamAgentEditFieldProviderKindHelp), findsOneWidget);
+  });
+
+  testWidgets(
+    'provider_kind: выбор «deepseek» → PATCH c provider_kind: "deepseek"',
+    (tester) async {
+      final dio = createDio();
+      stubDialogDio(dio);
+      stubTeamGet(dio);
+      when(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: anyNamed('data'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: teamJson(),
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/$projectId/team/agents/$agentId',
+          ),
+        ),
+      );
+
+      useViewSize(tester, const Size(900, 1100));
+      await tester.pumpWidget(
+        dialogPushedHost(
+          dio: dio,
+          viewSize: const Size(900, 1100),
+          body: agentEditDialogBodyForTesting(
+            projectId: projectId,
+            // Стартуем с пустым provider_kind, чтобы зафиксировать «omit -> value».
+            agent: sampleAgent(),
+            useAutofocus: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('__open_dialog__'));
+      await tester.pumpAndSettle();
+      clearInteractions(dio);
+
+      // Открываем dropdown по ключу и выбираем «deepseek».
+      await tester.tap(find.byKey(providerFieldKey));
+      await tester.pumpAndSettle();
+      // В popup появляется несколько одинаковых пунктов (по числу dropdowns
+      // на экране), но .last гарантированно из текущего меню.
+      await tester.tap(find.text('deepseek').last);
+      await tester.pumpAndSettle();
+
+      final l10n = AppLocalizationsRu();
+      await tester.ensureVisible(find.text(l10n.teamAgentEditSave));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l10n.teamAgentEditSave));
+      await tester.pumpAndSettle();
+
+      verify(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: argThat(
+            isA<Map<String, dynamic>>().having(
+              (m) => m['provider_kind'],
+              'provider_kind',
+              'deepseek',
+            ),
+            named: 'data',
+          ),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).called(1);
+    },
+  );
+
+  testWidgets(
+    'provider_kind: сброс на «—» → PATCH c provider_kind: null',
+    (tester) async {
+      final dio = createDio();
+      stubDialogDio(dio);
+      stubTeamGet(dio);
+      when(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: anyNamed('data'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: teamJson(),
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/$projectId/team/agents/$agentId',
+          ),
+        ),
+      );
+
+      useViewSize(tester, const Size(900, 1100));
+      await tester.pumpWidget(
+        dialogPushedHost(
+          dio: dio,
+          viewSize: const Size(900, 1100),
+          body: agentEditDialogBodyForTesting(
+            projectId: projectId,
+            agent: sampleAgent(providerKind: 'deepseek'),
+            useAutofocus: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('__open_dialog__'));
+      await tester.pumpAndSettle();
+      clearInteractions(dio);
+
+      // Открываем dropdown и тапаем «—» (l10n.teamAgentEditUnset).
+      await tester.tap(find.byKey(providerFieldKey));
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizationsRu();
+      // teamAgentEditUnset присутствует в нескольких dropdown'ах (provider_kind,
+      // code_backend, prompt). .last — пункт из активного меню.
+      await tester.tap(find.text(l10n.teamAgentEditUnset).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l10n.teamAgentEditSave));
+      await tester.pumpAndSettle();
+
+      verify(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: argThat(
+            isA<Map<String, dynamic>>()
+                .having(
+                  (m) => m.containsKey('provider_kind'),
+                  'provider_kind present',
+                  true,
+                )
+                .having(
+                  (m) => m['provider_kind'],
+                  'provider_kind value',
+                  isNull,
+                ),
+            named: 'data',
+          ),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).called(1);
+    },
+  );
+
+  testWidgets(
+    'provider_kind: без изменений — поле НЕ попадает в PATCH (omit)',
+    (tester) async {
+      final dio = createDio();
+      stubDialogDio(dio);
+      stubTeamGet(dio);
+      when(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: anyNamed('data'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: teamJson(),
+          statusCode: 200,
+          requestOptions: RequestOptions(
+            path: '/projects/$projectId/team/agents/$agentId',
+          ),
+        ),
+      );
+
+      useViewSize(tester, const Size(900, 1100));
+      await tester.pumpWidget(
+        dialogPushedHost(
+          dio: dio,
+          viewSize: const Size(900, 1100),
+          body: agentEditDialogBodyForTesting(
+            projectId: projectId,
+            // У агента kind есть, но dirty-флаг провоцируем сменой is_active.
+            agent: sampleAgent(providerKind: 'anthropic_oauth', isActive: false),
+            useAutofocus: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('__open_dialog__'));
+      await tester.pumpAndSettle();
+      clearInteractions(dio);
+
+      final l10n = AppLocalizationsRu();
+      await tester.ensureVisible(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text(l10n.teamAgentEditSave));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l10n.teamAgentEditSave));
+      await tester.pumpAndSettle();
+
+      verify(
+        dio.patch(
+          '/projects/$projectId/team/agents/$agentId',
+          data: argThat(
+            isA<Map<String, dynamic>>().having(
+              (m) => m.containsKey('provider_kind'),
+              'provider_kind absent',
+              false,
+            ),
+            named: 'data',
+          ),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).called(1);
+    },
+  );
 }
