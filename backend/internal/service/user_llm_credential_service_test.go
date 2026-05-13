@@ -92,7 +92,7 @@ func (m *memLlmCredRepo) GetByUserAndProvider(ctx context.Context, userID uuid.U
 			return &cp, nil
 		}
 	}
-	return nil, nil
+	return nil, repository.ErrUserLlmCredentialNotFound
 }
 
 func (m *memLlmCredRepo) Create(ctx context.Context, row *models.UserLlmCredential) error {

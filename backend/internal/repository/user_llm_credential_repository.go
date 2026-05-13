@@ -13,12 +13,16 @@ import (
 // ErrUserLlmCredentialNotUpdated — UPDATE не затронул строку (параллельный DELETE и т.п.).
 var ErrUserLlmCredentialNotUpdated = errors.New("user llm credential row not updated")
 
-// ErrUserLlmCredentialNotFound — запись не найдена. (Получают, когда нужно различать "пусто" и реальную ошибку.)
+// ErrUserLlmCredentialNotFound — запись не найдена. Возвращается из GetByUserAndProvider
+// (источник истины для "not-found"). Вызывающие сравнивают через errors.Is, а не через
+// row == nil — это исключает класс багов «пустой row молча трактуется как not-found».
 var ErrUserLlmCredentialNotFound = errors.New("user llm credential not found")
 
 // UserLlmCredentialRepository CRUD по user_llm_credentials и аудиту (bytea — уже зашифровано в service).
 type UserLlmCredentialRepository interface {
 	ListByUserID(ctx context.Context, userID uuid.UUID) ([]models.UserLlmCredential, error)
+	// GetByUserAndProvider возвращает (nil, ErrUserLlmCredentialNotFound) если строки нет;
+	// (row, nil) при успехе; (nil, non-nil-other) при системной ошибке.
 	GetByUserAndProvider(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (*models.UserLlmCredential, error)
 	Create(ctx context.Context, row *models.UserLlmCredential) error
 	Update(ctx context.Context, row *models.UserLlmCredential) error
@@ -54,7 +58,7 @@ func (r *userLlmCredentialRepository) GetByUserAndProvider(ctx context.Context, 
 		First(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, ErrUserLlmCredentialNotFound
 		}
 		return nil, fmt.Errorf("get user llm credential: %w", err)
 	}

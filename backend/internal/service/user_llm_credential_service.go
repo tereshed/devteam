@@ -111,15 +111,13 @@ func (s *userLlmCredentialService) GetMasked(ctx context.Context, userID uuid.UU
 // GetPlaintext — расшифровывает ключ пользователя для конкретного провайдера.
 // AAD совпадает с тем, что используется при шифровании ([]byte(row.ID.String())).
 //
-// Контракт ошибок (Sprint 15.e2e ревью): «нет ключа» отличается от «ошибка лукапа» — это
-// важно для резолвера, который при отсутствии ключа НЕ должен fallback'аться на чужой
-// провайдер (см. TestResolver_DeepSeek_UserHasNoKey_ReturnsEmpty).
-//   - row отсутствует   → ("", repository.ErrUserLlmCredentialNotFound)
-//   - расшифровка/IO    → ("", non-nil error)
-//   - успех             → (key, nil)
+// Контракт ошибок прокидывается из репозитория без компенсаций:
+//   - не найдено      → ("", repository.ErrUserLlmCredentialNotFound)
+//   - расшифровка/IO  → ("", non-nil error)
+//   - успех           → (key, nil)
 //
-// Пустую строку как «не найдено» возвращать запрещено: при потенциально кривых
-// миграциях/ручных INSERT'ах это бы скрыло реальный rows-mismatch.
+// «Не найдено» отличается от «ошибка лукапа» — важно для резолвера, который при
+// отсутствии ключа НЕ fallback'ается на чужой провайдер (см. тесты резолвера).
 func (s *userLlmCredentialService) GetPlaintext(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (string, error) {
 	if !models.IsValidUserLLMProvider(string(provider)) {
 		return "", fmt.Errorf("invalid user llm provider: %q", provider)
@@ -127,11 +125,6 @@ func (s *userLlmCredentialService) GetPlaintext(ctx context.Context, userID uuid
 	row, err := s.repo.GetByUserAndProvider(ctx, userID, provider)
 	if err != nil {
 		return "", err
-	}
-	if row == nil {
-		// Repo сейчас возвращает (nil, nil) при ErrRecordNotFound; превращаем это в
-		// явный sentinel, чтобы вызыватели сравнивали errors.Is, а не row == nil.
-		return "", repository.ErrUserLlmCredentialNotFound
 	}
 	plain, err := s.encryptor.Decrypt(row.EncryptedKey, []byte(row.ID.String()))
 	if err != nil {
@@ -264,11 +257,11 @@ func (s *userLlmCredentialService) Patch(ctx context.Context, userID uuid.UUID, 
 
 func (s *userLlmCredentialService) setProviderKey(txCtx context.Context, userID uuid.UUID, p models.UserLLMProvider, plain, ip, userAgent string) error {
 	existing, err := s.repo.GetByUserAndProvider(txCtx, userID, p)
+	if errors.Is(err, repository.ErrUserLlmCredentialNotFound) {
+		return s.insertLlmCredentialOrConcurrent(txCtx, userID, p, plain, ip, userAgent)
+	}
 	if err != nil {
 		return err
-	}
-	if existing == nil {
-		return s.insertLlmCredentialOrConcurrent(txCtx, userID, p, plain, ip, userAgent)
 	}
 	return s.updateLlmCredentialWithRefetch(txCtx, userID, p, plain, existing, ip, userAgent)
 }
@@ -305,11 +298,11 @@ func (s *userLlmCredentialService) updateLlmCredentialWithRefetch(txCtx context.
 		return err
 	}
 	existing2, err2 := s.repo.GetByUserAndProvider(txCtx, userID, p)
+	if errors.Is(err2, repository.ErrUserLlmCredentialNotFound) {
+		return s.insertLlmCredentialOrConcurrent(txCtx, userID, p, plain, ip, userAgent)
+	}
 	if err2 != nil {
 		return err2
-	}
-	if existing2 == nil {
-		return s.insertLlmCredentialOrConcurrent(txCtx, userID, p, plain, ip, userAgent)
 	}
 	err = s.tryEncryptUpdate(txCtx, plain, existing2)
 	if err != nil {
