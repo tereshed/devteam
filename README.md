@@ -394,17 +394,20 @@ User Message
 
 ### Sprint 15 — Авторизация Claude Code, мультипровайдерный LLM и кастомизация агентов
 
-**Цель:** Освободиться от жёсткой завязки на Anthropic API-ключи: разрешить логин Claude Code по подписке (OAuth), подключить альтернативные LLM-провайдеры через прокси `free-claude-code`, и дать пользователю UI для тонкой настройки каждого агента (модель/провайдер, MCP-серверы, Skills, разрешения Claude Code для sandbox).
+**Цель:** Освободиться от жёсткой завязки на Anthropic API-ключи: разрешить логин Claude Code по подписке (OAuth), подключить альтернативные LLM-провайдеры с per-user креденшелами, и дать пользователю UI для тонкой настройки каждого агента (модель/провайдер, MCP-серверы, Skills, разрешения Claude Code для sandbox).
 
-**Контекст:** в sandbox-контейнере (Sprint 5) Claude Code сейчас запускается с `ANTHROPIC_API_KEY` и спотыкается на интерактивных подтверждениях операций (write/bash/network) — оркестратор зависает в ожидании. Нужно: (а) разрешить аутентификацию подпиской вместо API-ключа, (б) поддержать совместимые провайдеры через [Alishahryar1/free-claude-code](https://github.com/Alishahryar1/free-claude-code) как Anthropic-совместимый прокси (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`), (в) пробросить per-agent `settings.json` с `permissions.allow` / `permissions.defaultMode` и `--dangerously-skip-permissions` там, где это безопасно (изолированный контейнер).
+**Контекст:** в sandbox-контейнере (Sprint 5) Claude Code сейчас запускается с `ANTHROPIC_API_KEY` и спотыкается на интерактивных подтверждениях операций (write/bash/network) — оркестратор зависает в ожидании. Нужно: (а) разрешить аутентификацию подпиской вместо API-ключа, (б) поддержать совместимые провайдеры через native Anthropic endpoints провайдеров (DeepSeek `api.deepseek.com/anthropic`, Zhipu `open.bigmodel.cn/api/anthropic`, OpenRouter `openrouter.ai/api/v1`), (в) пробросить per-agent `settings.json` с `permissions.allow` / `permissions.defaultMode` и `--dangerously-skip-permissions` там, где это безопасно (изолированный контейнер).
+
+> **Sprint 15.e2e revision (2026-05-13):** изначальный план с sidecar-прокси `free-claude-code` оказался однотенантным и не ложился на мультиюзера. Заменён на per-agent `provider_kind` + per-user `user_llm_credentials`; sandbox ходит напрямую на native Anthropic endpoint провайдера. Sidecar и весь связанный код удалены — см. блок 15.C ниже.
 
 #### 15.A — Backend: модель данных и провайдеры
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 15.1 | Миграция: таблица `llm_providers` (id, kind: `anthropic`/`anthropic_oauth`/`openrouter`/`deepseek`/`moonshot`/`ollama`/`zhipu`/`free_claude_proxy`, base_url, auth_type, credentials_encrypted, default_model, enabled) | `backend/migrations/020_create_llm_providers.sql` | ✅ |
+| 15.1 | Миграция: таблица `llm_providers` (id, kind: `anthropic`/`anthropic_oauth`/`openrouter`/`deepseek`/`moonshot`/`ollama`/`zhipu`, base_url, auth_type, credentials_encrypted, default_model, enabled). _Sprint 15.e2e: kind=`free_claude_proxy` удалён._ | `backend/migrations/020_create_llm_providers.sql` | ✅ |
 | 15.2 | Миграция: таблица `claude_code_subscriptions` (id, user_id, oauth_access_token, oauth_refresh_token, expires_at, scopes — всё AES-256-GCM) | `backend/migrations/021_create_claude_code_subscriptions.sql` | ✅ |
 | 15.3 | Миграция: `ALTER TABLE agents` — добавить `llm_provider_id`, `code_backend_settings JSONB` (модель, MCP-сервера, Skills, claude code permissions), `sandbox_permissions JSONB` (allow/deny/defaultMode) | `backend/migrations/022_alter_agents_provider_and_settings.sql` | ✅ |
+| 15.3a | _Sprint 15.e2e:_ Миграция `028_agents_provider_kind_and_drop_proxy.sql`: `agents.provider_kind` (enum `anthropic`/`anthropic_oauth`/`deepseek`/`zhipu`/`openrouter`), `zhipu` в чек `user_llm_credentials`, схлопывание `code_backend` (без `claude-code-via-proxy`) | `backend/db/migrations/028_*.sql` | ✅ |
 | 15.4 | Миграция: таблица `mcp_servers_registry` (id, name, transport: `stdio`/`http`/`sse`, command/url, env_template, scope: `global`/`project`/`agent`) — расширение существующей `mcp_server_configs` или новая | `backend/migrations/023_create_mcp_servers_registry.sql` | ✅ |
 | 15.5 | Миграция: таблица `agent_skills` (id, agent_id, skill_name, skill_source: `builtin`/`plugin`/`path`, config_json) | `backend/migrations/024_create_agent_skills.sql` | ✅ |
 | 15.6 | Go-модели: `LLMProvider`, `ClaudeCodeSubscription`, `MCPServer`, `AgentSkill`, расширение `Agent` | `backend/internal/models/` | ✅ |
@@ -423,15 +426,17 @@ User Message
 | 15.14 | Проброс OAuth-токена в sandbox: entrypoint получает `CLAUDE_CODE_OAUTH_TOKEN` env вместо `ANTHROPIC_API_KEY` | `deployment/sandbox/claude/entrypoint.sh`, `backend/internal/sandbox/docker_runner.go` | ✅ |
 | 15.15 | Swagger + MCP-инструменты: `claude_code_auth_status`, `claude_code_auth_revoke` | handler + `backend/internal/mcp/tools_claude_code_auth.go` | ✅ |
 
-#### 15.C — free-claude-code прокси для не-Anthropic провайдеров
+#### 15.C — Не-Anthropic провайдеры через native endpoint (заменяет sidecar-прокси)
+
+**Sprint 15.e2e (2026-05-13):** sidecar-прокси `free-claude-code` оказался однотенантным (один общий ключ на инстанс) и не подходил под мультиюзера. Заменён на прямое подключение Claude Code CLI к **native Anthropic endpoint** провайдера (DeepSeek, Zhipu, OpenRouter уже отдают совместимый `/v1/messages`); per-user ключ берётся из `user_llm_credentials`. Sidecar полностью выпилен из репо.
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 15.16 | Sidecar/сервис `free-claude-proxy` в `docker-compose.yml` (образ собирается из репозитория Alishahryar1/free-claude-code; пробрасывает Anthropic-совместимый API поверх OpenRouter/DeepSeek/Moonshot/Ollama/Zhipu) | `docker-compose.yml`, `deployment/free-claude-proxy/` | ✅ |
-| 15.17 | Конфиг прокси: маппинг "модель → провайдер" из БД (`llm_providers`) в `config.yaml` прокси, перегенерация при изменениях | `backend/internal/service/free_claude_proxy_config.go` | ✅ |
-| 15.18 | Sandbox entrypoint: если `code_backend == "claude_code_via_proxy"`, выставлять `ANTHROPIC_BASE_URL=http://free-claude-proxy:PORT` и `ANTHROPIC_AUTH_TOKEN=<service-token>` вместо реального ключа Anthropic | `deployment/sandbox/claude/entrypoint.sh`, `backend/internal/sandbox/docker_runner.go` | ✅ |
-| 15.19 | Health-check прокси при старте оркестратора (fail-fast, если выбран `claude_code_via_proxy`, а прокси недоступен) | `backend/internal/service/orchestrator_service.go` | ✅ |
-| 15.20 | Документация: how-to для каждого провайдера (где взять ключ, какие модели поддерживаются) | `docs/llm-providers.md` | ✅ |
+| ~~15.16~~ | ~~Sidecar `free-claude-proxy`~~ → **отменено**, заменено на native endpoint в резолвере | `backend/internal/service/sandbox_auth_resolver.go` | ✅ (заменено) |
+| ~~15.17~~ | ~~Config builder прокси~~ → не нужен | — | ✅ (удалено) |
+| 15.18 | Sandbox entrypoint: резолвер по `agent.provider_kind` выставляет `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` для DeepSeek/Zhipu/OpenRouter, либо `CLAUDE_CODE_OAUTH_TOKEN` для OAuth, либо `ANTHROPIC_API_KEY` для kind=anthropic | `deployment/sandbox/claude/entrypoint.sh`, `backend/internal/sandbox/docker_runner.go`, `backend/internal/service/sandbox_auth_resolver.go` | ✅ |
+| ~~15.19~~ | ~~Health-check прокси~~ → не нужен (нет прокси) | — | ✅ (удалено) |
+| 15.20 | Документация: how-to для каждого provider_kind (где взять ключ, какие модели) | `docs/llm-providers.md` | ⚠️ требует обновления под per-user model |
 
 #### 15.D — Кастомизация агентов: MCP, Skills, Permissions
 
@@ -451,7 +456,7 @@ User Message
 |---|--------|-------|--------|
 | 15.28 | Freezed-модели: `LLMProviderModel`, `ClaudeCodeAuthStatus`, `AgentSettingsModel` (MCP, Skills, permissions) | `frontend/lib/features/settings/domain/`, `frontend/lib/features/team/domain/` | ✅ |
 | 15.29 | Repository + providers: `LLMProvidersRepository`, `ClaudeCodeAuthRepository`, `AgentSettingsRepository` | `frontend/lib/features/settings/data/`, `frontend/lib/features/team/data/` | ✅ |
-| 15.30 | Экран: Глобальные настройки → вкладка «LLM-провайдеры»: список, добавление (OpenRouter/DeepSeek/Moonshot/Ollama/Zhipu), тест подключения, переключатель «использовать free-claude-proxy» | `frontend/lib/features/settings/presentation/screens/global_settings_screen.dart` (расширение) | ✅ |
+| 15.30 | Экран: Глобальные настройки → вкладка «LLM-провайдеры»: список доступных kinds (OpenRouter/DeepSeek/Zhipu/Anthropic), per-user ключи (раздел уже частично есть как `/me/llm-credentials`). _Sprint 15.e2e:_ переключатель `free-claude-proxy` удалён, опция больше не существует | `frontend/lib/features/settings/presentation/screens/global_settings_screen.dart` (расширение) | ⚠️ требует адаптации под per-user creds |
 | 15.31 | Экран: Глобальные настройки → вкладка «Claude Code» с кнопкой «Войти по подписке» (OAuth device flow), статус токена, отзыв | `frontend/lib/features/settings/presentation/widgets/claude_code_auth_section.dart` | ✅ |
 | 15.32 | Диалог редактирования агента (расширение 13.3): вкладки «Модель/провайдер», «MCP-серверы», «Skills», «Разрешения Claude Code» (UI для `allow/deny/defaultMode`) | `frontend/lib/features/team/presentation/widgets/agent_edit_dialog.dart` (расширение) | ✅ |
 | 15.33 | Локализация (ru, en) для всех новых строк | `frontend/lib/l10n/app_ru.arb`, `app_en.arb` | ✅ |
@@ -461,7 +466,7 @@ User Message
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 15.35 | E2E: создать агента с провайдером DeepSeek через free-claude-proxy → sandbox-задача выполняется без `ANTHROPIC_API_KEY` в env | `backend/internal/service/orchestrator_provider_e2e_test.go` | ✅ |
+| 15.35 | E2E: mixed-agents pipeline — `developer/tester=anthropic_oauth` + `reviewer=deepseek` (native endpoint) + `orchestrator/planner=global ANTHROPIC_API_KEY`. Один прогон скрипта проверяет все три auth-пути в одной задаче, открывает PR на GitHub, грепает логи на утечки. _Sprint 15.e2e: переписан с per-profile запусков на единую mixed-матрицу._ | `scripts/e2e_smoke.sh` | ✅ |
 | 15.36 | E2E: агент с `bypassPermissions` в Docker делает `Edit` + `Bash(git commit)` без интерактивного блокирования | расширение 14.4 / новый тест | ✅ |
 | 15.37 | Security-аудит: OAuth-токены и API-ключи провайдеров не логируются (grep по логам в тесте), `settings.json` не уезжает в индекс Weaviate | `backend/internal/...` (тесты + аудит) | ✅ |
 
@@ -520,7 +525,7 @@ Sprint 1 (модели + миграции)
 | **Frontend** | Flutter 3.x, Riverpod 2.0, GoRouter, Dio, Freezed |
 | **БД** | YugabyteDB (PostgreSQL-совместимая, порт 5433) |
 | **Векторная БД** | Weaviate + sentence-transformers |
-| **LLM** | Anthropic (API-ключ или OAuth-подписка Claude Code), OpenAI, Gemini, DeepSeek, Qwen, OpenRouter, Moonshot AI, Ollama, Zhipu AI (через free-claude-proxy для Anthropic-совместимости — Sprint 15) |
+| **LLM** | Anthropic (API-ключ или OAuth-подписка Claude Code), OpenAI, Gemini, DeepSeek, Qwen, OpenRouter, Moonshot AI, Ollama, Zhipu AI. Не-Anthropic провайдеры в sandbox используют native Anthropic-совместимый endpoint (`api.deepseek.com/anthropic`, `open.bigmodel.cn/api/anthropic`, …), per-user ключи в `user_llm_credentials` — Sprint 15.e2e |
 | **Sandbox** | Docker containers (Claude Code CLI, Aider) |
 | **Инфраструктура** | Docker, Docker Compose, Makefile |
 

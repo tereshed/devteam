@@ -8,8 +8,11 @@ import 'package:frontend/features/settings/domain/models/llm_provider_model.dart
 /// Sprint 15.30 — вкладка «LLM-провайдеры»:
 ///  - список из llm_providers (с переключателем enabled);
 ///  - кнопка «Добавить»;
-///  - кнопки edit/health-check/delete на каждом провайдере;
-///  - чекбокс «использовать free-claude-proxy» при добавлении/редактировании.
+///  - кнопки edit/health-check/delete на каждом провайдере.
+///
+/// Sprint 15.e2e: чекбокс «использовать free-claude-proxy» удалён вместе с
+/// kind=free_claude_proxy. Не-Anthropic провайдеры теперь подключаются через
+/// native Anthropic endpoint провайдера (см. agent.provider_kind на бэке).
 class LLMProvidersSection extends ConsumerWidget {
   const LLMProvidersSection({super.key});
 
@@ -246,7 +249,6 @@ class _LLMProviderEditorDialogState
   late String _kind;
   late String _authType;
   late bool _enabled;
-  bool _useProxy = false;
   bool _busy = false;
 
   @override
@@ -260,7 +262,6 @@ class _LLMProviderEditorDialogState
     _kind = e?.kind ?? 'openrouter';
     _authType = e?.authType ?? 'api_key';
     _enabled = e?.enabled ?? true;
-    _useProxy = _kind == 'free_claude_proxy';
   }
 
   @override
@@ -374,7 +375,6 @@ class _LLMProviderEditorDialogState
                       .toList(),
                   onChanged: (v) => setState(() {
                     _kind = v ?? _kind;
-                    _useProxy = _kind == 'free_claude_proxy';
                   }),
                 ),
                 const SizedBox(height: 12),
@@ -402,18 +402,6 @@ class _LLMProviderEditorDialogState
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: Text(l10n.llmProvidersFieldUseProxy)),
-                    Switch(
-                      value: _useProxy,
-                      onChanged: (v) => setState(() {
-                        _useProxy = v;
-                        if (v) _kind = 'free_claude_proxy';
-                      }),
-                    ),
-                  ],
-                ),
                 Row(
                   children: [
                     Expanded(child: Text(l10n.llmProvidersFieldEnabled)),

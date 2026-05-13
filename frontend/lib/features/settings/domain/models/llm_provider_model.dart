@@ -24,6 +24,8 @@ abstract class LLMProviderModel with _$LLMProviderModel {
 }
 
 /// Все поддерживаемые kind'ы провайдеров (синхронизировано с backend models.LLMProviderKind).
+/// Sprint 15.e2e: kind=`free_claude_proxy` удалён — sidecar заменён на native
+/// Anthropic endpoint провайдера + per-user creds (см. user_llm_credentials).
 const List<String> kSupportedLLMProviderKinds = [
   'anthropic',
   'anthropic_oauth',
@@ -35,5 +37,4 @@ const List<String> kSupportedLLMProviderKinds = [
   'moonshot',
   'ollama',
   'zhipu',
-  'free_claude_proxy',
 ];

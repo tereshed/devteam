@@ -27,11 +27,22 @@ abstract class AgentSettingsModel with _$AgentSettingsModel {
 }
 
 /// Все допустимые значения CodeBackend на бэке (sync c models.CodeBackend).
+/// Sprint 15.e2e: `claude-code-via-proxy` удалён — не-Anthropic провайдеры
+/// теперь работают через `claude-code` + agent.provider_kind (native endpoint).
 const List<String> kSupportedCodeBackends = [
   'claude-code',
-  'claude-code-via-proxy',
   'aider',
   'custom',
+];
+
+/// Все допустимые значения agent.provider_kind на бэке (sync c models.AgentProviderKind).
+/// Sprint 15.e2e — связывает агента с per-user креденшалами.
+const List<String> kSupportedAgentProviderKinds = [
+  'anthropic',
+  'anthropic_oauth',
+  'deepseek',
+  'zhipu',
+  'openrouter',
 ];
 
 /// Допустимые значения permissions.defaultMode (Claude Code CLI).

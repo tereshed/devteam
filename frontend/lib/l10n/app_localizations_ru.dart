@@ -1154,10 +1154,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get llmProvidersFieldDefaultModel => 'Модель по умолчанию';
 
   @override
-  String get llmProvidersFieldUseProxy =>
-      'Маршрутизировать через free-claude-proxy';
-
-  @override
   String get llmProvidersFieldEnabled => 'Включён';
 
   @override

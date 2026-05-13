@@ -573,7 +573,6 @@
   "llmProvidersFieldCredential": "API key / token",
   "llmProvidersFieldCredentialOptional": "API key / token (leave empty to keep current)",
   "llmProvidersFieldDefaultModel": "Default model",
-  "llmProvidersFieldUseProxy": "Route via free-claude-proxy",
   "llmProvidersFieldEnabled": "Enabled",
   "llmProvidersTest": "Test",
   "llmProvidersTestOK": "Test connection succeeded",

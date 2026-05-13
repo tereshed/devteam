@@ -10,12 +10,14 @@
 #   BASE_REF           — база для diff (ветка на origin), по умолчанию GIT_DEFAULT_BRANCH или main
 #   GIT_DEFAULT_BRANCH — fallback, если BASE_REF не задан
 #   BACKEND            — ожидается claude-code (по умолчанию claude-code)
-#   Аутентификация Claude Code (Sprint 15.14): обязателен ровно один из вариантов —
-#     1) ANTHROPIC_API_KEY        — классический API-ключ Anthropic
-#     2) CLAUDE_CODE_OAUTH_TOKEN  — OAuth-токен от подписки Claude Code (приоритет, если задан)
-#     3) ANTHROPIC_AUTH_TOKEN     — Bearer-токен для free-claude-proxy (вместе с ANTHROPIC_BASE_URL,
-#        Sprint 15.18); прокси сам ходит к нужному LLM-провайдеру.
-#   ANTHROPIC_BASE_URL — опционально, переопределяет endpoint Anthropic API (для free-claude-proxy).
+#   Аутентификация Claude Code (Sprint 15.14 + Sprint 15.e2e): обязателен ровно один из вариантов —
+#     1) ANTHROPIC_API_KEY        — классический API-ключ Anthropic (kind=anthropic)
+#     2) CLAUDE_CODE_OAUTH_TOKEN  — OAuth-токен от подписки Claude Code (kind=anthropic_oauth)
+#     3) ANTHROPIC_AUTH_TOKEN     — Bearer-токен для non-Anthropic провайдера через его native
+#        Anthropic endpoint (вместе с ANTHROPIC_BASE_URL); kind=deepseek/zhipu/openrouter.
+#        Резолвер на бэке (SandboxAuthEnvResolver) выбирает форму по agent.provider_kind.
+#   ANTHROPIC_BASE_URL — опционально, переопределяет endpoint Anthropic API
+#                        (например api.deepseek.com/anthropic для DeepSeek).
 #   MAX_TURNS          — зарезервировано (CLI 0.2.37 не поддерживает --max-turns; игнорируется)
 #
 # Артефакты (стабильные пути для оркестратора):
@@ -210,10 +212,11 @@ if [[ "$BACKEND" != "claude-code" ]]; then
 fi
 
 if [[ "$BACKEND" == "claude-code" ]]; then
-  # Sprint 15.14: принимаем любую из трёх форм аутентификации:
-  #   - CLAUDE_CODE_OAUTH_TOKEN (подписка Claude Code)
-  #   - ANTHROPIC_AUTH_TOKEN    (Bearer для free-claude-proxy, обычно с ANTHROPIC_BASE_URL)
-  #   - ANTHROPIC_API_KEY       (API-ключ)
+  # Sprint 15.14 + Sprint 15.e2e: принимаем любую из трёх форм аутентификации:
+  #   - CLAUDE_CODE_OAUTH_TOKEN (подписка Claude Code, kind=anthropic_oauth)
+  #   - ANTHROPIC_AUTH_TOKEN    (Bearer для native Anthropic endpoint провайдера +
+  #                              ANTHROPIC_BASE_URL, kind=deepseek/zhipu/openrouter)
+  #   - ANTHROPIC_API_KEY       (API-ключ, kind=anthropic)
   if is_blank "${CLAUDE_CODE_OAUTH_TOKEN:-}" \
     && is_blank "${ANTHROPIC_AUTH_TOKEN:-}" \
     && is_blank "${ANTHROPIC_API_KEY:-}"; then

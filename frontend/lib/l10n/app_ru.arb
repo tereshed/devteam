@@ -888,7 +888,6 @@
   "llmProvidersFieldCredential": "API-ключ / токен",
   "llmProvidersFieldCredentialOptional": "API-ключ / токен (пусто — не менять)",
   "llmProvidersFieldDefaultModel": "Модель по умолчанию",
-  "llmProvidersFieldUseProxy": "Маршрутизировать через free-claude-proxy",
   "llmProvidersFieldEnabled": "Включён",
   "llmProvidersTest": "Тест",
   "llmProvidersTestOK": "Тестовое подключение успешно",

@@ -1150,9 +1150,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get llmProvidersFieldDefaultModel => 'Default model';
 
   @override
-  String get llmProvidersFieldUseProxy => 'Route via free-claude-proxy';
-
-  @override
   String get llmProvidersFieldEnabled => 'Enabled';
 
   @override

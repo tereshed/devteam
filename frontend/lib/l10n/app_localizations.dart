@@ -2258,12 +2258,6 @@ abstract class AppLocalizations {
   /// **'Модель по умолчанию'**
   String get llmProvidersFieldDefaultModel;
 
-  /// No description provided for @llmProvidersFieldUseProxy.
-  ///
-  /// In ru, this message translates to:
-  /// **'Маршрутизировать через free-claude-proxy'**
-  String get llmProvidersFieldUseProxy;
-
   /// No description provided for @llmProvidersFieldEnabled.
   ///
   /// In ru, this message translates to:
