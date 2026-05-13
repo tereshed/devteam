@@ -1,7 +1,8 @@
 COMPOSE_FILE := docker-compose.yml
 
 # Поддерживаемые stem для sandbox-build-<stem> (deployment/sandbox/<stem>/).
-SANDBOX_BUILDABLE_STEMS := claude
+# Sprint 16: добавлен hermes — Hermes Agent (Nous Research, MIT).
+SANDBOX_BUILDABLE_STEMS := claude hermes
 SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 
 .PHONY: help build up down logs test test-unit test-integration test-all validate-agent-prompts \
@@ -63,7 +64,7 @@ $(SANDBOX_BUILD_TARGETS): sandbox-build-%: check-docker
 	$(if $(filter $*,$(SANDBOX_BUILDABLE_STEMS)),,$(error Unknown sandbox stem '$*'. Expected one of: $(SANDBOX_BUILDABLE_STEMS)))
 	docker build -t "devteam/sandbox-$*:local" -f "deployment/sandbox/$*/Dockerfile" "deployment/sandbox/$*"
 
-sandbox-build: sandbox-build-claude
+sandbox-build: sandbox-build-claude sandbox-build-hermes
 
 # Sprint 15.N2 — guard для free-claude-proxy: при BUILD_ENV=production ARG ref ОБЯЗАН быть SHA.
 .PHONY: free-claude-proxy-build free-claude-proxy-check-ref
