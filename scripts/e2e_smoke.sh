@@ -70,7 +70,7 @@ require_env CLAUDE_CODE_OAUTH_ACCESS_TOKEN
 require_env DEEPSEEK_API_KEY
 require_env OPENROUTER_API_KEY
 
-HERMES_MODEL="${HERMES_MODEL:-openrouter/anthropic/claude-3.5-haiku}"
+HERMES_MODEL="${HERMES_MODEL:-anthropic/claude-3.5-haiku}"
 
 OWNER_REPO=$(echo "$REPO_URL" | sed -E 's|^https?://github\.com/||; s|\.git$||')
 

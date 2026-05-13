@@ -304,6 +304,13 @@ HERMES_MODEL_ARGS=()
 if [[ -n "${DEVTEAM_AGENT_MODEL:-}" ]]; then
   HERMES_MODEL_ARGS+=("-m" "${DEVTEAM_AGENT_MODEL}")
 fi
+# Sprint 16: Hermes ждёт «raw model name» (например `anthropic/claude-3.5-haiku`)
+# + явный `--provider openrouter`. НЕ комбинируйте `openrouter/<route>` в одном -m —
+# OpenRouter режектит full-prefix как невалидный model ID.
+# DEVTEAM_HERMES_PROVIDER ставит резолвер: HermesProviderName(kind).
+if [[ -n "${DEVTEAM_HERMES_PROVIDER:-}" ]]; then
+  HERMES_MODEL_ARGS+=("--provider" "${DEVTEAM_HERMES_PROVIDER}")
+fi
 
 (
   cd "$REPO_DIR"

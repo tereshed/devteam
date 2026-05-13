@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"os"
 	"strings"
 	"time"
 
@@ -138,9 +139,22 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 
 	// Гарантированная очистка контейнера (КРИТИЧНО: независимый контекст)
 	// Если RunTask вернул ошибку, но при этом вернул непустой sandboxID, экзекутор ОБЯЗАН вызвать Cleanup.
+	// SANDBOX_KEEP_ON_FAILURE=1 — env-gated debug: оставляет контейнер живым ТОЛЬКО при
+	// неуспешном завершении (RunTask error, Wait error, или status != Completed). На
+	// success-пути cleanup всегда срабатывает — иначе следующий шаг pipeline'а упадёт
+	// на `run conflict for task id` (имя контейнера содержит task_id, который pipeline
+	// переиспользует для review/testing).
+	keepOnFailure := os.Getenv("SANDBOX_KEEP_ON_FAILURE") == "1"
+	// keepThisOne обновляется по результатам Wait ниже; defer читает его по closure.
+	keepThisOne := false
 	if instance != nil && instance.ID != "" {
 		sandboxID := instance.ID
 		defer func() {
+			if keepOnFailure && keepThisOne {
+				slog.Warn("SANDBOX_KEEP_ON_FAILURE=1 + failure — sandbox container kept for inspection",
+					"sandbox_id", sandboxID, "task_id", in.TaskID)
+				return
+			}
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if cleanupErr := e.runner.Cleanup(cleanupCtx, sandboxID); cleanupErr != nil {
@@ -150,6 +164,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	}
 
 	if err != nil {
+		keepThisOne = true // RunTask failed: запоминаем для defer (cleanup отработает)
 		return nil, fmt.Errorf("failed to run sandbox task: %w", err)
 	}
 
@@ -158,7 +173,13 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	// 5. Ожидание завершения
 	status, err := e.runner.Wait(executeCtx, sandboxID)
 	if err != nil {
+		keepThisOne = true // Wait failed
 		return nil, fmt.Errorf("failed to wait for sandbox: %w", err)
+	}
+	// Sprint 16 debug: pipeline переиспользует task_id для review/testing, поэтому
+	// сохраняем контейнер ТОЛЬКО при non-Completed статусе (failed/timed_out/stopped).
+	if status.Status != sandbox.SandboxStatusCompleted {
+		keepThisOne = true
 	}
 
 	// 6. Обработка результата

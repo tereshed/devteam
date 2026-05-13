@@ -217,5 +217,12 @@ func (r *sandboxAuthEnvResolver) resolveHermes(ctx context.Context, project *mod
 		return env
 	}
 	env.Extra[envName] = key
+	// Sprint 16: имя hermes-провайдера в отдельной env-переменной, которую entrypoint
+	// передаёт как `hermes chat --provider $DEVTEAM_HERMES_PROVIDER`. DEVTEAM_AGENT_MODEL
+	// должен оставаться чистым именем модели (например `anthropic/claude-3.5-haiku`),
+	// без openrouter/ префикса — иначе OpenRouter режектит запрос.
+	if provName := kind.HermesProviderName(); provName != "" {
+		env.Extra["DEVTEAM_HERMES_PROVIDER"] = provName
+	}
 	return env
 }

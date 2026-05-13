@@ -135,34 +135,18 @@ func (k AgentProviderKind) HermesEnvVar() string {
 	}
 }
 
-// HermesModelString — каноничный "provider/model" формат, который Hermes ждёт в
-// config.yaml > model: (см. их docs/user-guide/configuration). Sprint 16.
-// `agentModel` — короткое имя модели (например "anthropic/claude-haiku-4.5" или просто "haiku");
-// если уже содержит "/" — возвращается как есть, иначе склеивается с префиксом kind.
-func (k AgentProviderKind) HermesModelString(agentModel string) string {
-	if agentModel == "" {
-		return ""
-	}
-	if hasSlash(agentModel) {
-		return agentModel
-	}
+// HermesProviderName — имя Hermes-провайдера, которое идёт в флаг
+// `hermes chat --provider <name>`. Sprint 16. Совпадает с именами папок в
+// upstream `providers/` (см. их код).
+func (k AgentProviderKind) HermesProviderName() string {
 	switch k {
 	case AgentProviderKindOpenRouter:
-		return "openrouter/" + agentModel
+		return "openrouter"
 	case AgentProviderKindAnthropic:
-		return "anthropic/" + agentModel
+		return "anthropic"
 	default:
-		return agentModel
+		return ""
 	}
-}
-
-func hasSlash(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == '/' {
-			return true
-		}
-	}
-	return false
 }
 
 // Agent представляет AI-агента

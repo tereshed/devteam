@@ -165,7 +165,11 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 			}
 		}
 	}
-	if input.Model == "" && assignedAgent.Model != nil {
+	// Sprint 16: БД-Model — источник истины (пользователь выставляет модель через UI или
+	// SQL); YAML default используется только когда в БД пусто. Раньше приоритет был
+	// обратный, что не позволяло Hermes-агенту использовать "openrouter/..." пока
+	// tester.yaml жёстко хардкодит "claude-haiku-4-5-20251001".
+	if assignedAgent.Model != nil && *assignedAgent.Model != "" {
 		input.Model = *assignedAgent.Model
 	}
 
