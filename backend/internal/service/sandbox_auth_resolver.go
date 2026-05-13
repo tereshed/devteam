@@ -15,15 +15,16 @@ import (
 // на основе agent.ProviderKind + per-user creds (Sprint 15.e2e refactor).
 //
 // Логика по kind:
-//   anthropic        → user_llm_credentials(owner, anthropic) → ANTHROPIC_API_KEY
-//   anthropic_oauth  → claude_code_subscriptions(owner)       → CLAUDE_CODE_OAUTH_TOKEN
-//   deepseek         → user_llm_credentials(owner, deepseek)  → ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
-//   zhipu            → user_llm_credentials(owner, zhipu)     → ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
-//   openrouter       → user_llm_credentials(owner, openrouter)→ ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
+//
+//	anthropic        → user_llm_credentials(owner, anthropic) → ANTHROPIC_API_KEY
+//	anthropic_oauth  → claude_code_subscriptions(owner)       → CLAUDE_CODE_OAUTH_TOKEN
+//	deepseek         → user_llm_credentials(owner, deepseek)  → ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
+//	zhipu            → user_llm_credentials(owner, zhipu)     → ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
+//	openrouter       → user_llm_credentials(owner, openrouter)→ ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
 //
 // Fallback (agent.ProviderKind == nil) — последовательная попытка:
-//   1) OAuth-подписка у владельца проекта;
-//   2) Статический ANTHROPIC_API_KEY из cfg.LLM.Anthropic.APIKey (backwards compat).
+//  1. OAuth-подписка у владельца проекта;
+//  2. Статический ANTHROPIC_API_KEY из cfg.LLM.Anthropic.APIKey (backwards compat).
 type SandboxAuthEnvResolver interface {
 	Resolve(ctx context.Context, project *models.Project, agent *models.Agent) sandbox.ClaudeCodeAuthEnv
 }
@@ -34,9 +35,17 @@ type UserLLMCredentialResolver interface {
 	GetPlaintext(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (string, error)
 }
 
+// ClaudeCodeOAuthAccessor — узкий интерфейс, который нужен резолверу: достать
+// OAuth-токен подписки Claude Code для sandbox. Полный ClaudeCodeAuthService с
+// device-flow/Refresh/Revoke для резолвера избыточен; узкий интерфейс минимизирует
+// boilerplate в тестовых стабах и не ломает их при добавлении новых методов сервиса.
+type ClaudeCodeOAuthAccessor interface {
+	AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error)
+}
+
 // sandboxAuthEnvResolver — реализация по умолчанию.
 type sandboxAuthEnvResolver struct {
-	claudeCodeAuth ClaudeCodeAuthService
+	claudeCodeAuth ClaudeCodeOAuthAccessor
 	userCreds      UserLLMCredentialResolver
 	fallbackAPIKey string
 	logger         *slog.Logger
@@ -44,10 +53,11 @@ type sandboxAuthEnvResolver struct {
 
 // NewSandboxAuthEnvResolver собирает резолвер.
 //   - claudeCodeAuth может быть nil (фича OAuth выключена — kind=anthropic_oauth тогда не работает).
+//     Принимается узкий интерфейс ClaudeCodeOAuthAccessor; полный ClaudeCodeAuthService его удовлетворяет.
 //   - userCreds может быть nil (тогда kind=anthropic/deepseek/zhipu/openrouter не сработают).
 //   - fallbackAPIKey — статический ANTHROPIC_API_KEY (для агентов без ProviderKind).
 func NewSandboxAuthEnvResolver(
-	claudeCodeAuth ClaudeCodeAuthService,
+	claudeCodeAuth ClaudeCodeOAuthAccessor,
 	userCreds UserLLMCredentialResolver,
 	fallbackAPIKey string,
 	logger *slog.Logger,
@@ -130,12 +140,16 @@ func (r *sandboxAuthEnvResolver) resolveByKind(ctx context.Context, project *mod
 			return env
 		}
 		key, err := r.userCreds.GetPlaintext(ctx, project.UserID, userProvider)
-		if err != nil {
-			logger.Warn("user credential lookup failed", "user_provider", string(userProvider), "err", err)
+		if errors.Is(err, repository.ErrUserLlmCredentialNotFound) {
+			// Пользователь не настроил ключ для выбранного kind — это не системный
+			// сбой, а ожидаемое состояние. Возвращаем пустой env: sandbox упадёт на
+			// fast-fail "no credentials" в entrypoint вместо тихого fallback на
+			// чужого провайдера (см. TestResolver_DeepSeek_UserHasNoKey_ReturnsEmpty).
+			logger.Warn("user has no credential for provider", "user_provider", string(userProvider))
 			return env
 		}
-		if key == "" {
-			logger.Warn("user has no credential for provider", "user_provider", string(userProvider))
+		if err != nil {
+			logger.Warn("user credential lookup failed", "user_provider", string(userProvider), "err", err)
 			return env
 		}
 		if kind == models.AgentProviderKindAnthropic {

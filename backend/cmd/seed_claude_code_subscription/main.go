@@ -3,14 +3,16 @@
 // без поднятия device-flow.
 //
 // AAD совпадает с конвенцией ClaudeCodeAuthService.persistToken:
-//   access:  "claude_code_subscription:access:<user_id>"
-//   refresh: "claude_code_subscription:refresh:<user_id>"
+//
+//	access:  "claude_code_subscription:access:<user_id>"
+//	refresh: "claude_code_subscription:refresh:<user_id>"
 //
 // Использование:
-//   USER_ID=<uuid> \
-//   CLAUDE_CODE_OAUTH_ACCESS_TOKEN=sk-ant-oat01-... \
-//   ENCRYPTION_KEY=<hex32> \
-//     go run ./cmd/seed_claude_code_subscription
+//
+//	USER_ID=<uuid> \
+//	CLAUDE_CODE_OAUTH_ACCESS_TOKEN=sk-ant-oat01-... \
+//	ENCRYPTION_KEY=<hex32> \
+//	  go run ./cmd/seed_claude_code_subscription
 //
 // Опционально: CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_EXPIRES_AT (RFC3339).
 // Идемпотентно: использует Upsert по user_id.

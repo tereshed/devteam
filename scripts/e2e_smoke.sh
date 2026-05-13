@@ -221,7 +221,28 @@ FNAME="$(basename "$BR").md"
 echo "$PR_FILES" | grep -qx "$FNAME" || fail "PR #$PR_NUM does not include $FNAME (files: $PR_FILES)"
 
 # ──── 10. security assertions (Sprint 15.37 — no secret leakage) ──────────
+# Sprint 15.e2e ревью #5: задача завершилась, но docker log driver мог не успеть
+# сбросить буфер на момент grep'а — это давало flaky-фалсы в CI. Ждём пока
+# содержимое логов перестанет расти 2 итерации подряд (≤4с), потом грепаем.
 backend_logs_since() { docker logs --since "$LOG_SINCE" wibe_backend 2>&1 || true; }
+
+wait_for_stable_logs() {
+  local prev=-1 cur stable=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    cur=$(backend_logs_since | wc -c)
+    if [[ "$cur" == "$prev" ]]; then
+      stable=$((stable + 1))
+      if [[ "$stable" -ge 2 ]]; then
+        return 0
+      fi
+    else
+      stable=0
+    fi
+    prev="$cur"
+    sleep 1
+  done
+  log "warn: backend logs не стабилизировались за 10с — продолжаем с тем, что есть"
+}
 
 assert_no_leak() {
   local name="$1" value="$2"
@@ -231,7 +252,8 @@ assert_no_leak() {
   fi
 }
 
-log "asserting no secret leaks in backend logs"
+log "asserting no secret leaks in backend logs (waiting for stable log buffer)"
+wait_for_stable_logs
 assert_no_leak DEEPSEEK_API_KEY                "$DEEPSEEK_API_KEY"
 assert_no_leak CLAUDE_CODE_OAUTH_ACCESS_TOKEN  "$CLAUDE_CODE_OAUTH_ACCESS_TOKEN"
 

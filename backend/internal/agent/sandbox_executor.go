@@ -137,39 +137,19 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		SandboxInstanceID: sandboxID,
 	}
 
-	var resOutPreview, resDiffPreview string
-	if status.Result != nil {
-		if len(status.Result.Output) > 0 {
-			n := 400
-			if n > len(status.Result.Output) {
-				n = len(status.Result.Output)
-			}
-			resOutPreview = status.Result.Output[:n]
-		}
-		if len(status.Result.Diff) > 0 {
-			n := 200
-			if n > len(status.Result.Diff) {
-				n = len(status.Result.Diff)
-			}
-			resDiffPreview = status.Result.Diff[:n]
-		}
-	}
-	logsPreview := ""
-	if len(status.Logs) > 0 {
-		logsPreview = strings.Join(status.Logs, "\n")
-		if len(logsPreview) > 600 {
-			logsPreview = logsPreview[:600]
-		}
-	}
+	// Sprint 15.e2e: статусный лог без preview артефактов — Output/Diff/Logs могут
+	// содержать токены/URL'ы, утечка которых нарушает инвариант 15.37 (no secret leakage).
+	// Превью оставляли только на время диагностики --bare/OAuth; постоянный observability —
+	// только counters/flags без содержимого. Для разовой отладки временно закомментируйте
+	// defer e.runner.Cleanup выше — контейнер останется, и его логи/файлы можно посмотреть
+	// руками через `docker logs <sandbox_id>` и `docker cp <sandbox_id>:/workspace/...`.
 	slog.Info("SandboxAgentExecutor.Execute waited",
 		"task_id", in.TaskID,
 		"sandbox_id", sandboxID,
 		"status", string(status.Status),
 		"has_result", status.HasResult(),
 		"result_success", status.Result != nil && status.Result.Success,
-		"result_output_preview", resOutPreview,
-		"result_diff_preview", resDiffPreview,
-		"logs_preview", logsPreview)
+		"log_count", len(status.Logs))
 	if status.Status == sandbox.SandboxStatusCompleted && status.HasResult() {
 		res.Success = status.Result.Success
 		res.Output = e.truncateArtifact(status.Result.Output, "Output")

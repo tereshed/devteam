@@ -399,6 +399,8 @@ User Message
 **Контекст:** в sandbox-контейнере (Sprint 5) Claude Code сейчас запускается с `ANTHROPIC_API_KEY` и спотыкается на интерактивных подтверждениях операций (write/bash/network) — оркестратор зависает в ожидании. Нужно: (а) разрешить аутентификацию подпиской вместо API-ключа, (б) поддержать совместимые провайдеры через native Anthropic endpoints провайдеров (DeepSeek `api.deepseek.com/anthropic`, Zhipu `open.bigmodel.cn/api/anthropic`, OpenRouter `openrouter.ai/api/v1`), (в) пробросить per-agent `settings.json` с `permissions.allow` / `permissions.defaultMode` и `--dangerously-skip-permissions` там, где это безопасно (изолированный контейнер).
 
 > **Sprint 15.e2e revision (2026-05-13):** изначальный план с sidecar-прокси `free-claude-code` оказался однотенантным и не ложился на мультиюзера. Заменён на per-agent `provider_kind` + per-user `user_llm_credentials`; sandbox ходит напрямую на native Anthropic endpoint провайдера. Sidecar и весь связанный код удалены — см. блок 15.C ниже.
+>
+> **Drive-by fix:** в `models.ClaudeCodeSubscription` отсутствовали `gorm:"column:..."` теги для `OAuthAccessTokenEnc` / `OAuthRefreshTokenEnc`. GORM naming strategy конвертировал имена полей в `o_auth_access_token_enc`, тогда как миграция 024 называет колонку `oauth_access_token_enc`. Из-за этого INSERT в `claude_code_subscriptions` падал с `SQLSTATE 42703` — поломка просидела незамеченной, потому что до e2e не было реальных вызывателей device-flow. Sprint 15.e2e впервые поднял OAuth-флоу через `seed_claude_code_subscription` и поймал это; column-теги добавлены в [models/claude_code_subscription.go](backend/internal/models/claude_code_subscription.go).
 
 #### 15.A — Backend: модель данных и провайдеры
 

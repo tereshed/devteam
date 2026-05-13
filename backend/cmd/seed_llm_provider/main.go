@@ -2,10 +2,11 @@
 // (валидация + AES-256-GCM шифрование credentials c тем же AAD, что у API).
 //
 // Использование:
-//   NAME=e2e-deepseek-upstream KIND=deepseek BASE_URL=https://api.deepseek.com \
-//   AUTH_TYPE=api_key API_KEY=sk-... DEFAULT_MODEL=deepseek-chat \
-//   ENCRYPTION_KEY=<hex> \
-//     go run ./cmd/seed_llm_provider
+//
+//	NAME=e2e-deepseek-upstream KIND=deepseek BASE_URL=https://api.deepseek.com \
+//	AUTH_TYPE=api_key API_KEY=sk-... DEFAULT_MODEL=deepseek-chat \
+//	ENCRYPTION_KEY=<hex> \
+//	  go run ./cmd/seed_llm_provider
 //
 // Идемпотентно: если провайдер с таким NAME уже есть — печатает его id и выходит без ошибки.
 package main

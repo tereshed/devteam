@@ -5,8 +5,9 @@
 // []byte(row.ID.String()). Сидер сам генерирует ID и шифрует под него.
 //
 // Использование:
-//   USER_ID=<uuid> PROVIDER=deepseek API_KEY=sk-... ENCRYPTION_KEY=<hex32> \
-//     go run ./cmd/seed_user_llm_credential
+//
+//	USER_ID=<uuid> PROVIDER=deepseek API_KEY=sk-... ENCRYPTION_KEY=<hex32> \
+//	  go run ./cmd/seed_user_llm_credential
 //
 // Допустимые PROVIDER: openai, anthropic, gemini, deepseek, qwen, openrouter, zhipu.
 // Идемпотентно: если для (user_id, provider) уже есть строка — обновляет её.

@@ -2,41 +2,31 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
 // --- стабы зависимостей резолвера -------------------------------------------------------
 
+// stubClaudeCodeAuthSvc удовлетворяет ClaudeCodeOAuthAccessor (узкий интерфейс).
+// Полный ClaudeCodeAuthService нам не нужен — при добавлении новых методов в сервис
+// этот стаб не сломается.
 type stubClaudeCodeAuthSvc struct {
 	token string
 	err   error
 }
 
-func (s *stubClaudeCodeAuthSvc) InitDeviceCode(ctx context.Context, userID uuid.UUID) (*ClaudeCodeDeviceInit, error) {
-	return nil, errors.New("not used")
-}
-func (s *stubClaudeCodeAuthSvc) CompleteDeviceCode(ctx context.Context, userID uuid.UUID, deviceCode string) (*ClaudeCodeAuthStatus, error) {
-	return nil, errors.New("not used")
-}
-func (s *stubClaudeCodeAuthSvc) Status(ctx context.Context, userID uuid.UUID) (*ClaudeCodeAuthStatus, error) {
-	return nil, errors.New("not used")
-}
-func (s *stubClaudeCodeAuthSvc) Revoke(ctx context.Context, userID uuid.UUID) error {
-	return errors.New("not used")
-}
 func (s *stubClaudeCodeAuthSvc) AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error) {
 	return s.token, s.err
 }
-func (s *stubClaudeCodeAuthSvc) RefreshOne(ctx context.Context, sub *models.ClaudeCodeSubscription) error {
-	return errors.New("not used")
-}
 
 type stubUserCreds struct {
+	// Sprint 15.e2e: имитируем sentinel-контракт GetPlaintext — отсутствующий
+	// в map ключ возвращает ErrUserLlmCredentialNotFound, а не ("", nil).
 	byProvider map[models.UserLLMProvider]string
 	err        error
 }
@@ -45,7 +35,11 @@ func (s *stubUserCreds) GetPlaintext(ctx context.Context, userID uuid.UUID, prov
 	if s.err != nil {
 		return "", s.err
 	}
-	return s.byProvider[provider], nil
+	v, ok := s.byProvider[provider]
+	if !ok {
+		return "", repository.ErrUserLlmCredentialNotFound
+	}
+	return v, nil
 }
 
 func newProject() *models.Project {
@@ -138,4 +132,20 @@ func TestResolver_DeepSeek_UserHasNoKey_ReturnsEmpty(t *testing.T) {
 	// Никакого fallback на ANTHROPIC_API_KEY: kind=deepseek без ключа → пустой env,
 	// sandbox получит «нет креденшелов» и упадёт явно, а не позовёт чужой провайдер.
 	assert.False(t, env.HasCredential())
+}
+
+// Sprint 15.e2e ревью #2: «не найдено» (ErrUserLlmCredentialNotFound) и «ошибка»
+// (любая другая) трактуются одинаково на исход (пустой env), но через разные
+// ветки. Тест защищает резолвер от регрессии «error → empty key → silent
+// fallback на чужой провайдер».
+func TestResolver_DeepSeek_LookupErrorDoesNotLeakToOtherProvider(t *testing.T) {
+	user := &stubUserCreds{err: assert.AnError}
+	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK-SHOULD-NOT-LEAK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindDeepSeek)})
+
+	assert.False(t, env.HasCredential())
+	assert.NotEqual(t, "FALLBACK-SHOULD-NOT-LEAK", env.APIKey)
+	assert.Empty(t, env.BaseURL)
 }

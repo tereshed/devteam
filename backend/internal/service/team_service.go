@@ -20,11 +20,11 @@ var (
 	ErrTeamNotFound    = errors.New("team not found")
 	ErrTeamInvalidName = errors.New("team name cannot be empty")
 
-	ErrTeamAgentNotFound           = errors.New("agent not found")
-	ErrTeamAgentInvalidModel       = errors.New("invalid model")
-	ErrTeamAgentInvalidCodeBackend = errors.New("invalid code_backend")
+	ErrTeamAgentNotFound            = errors.New("agent not found")
+	ErrTeamAgentInvalidModel        = errors.New("invalid model")
+	ErrTeamAgentInvalidCodeBackend  = errors.New("invalid code_backend")
 	ErrTeamAgentInvalidProviderKind = errors.New("invalid provider_kind")
-	ErrTeamAgentConflict           = errors.New("agent update conflict")
+	ErrTeamAgentConflict            = errors.New("agent update conflict")
 	ErrTeamAgentInvalidToolBindings = errors.New("invalid or inactive tool_definition_id in tool_bindings")
 
 	// Sprint 15.B (B4): ownership-check для /agents/:id/settings и MCP-инструментов agent_settings_*.
