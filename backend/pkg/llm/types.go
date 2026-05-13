@@ -1,6 +1,9 @@
 package llm
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // Role represents the role of the message sender
 type Role string
@@ -33,6 +36,10 @@ const (
 type Config struct {
 	APIKey  string
 	BaseURL string
+	// HTTPClient — опциональный custom http.Client (Sprint 15.N8).
+	// Если задан — провайдер ОБЯЗАН использовать его вместо &http.Client{} (defense-in-depth:
+	// этот клиент содержит SSRF-guard через DialContext.Control + CheckRedirect).
+	HTTPClient *http.Client `json:"-"`
 }
 
 // Message represents a single message in the conversation

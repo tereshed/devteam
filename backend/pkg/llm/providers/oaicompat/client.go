@@ -10,9 +10,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/devteam/backend/pkg/llm"
 )
+
+// defaultHTTPTimeout — таймаут запроса по умолчанию (Sprint 15.M8). Не «бесконечность» —
+// иначе зависший провайдер удерживает goroutine оркестратора надолго.
+const defaultHTTPTimeout = 60 * time.Second
+
+// maxRetries — количество retry на 429/503/5xx-ошибки (Sprint 15.M8). Backoff экспоненциальный
+// от 500ms до 4s; общая длительность ≤ ~8s, что вписывается в healthTimeout сервиса (10s).
+const maxRetries = 3
 
 // Config — параметры OpenAI-совместимого клиента.
 type Config struct {
@@ -35,12 +45,14 @@ type Client struct {
 }
 
 // NewClient создаёт клиент. baseURL обязателен, остальные поля имеют дефолты.
+// Sprint 15.M8: http.Client получает дефолтный Timeout, чтобы зависший провайдер не блокировал
+// goroutine оркестратора. Caller может передать свой HTTPClient (тесты), его таймаут уважается.
 func NewClient(cfg Config) (*Client, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("oaicompat: base URL is required")
 	}
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{}
+		cfg.HTTPClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	if cfg.AuthHeader == "" {
 		cfg.AuthHeader = "Authorization"
@@ -54,38 +66,80 @@ func NewClient(cfg Config) (*Client, error) {
 // BaseURL возвращает финальный base URL.
 func (c *Client) BaseURL() string { return c.cfg.BaseURL }
 
-// Generate реализует llm.Provider.
+// Generate реализует llm.Provider. Sprint 15.M8: retry на 429/503/5xx с exponential backoff,
+// уважает Retry-After заголовок (если есть) и ctx.Done.
 func (c *Client) Generate(ctx context.Context, req llm.Request) (*llm.Response, error) {
 	body, err := json.Marshal(c.mapRequest(req))
 	if err != nil {
 		return nil, fmt.Errorf("oaicompat: marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/chat/completions", bytes.NewReader(body))
+	resp, payload, err := c.doWithRetry(ctx, http.MethodPost, c.cfg.BaseURL+"/chat/completions", body)
 	if err != nil {
-		return nil, fmt.Errorf("oaicompat: build request: %w", err)
+		return nil, err
 	}
-	c.applyHeaders(httpReq)
-
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("oaicompat: do request: %w", err)
-	}
-	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		payload, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("oaicompat: api error (status %d): %s", resp.StatusCode, string(payload))
 	}
-
 	var parsed chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	if err := json.Unmarshal(payload, &parsed); err != nil {
 		return nil, fmt.Errorf("oaicompat: decode response: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
 		return nil, fmt.Errorf("oaicompat: empty choices in response")
 	}
 	return c.mapResponse(parsed), nil
+}
+
+// doWithRetry выполняет HTTP-запрос с экспоненциальным backoff на 429/5xx (Sprint 15.M8).
+// Возвращает последний ответ + полностью прочитанное тело (или ошибку транспорта).
+func (c *Client) doWithRetry(ctx context.Context, method, url string, body []byte) (*http.Response, []byte, error) {
+	backoff := 500 * time.Millisecond
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+		if err != nil {
+			return nil, nil, fmt.Errorf("oaicompat: build request: %w", err)
+		}
+		c.applyHeaders(req)
+		resp, doErr := c.http.Do(req)
+		if doErr != nil {
+			if attempt >= maxRetries || ctx.Err() != nil {
+				return nil, nil, fmt.Errorf("oaicompat: do request: %w", doErr)
+			}
+		} else {
+			payload, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			// retriable: 429 + любой 5xx.
+			retriable := resp.StatusCode == http.StatusTooManyRequests ||
+				(resp.StatusCode >= 500 && resp.StatusCode <= 599)
+			if !retriable || attempt >= maxRetries {
+				return resp, payload, nil
+			}
+			// Уважаем Retry-After (sec) до экспоненциального backoff.
+			// Sprint 15.minor: cap до 30s — провайдер может прислать `Retry-After: 3600`,
+			// мы не хотим заморозить goroutine на час.
+			if ra := resp.Header.Get("Retry-After"); ra != "" {
+				if secs, parseErr := strconv.Atoi(ra); parseErr == nil && secs > 0 {
+					const maxRetryAfter = 30 * time.Second
+					proposed := time.Duration(secs) * time.Second
+					if proposed > maxRetryAfter {
+						proposed = maxRetryAfter
+					}
+					backoff = proposed
+				}
+			}
+		}
+		// Ждём backoff или отмену ctx.
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
+		// Cap до 4s, чтобы не превысить healthTimeout сервиса.
+		if backoff < 4*time.Second {
+			backoff *= 2
+		}
+	}
 }
 
 // HealthCheck выполняет GET /models. Если эндпоинт вернул 2xx — считаем здоровым.

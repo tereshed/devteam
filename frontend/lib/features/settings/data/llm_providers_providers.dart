@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/settings/data/llm_providers_repository.dart';
 import 'package:frontend/features/settings/domain/models/llm_provider_model.dart';
@@ -12,8 +13,12 @@ LLMProvidersRepository llmProvidersRepository(Ref ref) {
   return LLMProvidersRepository(dio: dio);
 }
 
+/// Sprint 15.M6: CancelToken+ref.onDispose — при быстрой смене вкладок прерываем висящий
+/// HTTP-запрос вместо ожидания timeout.
 @riverpod
 Future<List<LLMProviderModel>> llmProvidersList(Ref ref) async {
   final repo = ref.watch(llmProvidersRepositoryProvider);
-  return repo.list();
+  final cancelToken = CancelToken();
+  ref.onDispose(() => cancelToken.cancel('llmProvidersList provider disposed'));
+  return repo.list(cancelToken: cancelToken);
 }

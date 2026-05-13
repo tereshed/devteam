@@ -8,6 +8,7 @@ import (
 	"github.com/devteam/backend/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ClaudeCodeSubscriptionRepository — CRUD по claude_code_subscriptions (Sprint 15.12).
@@ -28,22 +29,28 @@ func NewClaudeCodeSubscriptionRepository(db *gorm.DB) ClaudeCodeSubscriptionRepo
 	return &claudeCodeSubscriptionRepository{db: db}
 }
 
-// Upsert создаёт или обновляет запись по user_id.
+// Upsert атомарно создаёт или обновляет запись по user_id.
+// Sprint 15.B (B3): использует ON CONFLICT (user_id) DO UPDATE — окно race condition
+// между двумя параллельными RefreshOne закрывается транзакционно в БД.
 func (r *claudeCodeSubscriptionRepository) Upsert(ctx context.Context, sub *models.ClaudeCodeSubscription) error {
 	if sub.UserID == uuid.Nil {
 		return ErrInvalidInput
 	}
-	var existing models.ClaudeCodeSubscription
-	err := r.db.WithContext(ctx).Where("user_id = ?", sub.UserID).First(&existing).Error
-	if err == nil {
-		sub.ID = existing.ID
-		sub.CreatedAt = existing.CreatedAt
-		return r.db.WithContext(ctx).Save(sub).Error
+	if sub.ID == uuid.Nil {
+		sub.ID = uuid.New()
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	return r.db.WithContext(ctx).Create(sub).Error
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"oauth_access_token_enc",
+			"oauth_refresh_token_enc",
+			"token_type",
+			"scopes",
+			"expires_at",
+			"last_refreshed_at",
+			"updated_at",
+		}),
+	}).Create(sub).Error
 }
 
 func (r *claudeCodeSubscriptionRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*models.ClaudeCodeSubscription, error) {

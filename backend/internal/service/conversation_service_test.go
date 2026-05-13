@@ -739,6 +739,22 @@ func TestDeleteConversation(t *testing.T) {
 			},
 			expectedErr: ErrConversationForbidden,
 		},
+		{
+			// Sprint 15.N1/Major2: при ошибке транзакции (например, convRepo.Delete) indexer
+			// НЕ должен вызываться. До итерации 3 рефакторинг сделал deleteConversationAsync
+			// unreachable; этот тест ловит обратную регрессию — если кто-то вернёт «всегда
+			// зовём индексер», тест провалится (mock без On→failed expectation).
+			name: "TestDeleteConversation_RepoDeleteFails_IndexerNotCalled",
+			setupMocks: func(svc *conversationService, deps *mockDeps) {
+				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).
+					Return(&models.Conversation{UserID: userID, ProjectID: projectID}, nil)
+				deps.convRepo.On("Delete", mock.Anything, projectID, convID).
+					Return(errors.New("db boom"))
+				// indexer.DeleteConversation НЕ должен быть зван — отсутствие .On означает
+				// автоматический fail на любом неожиданном вызове.
+			},
+			expectedErr: errors.New("db boom"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -748,10 +764,21 @@ func TestDeleteConversation(t *testing.T) {
 
 			err := svc.DeleteConversation(context.Background(), userID, convID)
 			if tt.expectedErr != nil {
-				require.ErrorIs(t, err, tt.expectedErr)
+				// db-boom не использует .Is — сверяем по содержимому.
+				if tt.expectedErr.Error() == "db boom" {
+					require.Error(t, err)
+					require.Contains(t, err.Error(), "db boom")
+				} else {
+					require.ErrorIs(t, err, tt.expectedErr)
+				}
 			} else {
 				require.NoError(t, err)
 			}
+			// Sprint 15.Major2: deleteConversationAsync — async (см. async.ExecuteWithRetry +
+			// svc.wg). Ждём завершения, чтобы AssertExpectations поймал реальный (не) вызов indexer'а.
+			svc.wg.Wait()
+			deps.indexer.AssertExpectations(t)
+			deps.convRepo.AssertExpectations(t)
 		})
 	}
 }

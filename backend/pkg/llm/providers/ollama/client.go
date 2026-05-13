@@ -25,5 +25,6 @@ func NewClient(c llm.Config) (*oaicompat.Client, error) {
 		APIKey:       apiKey,
 		BaseURL:      baseURL,
 		DefaultModel: DefaultModel,
+		HTTPClient:   c.HTTPClient, // Sprint 15.N8.
 	})
 }

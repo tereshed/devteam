@@ -20,7 +20,17 @@ sandbox_permissions:
     - "Bash(git show:*)"
     - "Bash(git status:*)"
   deny:
+    # Sprint 15.Major (defense-in-depth, как у developer.yaml).
     - "Bash(git push:*)"
+    - "Bash(git push)"
     - "Bash(git reset:*)"
+    - "Bash(git clean:*)"
+    - "Bash(git branch -D:*)"
+    - "Bash(git checkout --:*)"
     - "Bash(rm -rf:*)"
+    - "Bash(rm -fr:*)"
     - "Bash(sudo:*)"
+    - "Bash(make destroy:*)"
+    - "Bash(make drop:*)"
+    - "Bash(make clean:*)"
+    - "Bash(make migrate-down:*)"

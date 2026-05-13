@@ -1,14 +1,22 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/api/safe_error_message.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/settings/data/claude_code_auth_providers.dart';
-import 'package:frontend/features/settings/data/claude_code_auth_repository.dart';
+import 'package:frontend/features/settings/domain/claude_code_auth_exceptions.dart';
 import 'package:frontend/features/settings/domain/models/claude_code_auth_status.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// Sprint 15.m4: локализованный DateTime для UI (например, expires_at и last_refreshed_at).
+String _fmtDateTime(BuildContext context, DateTime? dt) {
+  if (dt == null) return '—';
+  final localeTag = Localizations.localeOf(context).toLanguageTag();
+  return DateFormat.yMMMd(localeTag).add_jm().format(dt.toLocal());
+}
 
 /// Sprint 15.31 — секция «Claude Code» в глобальных настройках.
 ///
@@ -33,7 +41,7 @@ class ClaudeCodeAuthSection extends ConsumerWidget {
           Text(l10n.claudeCodeAuthLoadError,
               style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          SelectableText('$err'),
+          SelectableText(safeErrorMessage(context, err)),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () => ref.invalidate(claudeCodeAuthStatusProvider),
@@ -73,11 +81,11 @@ class _ConnectedOrLoginView extends ConsumerWidget {
           ),
           _StatusRow(
             label: l10n.claudeCodeAuthExpiresAt,
-            value: status.expiresAt?.toIso8601String() ?? '—',
+            value: _fmtDateTime(context, status.expiresAt),
           ),
           _StatusRow(
             label: l10n.claudeCodeAuthLastRefreshedAt,
-            value: status.lastRefreshedAt?.toIso8601String() ?? '—',
+            value: _fmtDateTime(context, status.lastRefreshedAt),
           ),
           const SizedBox(height: 16),
           Row(
@@ -104,6 +112,28 @@ class _ConnectedOrLoginView extends ConsumerWidget {
 
   Future<void> _revoke(BuildContext context, WidgetRef ref) async {
     final l10n = requireAppLocalizations(context, where: 'claudeCodeAuthRevoke');
+    // Sprint 15.F-M6: confirmation dialog (асимметрично с delete provider) — revoke
+    // ломает аутентификацию всех проектов пользователя, нужен явный «yes».
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(l10n.agentSandboxRevokeConfirmTitle),
+        content: Text(l10n.agentSandboxRevokeConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.claudeCodeAuthRevoke),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    if (!context.mounted) return;
+
     final repo = ref.read(claudeCodeAuthRepositoryProvider);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -113,7 +143,10 @@ class _ConnectedOrLoginView extends ConsumerWidget {
         SnackBar(content: Text(l10n.claudeCodeAuthRevokeOK)),
       );
     } catch (err) {
-      messenger.showSnackBar(SnackBar(content: Text('$err')));
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(safeErrorMessage(context, err))),
+      );
     }
   }
 }
@@ -169,7 +202,8 @@ class _LoginFlowState extends ConsumerState<_LoginFlow> {
       setState(() => _init = init);
       _schedulePoll(init);
     } catch (err) {
-      setState(() => _statusMessage = '$err');
+      if (!mounted) return;
+      setState(() => _statusMessage = safeErrorMessage(context, err));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -191,20 +225,23 @@ class _LoginFlowState extends ConsumerState<_LoginFlow> {
       await repo.complete(init.deviceCode);
       _pollTimer?.cancel();
       ref.invalidate(claudeCodeAuthStatusProvider);
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 202) {
-        // authorization_pending — продолжаем поллинг.
-      } else if (code == 410 || code == 400) {
-        _pollTimer?.cancel();
-        if (mounted) {
-          setState(() => _statusMessage = e.response?.statusMessage ?? 'expired');
-        }
-      } else {
-        if (mounted) setState(() => _statusMessage = '$e');
+    } on ClaudeCodeAuthorizationPendingException {
+      // pending — продолжаем поллинг (taймер тикает).
+    } on ClaudeCodeAuthSlowDownException {
+      // backend сказал, мы спрашиваем слишком часто; на следующем тике подождём ещё.
+    } on ClaudeCodeAuthFlowEndedException catch (e) {
+      _pollTimer?.cancel();
+      if (mounted) {
+        setState(() => _statusMessage = e.message);
       }
-    } catch (err) {
-      if (mounted) setState(() => _statusMessage = '$err');
+    } on ClaudeCodeAuthOwnerMismatchException catch (e) {
+      _pollTimer?.cancel();
+      if (mounted) {
+        setState(() => _statusMessage = e.message);
+      }
+    } on ClaudeCodeAuthException catch (e) {
+      // Sprint 15.B (F10): показываем sanitizedMessage из ApiException, не сырой $err.
+      if (mounted) setState(() => _statusMessage = e.message);
     } finally {
       _polling = false;
     }
@@ -260,13 +297,13 @@ class _LoginFlowState extends ConsumerState<_LoginFlow> {
           ],
         ),
         const SizedBox(height: 12),
+        // Sprint 15.B (F8): НЕ показываем verification_uri_complete на экране —
+        // он содержит device_code, и скриншот/копипаст позволит злоумышленнику завершить
+        // flow за пользователя (RFC 8628 §6.1). На экране — только базовый verification_uri,
+        // user_code вводится вручную. _complete доступен через launchUrl (браузер откроет напрямую).
         Row(
           children: [
-            Expanded(
-              child: SelectableText(_init!.verificationURIComplete.isNotEmpty
-                  ? _init!.verificationURIComplete
-                  : _init!.verificationURI),
-            ),
+            Expanded(child: SelectableText(_init!.verificationURI)),
             IconButton(
               onPressed: () => launchUrl(Uri.parse(
                 _init!.verificationURIComplete.isNotEmpty

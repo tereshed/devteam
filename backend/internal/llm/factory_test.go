@@ -19,7 +19,7 @@ func staticSecret(secret string) SecretsResolver {
 
 func TestNewLLMClient_DisabledProvider(t *testing.T) {
 	p := &models.LLMProvider{ID: uuid.New(), Kind: models.LLMProviderKindOpenRouter, Enabled: false}
-	_, err := NewLLMClient(context.Background(), p, staticSecret("k"))
+	_, err := NewLLMClient(context.Background(), p, staticSecret("k"), nil)
 	if !errors.Is(err, ErrProviderDisabled) {
 		t.Fatalf("expected ErrProviderDisabled, got %v", err)
 	}
@@ -27,7 +27,7 @@ func TestNewLLMClient_DisabledProvider(t *testing.T) {
 
 func TestNewLLMClient_UnsupportedKind(t *testing.T) {
 	p := &models.LLMProvider{ID: uuid.New(), Kind: "wat", Enabled: true, AuthType: models.LLMProviderAuthNone}
-	_, err := NewLLMClient(context.Background(), p, staticSecret(""))
+	_, err := NewLLMClient(context.Background(), p, staticSecret(""), nil)
 	if !errors.Is(err, ErrUnsupportedKind) {
 		t.Fatalf("expected ErrUnsupportedKind, got %v", err)
 	}
@@ -53,7 +53,7 @@ func TestNewLLMClient_OpenRouter_HealthCheck(t *testing.T) {
 		CredentialsEncrypted: []byte("non-empty"),
 	}
 
-	c, err := NewLLMClient(context.Background(), p, staticSecret("openrouter-key"))
+	c, err := NewLLMClient(context.Background(), p, staticSecret("openrouter-key"), nil)
 	if err != nil {
 		t.Fatalf("NewLLMClient: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestNewLLMClient_FreeClaudeProxy_HealthCheck(t *testing.T) {
 		Enabled:              true,
 		CredentialsEncrypted: []byte("blob"),
 	}
-	c, err := NewLLMClient(context.Background(), p, staticSecret("svc-token"))
+	c, err := NewLLMClient(context.Background(), p, staticSecret("svc-token"), nil)
 	if err != nil {
 		t.Fatalf("NewLLMClient: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestNewLLMClient_AuthNoneSkipsResolver(t *testing.T) {
 		AuthType: models.LLMProviderAuthNone,
 		Enabled:  true,
 	}
-	if _, err := NewLLMClient(context.Background(), p, resolver); err != nil {
+	if _, err := NewLLMClient(context.Background(), p, resolver, nil); err != nil {
 		t.Fatalf("NewLLMClient: %v", err)
 	}
 	if calls != 0 {

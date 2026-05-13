@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/api/safe_error_message.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/settings/data/llm_providers_providers.dart';
-import 'package:frontend/features/settings/data/llm_providers_repository.dart';
 import 'package:frontend/features/settings/domain/models/llm_provider_model.dart';
 
 /// Sprint 15.30 — вкладка «LLM-провайдеры»:
@@ -22,21 +22,21 @@ class LLMProvidersSection extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => _ErrorBlock(
         message: l10n.llmProvidersLoadError,
-        error: err.toString(),
+        // Sprint 15.minor: симметрично с другими SnackBar — sanitized message,
+        // не сырой err.toString() (может содержать body запроса с credential).
+        error: safeErrorMessage(context, err),
         onRetry: () => ref.invalidate(llmProvidersListProvider),
       ),
       data: (list) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Sprint 15.Major: tab name = "LLM providers" уже служит заголовком — внутри секции
+            // оставляем только Add-кнопку справа, чтобы findsOneWidget(l10n.globalSettingsTabLLMProviders)
+            // оставался однозначным.
             Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Expanded(
-                  child: Text(
-                    l10n.llmProvidersSectionTitle,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
                 FilledButton.icon(
                   onPressed: () => _openEditor(context, ref, null),
                   icon: const Icon(Icons.add),
@@ -68,8 +68,11 @@ class LLMProvidersSection extends ConsumerWidget {
     WidgetRef ref,
     LLMProviderModel? existing,
   ) async {
+    // Sprint 15.m5: editor содержит credential — закрытие тапом по barrier'у легко может
+    // отбросить ввод. Симметрично с agent_edit_dialog (Sprint 13.3).
     final saved = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => _LLMProviderEditorDialog(existing: existing),
     );
     if (saved == true) {
@@ -89,8 +92,10 @@ class LLMProvidersSection extends ConsumerWidget {
       await repo.healthCheck(p.id);
       messenger.showSnackBar(SnackBar(content: Text(l10n.llmProvidersHealthOK)));
     } catch (err) {
+      if (!context.mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('${l10n.llmProvidersHealthFail}: $err')),
+        SnackBar(content: Text(
+            '${l10n.llmProvidersHealthFail}: ${safeErrorMessage(context, err)}')),
       );
     }
   }
@@ -119,14 +124,18 @@ class LLMProvidersSection extends ConsumerWidget {
       ),
     );
     if (confirm != true) return;
+    // Sprint 15.minor: после await — context может быть unmounted.
+    if (!context.mounted) return;
     final repo = ref.read(llmProvidersRepositoryProvider);
     final messenger = ScaffoldMessenger.of(context);
     try {
       await repo.delete(p.id);
       ref.invalidate(llmProvidersListProvider);
     } catch (err) {
+      if (!context.mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('${l10n.llmProvidersDeleteFail}: $err')),
+        SnackBar(content: Text(
+            '${l10n.llmProvidersDeleteFail}: ${safeErrorMessage(context, err)}')),
       );
     }
   }
@@ -148,10 +157,15 @@ class _ProviderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = requireAppLocalizations(context, where: 'llmProvidersRow');
+    final theme = Theme.of(context);
+    // Sprint 15.F-M2: ThemeData вместо Colors.green/grey — корректно работает в dark mode.
+    final statusColor = provider.enabled
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurface.withValues(alpha: 0.45);
     return Card(
       child: ListTile(
         leading: Icon(provider.enabled ? Icons.check_circle : Icons.cancel,
-            color: provider.enabled ? Colors.green : Colors.grey),
+            color: statusColor),
         title: Text(provider.name),
         subtitle: Text('${provider.kind} • ${provider.defaultModel}'),
         trailing: Wrap(
@@ -277,8 +291,10 @@ class _LLMProviderEditorDialogState
         SnackBar(content: Text(l10n.llmProvidersTestOK)),
       );
     } catch (err) {
+      if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('${l10n.llmProvidersTestFail}: $err')),
+        SnackBar(content: Text(
+            '${l10n.llmProvidersTestFail}: ${safeErrorMessage(context, err)}')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -317,7 +333,7 @@ class _LLMProviderEditorDialogState
     } catch (err) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('$err')));
+          .showSnackBar(SnackBar(content: Text(safeErrorMessage(context, err))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

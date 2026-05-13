@@ -21,7 +21,7 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 	EnvRepoURL:          {},
 	EnvBranchName:       {},
 	EnvBaseRef:          {},
-	"START_REF":         {},
+	EnvStartRef:         {},
 	EnvGitDefaultBranch: {},
 	EnvBackend:          {},
 	EnvAnthropicAPIKey:         {},
@@ -32,11 +32,16 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 	"GITLAB_TOKEN":             {},
 	"GIT_TOKEN":                {},
 	"BITBUCKET_TOKEN":          {},
-	"ANTHROPIC_BASE_URL":        {},
 	"DEVTEAM_AGENT_MODEL":       {},
 	"DEVTEAM_AGENT_TEMPERATURE": {},
 	"DEVTEAM_AGENT_MAX_TOKENS":  {},
 	"DEVTEAM_AGENT_PROMPT_NAME": {},
+	// Sprint 15.B/15.C/15.D — три формы аутентификации Claude Code + permission mode.
+	// Допускаются именно через константы из types.go (источник правды + защита от опечаток).
+	EnvAnthropicBaseURL:         {},
+	EnvAnthropicAuthToken:       {},
+	EnvClaudeCodeOAuthToken:     {},
+	EnvClaudeCodePermissionMode: {},
 }
 
 // ValidateSandboxID проверяет формат идентификатора до обращения к Docker API.

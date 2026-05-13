@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/features/settings/data/claude_code_auth_providers.dart';

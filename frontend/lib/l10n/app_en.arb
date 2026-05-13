@@ -603,14 +603,24 @@
   "agentSandboxSettingsProviderLabel": "LLM provider",
   "agentSandboxSettingsProviderNone": "— none —",
   "agentSandboxSettingsCodeBackendLabel": "Code backend",
-  "agentSandboxSettingsMCPHelper": "JSON array of MCP server bindings: [{\"name\":\"github\",\"env\":{}}]",
-  "agentSandboxSettingsSkillsHelper": "JSON array of skill refs: [{\"name\":\"pdf\",\"source\":\"builtin\"}]",
+  "agentSandboxSettingsMCPHelper": "JSON array of MCP server bindings: see docs.",
+  "@agentSandboxSettingsMCPHelper": {
+    "description": "Helper text for MCP servers tab. JSON example removed to avoid ARB ICU lexer interpreting braces as placeholders (Sprint 15.C2)."
+  },
+  "agentSandboxSettingsSkillsHelper": "JSON array of Claude Code skill refs: see docs.",
+  "@agentSandboxSettingsSkillsHelper": {
+    "description": "Helper text for Skills tab. JSON example removed for the same reason as MCP helper."
+  },
   "agentSandboxSettingsDefaultMode": "Default mode",
   "agentSandboxSettingsAllow": "Allow",
   "agentSandboxSettingsDeny": "Deny",
   "agentSandboxSettingsAsk": "Ask",
   "agentSandboxSettingsJsonInvalid": "JSON is invalid",
+  "agentSandboxSettingsPatternHint": "Read | Edit | Bash(go test:*) | mcp__server",
+  "agentSandboxRevokeConfirmTitle": "Revoke Claude Code subscription?",
+  "agentSandboxRevokeConfirmBody": "Agents will fall back to ANTHROPIC_API_KEY (if configured) for sandbox sessions. You can re-connect anytime.",
 
-  "teamAgentEditAdvanced": "Advanced"
+  "teamAgentEditAdvanced": "Advanced",
+  "commonRequestFailed": "Request failed"
 }
 

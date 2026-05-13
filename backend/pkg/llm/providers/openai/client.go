@@ -18,10 +18,15 @@ type Client struct {
 }
 
 func NewClient(config llm.Config) (*Client, error) {
+	// Sprint 15.N8: используем переданный HTTPClient (содержит SSRF-guard).
+	hc := config.HTTPClient
+	if hc == nil {
+		hc = &http.Client{}
+	}
 	return &Client{
 		apiKey:  config.APIKey,
 		baseURL: config.BaseURL,
-		client:  &http.Client{},
+		client:  hc,
 	}, nil
 }
 

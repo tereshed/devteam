@@ -45,6 +45,8 @@ func NewClient(cfg Config) (*oaicompat.Client, error) {
 		BaseURL:      baseURL,
 		DefaultModel: model,
 		ExtraHeaders: extra,
+		// Sprint 15.N8: проброс SSRF-safe http.Client из llm.Config.
+		HTTPClient: cfg.HTTPClient,
 	})
 }
 

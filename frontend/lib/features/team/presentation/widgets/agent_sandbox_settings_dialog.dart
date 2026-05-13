@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/api/safe_error_message.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/settings/data/llm_providers_providers.dart';
 import 'package:frontend/features/settings/domain/models/llm_provider_model.dart';
@@ -35,32 +36,43 @@ class _Dialog extends ConsumerWidget {
     final l10n =
         requireAppLocalizations(context, where: 'agentSandboxSettingsDialog');
     final asyncSettings = ref.watch(agentSettingsProvider(agentID));
+    // Sprint 15.Major5/N6: LayoutBuilder получает incoming constraints от Dialog'а
+    // (родитель ограничивает viewport), и мы вычисляем maxW/maxH от них. Это работает
+    // корректно для вложенных модалов / split-screen / desktop multi-window — там
+    // MediaQuery.sizeOf(context) даёт размер всего экрана, а не контейнера.
     return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: asyncSettings.when(
-          loading: () => const Padding(
-            padding: EdgeInsets.all(48),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-          error: (err, _) => Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(l10n.agentSandboxSettingsLoadError),
-                const SizedBox(height: 8),
-                SelectableText('$err'),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: () => ref.invalidate(agentSettingsProvider(agentID)),
-                  child: Text(l10n.retry),
+      child: LayoutBuilder(
+        builder: (context, incoming) {
+          final maxH = (incoming.maxHeight * 0.95).clamp(360.0, 720.0);
+          final maxW = (incoming.maxWidth * 0.98).clamp(320.0, 720.0);
+          return ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
+            child: asyncSettings.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.all(48),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (err, _) => Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(l10n.agentSandboxSettingsLoadError),
+                    const SizedBox(height: 8),
+                    SelectableText(safeErrorMessage(context, err)),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () =>
+                          ref.invalidate(agentSettingsProvider(agentID)),
+                      child: Text(l10n.retry),
+                    ),
+                  ],
                 ),
-              ],
+              ),
+              data: (current) => _Body(agentID: agentID, current: current),
             ),
-          ),
-          data: (current) => _Body(agentID: agentID, current: current),
-        ),
+          );
+        },
       ),
     );
   }
@@ -150,10 +162,11 @@ class _BodyState extends ConsumerState<_Body>
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (err) {
+      // Sprint 15.B (F10, C1): sanitized message через общий хелпер (FeatureException/ApiException).
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = '$err';
+        _error = safeErrorMessage(context, err);
       });
     }
   }
@@ -162,8 +175,11 @@ class _BodyState extends ConsumerState<_Body>
   Widget build(BuildContext context) {
     final l10n =
         requireAppLocalizations(context, where: 'agentSandboxSettingsDialog');
+    // Sprint 15.N6: Dialog в _Dialog задаёт maxHeight ConstrainedBox'ом; Column тут разворачивается
+    // на всю доступную высоту, header/tabbar/actions — фиксированные строки, TabBarView —
+    // Expanded. Никакой математики над MediaQuery — flex layout справится сам.
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
@@ -195,8 +211,7 @@ class _BodyState extends ConsumerState<_Body>
             Tab(text: l10n.agentSandboxSettingsTabPermissions),
           ],
         ),
-        SizedBox(
-          height: 420,
+        Expanded(
           child: TabBarView(
             controller: _tabs,
             children: [
@@ -274,7 +289,7 @@ class _ProviderTab extends ConsumerWidget {
         children: [
           asyncProviders.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => SelectableText('$err'),
+            error: (err, _) => SelectableText(safeErrorMessage(context, err)),
             data: (list) => DropdownButtonFormField<String?>(
               initialValue: value,
               decoration: InputDecoration(
@@ -350,8 +365,11 @@ class _PermissionsForm {
     required this.deny,
     required this.ask,
     required this.defaultMode,
+    required this.original,
   });
 
+  /// Sprint 15.F-M5: запоминаем оригинальный объект sandbox_permissions,
+  /// чтобы toMap() мог merge'ить неизвестные UI ключи (hooks, env, future fields).
   factory _PermissionsForm.fromMap(Map<String, dynamic> m) {
     List<String> read(String key) =>
         ((m[key] as List<dynamic>?) ?? const <dynamic>[])
@@ -362,6 +380,7 @@ class _PermissionsForm {
       deny: read('deny'),
       ask: read('ask'),
       defaultMode: (m['defaultMode'] as String?) ?? '',
+      original: Map<String, dynamic>.from(m),
     );
   }
 
@@ -369,8 +388,12 @@ class _PermissionsForm {
   final List<String> deny;
   final List<String> ask;
   String defaultMode;
+  final Map<String, dynamic> original;
 
+  /// toMap() возвращает merge неизвестных ключей оригинала + редактируемые поля формы.
+  /// Sprint 15.F-M5: не затирает hooks/env/etc., которые ввели через прямой API/MCP.
   Map<String, dynamic> toMap() => {
+        ...original,
         'allow': allow,
         'deny': deny,
         'ask': ask,
@@ -492,8 +515,10 @@ class _PatternListFieldState extends State<_PatternListField> {
                 child: TextField(
                   controller: _controller,
                   onSubmitted: (_) => _add(),
-                  decoration: const InputDecoration(
-                    hintText: 'Read | Edit | Bash(go test:*) | mcp__server',
+                  decoration: InputDecoration(
+                    hintText: requireAppLocalizations(context,
+                            where: 'agentSandboxSettingsDialog.patternHint')
+                        .agentSandboxSettingsPatternHint,
                   ),
                 ),
               ),

@@ -1,3 +1,5 @@
+//go:build test_export
+
 package service
 
 import (

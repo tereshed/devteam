@@ -172,11 +172,28 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 		EnvBranchName+"="+opts.Branch,
 		EnvBackend+"="+string(opts.Backend),
 	)
-	// Sprint 15.22: permission-mode для claude code CLI; пробрасываем только если задан в AgentSettings.
+	// Sprint 15.22 / 15.M5: permission-mode для claude code CLI.
+	// Жёстко валидируем значение по белому списку, чтобы инъекция вида "default\n--evil-flag"
+	// или произвольный текст из БД не попадал в env контейнера.
 	if opts.AgentSettings != nil && opts.AgentSettings.PermissionMode != "" {
-		out = append(out, EnvClaudeCodePermissionMode+"="+opts.AgentSettings.PermissionMode)
+		if isValidClaudeCodePermissionMode(opts.AgentSettings.PermissionMode) {
+			out = append(out, EnvClaudeCodePermissionMode+"="+opts.AgentSettings.PermissionMode)
+		}
+		// Невалидный mode игнорируем молча — entrypoint выберет дефолт (--dangerously-skip-permissions).
+		// Логирование происходит в сервис-уровне (AgentSettingsService.BuildArtifacts), здесь — defense-in-depth.
 	}
 	return out
+}
+
+// isValidClaudeCodePermissionMode — белый список значений для CLAUDE_CODE_PERMISSION_MODE
+// (см. claude-code CLI --permission-mode и Sprint 15.21 IsValidPermissionMode).
+func isValidClaudeCodePermissionMode(mode string) bool {
+	switch mode {
+	case "default", "acceptEdits", "plan", "bypassPermissions":
+		return true
+	default:
+		return false
+	}
 }
 
 // drainDockerWait освобождает каналы ContainerWait без вечной блокировки: после select в containerWaitLoop

@@ -918,14 +918,18 @@
   "agentSandboxSettingsProviderLabel": "LLM-провайдер",
   "agentSandboxSettingsProviderNone": "— нет —",
   "agentSandboxSettingsCodeBackendLabel": "Code backend",
-  "agentSandboxSettingsMCPHelper": "JSON-массив привязок MCP: [{\"name\":\"github\",\"env\":{}}]",
-  "agentSandboxSettingsSkillsHelper": "JSON-массив Skills: [{\"name\":\"pdf\",\"source\":\"builtin\"}]",
+  "agentSandboxSettingsMCPHelper": "JSON-массив привязок MCP — см. документацию.",
+  "agentSandboxSettingsSkillsHelper": "JSON-массив Skills (Claude Code) — см. документацию.",
   "agentSandboxSettingsDefaultMode": "Режим по умолчанию",
   "agentSandboxSettingsAllow": "Allow",
   "agentSandboxSettingsDeny": "Deny",
   "agentSandboxSettingsAsk": "Ask",
   "agentSandboxSettingsJsonInvalid": "Некорректный JSON",
+  "agentSandboxSettingsPatternHint": "Read | Edit | Bash(go test:*) | mcp__server",
+  "agentSandboxRevokeConfirmTitle": "Отозвать подписку Claude Code?",
+  "agentSandboxRevokeConfirmBody": "Агенты будут использовать ANTHROPIC_API_KEY (если задан) при следующих sandbox-задачах. Подписку можно подключить заново в любой момент.",
 
-  "teamAgentEditAdvanced": "Дополнительно"
+  "teamAgentEditAdvanced": "Дополнительно",
+  "commonRequestFailed": "Ошибка запроса"
 }
 

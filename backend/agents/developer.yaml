@@ -25,12 +25,45 @@ sandbox_permissions:
     - "Bash(go build:*)"
     - "Bash(go test:*)"
     - "Bash(go mod:*)"
-    - "Bash(make:*)"
-    - "Bash(npm:*)"
-    - "Bash(yarn:*)"
-    - "Bash(pnpm:*)"
-    - "Bash(flutter:*)"
-    - "Bash(dart:*)"
+    # Sprint 15.M6 — `make:*` слишком широко (запускает любой target, включая destroy-prod).
+    # Сужаем до перечисленных безопасных тагретов; Makefile может определять алиасы при необходимости.
+    - "Bash(make build:*)"
+    - "Bash(make test:*)"
+    - "Bash(make test-unit:*)"
+    - "Bash(make test-integration:*)"
+    - "Bash(make lint:*)"
+    - "Bash(make fmt:*)"
+    - "Bash(make swagger:*)"
+    - "Bash(make migrate-up:*)"
+    # migrate-down — destructive, см. deny (Sprint 15.m3/C6).
+    # npm/yarn/pnpm/flutter аналогично — узкие подкоманды вместо общего шеллинга.
+    - "Bash(npm install:*)"
+    - "Bash(npm run:*)"
+    - "Bash(npm test:*)"
+    - "Bash(yarn install:*)"
+    - "Bash(yarn run:*)"
+    - "Bash(pnpm install:*)"
+    - "Bash(pnpm run:*)"
+    - "Bash(flutter pub:*)"
+    - "Bash(flutter test:*)"
+    - "Bash(flutter analyze:*)"
+    - "Bash(dart format:*)"
+    - "Bash(dart analyze:*)"
   deny:
+    # Sprint 15.C6 — explicit defense-in-depth: даже если allow расширится до Bash(git:*),
+    # destructive подкоманды останутся запрещены deny-листом.
+    - "Bash(git push:*)"
+    - "Bash(git push)"
+    # Sprint 15.minor: симметрично с reviewer/tester.yaml — широкий запрет любой формы git reset.
+    - "Bash(git reset:*)"
+    - "Bash(git clean:*)"
+    - "Bash(git branch -D:*)"
+    - "Bash(git checkout --:*)"
     - "Bash(rm -rf:*)"
+    - "Bash(rm -fr:*)"
     - "Bash(sudo:*)"
+    # destructive Makefile-таргеты (могут случайно попасть в allow при расширении).
+    - "Bash(make migrate-down:*)"
+    - "Bash(make destroy:*)"
+    - "Bash(make drop:*)"
+    - "Bash(make clean:*)"

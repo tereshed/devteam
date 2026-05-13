@@ -21,5 +21,6 @@ func NewClient(c llm.Config) (*oaicompat.Client, error) {
 		APIKey:       c.APIKey,
 		BaseURL:      baseURL,
 		DefaultModel: DefaultModel,
+		HTTPClient:   c.HTTPClient, // Sprint 15.N8: проброс SSRF-safe клиента.
 	})
 }

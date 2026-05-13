@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -57,10 +58,13 @@ func NewLLMProviderService(repo repository.LLMProviderRepository, encryptor Encr
 }
 
 func (s *llmProviderService) Create(ctx context.Context, in LLMProviderInput) (*models.LLMProvider, error) {
-	if err := validateInput(in); err != nil {
+	if err := validateInput(in, true); err != nil {
 		return nil, err
 	}
+	// Sprint 15.M2: PreSet ID и шифруем credential ДО INSERT — теперь Create — один SQL-запрос,
+	// нет окна "полусозданного" провайдера. AAD привязан к будущему p.ID, BeforeCreate его не перезатрёт.
 	p := &models.LLMProvider{
+		ID:           uuid.New(),
 		Name:         strings.TrimSpace(in.Name),
 		Kind:         in.Kind,
 		BaseURL:      in.BaseURL,
@@ -68,25 +72,22 @@ func (s *llmProviderService) Create(ctx context.Context, in LLMProviderInput) (*
 		DefaultModel: in.DefaultModel,
 		Enabled:      in.Enabled,
 	}
-	if err := s.repo.Create(ctx, p); err != nil {
-		return nil, err
-	}
-	// Шифруем credential c AAD по итоговому ID (после Create — ID известен).
 	if in.Credential != "" && in.AuthType != models.LLMProviderAuthNone {
 		blob, err := s.encryptor.Encrypt([]byte(in.Credential), aad(p.ID))
 		if err != nil {
 			return nil, fmt.Errorf("encrypt credentials: %w", err)
 		}
 		p.CredentialsEncrypted = blob
-		if err := s.repo.Update(ctx, p); err != nil {
-			return nil, err
-		}
+	}
+	if err := s.repo.Create(ctx, p); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
 
 func (s *llmProviderService) Update(ctx context.Context, id uuid.UUID, in LLMProviderInput) (*models.LLMProvider, error) {
-	if err := validateInput(in); err != nil {
+	// Update: пустой credential означает «не менять» — поэтому requireCredential=false.
+	if err := validateInput(in, false); err != nil {
 		return nil, err
 	}
 	existing, err := s.repo.GetByID(ctx, id)
@@ -132,7 +133,16 @@ func (s *llmProviderService) HealthCheck(ctx context.Context, id uuid.UUID) erro
 	if err != nil {
 		return err
 	}
-	client, err := internallm.NewLLMClient(ctx, p, s)
+	// Sprint 15.C5: SSRF guard ПЕРЕД созданием клиента (валидируем URL/DNS).
+	guardCtx, guardCancel := context.WithTimeout(ctx, 2*time.Second)
+	if err := validateBaseURLForProvider(guardCtx, p.BaseURL, p.Kind); err != nil {
+		guardCancel()
+		return err
+	}
+	guardCancel()
+	// Sprint 15.N8: NewLLMClient получает HTTPClientFactory — провайдеры используют SSRF-safe
+	// http.Client с DialContext.Control + CheckRedirect, что закрывает TOCTOU и redirect-bypass.
+	client, err := internallm.NewLLMClient(ctx, p, s, s)
 	if err != nil {
 		return err
 	}
@@ -144,13 +154,21 @@ func (s *llmProviderService) HealthCheck(ctx context.Context, id uuid.UUID) erro
 // TestConnection собирает временного клиента из LLMProviderInput (без записи в БД)
 // и зовёт HealthCheck. Нужен для UI-формы "Тест подключения" перед сохранением.
 func (s *llmProviderService) TestConnection(ctx context.Context, in LLMProviderInput) error {
-	if err := validateInput(in); err != nil {
+	// TestConnection требует credential, как и Create (бессмысленно тестировать без него).
+	if err := validateInput(in, true); err != nil {
 		return err
 	}
 	if !in.Enabled {
 		// На пустом провайдере проверки нет смысла делать; считаем "ok".
 		return nil
 	}
+	// Sprint 15.C5 — SSRF guard ДО создания клиента.
+	guardCtx, guardCancel := context.WithTimeout(ctx, 2*time.Second)
+	if err := validateBaseURLForProvider(guardCtx, in.BaseURL, in.Kind); err != nil {
+		guardCancel()
+		return err
+	}
+	guardCancel()
 	tmp := &models.LLMProvider{
 		Name:         in.Name,
 		Kind:         in.Kind,
@@ -162,13 +180,29 @@ func (s *llmProviderService) TestConnection(ctx context.Context, in LLMProviderI
 	resolver := internallm.SecretsResolverFunc(func(ctx context.Context, _ *models.LLMProvider) (string, error) {
 		return in.Credential, nil
 	})
-	client, err := internallm.NewLLMClient(ctx, tmp, resolver)
+	// Sprint 15.N8: SSRF-safe http.Client пробрасывается во временного клиента TestConnection тоже.
+	client, err := internallm.NewLLMClient(ctx, tmp, resolver, s)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.healthTimeout)
 	defer cancel()
 	return client.HealthCheck(ctx)
+}
+
+// HTTPClient — Sprint 15.N8: реализация internallm.HTTPClientFactory.
+// Возвращает SSRF-safe http.Client, позволяющий loopback только для kind=ollama / free_claude_proxy.
+// DialContext.Control + CheckRedirect ловят и DNS rebinding, и 30x → private/metadata.
+func (s *llmProviderService) HTTPClient(p *models.LLMProvider) *http.Client {
+	if p == nil {
+		return newSSRFSafeHTTPClient(false, s.healthTimeout)
+	}
+	allowLoopback := false
+	switch p.Kind {
+	case models.LLMProviderKindOllama, models.LLMProviderKindFreeClaudeProxy:
+		allowLoopback = true
+	}
+	return newSSRFSafeHTTPClient(allowLoopback, s.healthTimeout)
 }
 
 // ResolveCredentials дешифрует blob, делегируя Encryptor. Реализация internallm.SecretsResolver.
@@ -188,7 +222,10 @@ func aad(id uuid.UUID) []byte {
 	return []byte("llm_provider:" + id.String())
 }
 
-func validateInput(in LLMProviderInput) error {
+// validateInput — общая проверка для Create/Update/TestConnection.
+// requireCredential=true (Sprint 15.M3) — credential обязателен для auth_type != none
+// (используется в Create и TestConnection). При Update пустой credential означает «не менять».
+func validateInput(in LLMProviderInput, requireCredential bool) error {
 	if strings.TrimSpace(in.Name) == "" {
 		return fmt.Errorf("%w: name is required", ErrLLMProviderInvalid)
 	}
@@ -198,14 +235,16 @@ func validateInput(in LLMProviderInput) error {
 	if !in.AuthType.IsValid() {
 		return fmt.Errorf("%w: auth_type=%q", ErrLLMProviderInvalid, in.AuthType)
 	}
-	if in.AuthType != models.LLMProviderAuthNone && strings.TrimSpace(in.Credential) == "" {
-		// Для обновления credential может быть пустым (тогда не меняем). Этот хелпер вызывается
-		// и из TestConnection — там пустой credential для auth != none тоже невалиден.
-		// Но при Update это случай "не менять credential" — поэтому validate не зовём при Update без credential
-		// (validateInput всегда зовётся; Update перед шифровкой проверит TrimSpace отдельно).
+	if requireCredential &&
+		in.AuthType != models.LLMProviderAuthNone &&
+		strings.TrimSpace(in.Credential) == "" {
+		return fmt.Errorf("%w: credential is required for auth_type=%s", ErrLLMProviderInvalid, in.AuthType)
 	}
 	return nil
 }
 
-// Compile-time check: LLMProviderService реализует SecretsResolver (для фабрики).
-var _ internallm.SecretsResolver = (*llmProviderService)(nil)
+// Compile-time check: LLMProviderService реализует SecretsResolver и HTTPClientFactory.
+var (
+	_ internallm.SecretsResolver  = (*llmProviderService)(nil)
+	_ internallm.HTTPClientFactory = (*llmProviderService)(nil)
+)

@@ -49,8 +49,8 @@ func TestSandboxAuthResolver_OAuthSubscription(t *testing.T) {
 			return &ClaudeCodeOAuthToken{AccessToken: "sub-token", RefreshToken: "r", TokenType: "Bearer", ExpiresAt: &exp}, nil
 		},
 	}
-	authSvc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
 	uid := uuid.New()
+	authSvc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth), uid, "dc")
 	_, err := authSvc.CompleteDeviceCode(context.Background(), uid, "dc")
 	require.NoError(t, err)
 

@@ -1,10 +1,13 @@
+//go:build test_export
+
 package sandbox
 
 import "io"
 
 // Эти обёртки нужны только для интеграционных тестов из других пакетов
 // (Sprint 15.36 — internal/service/agent_bypass_permissions_e2e_test.go).
-// Они экспонируют файл-приватные функции, не расширяя публичный API SandboxRunner.
+// Build-tag test_export исключает их из production-бинаря; тесты, использующие
+// эти символы, ОБЯЗАНЫ объявлять `//go:build test_export` в первой строке.
 
 // ExportMergeSandboxEnvForTesting — внешняя обёртка над mergeSandboxEnv.
 func ExportMergeSandboxEnvForTesting(opts SandboxOptions) []string {

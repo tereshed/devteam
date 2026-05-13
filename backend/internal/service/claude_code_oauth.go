@@ -211,7 +211,12 @@ func (p *anthropicDeviceFlow) postForm(ctx context.Context, target string, form 
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		// Sprint 15.m3: транспортная ошибка чтения — ОБЯЗАТЕЛЬНО пробрасываем,
+		// иначе caller получит «status 200, body=пустой» и попытается распарсить token из ничего.
+		return nil, fmt.Errorf("claude-code oauth: read response: %w", readErr)
+	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return body, nil
 	}

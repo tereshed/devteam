@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -92,6 +93,14 @@ func (s *stubOAuthProvider) Revoke(_ context.Context, token string) error {
 
 // --- tests ---
 
+// seedDeviceCode подменяет внутренний store на «уже инициировал user, код наш» — тестам не надо звать Init.
+// Sprint 15.B (B2): без этого CompleteDeviceCode возвращает ErrDeviceCodeOwnerMismatch.
+func seedDeviceCode(svc ClaudeCodeAuthService, uid uuid.UUID, code string) ClaudeCodeAuthService {
+	store := NewInMemoryDeviceCodeStore()
+	store.Put(code, uid, time.Hour)
+	return WithClaudeCodeDeviceStore(svc, store)
+}
+
 func TestClaudeCodeAuth_CompleteDeviceCode_PersistsAndStatus(t *testing.T) {
 	repo := newMockClaudeCodeSubRepo()
 	expires := time.Now().Add(time.Hour)
@@ -104,8 +113,8 @@ func TestClaudeCodeAuth_CompleteDeviceCode_PersistsAndStatus(t *testing.T) {
 			}, nil
 		},
 	}
-	svc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
 	uid := uuid.New()
+	svc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth), uid, "dc-123")
 
 	status, err := svc.CompleteDeviceCode(context.Background(), uid, "dc-123")
 	require.NoError(t, err)
@@ -149,7 +158,7 @@ func TestClaudeCodeAuth_AccessTokenForSandbox_RefreshesExpired(t *testing.T) {
 			}, nil
 		},
 	}
-	svc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
+	svc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth), uid, "dc")
 
 	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
 	require.NoError(t, err)
@@ -170,7 +179,7 @@ func TestClaudeCodeAuth_Revoke_BestEffortAndDeletes(t *testing.T) {
 		},
 		revokeCh: revokeSeen,
 	}
-	svc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
+	svc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth), uid, "dc")
 	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
 	require.NoError(t, err)
 
@@ -188,6 +197,41 @@ func TestClaudeCodeAuth_Revoke_BestEffortAndDeletes(t *testing.T) {
 	assert.False(t, s.Connected)
 }
 
+// Sprint 15.B (B2) security regression — device_code инициатора A нельзя завершить от имени B.
+func TestClaudeCodeAuth_CompleteDeviceCode_RejectsForeignUser(t *testing.T) {
+	repo := newMockClaudeCodeSubRepo()
+	oauth := &stubOAuthProvider{
+		initFn: func(_ context.Context) (*ClaudeCodeDeviceInit, error) {
+			return &ClaudeCodeDeviceInit{
+				DeviceCode: "dc-attacker", UserCode: "ABCD", VerificationURI: "https://x",
+			}, nil
+		},
+		pollFn: func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+			t.Fatal("pollFn must not be reached when owner mismatch")
+			return nil, nil
+		},
+	}
+	svc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
+
+	attacker := uuid.New()
+	victim := uuid.New()
+
+	// Атакующий инициирует flow.
+	init, err := svc.InitDeviceCode(context.Background(), attacker)
+	require.NoError(t, err)
+
+	// Жертва с тем же device_code (через social engineering) пытается завершить — должна получить отказ.
+	_, err = svc.CompleteDeviceCode(context.Background(), victim, init.DeviceCode)
+	require.ErrorIs(t, err, ErrDeviceCodeOwnerMismatch)
+}
+
+// Sprint 15.B (B2) — неизвестный device_code также отвергается (нельзя поллить чужой код вслепую).
+func TestClaudeCodeAuth_CompleteDeviceCode_RejectsUnknownDeviceCode(t *testing.T) {
+	svc := NewClaudeCodeAuthService(newMockClaudeCodeSubRepo(), NoopEncryptor{}, &stubOAuthProvider{})
+	_, err := svc.CompleteDeviceCode(context.Background(), uuid.New(), "never-initiated")
+	require.ErrorIs(t, err, ErrDeviceCodeOwnerMismatch)
+}
+
 func TestClaudeCodeAuth_InitDeviceCode_PassesThrough(t *testing.T) {
 	calls := 0
 	oauth := &stubOAuthProvider{
@@ -201,6 +245,101 @@ func TestClaudeCodeAuth_InitDeviceCode_PassesThrough(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, calls)
 	assert.Equal(t, "dc", init.DeviceCode)
+}
+
+// Sprint 15.minor regression — отмена caller-context ПОСЛЕ начала refresh не приводит
+// к потере свежего refresh_token. WithoutCancel внутри singleflight гарантирует, что
+// persistToken дойдёт до БД.
+func TestClaudeCodeAuth_RefreshOne_CallerCtxCancel_DoesNotLoseToken(t *testing.T) {
+	repo := newMockClaudeCodeSubRepo()
+	uid := uuid.New()
+
+	soon := time.Now().Add(2 * time.Minute)
+	refreshed := time.Now().Add(2 * time.Hour)
+	oauthSlow := &stubOAuthProvider{
+		pollFn: func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+			return &ClaudeCodeOAuthToken{
+				AccessToken: "a", RefreshToken: "r-old", TokenType: "Bearer", ExpiresAt: &soon,
+			}, nil
+		},
+		refreshFn: func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+			// Симулируем задержку: caller отменит свой ctx за это время.
+			time.Sleep(80 * time.Millisecond)
+			return &ClaudeCodeOAuthToken{
+				AccessToken: "fresh", RefreshToken: "r-new", TokenType: "Bearer", ExpiresAt: &refreshed,
+			}, nil
+		},
+	}
+	svc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauthSlow), uid, "dc")
+	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
+	require.NoError(t, err)
+	sub, err := repo.GetByUserID(context.Background(), uid)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	doneCh := make(chan error, 1)
+	go func() { doneCh <- svc.RefreshOne(ctx, sub) }()
+	time.Sleep(20 * time.Millisecond)
+	cancel() // caller отменил context — но refresh должен довести persist до конца.
+
+	select {
+	case <-doneCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RefreshOne did not return")
+	}
+
+	// Проверяем: в БД лежит "fresh" access_token (а НЕ "a" из-за прерывания).
+	tok, err := svc.AccessTokenForSandbox(context.Background(), uid)
+	require.NoError(t, err)
+	assert.Equal(t, "fresh", tok,
+		"persist must complete even after caller ctx is cancelled (M3 WithoutCancel)")
+}
+
+// Sprint 15.B (B3) regression — параллельные RefreshOne для одного user_id коалесцируются.
+// Anthropic ротейтит refresh_token; второй call без singleflight получал бы invalid_grant.
+func TestClaudeCodeAuth_RefreshOne_Singleflight_CoalescesConcurrent(t *testing.T) {
+	repo := newMockClaudeCodeSubRepo()
+	uid := uuid.New()
+
+	var refreshCalls atomic.Int32
+	soon := time.Now().Add(time.Minute)
+	refreshed := time.Now().Add(2 * time.Hour)
+	oauth := &stubOAuthProvider{
+		pollFn: func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+			return &ClaudeCodeOAuthToken{
+				AccessToken: "a", RefreshToken: "r-original", TokenType: "Bearer", ExpiresAt: &soon,
+			}, nil
+		},
+		refreshFn: func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+			refreshCalls.Add(1)
+			// небольшая задержка, чтобы concurrent caller-ы попали в одну группу
+			time.Sleep(30 * time.Millisecond)
+			return &ClaudeCodeOAuthToken{
+				AccessToken: "fresh", RefreshToken: "r-rotated", TokenType: "Bearer", ExpiresAt: &refreshed,
+			}, nil
+		},
+	}
+	svc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth), uid, "dc")
+	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
+	require.NoError(t, err)
+
+	sub, err := repo.GetByUserID(context.Background(), uid)
+	require.NoError(t, err)
+
+	const concurrency = 5
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			_ = svc.RefreshOne(context.Background(), sub)
+		}()
+	}
+	wg.Wait()
+
+	// Должен пройти только один вызов RefreshToken, остальные ждут результат первого.
+	assert.Equal(t, int32(1), refreshCalls.Load(),
+		"singleflight must coalesce concurrent refreshes per user_id")
 }
 
 func TestClaudeCodeTokenRefresher_Tick_RefreshesExpiring(t *testing.T) {
@@ -217,7 +356,7 @@ func TestClaudeCodeTokenRefresher_Tick_RefreshesExpiring(t *testing.T) {
 			return &ClaudeCodeOAuthToken{AccessToken: "new", RefreshToken: "r2", TokenType: "Bearer", ExpiresAt: &refreshed}, nil
 		},
 	}
-	svc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
+	svc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth), uid, "dc")
 	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
 	require.NoError(t, err)
 

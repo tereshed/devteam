@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -36,7 +35,8 @@ func NewAgentSettingsHandler(teamSvc service.TeamService) *AgentSettingsHandler 
 // @Failure 500 {object} apierror.ErrorResponse
 // @Router /agents/{id}/settings [get]
 func (h *AgentSettingsHandler) Get(c *gin.Context) {
-	if _, ok := getUserID(c); !ok {
+	actor, ok := actorFromContext(c)
+	if !ok {
 		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
 		return
 	}
@@ -45,7 +45,7 @@ func (h *AgentSettingsHandler) Get(c *gin.Context) {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid agent id")
 		return
 	}
-	a, err := h.teamSvc.GetAgentSettings(c.Request.Context(), id)
+	a, err := h.teamSvc.GetAgentSettings(c.Request.Context(), actor, id)
 	if err != nil {
 		mapAgentSettingsErr(c, err)
 		return
@@ -69,7 +69,8 @@ func (h *AgentSettingsHandler) Get(c *gin.Context) {
 // @Failure 500 {object} apierror.ErrorResponse
 // @Router /agents/{id}/settings [put]
 func (h *AgentSettingsHandler) Update(c *gin.Context) {
-	if _, ok := getUserID(c); !ok {
+	actor, ok := actorFromContext(c)
+	if !ok {
 		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
 		return
 	}
@@ -83,7 +84,7 @@ func (h *AgentSettingsHandler) Update(c *gin.Context) {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid request body")
 		return
 	}
-	a, err := h.teamSvc.UpdateAgentSettings(c.Request.Context(), id, req)
+	a, err := h.teamSvc.UpdateAgentSettings(c.Request.Context(), actor, id, req)
 	if err != nil {
 		mapAgentSettingsErr(c, err)
 		return
@@ -91,29 +92,33 @@ func (h *AgentSettingsHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, agentSettingsToDTO(a))
 }
 
-func agentSettingsToDTO(a *models.Agent) dto.AgentSettingsResponse {
-	resp := dto.AgentSettingsResponse{
-		AgentID:             a.ID,
-		LLMProviderID:       a.LLMProviderID,
-		CodeBackendSettings: rawOrEmpty(a.CodeBackendSettings),
-		SandboxPermissions:  rawOrEmpty(a.SandboxPermissions),
+// actorFromContext извлекает userID + флаг admin из gin.Context, заполненного middleware.AuthMiddleware.
+// Sprint 15.minor: если userID есть, но roleParse не удался — actor.IsAdmin=false (deny by default).
+// Раньше getUserRole-ошибка глоталась, что эквивалентно ложному "не admin" поведению, но без признака.
+func actorFromContext(c *gin.Context) (service.AgentSettingsActor, bool) {
+	uid, ok := getUserID(c)
+	if !ok {
+		return service.AgentSettingsActor{}, false
 	}
-	if a.CodeBackend != nil {
-		s := string(*a.CodeBackend)
-		resp.CodeBackend = &s
+	role, roleOK := getUserRole(c)
+	if !roleOK {
+		// Auth middleware прошёл — userID есть, но role отсутствует/некорректна.
+		// Безопаснее всего — actor с IsAdmin=false; service-уровень сделает ownership-check.
+		return service.AgentSettingsActor{UserID: uid, IsAdmin: false}, true
 	}
-	return resp
+	return service.AgentSettingsActor{UserID: uid, IsAdmin: role == models.RoleAdmin}, true
 }
 
-func rawOrEmpty(b []byte) json.RawMessage {
-	if len(b) == 0 {
-		return json.RawMessage("{}")
-	}
-	return json.RawMessage(b)
+// agentSettingsToDTO делегирует в общий dto.AgentSettingsResponseFromModel (Sprint 15.Major DRY).
+func agentSettingsToDTO(a *models.Agent) dto.AgentSettingsResponse {
+	return dto.AgentSettingsResponseFromModel(a)
 }
 
 func mapAgentSettingsErr(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, service.ErrTeamAgentAccessDenied):
+		// Не утекаем "такой агент есть, просто не ваш" — отдаём 404 как при отсутствии.
+		apierror.JSON(c, http.StatusNotFound, "agent_not_found", "agent not found")
 	case errors.Is(err, service.ErrTeamAgentNotFound):
 		apierror.JSON(c, http.StatusNotFound, "agent_not_found", err.Error())
 	case errors.Is(err, service.ErrTeamAgentInvalidCodeBackend):

@@ -84,6 +84,33 @@ func TestSandboxBundle_PermissionModeAcceptEdits(t *testing.T) {
 	assert.Contains(t, env, EnvClaudeCodePermissionMode+"=acceptEdits")
 }
 
+// Sprint 15.M5 regression: невалидный mode не должен попасть в env
+// (попытка инъекции "default\n--evil-flag" игнорируется).
+func TestSandboxBundle_PermissionMode_RejectsInjection(t *testing.T) {
+	cases := []string{
+		"default\n--evil-flag",
+		"acceptEdits;rm -rf /",
+		"bogus",
+		"--dangerously-skip-permissions",
+	}
+	for _, mode := range cases {
+		opts := SandboxOptions{
+			TaskID:        "00000000-0000-0000-0000-000000000005",
+			RepoURL:       "https://example.com/r.git",
+			Branch:        "main",
+			Backend:       "claude-code",
+			AgentSettings: &AgentSettingsBundle{PermissionMode: mode},
+		}
+		env := mergeSandboxEnv(opts)
+		for _, e := range env {
+			assert.False(t,
+				len(e) > len(EnvClaudeCodePermissionMode) &&
+					e[:len(EnvClaudeCodePermissionMode)] == EnvClaudeCodePermissionMode,
+				"permission_mode=%q must not be exported, got %q", mode, e)
+		}
+	}
+}
+
 func readTarNames(t *testing.T, rc io.ReadCloser) []string {
 	t.Helper()
 	tr := tar.NewReader(rc)

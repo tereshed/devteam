@@ -31,12 +31,30 @@ type FreeClaudeProxyConfigProvider struct {
 	DefaultModel string `yaml:"default_model,omitempty"`
 }
 
+// defaultProxyRouteModels — Sprint 15.m1: «anthropic-style» имена моделей, на которые
+// бэкенд по умолчанию маршрутизирует Claude Code → первый по алфавиту upstream-провайдер.
+// Список расширяется через WithDefaultRouteModels (например, при появлении Sonnet/Haiku новой версии).
+var defaultProxyRouteModels = []string{
+	"claude-3-5-sonnet-20240620",
+	"claude-3-haiku-20240307",
+}
+
 // FreeClaudeProxyConfigBuilder — собирает конфиг прокси из БД и записывает на диск (Sprint 15.17).
 type FreeClaudeProxyConfigBuilder struct {
 	providers    repository.LLMProviderRepository
 	secrets      ClaudeCodeProxySecrets
 	port         int
 	serviceToken string
+	routeModels  []string
+}
+
+// WithDefaultRouteModels позволяет переопределить список «anthropic-style» имён моделей
+// для дефолтного routing'а (Sprint 15.m1).
+func (b *FreeClaudeProxyConfigBuilder) WithDefaultRouteModels(models []string) *FreeClaudeProxyConfigBuilder {
+	if len(models) > 0 {
+		b.routeModels = append([]string(nil), models...)
+	}
+	return b
 }
 
 // ClaudeCodeProxySecrets — источник дешифрованных API-ключей для апстримов.
@@ -61,6 +79,7 @@ func NewFreeClaudeProxyConfigBuilder(
 		secrets:      secrets,
 		port:         port,
 		serviceToken: serviceToken,
+		routeModels:  append([]string(nil), defaultProxyRouteModels...),
 	}
 }
 
@@ -102,12 +121,13 @@ func (b *FreeClaudeProxyConfigBuilder) Build(ctx context.Context) (*FreeClaudePr
 		return cfg.Providers[i].Name < cfg.Providers[j].Name
 	})
 
-	// Минимальный default routing: claude-3-5-sonnet / claude-3-haiku отправляем
-	// на первый провайдер (стабильность порядка — алфавит выше).
+	// Sprint 15.m1: routing-таблица берётся из b.routeModels (с дефолтом defaultProxyRouteModels).
+	// Первый по алфавиту upstream — единый таргет для всех известных «anthropic-style» имён.
 	if len(cfg.Providers) > 0 {
 		first := cfg.Providers[0].Name
-		cfg.Routes["claude-3-5-sonnet-20240620"] = first
-		cfg.Routes["claude-3-haiku-20240307"] = first
+		for _, m := range b.routeModels {
+			cfg.Routes[m] = first
+		}
 	}
 	return cfg, nil
 }

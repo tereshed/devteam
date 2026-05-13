@@ -13,6 +13,12 @@ void main() {
     WidgetTester tester, {
     required AgentSettingsModel current,
   }) async {
+    // Sprint 15.R5-M3/C3: дефолтный test viewport 800×600 даёт ConstrainedBox(maxWidth=720)
+    // через LayoutBuilder, и 4-я scrollable Tab «Permissions» уезжает за правую границу
+    // viewport'а — tap по offset 754.x попадает в barrier. Увеличиваем виртуальный экран,
+    // чтобы все 4 таба умещались без скролла.
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
         retry: (_, _) => null,

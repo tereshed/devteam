@@ -1068,4 +1068,218 @@ class AppLocalizationsRu extends AppLocalizations {
   String chatMessageMarkdownImageAlt(String alt) {
     return '[$alt]';
   }
+
+  @override
+  String get refresh => 'Обновить';
+
+  @override
+  String get copy => 'Скопировать';
+
+  @override
+  String get openInBrowser => 'Открыть в браузере';
+
+  @override
+  String get fieldRequired => 'Обязательное поле';
+
+  @override
+  String get globalSettingsTabLLMProviders => 'LLM-провайдеры';
+
+  @override
+  String get globalSettingsTabClaudeCode => 'Claude Code';
+
+  @override
+  String get globalSettingsTabDevTeam => 'DevTeam';
+
+  @override
+  String get llmProvidersSectionTitle => 'LLM-провайдеры';
+
+  @override
+  String get llmProvidersAdd => 'Добавить';
+
+  @override
+  String get llmProvidersEmpty => 'Провайдеры ещё не настроены.';
+
+  @override
+  String get llmProvidersLoadError => 'Не удалось загрузить список провайдеров';
+
+  @override
+  String get llmProvidersHealthTooltip => 'Проверка здоровья';
+
+  @override
+  String get llmProvidersEditTooltip => 'Редактировать';
+
+  @override
+  String get llmProvidersDeleteTooltip => 'Удалить';
+
+  @override
+  String get llmProvidersHealthOK => 'Провайдер доступен';
+
+  @override
+  String get llmProvidersHealthFail => 'Проверка не пройдена';
+
+  @override
+  String get llmProvidersDeleteTitle => 'Удалить провайдера?';
+
+  @override
+  String llmProvidersDeleteConfirm(String name) {
+    return 'Удалить «$name»? Агенты, привязанные к нему, останутся без провайдера.';
+  }
+
+  @override
+  String get llmProvidersDeleteFail => 'Ошибка удаления';
+
+  @override
+  String get llmProvidersAddTitle => 'Новый LLM-провайдер';
+
+  @override
+  String get llmProvidersEditTitle => 'Редактирование провайдера';
+
+  @override
+  String get llmProvidersFieldName => 'Имя';
+
+  @override
+  String get llmProvidersFieldKind => 'Тип';
+
+  @override
+  String get llmProvidersFieldBaseURL => 'Base URL (опционально)';
+
+  @override
+  String get llmProvidersFieldCredential => 'API-ключ / токен';
+
+  @override
+  String get llmProvidersFieldCredentialOptional =>
+      'API-ключ / токен (пусто — не менять)';
+
+  @override
+  String get llmProvidersFieldDefaultModel => 'Модель по умолчанию';
+
+  @override
+  String get llmProvidersFieldUseProxy =>
+      'Маршрутизировать через free-claude-proxy';
+
+  @override
+  String get llmProvidersFieldEnabled => 'Включён';
+
+  @override
+  String get llmProvidersTest => 'Тест';
+
+  @override
+  String get llmProvidersTestOK => 'Тестовое подключение успешно';
+
+  @override
+  String get llmProvidersTestFail => 'Тест подключения не пройден';
+
+  @override
+  String get claudeCodeAuthLoadError =>
+      'Не удалось загрузить статус подписки Claude Code';
+
+  @override
+  String get claudeCodeAuthConnectedTitle => 'Подписка Claude Code подключена';
+
+  @override
+  String get claudeCodeAuthTokenType => 'Тип токена';
+
+  @override
+  String get claudeCodeAuthScopes => 'Scopes';
+
+  @override
+  String get claudeCodeAuthExpiresAt => 'Истекает';
+
+  @override
+  String get claudeCodeAuthLastRefreshedAt => 'Последнее обновление';
+
+  @override
+  String get claudeCodeAuthRevoke => 'Отозвать';
+
+  @override
+  String get claudeCodeAuthRevokeOK => 'Подписка отозвана';
+
+  @override
+  String get claudeCodeAuthDisconnectedTitle => 'Подписка Claude Code';
+
+  @override
+  String get claudeCodeAuthDisconnectedHint =>
+      'Войдите по подписке Claude Code, чтобы агенты использовали OAuth-токен вместо долгоживущего API-ключа.';
+
+  @override
+  String get claudeCodeAuthLogin => 'Войти по подписке';
+
+  @override
+  String get claudeCodeAuthDeviceFlowTitle =>
+      'Подтверждение на стороне Anthropic';
+
+  @override
+  String get claudeCodeAuthEnterCodeHint =>
+      'Откройте ссылку ниже в любом браузере и введите этот код, чтобы авторизовать DevTeam:';
+
+  @override
+  String get claudeCodeAuthWaiting => 'Ожидание подтверждения…';
+
+  @override
+  String get agentSandboxSettingsTitle => 'Дополнительные настройки агента';
+
+  @override
+  String get agentSandboxSettingsLoadError =>
+      'Не удалось загрузить настройки агента';
+
+  @override
+  String get agentSandboxSettingsTabProvider => 'Модель / провайдер';
+
+  @override
+  String get agentSandboxSettingsTabMCP => 'MCP-серверы';
+
+  @override
+  String get agentSandboxSettingsTabSkills => 'Skills';
+
+  @override
+  String get agentSandboxSettingsTabPermissions => 'Разрешения';
+
+  @override
+  String get agentSandboxSettingsProviderLabel => 'LLM-провайдер';
+
+  @override
+  String get agentSandboxSettingsProviderNone => '— нет —';
+
+  @override
+  String get agentSandboxSettingsCodeBackendLabel => 'Code backend';
+
+  @override
+  String get agentSandboxSettingsMCPHelper =>
+      'JSON-массив привязок MCP — см. документацию.';
+
+  @override
+  String get agentSandboxSettingsSkillsHelper =>
+      'JSON-массив Skills (Claude Code) — см. документацию.';
+
+  @override
+  String get agentSandboxSettingsDefaultMode => 'Режим по умолчанию';
+
+  @override
+  String get agentSandboxSettingsAllow => 'Allow';
+
+  @override
+  String get agentSandboxSettingsDeny => 'Deny';
+
+  @override
+  String get agentSandboxSettingsAsk => 'Ask';
+
+  @override
+  String get agentSandboxSettingsJsonInvalid => 'Некорректный JSON';
+
+  @override
+  String get agentSandboxSettingsPatternHint =>
+      'Read | Edit | Bash(go test:*) | mcp__server';
+
+  @override
+  String get agentSandboxRevokeConfirmTitle => 'Отозвать подписку Claude Code?';
+
+  @override
+  String get agentSandboxRevokeConfirmBody =>
+      'Агенты будут использовать ANTHROPIC_API_KEY (если задан) при следующих sandbox-задачах. Подписку можно подключить заново в любой момент.';
+
+  @override
+  String get teamAgentEditAdvanced => 'Дополнительно';
+
+  @override
+  String get commonRequestFailed => 'Ошибка запроса';
 }

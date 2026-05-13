@@ -274,7 +274,10 @@ func (s *conversationService) DeleteConversation(ctx context.Context, userID, id
 		return err
 	}
 
-	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+	// Sprint 15.N1: возвращаем результат транзакции в переменную, чтобы вызов
+	// deleteConversationAsync после успешного commit'а перестал быть unreachable
+	// (go vet ловит это; в предыдущей итерации регрессия скрыла очистку Weaviate-индекса).
+	if err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.convRepo.Delete(txCtx, conv.ProjectID, id); err != nil {
 			return err
 		}
@@ -287,11 +290,12 @@ func (s *conversationService) DeleteConversation(ctx context.Context, userID, id
 			TraceID:        getTraceID(ctx),
 		})
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
 
-	// Удаляем из индекса после успешного коммита
+	// Удаляем из индекса после успешного коммита (вне транзакции, чтобы Weaviate-сбой не откатывал DELETE).
 	s.deleteConversationAsync(ctx, conv.ProjectID, id)
-
 	return nil
 }
 

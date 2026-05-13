@@ -1064,4 +1064,217 @@ class AppLocalizationsEn extends AppLocalizations {
   String chatMessageMarkdownImageAlt(String alt) {
     return '[$alt]';
   }
+
+  @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get copy => 'Copy';
+
+  @override
+  String get openInBrowser => 'Open in browser';
+
+  @override
+  String get fieldRequired => 'Required';
+
+  @override
+  String get globalSettingsTabLLMProviders => 'LLM providers';
+
+  @override
+  String get globalSettingsTabClaudeCode => 'Claude Code';
+
+  @override
+  String get globalSettingsTabDevTeam => 'DevTeam';
+
+  @override
+  String get llmProvidersSectionTitle => 'LLM providers';
+
+  @override
+  String get llmProvidersAdd => 'Add';
+
+  @override
+  String get llmProvidersEmpty => 'No LLM providers configured yet.';
+
+  @override
+  String get llmProvidersLoadError => 'Failed to load LLM providers';
+
+  @override
+  String get llmProvidersHealthTooltip => 'Health check';
+
+  @override
+  String get llmProvidersEditTooltip => 'Edit';
+
+  @override
+  String get llmProvidersDeleteTooltip => 'Delete';
+
+  @override
+  String get llmProvidersHealthOK => 'Provider is healthy';
+
+  @override
+  String get llmProvidersHealthFail => 'Health check failed';
+
+  @override
+  String get llmProvidersDeleteTitle => 'Delete LLM provider?';
+
+  @override
+  String llmProvidersDeleteConfirm(String name) {
+    return 'Delete provider \"$name\"? Agents pointing at it will be left without a provider.';
+  }
+
+  @override
+  String get llmProvidersDeleteFail => 'Delete failed';
+
+  @override
+  String get llmProvidersAddTitle => 'Add LLM provider';
+
+  @override
+  String get llmProvidersEditTitle => 'Edit LLM provider';
+
+  @override
+  String get llmProvidersFieldName => 'Name';
+
+  @override
+  String get llmProvidersFieldKind => 'Kind';
+
+  @override
+  String get llmProvidersFieldBaseURL => 'Base URL (optional)';
+
+  @override
+  String get llmProvidersFieldCredential => 'API key / token';
+
+  @override
+  String get llmProvidersFieldCredentialOptional =>
+      'API key / token (leave empty to keep current)';
+
+  @override
+  String get llmProvidersFieldDefaultModel => 'Default model';
+
+  @override
+  String get llmProvidersFieldUseProxy => 'Route via free-claude-proxy';
+
+  @override
+  String get llmProvidersFieldEnabled => 'Enabled';
+
+  @override
+  String get llmProvidersTest => 'Test';
+
+  @override
+  String get llmProvidersTestOK => 'Test connection succeeded';
+
+  @override
+  String get llmProvidersTestFail => 'Test connection failed';
+
+  @override
+  String get claudeCodeAuthLoadError =>
+      'Failed to load Claude Code subscription status';
+
+  @override
+  String get claudeCodeAuthConnectedTitle =>
+      'Claude Code subscription connected';
+
+  @override
+  String get claudeCodeAuthTokenType => 'Token type';
+
+  @override
+  String get claudeCodeAuthScopes => 'Scopes';
+
+  @override
+  String get claudeCodeAuthExpiresAt => 'Expires at';
+
+  @override
+  String get claudeCodeAuthLastRefreshedAt => 'Last refreshed at';
+
+  @override
+  String get claudeCodeAuthRevoke => 'Revoke';
+
+  @override
+  String get claudeCodeAuthRevokeOK => 'Subscription revoked';
+
+  @override
+  String get claudeCodeAuthDisconnectedTitle => 'Claude Code subscription';
+
+  @override
+  String get claudeCodeAuthDisconnectedHint =>
+      'Sign in with your Claude Code subscription to let agents authenticate via OAuth instead of a long-lived API key.';
+
+  @override
+  String get claudeCodeAuthLogin => 'Sign in with subscription';
+
+  @override
+  String get claudeCodeAuthDeviceFlowTitle => 'Authorize on Anthropic';
+
+  @override
+  String get claudeCodeAuthEnterCodeHint =>
+      'Open the link below in any browser and enter this code to authorize DevTeam:';
+
+  @override
+  String get claudeCodeAuthWaiting => 'Waiting for authorization…';
+
+  @override
+  String get agentSandboxSettingsTitle => 'Agent advanced settings';
+
+  @override
+  String get agentSandboxSettingsLoadError => 'Failed to load agent settings';
+
+  @override
+  String get agentSandboxSettingsTabProvider => 'Model / provider';
+
+  @override
+  String get agentSandboxSettingsTabMCP => 'MCP servers';
+
+  @override
+  String get agentSandboxSettingsTabSkills => 'Skills';
+
+  @override
+  String get agentSandboxSettingsTabPermissions => 'Permissions';
+
+  @override
+  String get agentSandboxSettingsProviderLabel => 'LLM provider';
+
+  @override
+  String get agentSandboxSettingsProviderNone => '— none —';
+
+  @override
+  String get agentSandboxSettingsCodeBackendLabel => 'Code backend';
+
+  @override
+  String get agentSandboxSettingsMCPHelper =>
+      'JSON array of MCP server bindings: see docs.';
+
+  @override
+  String get agentSandboxSettingsSkillsHelper =>
+      'JSON array of Claude Code skill refs: see docs.';
+
+  @override
+  String get agentSandboxSettingsDefaultMode => 'Default mode';
+
+  @override
+  String get agentSandboxSettingsAllow => 'Allow';
+
+  @override
+  String get agentSandboxSettingsDeny => 'Deny';
+
+  @override
+  String get agentSandboxSettingsAsk => 'Ask';
+
+  @override
+  String get agentSandboxSettingsJsonInvalid => 'JSON is invalid';
+
+  @override
+  String get agentSandboxSettingsPatternHint =>
+      'Read | Edit | Bash(go test:*) | mcp__server';
+
+  @override
+  String get agentSandboxRevokeConfirmTitle =>
+      'Revoke Claude Code subscription?';
+
+  @override
+  String get agentSandboxRevokeConfirmBody =>
+      'Agents will fall back to ANTHROPIC_API_KEY (if configured) for sandbox sessions. You can re-connect anytime.';
+
+  @override
+  String get teamAgentEditAdvanced => 'Advanced';
+
+  @override
+  String get commonRequestFailed => 'Request failed';
 }

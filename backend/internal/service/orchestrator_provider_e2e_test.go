@@ -75,7 +75,7 @@ func TestSprint15_35_OrchestratorFailsFastWhenProxyDown(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	checker := NewFreeClaudeProxyHealthCheck(srv.URL)
+	checker := NewFreeClaudeProxyHealthCheck(srv.URL, "")
 	require.Error(t, checker.Check(context.Background()),
 		"unhealthy proxy must surface as error so orchestrator can fail-fast")
 }

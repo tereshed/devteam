@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -24,6 +25,9 @@ var (
 	ErrTeamAgentInvalidCodeBackend = errors.New("invalid code_backend")
 	ErrTeamAgentConflict           = errors.New("agent update conflict")
 	ErrTeamAgentInvalidToolBindings = errors.New("invalid or inactive tool_definition_id in tool_bindings")
+
+	// Sprint 15.B (B4): ownership-check для /agents/:id/settings и MCP-инструментов agent_settings_*.
+	ErrTeamAgentAccessDenied = errors.New("agent does not belong to current user's project")
 )
 
 // TeamService минимальная бизнес-обёртка над TeamRepository.
@@ -32,8 +36,16 @@ type TeamService interface {
 	Update(ctx context.Context, projectID uuid.UUID, req dto.UpdateTeamRequest) (*models.Team, error)
 	PatchAgent(ctx context.Context, projectID, agentID uuid.UUID, req dto.PatchAgentRequest) (*models.Team, error)
 	// Sprint 15.23 — per-agent settings (code_backend_settings + sandbox_permissions + llm_provider_id).
-	GetAgentSettings(ctx context.Context, agentID uuid.UUID) (*models.Agent, error)
-	UpdateAgentSettings(ctx context.Context, agentID uuid.UUID, req dto.UpdateAgentSettingsRequest) (*models.Agent, error)
+	// Sprint 15.B (B4): актёр (userID, isAdmin) обязательно проверяется на ownership через
+	// agent → team → project.user_id. Admin (isAdmin=true) пропускает проверку.
+	GetAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID) (*models.Agent, error)
+	UpdateAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID, req dto.UpdateAgentSettingsRequest) (*models.Agent, error)
+}
+
+// AgentSettingsActor — кто делает запрос. Sprint 15.B (B4).
+type AgentSettingsActor struct {
+	UserID  uuid.UUID
+	IsAdmin bool
 }
 
 type teamService struct {
@@ -193,7 +205,12 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 
 // GetAgentSettings возвращает агента целиком — handler выбирает нужные поля
 // (llm_provider_id, code_backend, code_backend_settings, sandbox_permissions).
-func (s *teamService) GetAgentSettings(ctx context.Context, agentID uuid.UUID) (*models.Agent, error) {
+//
+// Sprint 15.B (B4): проверяется, что актёр — admin или owner проекта команды агента.
+func (s *teamService) GetAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID) (*models.Agent, error) {
+	if err := s.assertAgentOwner(ctx, actor, agentID); err != nil {
+		return nil, err
+	}
 	a, err := s.teamRepo.GetAgentByID(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, repository.ErrTeamAgentNotFound) {
@@ -205,11 +222,16 @@ func (s *teamService) GetAgentSettings(ctx context.Context, agentID uuid.UUID) (
 }
 
 // UpdateAgentSettings применяет частичное обновление полей агента (Sprint 15.23).
+// Sprint 15.B (B4): тот же ownership-check, что и в GetAgentSettings.
+//
 // Валидируется:
 //   - sandbox_permissions через ValidateSandboxPermissions;
 //   - code_backend через models.CodeBackend.IsValid;
 //   - code_backend_settings — что это валидный JSON-объект (структура — ответственность UI и MCP-инструментов).
-func (s *teamService) UpdateAgentSettings(ctx context.Context, agentID uuid.UUID, req dto.UpdateAgentSettingsRequest) (*models.Agent, error) {
+func (s *teamService) UpdateAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID, req dto.UpdateAgentSettingsRequest) (*models.Agent, error) {
+	if err := s.assertAgentOwner(ctx, actor, agentID); err != nil {
+		return nil, err
+	}
 	a, err := s.teamRepo.GetAgentByID(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, repository.ErrTeamAgentNotFound) {
@@ -243,6 +265,12 @@ func (s *teamService) UpdateAgentSettings(ctx context.Context, agentID uuid.UUID
 		if !isJSONObject(req.CodeBackendSettings) {
 			return nil, fmt.Errorf("code_backend_settings must be a JSON object")
 		}
+		// Sprint 15.N4 (extends M1): строгая валидация — DisallowUnknownFields отсекает мусор,
+		// плюс regex-проверки на model/MCP-имена/env-ключи. Без этого «{"shell":"/bin/bash"}»
+		// сохранится и попадёт в settings.json sandbox-контейнера.
+		if err := validateCodeBackendSettingsStrict(req.CodeBackendSettings); err != nil {
+			return nil, fmt.Errorf("code_backend_settings: %w", err)
+		}
 		a.CodeBackendSettings = append([]byte(nil), req.CodeBackendSettings...)
 	}
 
@@ -270,4 +298,143 @@ func (s *teamService) UpdateAgentSettings(ctx context.Context, agentID uuid.UUID
 func isJSONObject(raw []byte) bool {
 	trimmed := bytes.TrimLeft(raw, " \t\n\r")
 	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
+// Sprint 15.N4 — regex'ы для validateCodeBackendSettingsStrict.
+var (
+	// model: "anthropic/claude-3.5-sonnet", "gpt-4o", "claude-haiku-4-5-20251001" — буквы/цифры/-/_/./
+	// Sprint 15.minor: убираем @ — в реальных именах LLM-моделей не встречается.
+	codeBackendModelRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_./\-]*$`)
+	// MCP server name: соответствует MCPServerRegistry.Name pattern.
+	codeBackendMCPNameRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+	// env-ключ: shell-конвенция UPPER_SNAKE_CASE, без spec-символов и инъекций.
+	codeBackendEnvKeyRE = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+	// Skill name: буквы/цифры/-/_ (как у Claude Code skills).
+	codeBackendSkillNameRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+)
+
+// validateCodeBackendSettingsStrict — Sprint 15.N4 + Major fixes.
+// Decoder с DisallowUnknownFields ловит extra-ключи на верхнем уровне.
+// Дополнительно проводим РЕКУРСИВНУЮ верификацию: парсим в map[string]any и сверяем
+// набор ключей в подобъектах (mcp_servers[], skills[]) с whitelist'ом.
+// Также белый список Hooks-имён (Claude Code CLI хуки выполняют shell — без whitelist'а
+// PUT /agents/{id}/settings становится вектором инъекции).
+func validateCodeBackendSettingsStrict(raw []byte) error {
+	var parsed AgentCodeBackendSettings
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&parsed); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	if parsed.Model != "" && !codeBackendModelRE.MatchString(parsed.Model) {
+		return fmt.Errorf("model contains disallowed characters: %q", parsed.Model)
+	}
+	for i, ref := range parsed.MCPServers {
+		if !codeBackendMCPNameRE.MatchString(ref.Name) {
+			return fmt.Errorf("mcp_servers[%d].name must match [a-zA-Z][a-zA-Z0-9_-]*, got %q", i, ref.Name)
+		}
+		for k := range ref.Env {
+			if !codeBackendEnvKeyRE.MatchString(k) {
+				return fmt.Errorf("mcp_servers[%d].env[%q]: key must be UPPER_SNAKE_CASE", i, k)
+			}
+		}
+	}
+	for i, sk := range parsed.Skills {
+		if !codeBackendSkillNameRE.MatchString(sk.Name) {
+			return fmt.Errorf("skills[%d].name must match [a-zA-Z][a-zA-Z0-9_-]*, got %q", i, sk.Name)
+		}
+		if !sk.Source.IsValid() {
+			return fmt.Errorf("skills[%d].source invalid: %q", i, sk.Source)
+		}
+	}
+	for k, v := range parsed.Env {
+		if !codeBackendEnvKeyRE.MatchString(k) {
+			return fmt.Errorf("env[%q]: key must be UPPER_SNAKE_CASE", k)
+		}
+		// Sprint 15.minor: env-value не должен содержать newline / shell-meta —
+		// иначе через ANTHROPIC_API_KEY=$(rm -rf) можно подсунуть команду.
+		if strings.ContainsAny(v, "\n\r\x00") {
+			return fmt.Errorf("env[%q]: value contains control characters", k)
+		}
+	}
+	// Sprint 15.Major: hooks whitelist + Sprint 15.minor: value structure check.
+	// Claude Code CLI поддерживает hooks (event-name → []{matcher, hooks: []{type, command}}).
+	// Без проверки value — PUT /agents/{id}/settings → settings.json → произвольная shell-команда.
+	for hookName, hookValue := range parsed.Hooks {
+		if !claudeCodeHookNameRE.MatchString(hookName) {
+			return fmt.Errorf("hooks[%q]: hook name not in allowlist", hookName)
+		}
+		// Sprint 15.minor: value должен быть JSON-массивом объектов с matcher/hooks-структурой,
+		// а не raw shell-командой типа "echo pwned" или числом. Сейчас Claude Code CLI ожидает массив.
+		if _, isArr := hookValue.([]any); !isArr {
+			return fmt.Errorf("hooks[%q]: value must be array (Claude Code hooks schema)", hookName)
+		}
+	}
+	// Sprint 15.Major recursive DisallowUnknownFields: проверяем raw JSON на extra-keys
+	// в mcp_servers[] и skills[] (Go json.Decoder.DisallowUnknownFields рекурсивен только
+	// при использовании конкретных struct'ур, но Env-карты и hooks отображены в map[string]any,
+	// где extra-ключи проходят — поэтому верифицируем top-level отдельно).
+	return validateCodeBackendNestedKeys(raw)
+}
+
+// claudeCodeHookNameRE — белый список имён хуков Claude Code CLI.
+// Список расширяется по мере необходимости; неизвестное имя считается ошибкой.
+// Имена должны соответствовать docs.claude.com (PreToolUse, PostToolUse, Notification и т.п.).
+var claudeCodeHookNameRE = regexp.MustCompile(
+	`^(PreToolUse|PostToolUse|Notification|Stop|SubagentStop|UserPromptSubmit)$`)
+
+// validateCodeBackendNestedKeys — Sprint 15.Major recursive DisallowUnknownFields.
+// Парсим в map[string]any и явно whitelist'им ключи MCPServerRef/AgentSkillRef.
+var allowedMCPServerRefKeys = map[string]struct{}{"name": {}, "env": {}}
+var allowedSkillRefKeys = map[string]struct{}{"name": {}, "source": {}, "config": {}}
+
+func validateCodeBackendNestedKeys(raw []byte) error {
+	var top map[string]any
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return nil // top-level уже отвалидировано через Decoder.
+	}
+	if arr, ok := top["mcp_servers"].([]any); ok {
+		for i, e := range arr {
+			obj, _ := e.(map[string]any)
+			for k := range obj {
+				if _, ok := allowedMCPServerRefKeys[k]; !ok {
+					return fmt.Errorf("mcp_servers[%d]: unknown field %q", i, k)
+				}
+			}
+		}
+	}
+	if arr, ok := top["skills"].([]any); ok {
+		for i, e := range arr {
+			obj, _ := e.(map[string]any)
+			for k := range obj {
+				if _, ok := allowedSkillRefKeys[k]; !ok {
+					return fmt.Errorf("skills[%d]: unknown field %q", i, k)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// assertAgentOwner — Sprint 15.B (B4): admin или owner проекта команды агента.
+// Если агента нет — возвращаем ErrTeamAgentNotFound (не «access denied», чтобы не утекать существование чужого ID).
+func (s *teamService) assertAgentOwner(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID) error {
+	if actor.IsAdmin {
+		return nil
+	}
+	if actor.UserID == uuid.Nil {
+		return ErrTeamAgentAccessDenied
+	}
+	owner, err := s.teamRepo.GetAgentOwnerUserID(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, repository.ErrTeamAgentNotFound) {
+			return ErrTeamAgentNotFound
+		}
+		return err
+	}
+	if owner != actor.UserID {
+		// Не утекаем «такого агента нет» vs «нет доступа» — оба → 404 на handler-уровне.
+		return ErrTeamAgentNotFound
+	}
+	return nil
 }

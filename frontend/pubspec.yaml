@@ -19,6 +19,9 @@ dependencies:
   
   # Routing
   go_router: ^17.0.0
+
+  # External URLs (Sprint 15: Claude Code OAuth verification_uri).
+  url_launcher: ^6.3.0
   
   # Secure Storage
   flutter_secure_storage: ^9.0.0

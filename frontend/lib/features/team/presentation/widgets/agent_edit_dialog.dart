@@ -564,37 +564,50 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                 const SizedBox(height: 16),
                 _buildToolsSection(l10n, theme),
                 const SizedBox(height: 24),
-                Row(
+                // Sprint 15.N6: переключаем фиксированный Row на Wrap — кнопки переносятся
+                // на 2 ряда при недостатке ширины (на портретном телефоне overflow=29px).
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    TextButton(
-                      onPressed: _saving ? null : _onCancel,
-                      child: Text(l10n.teamAgentEditCancel),
-                    ),
-                    const SizedBox(width: 8),
-                    // Sprint 15.32 — advanced-настройки (модель/MCP/Skills/permissions).
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.tune),
-                      onPressed: _saving
-                          ? null
-                          : () => showAgentSandboxSettingsDialog(
-                                context,
-                                agentID: widget.agent.id,
-                              ),
-                      label: Text(l10n.teamAgentEditAdvanced),
-                    ),
-                    const Spacer(),
-                    if (_saving)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 12),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                    Wrap(
+                      spacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        TextButton(
+                          onPressed: _saving ? null : _onCancel,
+                          child: Text(l10n.teamAgentEditCancel),
                         ),
-                      ),
-                    FilledButton(
-                      onPressed: _saving ? null : _save,
-                      child: Text(l10n.teamAgentEditSave),
+                        // Sprint 15.32 — advanced-настройки (модель/MCP/Skills/permissions).
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.tune),
+                          onPressed: _saving
+                              ? null
+                              : () => showAgentSandboxSettingsDialog(
+                                    context,
+                                    agentID: widget.agent.id,
+                                  ),
+                          label: Text(l10n.teamAgentEditAdvanced),
+                        ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (_saving)
+                          const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        FilledButton(
+                          onPressed: _saving ? null : _save,
+                          child: Text(l10n.teamAgentEditSave),
+                        ),
+                      ],
                     ),
                   ],
                 ),

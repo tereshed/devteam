@@ -1,23 +1,49 @@
 import 'package:dio/dio.dart';
+import 'package:frontend/core/api/dio_repository_error_map.dart';
+import 'package:frontend/features/team/domain/agent_settings_exceptions.dart';
 import 'package:frontend/features/team/domain/models/agent_settings_model.dart';
 
-/// Sprint 15.29 — HTTP-слой per-agent settings (15.23: /agents/:id/settings).
+/// Sprint 15.29 / 15.B (F9) — HTTP-слой per-agent settings.
+/// Использует канонический [mapDioExceptionForRepository].
 class AgentSettingsRepository {
   AgentSettingsRepository({required Dio dio}) : _dio = dio;
 
   final Dio _dio;
 
-  /// GET /agents/:id/settings — текущие настройки агента.
-  Future<AgentSettingsModel> get(String agentID) async {
-    final resp =
-        await _dio.get<Map<String, dynamic>>('/agents/$agentID/settings');
-    return AgentSettingsModel.fromJson(resp.data!);
+  Exception _mapError(DioException error) {
+    return mapDioExceptionForRepository(
+      error,
+      onCancelled: (msg, err) =>
+          AgentSettingsCancelledException(msg, originalError: err),
+      onMissingStatusCode: (msg, err, _) =>
+          AgentSettingsApiException(msg, originalError: err),
+      on401: unauthorizedFromDio,
+      on403: (msg, err, code) => AgentSettingsForbiddenException(msg,
+          originalError: err, apiErrorCode: code),
+      on404: (msg, err, code) => AgentSettingsNotFoundException(msg,
+          originalError: err, apiErrorCode: code),
+      on409: (msg, err, code) => AgentSettingsConflictException(msg,
+          originalError: err, apiErrorCode: code),
+      onOtherHttp: (msg, err, code, status) => AgentSettingsApiException(msg,
+          statusCode: status, originalError: err, apiErrorCode: code),
+    );
   }
 
-  /// PUT /agents/:id/settings — частичное обновление.
-  ///
-  /// Любое из полей может быть опущено; пустой Map<String, dynamic> на стороне UI
-  /// означает «не передавать» (репозиторий проверяет null).
+  Future<AgentSettingsModel> get(
+    String agentID, {
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.get<Map<String, dynamic>>(
+        '/agents/$agentID/settings',
+        cancelToken: cancelToken,
+      );
+      return AgentSettingsModel.fromJson(resp.data!);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
   Future<AgentSettingsModel> update(
     String agentID, {
     String? llmProviderID,
@@ -25,6 +51,7 @@ class AgentSettingsRepository {
     String? codeBackend,
     Map<String, dynamic>? codeBackendSettings,
     Map<String, dynamic>? sandboxPermissions,
+    CancelToken? cancelToken,
   }) async {
     final body = <String, dynamic>{
       if (llmProviderID != null) 'llm_provider_id': llmProviderID,
@@ -35,10 +62,15 @@ class AgentSettingsRepository {
       if (sandboxPermissions != null)
         'sandbox_permissions': sandboxPermissions,
     };
-    final resp = await _dio.put<Map<String, dynamic>>(
-      '/agents/$agentID/settings',
-      data: body,
-    );
-    return AgentSettingsModel.fromJson(resp.data!);
+    try {
+      final resp = await _dio.put<Map<String, dynamic>>(
+        '/agents/$agentID/settings',
+        data: body,
+        cancelToken: cancelToken,
+      );
+      return AgentSettingsModel.fromJson(resp.data!);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
   }
 }

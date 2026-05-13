@@ -17,6 +17,9 @@ const (
 	EnvRepoURL          = "REPO_URL"
 	EnvBranchName       = "BRANCH_NAME"
 	EnvBaseRef          = "BASE_REF"
+	// EnvStartRef — ref, с которого entrypoint начинает работу (developer стартует с BASE_REF;
+	// reviewer/tester получают START_REF=branch-name developer'а). См. entrypoint.sh.
+	EnvStartRef         = "START_REF"
 	EnvGitDefaultBranch = "GIT_DEFAULT_BRANCH"
 	EnvBackend          = "BACKEND"
 	EnvAnthropicAPIKey  = "ANTHROPIC_API_KEY"

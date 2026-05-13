@@ -25,6 +25,10 @@ type TeamRepository interface {
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error)
 	GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error)
 	GetAgentByID(ctx context.Context, agentID uuid.UUID) (*models.Agent, error)
+	// GetAgentOwnerUserID возвращает user_id владельца проекта, к команде которого принадлежит агент.
+	// Sprint 15.B (B4): нужен для ownership-check в /agents/:id/settings и MCP-инструментах.
+	// Возвращает ErrTeamAgentNotFound, если агент не найден или у него нет team_id/project_id.
+	GetAgentOwnerUserID(ctx context.Context, agentID uuid.UUID) (uuid.UUID, error)
 	SaveAgent(ctx context.Context, agent *models.Agent) error
 	// SaveAgentWithToolBindings атомарно сохраняет агента и при replaceBindings полностью заменяет agent_tool_bindings.
 	SaveAgentWithToolBindings(ctx context.Context, agent *models.Agent, replaceBindings bool, bindingToolDefIDs []uuid.UUID) error
@@ -114,6 +118,26 @@ func (r *teamRepository) GetAgentByID(ctx context.Context, agentID uuid.UUID) (*
 		return nil, fmt.Errorf("failed to get agent by id: %w", err)
 	}
 	return &agent, nil
+}
+
+// GetAgentOwnerUserID джойнит agents → teams → projects и возвращает projects.user_id.
+// Используется handler'ом /agents/:id/settings и MCP-инструментами для ownership-check.
+func (r *teamRepository) GetAgentOwnerUserID(ctx context.Context, agentID uuid.UUID) (uuid.UUID, error) {
+	var row struct{ UserID uuid.UUID }
+	err := r.db.WithContext(ctx).
+		Table("agents").
+		Select("projects.user_id AS user_id").
+		Joins("INNER JOIN teams ON teams.id = agents.team_id").
+		Joins("INNER JOIN projects ON projects.id = teams.project_id").
+		Where("agents.id = ?", agentID).
+		First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return uuid.Nil, ErrTeamAgentNotFound
+		}
+		return uuid.Nil, fmt.Errorf("failed to resolve agent owner: %w", err)
+	}
+	return row.UserID, nil
 }
 
 // GetAgentInProject возвращает агента, если он принадлежит команде указанного проекта.

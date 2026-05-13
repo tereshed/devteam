@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -292,10 +293,8 @@ func main() {
 	// канонический endpoint, а наш LLMService — собственный (ANTHROPIC_BASE_URL с "/v1").
 	// Пробрасывать BASE_URL в контейнер опасно: CLI собирает путь по-другому и фейлится 404.
 	sandboxSecrets := map[string]string{
-		"ANTHROPIC_API_KEY": cfg.LLM.Anthropic.APIKey,
+		sandbox.EnvAnthropicAPIKey: cfg.LLM.Anthropic.APIKey,
 	}
-	orchestratorContextBuilder := service.NewContextBuilderFull(encryptor, pipelinePromptComposer, agentConfigCache, sandboxSecrets, taskMsgRepo)
-
 	// Sprint 15.B/C — OAuth Claude Code subscription + free-claude-proxy.
 	// Создаём заранее (до orchestrator), чтобы динамический резолвер аутентификации sandbox-а
 	// (Sprint 15.18) мог опираться на ClaudeCodeAuthService.
@@ -309,6 +308,12 @@ func main() {
 	})
 	claudeCodeAuthSvc := service.NewClaudeCodeAuthService(claudeCodeSubRepo, encryptor, claudeCodeOAuthProvider)
 
+	// Sprint 15.B5: fail-fast — нельзя включить free-claude-proxy и не задать service-token,
+	// иначе sandbox пойдёт на прокси с пустым Authorization (прокси примет без auth).
+	if cfg.FreeClaudeProxy.Enabled && strings.TrimSpace(cfg.FreeClaudeProxy.ServiceToken) == "" {
+		log.Fatalf("FREE_CLAUDE_PROXY_ENABLED=true requires FREE_CLAUDE_PROXY_SERVICE_TOKEN to be set")
+	}
+
 	// Sprint 15.18 — динамический резолвер аутентификации sandbox (OAuth subscription / free-claude-proxy / api key).
 	sandboxAuthResolver := service.NewSandboxAuthEnvResolver(
 		claudeCodeAuthSvc,
@@ -319,7 +324,35 @@ func main() {
 		cfg.LLM.Anthropic.APIKey,
 		slog.Default(),
 	)
-	orchestratorContextBuilder = service.WithSandboxAuthResolver(orchestratorContextBuilder, sandboxAuthResolver)
+	// Sprint 15.M7 — функциональная опция вместо type-assertion-шима WithSandboxAuthResolver.
+	orchestratorContextBuilder := service.NewContextBuilderFull(
+		encryptor, pipelinePromptComposer, agentConfigCache, sandboxSecrets, taskMsgRepo,
+		service.WithSandboxAuthResolverOption(sandboxAuthResolver),
+	)
+
+	// Sprint 15.B5 — LLMProviderService + handler + перегенерация config.yaml для free-claude-proxy.
+	llmProviderRepo := repository.NewLLMProviderRepository(db)
+	llmProviderSvc := service.NewLLMProviderService(llmProviderRepo, encryptor)
+	llmProviderHandler := handler.NewLLMProviderHandler(llmProviderSvc)
+	if cfg.FreeClaudeProxy.Enabled {
+		proxyCfgBuilder := service.NewFreeClaudeProxyConfigBuilder(
+			llmProviderRepo, llmProviderSvc,
+			8787, // соответствует EXPOSE в free-claude-proxy/Dockerfile
+			cfg.FreeClaudeProxy.ServiceToken,
+		)
+		// Sprint 15.C4 — единый сериализованный reloader: WriteFile + POST <reload-path>.
+		proxyReloader := service.NewFreeClaudeProxyReloader(
+			proxyCfgBuilder,
+			cfg.FreeClaudeProxy.ConfigPath,
+			cfg.FreeClaudeProxy.BaseURL,
+			cfg.FreeClaudeProxy.ReloadPath,
+			cfg.FreeClaudeProxy.ServiceToken,
+			slog.Default(),
+		)
+		llmProviderHandler = llmProviderHandler.WithOnChange(proxyReloader.AsyncReloadHook())
+		// При старте — синхронизируем config с текущим состоянием БД (best-effort).
+		go proxyReloader.Reload(context.Background())
+	}
 
 	taskControlBus := service.NewUserTaskControlBus()
 
@@ -422,6 +455,7 @@ func main() {
 
 		ClaudeCodeAuthHandler: claudeCodeAuthHandler,
 		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
+		LLMProviderHandler:    llmProviderHandler,
 	})
 
 	go func() {
@@ -589,11 +623,11 @@ func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// buildFreeClaudeProxyHealthChecker — fail-fast health-check для free-claude-proxy (Sprint 15.19).
+// buildFreeClaudeProxyHealthChecker — fail-fast health-check для free-claude-proxy (Sprint 15.19/15.M10).
 // Возвращает nil, если фича не включена (FREE_CLAUDE_PROXY_ENABLED=false) или BaseURL не задан.
 func buildFreeClaudeProxyHealthChecker(cfg config.FreeClaudeProxyConfig) service.FreeClaudeProxyHealthChecker {
 	if !cfg.Enabled || cfg.BaseURL == "" {
 		return nil
 	}
-	return service.NewFreeClaudeProxyHealthCheck(cfg.BaseURL)
+	return service.NewFreeClaudeProxyHealthCheck(cfg.BaseURL, cfg.HealthPath)
 }

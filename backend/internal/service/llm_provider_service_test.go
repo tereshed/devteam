@@ -167,8 +167,10 @@ func TestLLMProviderService_HealthCheck_CallsProvider(t *testing.T) {
 	repo := newMockLLMProviderRepo()
 	svc := NewLLMProviderService(repo, NoopEncryptor{})
 
+	// Sprint 15.C5 SSRF guard: httptest сервер на loopback → используем kind=ollama
+	// (для него loopback/http легальны). Сценарий: проверяем, что HealthCheck реально дёргает /models.
 	p, err := svc.Create(context.Background(), LLMProviderInput{
-		Name: "OR", Kind: models.LLMProviderKindOpenRouter,
+		Name: "Ollama-test", Kind: models.LLMProviderKindOllama,
 		BaseURL: srv.URL, AuthType: models.LLMProviderAuthAPIKey,
 		Credential: "k", DefaultModel: "m", Enabled: true,
 	})
@@ -198,8 +200,9 @@ func TestLLMProviderService_TestConnection_UsesProvidedCredential(t *testing.T) 
 	defer srv.Close()
 
 	svc := NewLLMProviderService(newMockLLMProviderRepo(), NoopEncryptor{})
+	// Sprint 15.C5 SSRF guard: httptest на loopback → kind=ollama легитимен.
 	err := svc.TestConnection(context.Background(), LLMProviderInput{
-		Name: "OR", Kind: models.LLMProviderKindOpenRouter,
+		Name: "Ollama-test", Kind: models.LLMProviderKindOllama,
 		BaseURL: srv.URL, AuthType: models.LLMProviderAuthAPIKey,
 		Credential: "live-key", DefaultModel: "m", Enabled: true,
 	})

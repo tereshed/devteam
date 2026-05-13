@@ -15,7 +15,10 @@ CREATE TABLE claude_code_subscriptions (
     last_refreshed_at        TIMESTAMP WITH TIME ZONE,
     created_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_claude_code_subscriptions_user UNIQUE (user_id)
+    CONSTRAINT uq_claude_code_subscriptions_user UNIQUE (user_id),
+    -- Sprint 15.m7: token_type ограничен Bearer (Anthropic OAuth не использует другие схемы).
+    -- Защищает от мусора в БД, который мог бы оказаться в Authorization-заголовке sandbox-а.
+    CONSTRAINT chk_claude_code_subscriptions_token_type CHECK (token_type IN ('Bearer'))
 );
 
 CREATE INDEX idx_claude_code_subscriptions_expires_at

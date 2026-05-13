@@ -48,6 +48,13 @@ func (m *mockTeamRepo) GetAgentByID(ctx context.Context, agentID uuid.UUID) (*mo
 	}
 	return args.Get(0).(*models.Agent), args.Error(1)
 }
+func (m *mockTeamRepo) GetAgentOwnerUserID(ctx context.Context, agentID uuid.UUID) (uuid.UUID, error) {
+	args := m.Called(ctx, agentID)
+	if args.Get(0) == nil {
+		return uuid.Nil, args.Error(1)
+	}
+	return args.Get(0).(uuid.UUID), args.Error(1)
+}
 func (m *mockTeamRepo) SaveAgent(ctx context.Context, agent *models.Agent) error {
 	return m.Called(ctx, agent).Error(0)
 }

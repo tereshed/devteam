@@ -74,10 +74,30 @@ func NewContextBuilderWithSandboxSecrets(encryptor Encryptor, promptComposer Pip
 	}
 }
 
+// ContextBuilderOption — функциональная опция для NewContextBuilderFull (Sprint 15.M7).
+type ContextBuilderOption func(*contextBuilder)
+
+// WithSandboxAuthResolverOption — динамический резолвер аутентификации sandbox-а (Sprint 15.18).
+// Если задан, ANTHROPIC_*/CLAUDE_CODE_OAUTH_TOKEN для агента с CodeBackend != nil заполняются
+// через резолвер вместо статических sandboxSecrets.
+func WithSandboxAuthResolverOption(resolver SandboxAuthEnvResolver) ContextBuilderOption {
+	return func(b *contextBuilder) { b.authResolver = resolver }
+}
+
 // NewContextBuilderFull — полная конфигурация: секреты sandbox + репозиторий сообщений
 // (для подмешивания результата предыдущего шага pipeline в prompt следующего агента).
 // Если taskMsgRepo == nil, история не подтягивается (поведение как у двух предыдущих конструкторов).
-func NewContextBuilderFull(encryptor Encryptor, promptComposer PipelinePromptComposer, agentCfg *agentsloader.Cache, sandboxSecrets map[string]string, taskMsgRepo repository.TaskMessageRepository) ContextBuilder {
+//
+// Sprint 15.M7: для подключения резолвера используется ContextBuilderOption (см. WithSandboxAuthResolverOption);
+// type-assertion-обёртка WithSandboxAuthResolver сохраняется как deprecated-shim для обратной совместимости.
+func NewContextBuilderFull(
+	encryptor Encryptor,
+	promptComposer PipelinePromptComposer,
+	agentCfg *agentsloader.Cache,
+	sandboxSecrets map[string]string,
+	taskMsgRepo repository.TaskMessageRepository,
+	opts ...ContextBuilderOption,
+) ContextBuilder {
 	cleaned := make(map[string]string, len(sandboxSecrets))
 	for k, v := range sandboxSecrets {
 		if k == "" || v == "" {
@@ -85,19 +105,25 @@ func NewContextBuilderFull(encryptor Encryptor, promptComposer PipelinePromptCom
 		}
 		cleaned[k] = v
 	}
-	return &contextBuilder{
+	cb := &contextBuilder{
 		encryptor:      encryptor,
 		composer:       promptComposer,
 		agentCfg:       agentCfg,
 		sandboxSecrets: cleaned,
 		taskMsgRepo:    taskMsgRepo,
 	}
+	for _, o := range opts {
+		if o != nil {
+			o(cb)
+		}
+	}
+	return cb
 }
 
-// WithSandboxAuthResolver — опциональный апгрейд контекст-билдера: динамический резолвер
-// аутентификации sandbox-а (Sprint 15.18). Если задан, ANTHROPIC_*/CLAUDE_CODE_OAUTH_TOKEN
-// для агента с CodeBackend != nil заполняются через резолвер вместо статических sandboxSecrets.
-// Возвращает self, чтобы упростить сборку в main.go.
+// WithSandboxAuthResolver — deprecated: используйте NewContextBuilderFull(..., WithSandboxAuthResolverOption(r)).
+// Остаётся для обратной совместимости в коде, который уже собран через старую сигнатуру.
+//
+// Deprecated: переключиться на ContextBuilderOption-вариант.
 func WithSandboxAuthResolver(builder ContextBuilder, resolver SandboxAuthEnvResolver) ContextBuilder {
 	cb, ok := builder.(*contextBuilder)
 	if !ok || cb == nil {

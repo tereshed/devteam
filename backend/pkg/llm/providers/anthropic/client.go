@@ -12,18 +12,57 @@ import (
 )
 
 type Client struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	apiKey      string
+	baseURL     string
+	client      *http.Client
+	messagePath string
+	applyAuth   func(req *http.Request, apiKey string)
 }
 
-func NewClient(config llm.Config) (*Client, error) {
-	return &Client{
-		apiKey:  config.APIKey,
-		baseURL: config.BaseURL,
-		client:  &http.Client{},
-	}, nil
+// Option — функциональная опция для NewClient (Sprint 15.M11 — DRY с freeclaudeproxy).
+type Option func(*Client)
+
+// WithMessagePath переопределяет путь до /messages (например, "/v1/messages" для прокси).
+func WithMessagePath(p string) Option { return func(c *Client) { c.messagePath = p } }
+
+// WithAuthHeader переопределяет injection заголовка аутентификации.
+// По умолчанию: "x-api-key: <key>". Прокси использует "Authorization: Bearer <key>".
+func WithAuthHeader(fn func(req *http.Request, apiKey string)) Option {
+	return func(c *Client) { c.applyAuth = fn }
 }
+
+// WithHTTPClient переопределяет http.Client (для тестов / общего таймаута).
+func WithHTTPClient(h *http.Client) Option {
+	return func(c *Client) {
+		if h != nil {
+			c.client = h
+		}
+	}
+}
+
+func NewClient(config llm.Config, opts ...Option) (*Client, error) {
+	// Sprint 15.N8: config.HTTPClient (SSRF-safe) имеет приоритет над дефолтом.
+	hc := config.HTTPClient
+	if hc == nil {
+		hc = &http.Client{}
+	}
+	c := &Client{
+		apiKey:      config.APIKey,
+		baseURL:     config.BaseURL,
+		client:      hc,
+		messagePath: "/messages",
+		applyAuth: func(req *http.Request, apiKey string) {
+			req.Header.Set("x-api-key", apiKey)
+		},
+	}
+	for _, o := range opts {
+		o(c)
+	}
+	return c, nil
+}
+
+// BaseURL — финальный base URL клиента (используется в ProviderAdapter).
+func (c *Client) BaseURL() string { return c.baseURL }
 
 // Anthropic API Request Structures
 type messagesRequest struct {
@@ -86,13 +125,13 @@ func (c *Client) Generate(ctx context.Context, req llm.Request) (*llm.Response, 
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/messages", bytes.NewBuffer(reqBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+c.messagePath, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
+	c.applyAuth(httpReq, c.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
 	resp, err := c.client.Do(httpReq)

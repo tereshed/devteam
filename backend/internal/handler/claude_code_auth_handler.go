@@ -137,6 +137,9 @@ func (h *ClaudeCodeAuthHandler) Revoke(c *gin.Context) {
 
 func mapClaudeCodeAuthErr(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, service.ErrDeviceCodeOwnerMismatch):
+		apierror.JSON(c, http.StatusForbidden, "device_code_owner_mismatch",
+			"device_code was not initiated by this user")
 	case errors.Is(err, service.ErrAuthorizationPending):
 		apierror.JSON(c, http.StatusAccepted, "authorization_pending", "Waiting for user to authorize")
 	case errors.Is(err, service.ErrSlowDown):

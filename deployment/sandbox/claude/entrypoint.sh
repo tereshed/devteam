@@ -267,10 +267,26 @@ fi
 # Sprint 15.22 — per-agent settings.json и .mcp.json (если поставлены раннером).
 # Раннер кладёт их в /workspace/.claude/settings.json и /workspace/.mcp.json.
 # Перенесём их в ожидаемые claude-code локации.
+# Sprint 15.M4 — defense-in-depth:
+#   - 0700 на ~/.claude (только owner-rwx);
+#   - 0600 на settings.json (mode сохраняется и при mv/cp);
+#   - cp с проверкой exit code: если копирование провалилось, fail-fast (entrypoint не запускает claude
+#     с дефолтными настройками, тем самым не маскируя ошибку конфигурации).
 PHASE="prepare_agent_settings"
 if [[ -f /workspace/.claude/settings.json ]]; then
-  mkdir -p "$HOME/.claude"
-  cp /workspace/.claude/settings.json "$HOME/.claude/settings.json"
+  if ! mkdir -p "$HOME/.claude"; then
+    echo "entrypoint: mkdir -p $HOME/.claude failed" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="prepare_agent_settings: mkdir failed"
+    exit 1
+  fi
+  chmod 0700 "$HOME/.claude"
+  if ! cp /workspace/.claude/settings.json "$HOME/.claude/settings.json"; then
+    echo "entrypoint: cp settings.json failed" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="prepare_agent_settings: cp failed"
+    exit 1
+  fi
   chmod 0600 "$HOME/.claude/settings.json"
 fi
 
@@ -328,9 +344,15 @@ fi
 git config --global user.name "DevTeam Agent"
 git config --global user.email "agent@devteam.local"
 
-# Sprint 15.22: положить .mcp.json в репозиторий, если раннер его прислал (claude-code читает в cwd).
+# Sprint 15.22 / 15.M4: .mcp.json в корне репозитория, exit-code check + mode 0600.
 if [[ -f /workspace/.mcp.json ]]; then
-  cp /workspace/.mcp.json "$REPO_DIR/.mcp.json"
+  if ! cp /workspace/.mcp.json "$REPO_DIR/.mcp.json"; then
+    echo "entrypoint: cp .mcp.json failed" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="prepare_agent_settings: cp mcp.json failed"
+    exit 1
+  fi
+  chmod 0600 "$REPO_DIR/.mcp.json"
 fi
 
 # --- agent: stdin = prompt + разделитель + context; короткий -p (без больших argv) ---

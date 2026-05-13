@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/settings/data/claude_code_auth_repository.dart';
 import 'package:frontend/features/settings/domain/models/claude_code_auth_status.dart';
@@ -11,9 +12,12 @@ ClaudeCodeAuthRepository claudeCodeAuthRepository(Ref ref) {
   return ClaudeCodeAuthRepository(dio: dio);
 }
 
-/// Текущий статус подписки. `keepAlive: false` — авто-сброс при размонтировании секции.
+/// Sprint 15.M6 — CancelToken+ref.onDispose: текущий статус подписки.
 @riverpod
 Future<ClaudeCodeAuthStatus> claudeCodeAuthStatus(Ref ref) async {
   final repo = ref.watch(claudeCodeAuthRepositoryProvider);
-  return repo.status();
+  final cancelToken = CancelToken();
+  ref.onDispose(() =>
+      cancelToken.cancel('claudeCodeAuthStatus provider disposed'));
+  return repo.status(cancelToken: cancelToken);
 }

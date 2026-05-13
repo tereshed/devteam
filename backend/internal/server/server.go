@@ -56,6 +56,9 @@ type Dependencies struct {
 
 	// Sprint 15.23 — per-agent settings.
 	AgentSettingsHandler *handler.AgentSettingsHandler
+
+	// Sprint 15.B5 — CRUD над llm_providers (admin-only).
+	LLMProviderHandler *handler.LLMProviderHandler
 }
 
 // New создает новый экземпляр сервера
@@ -144,6 +147,20 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			{
 				agents.GET("/:id/settings", deps.AgentSettingsHandler.Get)
 				agents.PUT("/:id/settings", deps.AgentSettingsHandler.Update)
+			}
+		}
+
+		// LLM providers — admin-only CRUD (Sprint 15.B5)
+		if deps.LLMProviderHandler != nil {
+			llmp := api.Group("/llm-providers")
+			llmp.Use(authMW)
+			{
+				llmp.GET("", deps.LLMProviderHandler.List)
+				llmp.POST("", deps.LLMProviderHandler.Create)
+				llmp.POST("/test-connection", deps.LLMProviderHandler.TestConnection)
+				llmp.POST("/:id/health-check", deps.LLMProviderHandler.HealthCheck)
+				llmp.PUT("/:id", deps.LLMProviderHandler.Update)
+				llmp.DELETE("/:id", deps.LLMProviderHandler.Delete)
 			}
 		}
 

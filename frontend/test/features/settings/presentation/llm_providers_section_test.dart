@@ -35,7 +35,17 @@ void main() {
       tester.element(find.byType(LLMProvidersSection)),
     )!;
     expect(find.text(l10n.llmProvidersEmpty), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, l10n.llmProvidersAdd), findsOneWidget);
+    // Sprint 15.minor: FilledButton.icon — фабрика, возвращает приватный
+    // _FilledButtonWithIcon (extends FilledButton). find.byType matches только по
+    // runtimeType, поэтому ищем через ancestor + is-предикат — кнопка с этим текстом,
+    // а не любой Text с тем же содержимым.
+    expect(
+      find.ancestor(
+        of: find.text(l10n.llmProvidersAdd),
+        matching: find.byWidgetPredicate((w) => w is FilledButton),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('non-empty state — renders ListTile per provider with kind/model',

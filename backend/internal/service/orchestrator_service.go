@@ -173,8 +173,9 @@ func (s *orchestratorService) Start(ctx context.Context) error {
 	}
 
 	// Sprint 15.19 — fail-fast health check для free-claude-proxy.
-	// Подключается только если хотя бы один агент использует CodeBackend=claude-code-via-proxy
-	// (главное приложение wire'ит чекер именно в этом случае).
+	// Чекер подключается в main.go ИСКЛЮЧИТЕЛЬНО при FREE_CLAUDE_PROXY_ENABLED=true
+	// (см. buildFreeClaudeProxyHealthChecker). Никакой проверки «есть ли claude-code-via-proxy
+	// агент» здесь нет; ответственность — на операторе/конфиге.
 	if s.proxyHealthChecker != nil {
 		hcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err := s.proxyHealthChecker.Check(hcCtx)

@@ -7,6 +7,7 @@ SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 .PHONY: help build up down logs test test-unit test-integration test-all validate-agent-prompts \
 	validate-agent-configs \
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
+	free-claude-proxy-build free-claude-proxy-check-ref \
 	migrate-create migrate-up migrate-down migrate-status \
 	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration frontend-test-ws \
 	frontend-analyze frontend-codegen frontend-codegen-watch frontend-l10n-check \
@@ -63,6 +64,19 @@ $(SANDBOX_BUILD_TARGETS): sandbox-build-%: check-docker
 	docker build -t "devteam/sandbox-$*:local" -f "deployment/sandbox/$*/Dockerfile" "deployment/sandbox/$*"
 
 sandbox-build: sandbox-build-claude
+
+# Sprint 15.N2 — guard для free-claude-proxy: при BUILD_ENV=production ARG ref ОБЯЗАН быть SHA.
+.PHONY: free-claude-proxy-build free-claude-proxy-check-ref
+free-claude-proxy-check-ref:
+	bash deployment/free-claude-proxy/check_pinned_ref.sh
+
+free-claude-proxy-build: check-docker free-claude-proxy-check-ref
+	docker build \
+		--build-arg FREE_CLAUDE_PROXY_REF=$${FREE_CLAUDE_PROXY_REF:-main} \
+		--build-arg BUILD_ENV=$${BUILD_ENV:-local} \
+		-t "devteam/free-claude-proxy:local" \
+		-f "deployment/free-claude-proxy/Dockerfile" \
+		"deployment/free-claude-proxy"
 
 test-all: test-integration
 

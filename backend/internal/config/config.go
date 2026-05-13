@@ -56,6 +56,12 @@ type FreeClaudeProxyConfig struct {
 	ConfigPath string
 	// Enabled — если true и BaseURL задан, оркестратор делает fail-fast health-check при старте (15.19).
 	Enabled bool
+	// HealthPath — путь health-эндпоинта прокси (Sprint 15.M10). По умолчанию /healthz.
+	// upstream-сборка может экспонировать /health, /api/health и т.д. — настраивается env.
+	HealthPath string
+	// ReloadPath — POST <baseURL><ReloadPath> просим прокси перечитать config.yaml (Sprint 15.C4).
+	// По умолчанию /reload. Пустое значение — reload отключён (backend только пишет файл).
+	ReloadPath string
 }
 
 // WebSocketConfig содержит конфигурацию WebSocket
@@ -217,6 +223,8 @@ func Load() (*Config, error) {
 			ServiceToken: getEnv("FREE_CLAUDE_PROXY_SERVICE_TOKEN", ""),
 			ConfigPath:   getEnv("FREE_CLAUDE_PROXY_CONFIG_PATH", "/etc/free-claude-proxy/config.yaml"),
 			Enabled:      getBoolEnv("FREE_CLAUDE_PROXY_ENABLED", false),
+			HealthPath:   getEnv("FREE_CLAUDE_PROXY_HEALTH_PATH", "/healthz"),
+			ReloadPath:   getEnv("FREE_CLAUDE_PROXY_RELOAD_PATH", "/reload"),
 		},
 	}
 

@@ -87,7 +87,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	switch in.Role {
 	case "reviewer", "tester":
 		if in.BranchName != "" {
-			envVars["START_REF"] = in.BranchName
+			envVars[sandbox.EnvStartRef] = in.BranchName
 		}
 	}
 

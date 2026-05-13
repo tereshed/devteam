@@ -36,8 +36,16 @@ void main() {
     )!;
     expect(find.text(l10n.claudeCodeAuthDisconnectedTitle), findsOneWidget);
     expect(find.text(l10n.claudeCodeAuthDisconnectedHint), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, l10n.claudeCodeAuthLogin),
-        findsOneWidget);
+    // Sprint 15.minor: FilledButton.icon — фабрика, возвращает приватный
+    // _FilledButtonWithIcon (extends FilledButton). find.byType matches только по
+    // runtimeType, поэтому используем предикат с is-проверкой через ancestor finder.
+    expect(
+      find.ancestor(
+        of: find.text(l10n.claudeCodeAuthLogin),
+        matching: find.byWidgetPredicate((w) => w is FilledButton),
+      ),
+      findsOneWidget,
+    );
     expect(find.text(l10n.claudeCodeAuthRevoke), findsNothing);
   });
 
@@ -57,8 +65,13 @@ void main() {
     expect(find.text(l10n.claudeCodeAuthConnectedTitle), findsOneWidget);
     expect(find.text('Bearer'), findsOneWidget);
     expect(find.text('user:inference'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, l10n.claudeCodeAuthLogin),
-        findsNothing);
+    expect(
+      find.ancestor(
+        of: find.text(l10n.claudeCodeAuthLogin),
+        matching: find.byWidgetPredicate((w) => w is FilledButton),
+      ),
+      findsNothing,
+    );
     expect(find.text(l10n.claudeCodeAuthRevoke), findsOneWidget);
   });
 }

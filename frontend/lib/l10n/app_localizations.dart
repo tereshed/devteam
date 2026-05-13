@@ -2095,6 +2095,408 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'[{alt}]'**
   String chatMessageMarkdownImageAlt(String alt);
+
+  /// No description provided for @refresh.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновить'**
+  String get refresh;
+
+  /// No description provided for @copy.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировать'**
+  String get copy;
+
+  /// No description provided for @openInBrowser.
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть в браузере'**
+  String get openInBrowser;
+
+  /// No description provided for @fieldRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обязательное поле'**
+  String get fieldRequired;
+
+  /// No description provided for @globalSettingsTabLLMProviders.
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM-провайдеры'**
+  String get globalSettingsTabLLMProviders;
+
+  /// No description provided for @globalSettingsTabClaudeCode.
+  ///
+  /// In ru, this message translates to:
+  /// **'Claude Code'**
+  String get globalSettingsTabClaudeCode;
+
+  /// No description provided for @globalSettingsTabDevTeam.
+  ///
+  /// In ru, this message translates to:
+  /// **'DevTeam'**
+  String get globalSettingsTabDevTeam;
+
+  /// No description provided for @llmProvidersSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM-провайдеры'**
+  String get llmProvidersSectionTitle;
+
+  /// No description provided for @llmProvidersAdd.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить'**
+  String get llmProvidersAdd;
+
+  /// No description provided for @llmProvidersEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Провайдеры ещё не настроены.'**
+  String get llmProvidersEmpty;
+
+  /// No description provided for @llmProvidersLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить список провайдеров'**
+  String get llmProvidersLoadError;
+
+  /// No description provided for @llmProvidersHealthTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверка здоровья'**
+  String get llmProvidersHealthTooltip;
+
+  /// No description provided for @llmProvidersEditTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать'**
+  String get llmProvidersEditTooltip;
+
+  /// No description provided for @llmProvidersDeleteTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get llmProvidersDeleteTooltip;
+
+  /// No description provided for @llmProvidersHealthOK.
+  ///
+  /// In ru, this message translates to:
+  /// **'Провайдер доступен'**
+  String get llmProvidersHealthOK;
+
+  /// No description provided for @llmProvidersHealthFail.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверка не пройдена'**
+  String get llmProvidersHealthFail;
+
+  /// No description provided for @llmProvidersDeleteTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить провайдера?'**
+  String get llmProvidersDeleteTitle;
+
+  /// No description provided for @llmProvidersDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить «{name}»? Агенты, привязанные к нему, останутся без провайдера.'**
+  String llmProvidersDeleteConfirm(String name);
+
+  /// No description provided for @llmProvidersDeleteFail.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка удаления'**
+  String get llmProvidersDeleteFail;
+
+  /// No description provided for @llmProvidersAddTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый LLM-провайдер'**
+  String get llmProvidersAddTitle;
+
+  /// No description provided for @llmProvidersEditTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактирование провайдера'**
+  String get llmProvidersEditTitle;
+
+  /// No description provided for @llmProvidersFieldName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя'**
+  String get llmProvidersFieldName;
+
+  /// No description provided for @llmProvidersFieldKind.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тип'**
+  String get llmProvidersFieldKind;
+
+  /// No description provided for @llmProvidersFieldBaseURL.
+  ///
+  /// In ru, this message translates to:
+  /// **'Base URL (опционально)'**
+  String get llmProvidersFieldBaseURL;
+
+  /// No description provided for @llmProvidersFieldCredential.
+  ///
+  /// In ru, this message translates to:
+  /// **'API-ключ / токен'**
+  String get llmProvidersFieldCredential;
+
+  /// No description provided for @llmProvidersFieldCredentialOptional.
+  ///
+  /// In ru, this message translates to:
+  /// **'API-ключ / токен (пусто — не менять)'**
+  String get llmProvidersFieldCredentialOptional;
+
+  /// No description provided for @llmProvidersFieldDefaultModel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Модель по умолчанию'**
+  String get llmProvidersFieldDefaultModel;
+
+  /// No description provided for @llmProvidersFieldUseProxy.
+  ///
+  /// In ru, this message translates to:
+  /// **'Маршрутизировать через free-claude-proxy'**
+  String get llmProvidersFieldUseProxy;
+
+  /// No description provided for @llmProvidersFieldEnabled.
+  ///
+  /// In ru, this message translates to:
+  /// **'Включён'**
+  String get llmProvidersFieldEnabled;
+
+  /// No description provided for @llmProvidersTest.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тест'**
+  String get llmProvidersTest;
+
+  /// No description provided for @llmProvidersTestOK.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестовое подключение успешно'**
+  String get llmProvidersTestOK;
+
+  /// No description provided for @llmProvidersTestFail.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тест подключения не пройден'**
+  String get llmProvidersTestFail;
+
+  /// No description provided for @claudeCodeAuthLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить статус подписки Claude Code'**
+  String get claudeCodeAuthLoadError;
+
+  /// No description provided for @claudeCodeAuthConnectedTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подписка Claude Code подключена'**
+  String get claudeCodeAuthConnectedTitle;
+
+  /// No description provided for @claudeCodeAuthTokenType.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тип токена'**
+  String get claudeCodeAuthTokenType;
+
+  /// No description provided for @claudeCodeAuthScopes.
+  ///
+  /// In ru, this message translates to:
+  /// **'Scopes'**
+  String get claudeCodeAuthScopes;
+
+  /// No description provided for @claudeCodeAuthExpiresAt.
+  ///
+  /// In ru, this message translates to:
+  /// **'Истекает'**
+  String get claudeCodeAuthExpiresAt;
+
+  /// No description provided for @claudeCodeAuthLastRefreshedAt.
+  ///
+  /// In ru, this message translates to:
+  /// **'Последнее обновление'**
+  String get claudeCodeAuthLastRefreshedAt;
+
+  /// No description provided for @claudeCodeAuthRevoke.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отозвать'**
+  String get claudeCodeAuthRevoke;
+
+  /// No description provided for @claudeCodeAuthRevokeOK.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подписка отозвана'**
+  String get claudeCodeAuthRevokeOK;
+
+  /// No description provided for @claudeCodeAuthDisconnectedTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подписка Claude Code'**
+  String get claudeCodeAuthDisconnectedTitle;
+
+  /// No description provided for @claudeCodeAuthDisconnectedHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Войдите по подписке Claude Code, чтобы агенты использовали OAuth-токен вместо долгоживущего API-ключа.'**
+  String get claudeCodeAuthDisconnectedHint;
+
+  /// No description provided for @claudeCodeAuthLogin.
+  ///
+  /// In ru, this message translates to:
+  /// **'Войти по подписке'**
+  String get claudeCodeAuthLogin;
+
+  /// No description provided for @claudeCodeAuthDeviceFlowTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтверждение на стороне Anthropic'**
+  String get claudeCodeAuthDeviceFlowTitle;
+
+  /// No description provided for @claudeCodeAuthEnterCodeHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Откройте ссылку ниже в любом браузере и введите этот код, чтобы авторизовать DevTeam:'**
+  String get claudeCodeAuthEnterCodeHint;
+
+  /// No description provided for @claudeCodeAuthWaiting.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ожидание подтверждения…'**
+  String get claudeCodeAuthWaiting;
+
+  /// No description provided for @agentSandboxSettingsTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дополнительные настройки агента'**
+  String get agentSandboxSettingsTitle;
+
+  /// No description provided for @agentSandboxSettingsLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить настройки агента'**
+  String get agentSandboxSettingsLoadError;
+
+  /// No description provided for @agentSandboxSettingsTabProvider.
+  ///
+  /// In ru, this message translates to:
+  /// **'Модель / провайдер'**
+  String get agentSandboxSettingsTabProvider;
+
+  /// No description provided for @agentSandboxSettingsTabMCP.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-серверы'**
+  String get agentSandboxSettingsTabMCP;
+
+  /// No description provided for @agentSandboxSettingsTabSkills.
+  ///
+  /// In ru, this message translates to:
+  /// **'Skills'**
+  String get agentSandboxSettingsTabSkills;
+
+  /// No description provided for @agentSandboxSettingsTabPermissions.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разрешения'**
+  String get agentSandboxSettingsTabPermissions;
+
+  /// No description provided for @agentSandboxSettingsProviderLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM-провайдер'**
+  String get agentSandboxSettingsProviderLabel;
+
+  /// No description provided for @agentSandboxSettingsProviderNone.
+  ///
+  /// In ru, this message translates to:
+  /// **'— нет —'**
+  String get agentSandboxSettingsProviderNone;
+
+  /// No description provided for @agentSandboxSettingsCodeBackendLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Code backend'**
+  String get agentSandboxSettingsCodeBackendLabel;
+
+  /// No description provided for @agentSandboxSettingsMCPHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'JSON-массив привязок MCP — см. документацию.'**
+  String get agentSandboxSettingsMCPHelper;
+
+  /// No description provided for @agentSandboxSettingsSkillsHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'JSON-массив Skills (Claude Code) — см. документацию.'**
+  String get agentSandboxSettingsSkillsHelper;
+
+  /// No description provided for @agentSandboxSettingsDefaultMode.
+  ///
+  /// In ru, this message translates to:
+  /// **'Режим по умолчанию'**
+  String get agentSandboxSettingsDefaultMode;
+
+  /// No description provided for @agentSandboxSettingsAllow.
+  ///
+  /// In ru, this message translates to:
+  /// **'Allow'**
+  String get agentSandboxSettingsAllow;
+
+  /// No description provided for @agentSandboxSettingsDeny.
+  ///
+  /// In ru, this message translates to:
+  /// **'Deny'**
+  String get agentSandboxSettingsDeny;
+
+  /// No description provided for @agentSandboxSettingsAsk.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ask'**
+  String get agentSandboxSettingsAsk;
+
+  /// No description provided for @agentSandboxSettingsJsonInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Некорректный JSON'**
+  String get agentSandboxSettingsJsonInvalid;
+
+  /// No description provided for @agentSandboxSettingsPatternHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Read | Edit | Bash(go test:*) | mcp__server'**
+  String get agentSandboxSettingsPatternHint;
+
+  /// No description provided for @agentSandboxRevokeConfirmTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отозвать подписку Claude Code?'**
+  String get agentSandboxRevokeConfirmTitle;
+
+  /// No description provided for @agentSandboxRevokeConfirmBody.
+  ///
+  /// In ru, this message translates to:
+  /// **'Агенты будут использовать ANTHROPIC_API_KEY (если задан) при следующих sandbox-задачах. Подписку можно подключить заново в любой момент.'**
+  String get agentSandboxRevokeConfirmBody;
+
+  /// No description provided for @teamAgentEditAdvanced.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дополнительно'**
+  String get teamAgentEditAdvanced;
+
+  /// No description provided for @commonRequestFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка запроса'**
+  String get commonRequestFailed;
 }
 
 class _AppLocalizationsDelegate

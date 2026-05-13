@@ -29,6 +29,17 @@ sandbox_permissions:
     - "Bash(pytest:*)"
     - "Bash(flutter test:*)"
   deny:
+    # Sprint 15.Major (defense-in-depth) — симметрично с developer/reviewer.
     - "Bash(git push:*)"
+    - "Bash(git push)"
+    - "Bash(git reset:*)"
+    - "Bash(git clean:*)"
+    - "Bash(git branch -D:*)"
+    - "Bash(git checkout --:*)"
     - "Bash(rm -rf:*)"
+    - "Bash(rm -fr:*)"
     - "Bash(sudo:*)"
+    - "Bash(make destroy:*)"
+    - "Bash(make drop:*)"
+    - "Bash(make clean:*)"
+    - "Bash(make migrate-down:*)"

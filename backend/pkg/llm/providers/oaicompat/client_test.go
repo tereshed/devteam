@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devteam/backend/pkg/llm"
 )
@@ -112,5 +113,59 @@ func TestClient_HealthCheck_Failure(t *testing.T) {
 func TestNewClient_RequiresBaseURL(t *testing.T) {
 	if _, err := NewClient(Config{APIKey: "k"}); err == nil {
 		t.Fatalf("expected error when BaseURL is empty")
+	}
+}
+
+// Sprint 15.M8 regression — retry на 503 + finally 200.
+func TestClient_Generate_RetriesOn503(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{
+            "choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],
+            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+        }`))
+	}))
+	defer srv.Close()
+
+	// Подменяем http.Client с коротким таймаутом, чтобы тест шёл быстро.
+	c, _ := NewClient(Config{
+		APIKey: "k", BaseURL: srv.URL, DefaultModel: "m",
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+	})
+
+	resp, err := c.Generate(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "x"}},
+	})
+	if err != nil {
+		t.Fatalf("Generate after retries: %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Fatalf("unexpected content: %q", resp.Content)
+	}
+	if calls < 3 {
+		t.Fatalf("expected ≥3 calls, got %d", calls)
+	}
+}
+
+// Sprint 15.M8 — после maxRetries попыток возвращаем последнюю ошибку.
+func TestClient_Generate_GivesUpAfterMaxRetries(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	c, _ := NewClient(Config{
+		APIKey: "k", BaseURL: srv.URL, DefaultModel: "m",
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+	})
+	_, err := c.Generate(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "x"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "status 429") {
+		t.Fatalf("expected status 429 after retries, got %v", err)
 	}
 }
