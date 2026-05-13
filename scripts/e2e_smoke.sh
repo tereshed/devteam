@@ -1,29 +1,33 @@
 #!/usr/bin/env bash
-# Full-stack smoke test (Sprint 14.7 + Sprint 15.e2e per-agent backends).
+# Full-stack smoke test (Sprint 14.7 + Sprint 15.e2e + Sprint 16 per-agent backends).
 #
-# Один прогон через единственный pipeline проверяет ТРИ способа подключения
-# LLM/Claude Code разом — каждый агент в команде сконфигурирован по-своему
-# (это и есть основной смысл Sprint 15: per-agent customization).
+# Один прогон через единственный pipeline проверяет ВСЕ способы подключения
+# LLM/Claude Code/Hermes разом — каждый агент сконфигурирован по-своему.
 #
 # Матрица агентов:
-#   orchestrator → LLM (глобальный ANTHROPIC_API_KEY из backend/.env)
+#   orchestrator → LLM (глобальный ANTHROPIC_API_KEY)
 #   planner      → LLM (глобальный ANTHROPIC_API_KEY)
 #   developer    → sandbox claude-code, provider_kind=anthropic_oauth        (Sprint 15.B)
 #   reviewer     → sandbox claude-code, provider_kind=deepseek               (Sprint 15.e2e: native endpoint)
-#   tester       → sandbox claude-code, provider_kind=anthropic_oauth        (Sprint 15.B)
+#   tester       → sandbox hermes,      provider_kind=openrouter             (Sprint 16: Hermes Agent + OpenRouter)
 #
-# SandboxAuthEnvResolver выбирает по provider_kind:
-#   anthropic_oauth  → claude_code_subscriptions(owner) → CLAUDE_CODE_OAUTH_TOKEN
-#   deepseek         → user_llm_credentials(owner, deepseek)
-#                      → ANTHROPIC_BASE_URL=api.deepseek.com/anthropic + ANTHROPIC_AUTH_TOKEN
+# SandboxAuthEnvResolver выбирает env по (code_backend, provider_kind):
+#   claude-code + anthropic_oauth  → CLAUDE_CODE_OAUTH_TOKEN
+#   claude-code + deepseek         → ANTHROPIC_BASE_URL=api.deepseek.com/anthropic + ANTHROPIC_AUTH_TOKEN
+#   hermes      + openrouter       → OPENROUTER_API_KEY (Hermes сам говорит с OpenRouter)
 # Никакого shared proxy — каждый юзер шлёт со своим ключом напрямую.
 #
 # Требования (env / backend/.env):
 #   GITHUB_PAT                            — PAT, может открывать PR в REPO_URL
 #   ANTHROPIC_API_KEY                     — для orchestrator/planner (LLMExecutor)
-#   CLAUDE_CODE_OAUTH_ACCESS_TOKEN        — для developer и tester (Sprint 15.B)
-#   DEEPSEEK_API_KEY                      — для reviewer (Sprint 15.e2e: per-user creds)
+#   CLAUDE_CODE_OAUTH_ACCESS_TOKEN        — для developer (Sprint 15.B)
+#   DEEPSEEK_API_KEY                      — для reviewer (Sprint 15.e2e)
+#   OPENROUTER_API_KEY                    — для tester (Sprint 16: Hermes + OpenRouter)
 #   ENCRYPTION_KEY                        — в backend/.env, 32 байта hex
+#
+# Опционально:
+#   HERMES_MODEL — каноничная "provider/model" строка для tester (default
+#                  `openrouter/anthropic/claude-3.5-haiku`).
 #
 # Использование:
 #   GITHUB_PAT=ghp_xxx ./scripts/e2e_smoke.sh \
@@ -64,6 +68,9 @@ require_env() {
 require_env GITHUB_PAT
 require_env CLAUDE_CODE_OAUTH_ACCESS_TOKEN
 require_env DEEPSEEK_API_KEY
+require_env OPENROUTER_API_KEY
+
+HERMES_MODEL="${HERMES_MODEL:-openrouter/anthropic/claude-3.5-haiku}"
 
 OWNER_REPO=$(echo "$REPO_URL" | sed -E 's|^https?://github\.com/||; s|\.git$||')
 
@@ -127,7 +134,7 @@ TEAM=$(ysql_scalar "SELECT id FROM teams WHERE project_id='$PID' LIMIT 1;")
 ENCRYPTION_KEY=$(docker exec wibe_backend printenv ENCRYPTION_KEY || true)
 [[ -n "$ENCRYPTION_KEY" ]] || fail "backend has no ENCRYPTION_KEY env"
 
-# ──── 3. seed: Claude Code subscription (developer + tester) ──────────────
+# ──── 3. seed: Claude Code subscription (developer) ───────────────────────
 log "seeding claude_code_subscription for user $USER_ID"
 run_go_seeder seed_claude_code_subscription env \
   USER_ID="$USER_ID" \
@@ -137,8 +144,8 @@ run_go_seeder seed_claude_code_subscription env \
   ENCRYPTION_KEY="$ENCRYPTION_KEY" \
   >/dev/null
 
-# ──── 4. seed: per-user DeepSeek credential (reviewer) ────────────────────
-log "seeding user_llm_credentials.deepseek for user $USER_ID"
+# ──── 4. seed: per-user DeepSeek + OpenRouter credentials ─────────────────
+log "seeding user_llm_credentials.deepseek for reviewer"
 run_go_seeder seed_user_llm_credential env \
   USER_ID="$USER_ID" \
   PROVIDER="deepseek" \
@@ -146,11 +153,22 @@ run_go_seeder seed_user_llm_credential env \
   ENCRYPTION_KEY="$ENCRYPTION_KEY" \
   >/dev/null
 
-# ──── 5. seed: agents (per-agent provider_kind) ───────────────────────────
-log "seeding 5 agents — каждый со своим provider_kind"
-# orchestrator + planner: LLMExecutor (provider_kind=NULL → глобальный ANTHROPIC_API_KEY)
-# developer / tester:   sandbox claude-code, provider_kind=anthropic_oauth
-# reviewer:             sandbox claude-code, provider_kind=deepseek
+log "seeding user_llm_credentials.openrouter for tester (Hermes)"
+run_go_seeder seed_user_llm_credential env \
+  USER_ID="$USER_ID" \
+  PROVIDER="openrouter" \
+  API_KEY="$OPENROUTER_API_KEY" \
+  ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+  >/dev/null
+
+# ──── 5. seed: agents (per-agent code_backend + provider_kind) ────────────
+# Sprint 16: tester теперь использует hermes + openrouter (раньше был claude-code+oauth).
+# Тестируем Hermes-агент в реальном pipeline.
+#
+# Модель tester'а — каноничная provider/model строка для Hermes (см.
+# HermesModelString). DEVTEAM_AGENT_MODEL пробрасывается в env sandbox-а через
+# обычный context_builder; entrypoint передаёт её в `hermes chat -m`.
+log "seeding 5 agents — mixed (claude-code OAuth + DeepSeek + Hermes/OpenRouter)"
 ysql "
 INSERT INTO agents (id, name, role, team_id, model, code_backend, provider_kind, is_active, requires_code_context, skills, settings)
 VALUES
@@ -158,7 +176,7 @@ VALUES
   (gen_random_uuid(),'planner',     'planner',     '$TEAM','claude-haiku-4-5-20251001', NULL,         NULL,              true,false,'[]'::jsonb,'{}'::jsonb),
   (gen_random_uuid(),'developer',   'developer',   '$TEAM','claude-haiku-4-5-20251001', 'claude-code','anthropic_oauth', true,false,'[]'::jsonb,'{}'::jsonb),
   (gen_random_uuid(),'reviewer',    'reviewer',    '$TEAM','deepseek-chat',             'claude-code','deepseek',        true,false,'[]'::jsonb,'{}'::jsonb),
-  (gen_random_uuid(),'tester',      'tester',      '$TEAM','claude-haiku-4-5-20251001', 'claude-code','anthropic_oauth', true,false,'[]'::jsonb,'{}'::jsonb);
+  (gen_random_uuid(),'tester',      'tester',      '$TEAM','$HERMES_MODEL',             'hermes',     'openrouter',      true,false,'[]'::jsonb,'{}'::jsonb);
 " >/dev/null
 
 AGT_ORCH=$(ysql_scalar "SELECT id FROM agents WHERE team_id='$TEAM' AND role='orchestrator';")
@@ -181,7 +199,7 @@ TITLE="Smoke[mixed]: add $BR.md"
 DESC="Create file $(basename "$BR").md at the repository root with three lines:
 '# Smoke (mixed agents)'
 '$BR'
-'developer=oauth | reviewer=deepseek-native | tester=oauth'"
+'developer=claude-code/oauth | reviewer=claude-code/deepseek | tester=hermes/openrouter'"
 log "creating task '$TITLE' on branch $BR"
 TID=$(api POST "/api/v1/projects/$PID/tasks" "$(jq -nc \
   --arg t "$TITLE" --arg d "$DESC" --arg a "$AGT_ORCH" --arg b "$BR" \
@@ -256,6 +274,7 @@ log "asserting no secret leaks in backend logs (waiting for stable log buffer)"
 wait_for_stable_logs
 assert_no_leak DEEPSEEK_API_KEY                "$DEEPSEEK_API_KEY"
 assert_no_leak CLAUDE_CODE_OAUTH_ACCESS_TOKEN  "$CLAUDE_CODE_OAUTH_ACCESS_TOKEN"
+assert_no_leak OPENROUTER_API_KEY              "$OPENROUTER_API_KEY"
 
 printf '\033[1;32m[smoke OK]\033[0m mixed-agents pipeline: PR #%s opened: %s (files: %s)\n' \
   "$PR_NUM" "$PR_URL" "$PR_FILES"
