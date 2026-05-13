@@ -36,6 +36,7 @@ func writeTeamHandlerError(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrTeamInvalidName),
 		errors.Is(err, service.ErrTeamAgentInvalidModel),
 		errors.Is(err, service.ErrTeamAgentInvalidCodeBackend),
+		errors.Is(err, service.ErrTeamAgentInvalidProviderKind),
 		errors.Is(err, service.ErrTeamAgentInvalidToolBindings):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTeamAgentConflict):

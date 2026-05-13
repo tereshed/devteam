@@ -34,6 +34,14 @@ abstract class AgentModel with _$AgentModel {
     @JsonKey(name: 'code_backend')
     String? codeBackend,
 
+    /// Sprint 15.e2e — kind LLM-провайдера агента (anthropic | anthropic_oauth |
+    /// deepseek | zhipu | openrouter). Резолвер на бэке по этому полю выбирает
+    /// base_url и берёт ключ из user_llm_credentials (или OAuth-подписки).
+    /// Nullable: для LLM-исполнителей без sandbox используется глобальный
+    /// ANTHROPIC_API_KEY из конфига бэка.
+    @JsonKey(name: 'provider_kind')
+    String? providerKind,
+
     /// Активен ли агент
     @JsonKey(name: 'is_active')
     required bool isActive,

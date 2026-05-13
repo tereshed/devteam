@@ -14,7 +14,6 @@ import (
 func AgentSettingsResponseFromModel(a *models.Agent) AgentSettingsResponse {
 	resp := AgentSettingsResponse{
 		AgentID:             a.ID,
-		LLMProviderID:       a.LLMProviderID,
 		CodeBackendSettings: jsonObjectOrEmpty(a.CodeBackendSettings),
 		SandboxPermissions:  jsonObjectOrEmpty(a.SandboxPermissions),
 	}

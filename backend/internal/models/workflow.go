@@ -125,12 +125,10 @@ type Agent struct {
 	CodeBackend *CodeBackend   `gorm:"type:varchar(50)" json:"code_backend"`
 	Settings    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
 	ModelConfig datatypes.JSON `gorm:"type:jsonb" json:"model_config"`
-	// Sprint 15.3 — связь с llm_providers и per-agent code-backend настройки.
-	// LLMProviderID — backwards compat (системный каталог). Резолвер использует ProviderKind.
-	LLMProviderID *uuid.UUID   `gorm:"type:uuid" json:"llm_provider_id"`
-	LLMProvider   *LLMProvider `gorm:"foreignKey:LLMProviderID" json:"llm_provider,omitempty"`
 	// Sprint 15.e2e refactor — kind провайдера: anthropic / anthropic_oauth / deepseek / zhipu / openrouter.
 	// По этому полю SandboxAuthEnvResolver выбирает base_url и user_llm_credentials.
+	// LLMProviderID (системный каталог llm_providers) удалён миграцией 029 — резолвер
+	// использует ProviderKind напрямую, креденшелы хранятся в user_llm_credentials.
 	ProviderKind        *AgentProviderKind `gorm:"type:varchar(32)" json:"provider_kind"`
 	CodeBackendSettings datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"code_backend_settings"`
 	SandboxPermissions  datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions"`

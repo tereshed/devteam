@@ -44,18 +44,17 @@ class AgentSettingsRepository {
     }
   }
 
+  // Sprint 15.e2e: параметры llm_provider_id / clear_llm_provider удалены вместе
+  // с колонкой agents.llm_provider_id (миграция 029). provider_kind агента
+  // меняется через teamRepository.patchAgent (поле provider_kind в PATCH-теле).
   Future<AgentSettingsModel> update(
     String agentID, {
-    String? llmProviderID,
-    bool clearLLMProvider = false,
     String? codeBackend,
     Map<String, dynamic>? codeBackendSettings,
     Map<String, dynamic>? sandboxPermissions,
     CancelToken? cancelToken,
   }) async {
     final body = <String, dynamic>{
-      if (llmProviderID != null) 'llm_provider_id': llmProviderID,
-      if (clearLLMProvider) 'clear_llm_provider': true,
       if (codeBackend != null) 'code_backend': codeBackend,
       if (codeBackendSettings != null)
         'code_backend_settings': codeBackendSettings,

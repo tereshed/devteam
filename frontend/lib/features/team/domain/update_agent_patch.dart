@@ -7,6 +7,7 @@ class UpdateAgentPatch {
     this.model = const Patch<String>.omit(),
     this.promptId = const Patch<String?>.omit(),
     this.codeBackend = const Patch<String?>.omit(),
+    this.providerKind = const Patch<String?>.omit(),
     this.isActive = const Patch<bool>.omit(),
     this.toolBindings = const Patch<List<ToolBindingPatchItem>>.omit(),
   });
@@ -14,6 +15,7 @@ class UpdateAgentPatch {
   final Patch<String> model;
   final Patch<String?> promptId;
   final Patch<String?> codeBackend;
+  final Patch<String?> providerKind;
   final Patch<bool> isActive;
   final Patch<List<ToolBindingPatchItem>> toolBindings;
 
@@ -33,6 +35,11 @@ class UpdateAgentPatch {
       m['code_backend'] = null;
     } else if (codeBackend.isValue) {
       m['code_backend'] = codeBackend.requireValue;
+    }
+    if (providerKind.isClear) {
+      m['provider_kind'] = null;
+    } else if (providerKind.isValue) {
+      m['provider_kind'] = providerKind.requireValue;
     }
     if (isActive.isValue) {
       m['is_active'] = isActive.requireValue;

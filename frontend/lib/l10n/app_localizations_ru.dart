@@ -986,6 +986,13 @@ class AppLocalizationsRu extends AppLocalizations {
   String get teamAgentEditFieldCodeBackend => 'Code backend';
 
   @override
+  String get teamAgentEditFieldProviderKind => 'LLM провайдер';
+
+  @override
+  String get teamAgentEditFieldProviderKindHelp =>
+      'Ключи провайдера задаются в Настройках → LLM-ключи';
+
+  @override
   String get teamAgentEditFieldActive => 'Активен';
 
   @override

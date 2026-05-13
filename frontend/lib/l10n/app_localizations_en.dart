@@ -984,6 +984,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get teamAgentEditFieldCodeBackend => 'Code backend';
 
   @override
+  String get teamAgentEditFieldProviderKind => 'LLM provider';
+
+  @override
+  String get teamAgentEditFieldProviderKindHelp =>
+      'Provider keys live in Settings → LLM credentials';
+
+  @override
   String get teamAgentEditFieldActive => 'Active';
 
   @override

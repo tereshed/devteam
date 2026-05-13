@@ -7,9 +7,10 @@ import (
 )
 
 // AgentSettingsResponse — ответ GET /agents/:id/settings (Sprint 15.23).
+// Sprint 15.e2e: поле `llm_provider_id` удалено — kind провайдера хранится
+// в agent.provider_kind (см. team API), а креденшелы — в user_llm_credentials.
 type AgentSettingsResponse struct {
 	AgentID             uuid.UUID       `json:"agent_id"`
-	LLMProviderID       *uuid.UUID      `json:"llm_provider_id,omitempty"`
 	CodeBackend         *string         `json:"code_backend,omitempty"`
 	CodeBackendSettings json.RawMessage `json:"code_backend_settings" swaggertype:"object"`
 	SandboxPermissions  json.RawMessage `json:"sandbox_permissions" swaggertype:"object"`
@@ -17,11 +18,11 @@ type AgentSettingsResponse struct {
 
 // UpdateAgentSettingsRequest — тело PUT /agents/:id/settings.
 //
-// LLMProviderID: явный null очищает связь (omitempty не используем, чтобы отличать "не передано" от "сбросить").
-// CodeBackendSettings / SandboxPermissions передаются как сырой JSON; сервис валидирует структуру (см. service.ValidateSandboxPermissions).
+// CodeBackendSettings / SandboxPermissions передаются как сырой JSON;
+// сервис валидирует структуру (см. service.ValidateSandboxPermissions).
+// Sprint 15.e2e: поля `llm_provider_id` / `clear_llm_provider` удалены вместе
+// с колонкой в БД.
 type UpdateAgentSettingsRequest struct {
-	LLMProviderID       *uuid.UUID      `json:"llm_provider_id,omitempty"`
-	ClearLLMProvider    bool            `json:"clear_llm_provider,omitempty"`
 	CodeBackend         *string         `json:"code_backend,omitempty"`
 	CodeBackendSettings json.RawMessage `json:"code_backend_settings,omitempty" swaggertype:"object"`
 	SandboxPermissions  json.RawMessage `json:"sandbox_permissions,omitempty" swaggertype:"object"`

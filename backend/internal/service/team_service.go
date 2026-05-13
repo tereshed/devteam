@@ -23,6 +23,7 @@ var (
 	ErrTeamAgentNotFound           = errors.New("agent not found")
 	ErrTeamAgentInvalidModel       = errors.New("invalid model")
 	ErrTeamAgentInvalidCodeBackend = errors.New("invalid code_backend")
+	ErrTeamAgentInvalidProviderKind = errors.New("invalid provider_kind")
 	ErrTeamAgentConflict           = errors.New("agent update conflict")
 	ErrTeamAgentInvalidToolBindings = errors.New("invalid or inactive tool_definition_id in tool_bindings")
 
@@ -35,7 +36,8 @@ type TeamService interface {
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error)
 	Update(ctx context.Context, projectID uuid.UUID, req dto.UpdateTeamRequest) (*models.Team, error)
 	PatchAgent(ctx context.Context, projectID, agentID uuid.UUID, req dto.PatchAgentRequest) (*models.Team, error)
-	// Sprint 15.23 — per-agent settings (code_backend_settings + sandbox_permissions + llm_provider_id).
+	// Sprint 15.23 — per-agent settings (code_backend_settings + sandbox_permissions).
+	// Sprint 15.e2e: llm_provider_id удалён, kind вынесен в agent.provider_kind (PATCH /team/agents/:id).
 	// Sprint 15.B (B4): актёр (userID, isAdmin) обязательно проверяется на ownership через
 	// agent → team → project.user_id. Admin (isAdmin=true) пропускает проверку.
 	GetAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID) (*models.Agent, error)
@@ -177,6 +179,18 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 		}
 	}
 
+	if req.ProviderKindPresent() {
+		if req.ProviderKindClear() {
+			agent.ProviderKind = nil
+		} else if v, ok := req.ProviderKindValue(); ok {
+			pk := models.AgentProviderKind(v)
+			if !pk.IsValid() {
+				return nil, ErrTeamAgentInvalidProviderKind
+			}
+			agent.ProviderKind = &pk
+		}
+	}
+
 	if req.IsActivePresent() {
 		if v, ok := req.IsActiveValue(); ok {
 			agent.IsActive = v
@@ -204,7 +218,7 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 }
 
 // GetAgentSettings возвращает агента целиком — handler выбирает нужные поля
-// (llm_provider_id, code_backend, code_backend_settings, sandbox_permissions).
+// (code_backend, code_backend_settings, sandbox_permissions).
 //
 // Sprint 15.B (B4): проверяется, что актёр — admin или owner проекта команды агента.
 func (s *teamService) GetAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID) (*models.Agent, error) {
@@ -238,13 +252,6 @@ func (s *teamService) UpdateAgentSettings(ctx context.Context, actor AgentSettin
 			return nil, ErrTeamAgentNotFound
 		}
 		return nil, err
-	}
-
-	if req.ClearLLMProvider {
-		a.LLMProviderID = nil
-	} else if req.LLMProviderID != nil {
-		id := *req.LLMProviderID
-		a.LLMProviderID = &id
 	}
 
 	if req.CodeBackend != nil {

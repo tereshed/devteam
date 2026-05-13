@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/safe_error_message.dart';
 import 'package:frontend/core/l10n/require.dart';
-import 'package:frontend/features/settings/data/llm_providers_providers.dart';
-import 'package:frontend/features/settings/domain/models/llm_provider_model.dart';
 import 'package:frontend/features/team/data/agent_settings_providers.dart';
 import 'package:frontend/features/team/domain/models/agent_settings_model.dart';
 
@@ -90,7 +88,6 @@ class _Body extends ConsumerStatefulWidget {
 class _BodyState extends ConsumerState<_Body>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  late String? _llmProviderID = widget.current.llmProviderID;
   late String? _codeBackend = widget.current.codeBackend;
   late final TextEditingController _mcpJSON = TextEditingController(
     text: const JsonEncoder.withIndent('  ').convert(
@@ -152,8 +149,6 @@ class _BodyState extends ConsumerState<_Body>
     try {
       await repo.update(
         widget.agentID,
-        llmProviderID: _llmProviderID,
-        clearLLMProvider: _llmProviderID == null,
         codeBackend: _codeBackend,
         codeBackendSettings: codeBackendSettings,
         sandboxPermissions: _permissionsForm.toMap(),
@@ -216,8 +211,6 @@ class _BodyState extends ConsumerState<_Body>
             controller: _tabs,
             children: [
               _ProviderTab(
-                value: _llmProviderID,
-                onChanged: (v) => setState(() => _llmProviderID = v),
                 codeBackend: _codeBackend,
                 onCodeBackendChanged: (v) => setState(() => _codeBackend = v),
               ),
@@ -263,17 +256,16 @@ class _BodyState extends ConsumerState<_Body>
   }
 }
 
-/// Вкладка 1 — модель/провайдер.
+/// Вкладка 1 — code_backend. Sprint 15.e2e: per-agent LLM-провайдер (provider_kind)
+/// настраивается в основном диалоге agent_edit_dialog; здесь оставляем только
+/// code_backend, так как этот advanced-диалог фокусируется на sandbox-параметрах
+/// (MCP, Skills, permissions). llm_provider_id-связи больше не существует.
 class _ProviderTab extends ConsumerWidget {
   const _ProviderTab({
-    required this.value,
-    required this.onChanged,
     required this.codeBackend,
     required this.onCodeBackendChanged,
   });
 
-  final String? value;
-  final ValueChanged<String?> onChanged;
   final String? codeBackend;
   final ValueChanged<String?> onCodeBackendChanged;
 
@@ -281,34 +273,11 @@ class _ProviderTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n =
         requireAppLocalizations(context, where: 'agentSandboxSettingsDialog');
-    final asyncProviders = ref.watch(llmProvidersListProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          asyncProviders.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => SelectableText(safeErrorMessage(context, err)),
-            data: (list) => DropdownButtonFormField<String?>(
-              initialValue: value,
-              decoration: InputDecoration(
-                labelText: l10n.agentSandboxSettingsProviderLabel,
-              ),
-              items: [
-                DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text(l10n.agentSandboxSettingsProviderNone),
-                ),
-                ...list.map((LLMProviderModel p) => DropdownMenuItem<String?>(
-                      value: p.id,
-                      child: Text('${p.name}  (${p.kind})'),
-                    )),
-              ],
-              onChanged: onChanged,
-            ),
-          ),
-          const SizedBox(height: 16),
           DropdownButtonFormField<String?>(
             initialValue: codeBackend,
             decoration: InputDecoration(

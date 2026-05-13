@@ -11,6 +11,8 @@ import 'package:frontend/features/projects/domain/models/agent_model.dart'
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/team/data/tools_providers.dart';
+import 'package:frontend/features/team/domain/models/agent_settings_model.dart'
+    show kSupportedAgentProviderKinds;
 import 'package:frontend/features/team/domain/models/tool_definition_model.dart';
 import 'package:frontend/features/team/domain/team_exceptions.dart';
 import 'package:frontend/features/team/domain/tool_binding_patch_item.dart';
@@ -124,6 +126,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
   bool _promptTouched = false;
 
   String? _codeBackend;
+  String? _providerKind;
   late bool _isActive;
 
   bool _dirty = false;
@@ -138,6 +141,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     _modelFocus = FocusNode();
     _promptId = widget.agent.promptId;
     _codeBackend = widget.agent.codeBackend;
+    _providerKind = widget.agent.providerKind;
     _isActive = widget.agent.isActive;
     _loadPrompts();
     _initialToolBindingIds = widget.agent.toolBindings
@@ -247,12 +251,13 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
         (_promptId ?? '') != (_initial.promptId ?? '');
 
     final cbDirty = (_codeBackend ?? '') != (_initial.codeBackend ?? '');
+    final pkDirty = (_providerKind ?? '') != (_initial.providerKind ?? '');
     final activeDirty = _isActive != _initial.isActive;
 
     final toolsDirty = !_sameToolIdSet(_selectedToolDefIds, _initialToolBindingIds);
 
     final next =
-        modelDirty || promptDirty || cbDirty || activeDirty || toolsDirty;
+        modelDirty || promptDirty || cbDirty || pkDirty || activeDirty || toolsDirty;
     if (next != _dirty) {
       setState(() => _dirty = next);
     }
@@ -345,6 +350,15 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       cbPatch = const Patch<String?>.omit();
     }
 
+    final Patch<String?> pkPatch;
+    if ((_providerKind ?? '') != (_initial.providerKind ?? '')) {
+      pkPatch = _providerKind == null || _providerKind!.isEmpty
+          ? const Patch<String?>.clear()
+          : Patch.value(_providerKind!);
+    } else {
+      pkPatch = const Patch<String?>.omit();
+    }
+
     final Patch<bool> activePatch;
     if (_isActive != _initial.isActive) {
       activePatch = Patch.value(_isActive);
@@ -368,6 +382,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       model: modelPatch,
       promptId: promptPatch,
       codeBackend: cbPatch,
+      providerKind: pkPatch,
       isActive: activePatch,
       toolBindings: toolsPatch,
     );
@@ -549,6 +564,15 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                   value: _codeBackend,
                   onChanged: (v) {
                     setState(() => _codeBackend = v);
+                    _recomputeDirty();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _ProviderKindField(
+                  l10n: l10n,
+                  value: _providerKind,
+                  onChanged: (v) {
+                    setState(() => _providerKind = v);
                     _recomputeDirty();
                   },
                 ),
@@ -901,6 +925,51 @@ class _CodeBackendField extends StatelessWidget {
       ),
       isExpanded: true,
       initialValue: value != null && codeBackends.contains(value) ? value : null,
+      items: items,
+      onChanged: onChanged,
+    );
+  }
+}
+
+/// Sprint 15.e2e — dropdown для `agent.provider_kind`. Резолвер на бэке по этому
+/// kind берёт ключ из user_llm_credentials (или OAuth-подписки) и выставляет
+/// нужные env в sandbox-контейнере.
+class _ProviderKindField extends StatelessWidget {
+  const _ProviderKindField({
+    required this.l10n,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final AppLocalizations l10n;
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <DropdownMenuItem<String?>>[
+      DropdownMenuItem<String?>(
+        value: null,
+        child: Text(l10n.teamAgentEditUnset),
+      ),
+      ...kSupportedAgentProviderKinds.map(
+        (k) => DropdownMenuItem<String?>(
+          value: k,
+          child: Text(k),
+        ),
+      ),
+    ];
+    return DropdownButtonFormField<String?>(
+      decoration: InputDecoration(
+        labelText: l10n.teamAgentEditFieldProviderKind,
+        helperText: l10n.teamAgentEditFieldProviderKindHelp,
+        border: const OutlineInputBorder(),
+      ),
+      isExpanded: true,
+      initialValue:
+          value != null && kSupportedAgentProviderKinds.contains(value)
+              ? value
+              : null,
       items: items,
       onChanged: onChanged,
     );

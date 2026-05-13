@@ -1946,6 +1946,18 @@ abstract class AppLocalizations {
   /// **'Code backend'**
   String get teamAgentEditFieldCodeBackend;
 
+  /// Sprint 15.e2e: kind LLM-провайдера агента (anthropic / anthropic_oauth / deepseek / zhipu / openrouter)
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM провайдер'**
+  String get teamAgentEditFieldProviderKind;
+
+  /// Sprint 15.e2e: подсказка под дропдауном про per-user creds
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключи провайдера задаются в Настройках → LLM-ключи'**
+  String get teamAgentEditFieldProviderKindHelp;
+
   /// 13.3 переключатель
   ///
   /// In ru, this message translates to:

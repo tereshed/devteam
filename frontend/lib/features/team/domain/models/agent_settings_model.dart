@@ -12,7 +12,6 @@ part 'agent_settings_model.g.dart';
 abstract class AgentSettingsModel with _$AgentSettingsModel {
   const factory AgentSettingsModel({
     @JsonKey(name: 'agent_id') required String agentID,
-    @JsonKey(name: 'llm_provider_id') String? llmProviderID,
     @JsonKey(name: 'code_backend') String? codeBackend,
     @JsonKey(name: 'code_backend_settings')
     @Default(<String, dynamic>{})

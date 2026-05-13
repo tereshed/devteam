@@ -21,6 +21,10 @@ type PatchAgentRequest struct {
 	codeBackendSet, codeBackendNull bool
 	codeBackendVal                  *string
 
+	// provider_kind — Sprint 15.e2e: per-agent LLM-провайдер (kind в `agents.provider_kind`).
+	providerKindSet, providerKindNull bool
+	providerKindVal                   *string
+
 	isActiveSet bool
 	isActiveVal bool
 
@@ -77,6 +81,18 @@ func (p *PatchAgentRequest) UnmarshalJSON(data []byte) error {
 				return err
 			}
 			p.codeBackendVal = &s
+		}
+	}
+	if v, ok := raw["provider_kind"]; ok {
+		p.providerKindSet = true
+		if isJSONNull(v) {
+			p.providerKindNull = true
+		} else {
+			var s string
+			if err := json.Unmarshal(v, &s); err != nil {
+				return err
+			}
+			p.providerKindVal = &s
 		}
 	}
 	if v, ok := raw["is_active"]; ok {
@@ -160,6 +176,25 @@ func (p PatchAgentRequest) CodeBackendValue() (string, bool) {
 		return "", false
 	}
 	return *p.codeBackendVal, true
+}
+
+// ProviderKindPresent true если ключ "provider_kind" был в JSON (Sprint 15.e2e).
+func (p PatchAgentRequest) ProviderKindPresent() bool { return p.providerKindSet }
+
+// ProviderKindClear true если явный null (сброс kind в БД).
+func (p PatchAgentRequest) ProviderKindClear() bool {
+	return p.providerKindSet && p.providerKindNull
+}
+
+// ProviderKindValue возвращает значение kind, если ключ был и это не null.
+func (p PatchAgentRequest) ProviderKindValue() (string, bool) {
+	if !p.providerKindSet || p.providerKindNull {
+		return "", false
+	}
+	if p.providerKindVal == nil {
+		return "", false
+	}
+	return *p.providerKindVal, true
 }
 
 func (p PatchAgentRequest) IsActivePresent() bool { return p.isActiveSet }

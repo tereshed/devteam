@@ -30,10 +30,11 @@ type AgentSettingsGetParams struct {
 }
 
 // AgentSettingsUpdateParams — параметры agent_settings_update.
+// Sprint 15.e2e: поля llm_provider_id / clear_llm_provider удалены вместе с
+// колонкой agents.llm_provider_id (миграция 029). Для смены провайдера используйте
+// PATCH /projects/:id/team/agents/:agentId c полем `provider_kind`.
 type AgentSettingsUpdateParams struct {
 	AgentID             string          `json:"agent_id" jsonschema:"required,description=UUID агента"`
-	LLMProviderID       *string         `json:"llm_provider_id,omitempty" jsonschema:"description=UUID LLM-провайдера (или null/опустить для сохранения текущего)"`
-	ClearLLMProvider    bool            `json:"clear_llm_provider,omitempty" jsonschema:"description=Если true — сбрасывает llm_provider_id в null"`
 	CodeBackend         *string         `json:"code_backend,omitempty" jsonschema:"description=claude-code | aider | custom"`
 	CodeBackendSettings json.RawMessage `json:"code_backend_settings,omitempty" jsonschema:"description=JSON-объект code_backend_settings"`
 	SandboxPermissions  json.RawMessage `json:"sandbox_permissions,omitempty" jsonschema:"description=JSON-объект permissions (allow/deny/defaultMode)"`
@@ -71,7 +72,7 @@ func RegisterAgentSettingsTools(
 	if teamSvc != nil {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "agent_settings_get",
-			Description: "Получить per-agent настройки (llm_provider_id, code_backend, code_backend_settings, sandbox_permissions).",
+			Description: "Получить per-agent настройки (code_backend, code_backend_settings, sandbox_permissions). Для provider_kind используйте /team/agents/:id PATCH.",
 		}, makeAgentSettingsGetHandler(teamSvc))
 
 		mcp.AddTool(server, &mcp.Tool{
@@ -128,17 +129,9 @@ func makeAgentSettingsUpdateHandler(svc service.TeamService) func(ctx context.Co
 			return ValidationErr("invalid agent_id")
 		}
 		req := dto.UpdateAgentSettingsRequest{
-			ClearLLMProvider:    params.ClearLLMProvider,
 			CodeBackend:         params.CodeBackend,
 			CodeBackendSettings: params.CodeBackendSettings,
 			SandboxPermissions:  params.SandboxPermissions,
-		}
-		if params.LLMProviderID != nil {
-			pid, err := uuid.Parse(*params.LLMProviderID)
-			if err != nil {
-				return ValidationErr("invalid llm_provider_id")
-			}
-			req.LLMProviderID = &pid
 		}
 		a, err := svc.UpdateAgentSettings(ctx, actor, id, req)
 		if err != nil {
