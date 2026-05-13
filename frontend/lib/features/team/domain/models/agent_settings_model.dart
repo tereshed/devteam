@@ -28,9 +28,14 @@ abstract class AgentSettingsModel with _$AgentSettingsModel {
 /// Все допустимые значения CodeBackend на бэке (sync c models.CodeBackend).
 /// Sprint 15.e2e: `claude-code-via-proxy` удалён — не-Anthropic провайдеры
 /// теперь работают через `claude-code` + agent.provider_kind (native endpoint).
+/// Sprint 16: добавлен `hermes` — Hermes Agent (Nous Research, MIT). Своя
+/// схема env (OPENROUTER_API_KEY и т.п.), своя docker-image
+/// devteam/sandbox-hermes; provider_kind агента маппится в env через
+/// AgentProviderKind.HermesEnvVar.
 const List<String> kSupportedCodeBackends = [
   'claude-code',
   'aider',
+  'hermes',
   'custom',
 ];
 

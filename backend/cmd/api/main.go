@@ -266,8 +266,14 @@ func main() {
 	sandboxRunner := sandbox.NewDockerSandboxRunner(dockerCli, []string{
 		"devteam/sandbox-claude:local",
 		"devteam/sandbox-aider:local",
+		"devteam/sandbox-hermes:local",
 	}, sandbox.WithLogPublisher(sandboxLogAdapter))
-	sandboxAgentExecutor := agent.NewSandboxAgentExecutor(sandboxRunner, "devteam/sandbox-claude:local")
+	// Sprint 16: per-backend образа. claude-code/aider/custom уходят в default
+	// (sandbox-claude), hermes — в свой образ. Если в будущем у aider будет
+	// отдельный образ — регистрируем здесь же без правок executor'а.
+	sandboxAgentExecutor := agent.
+		NewSandboxAgentExecutor(sandboxRunner, "devteam/sandbox-claude:local").
+		WithBackendImage(string(models.CodeBackendHermes), "devteam/sandbox-hermes:local")
 
 	// Orchestrator Components
 	orchestratorPipeline := service.NewPipelineEngine(5)

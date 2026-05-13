@@ -1,12 +1,17 @@
 package sandbox
 
-// ClaudeCodeAuthEnv — набор переменных окружения для аутентификации Claude Code в sandbox-контейнере.
-// Sprint 15.e2e refactor: оркестратор формирует ClaudeCodeAuthEnv в зависимости от kind провайдера агента
-// (см. SandboxAuthEnvResolver):
+// ClaudeCodeAuthEnv — набор переменных окружения для аутентификации в sandbox-контейнере.
+// Имя сохранено по историческим причинам (Sprint 15.14), но фактически используется для всех
+// поддерживаемых code_backend'ов. Sprint 16 добавил `Extra` для backend-specific env (Hermes
+// использует OPENROUTER_API_KEY/NOUS_PORTAL_API_KEY и т.п., не ANTHROPIC_*).
+//
+// Sprint 15.e2e + Sprint 16: оркестратор формирует env в зависимости от kind провайдера
+// агента (см. SandboxAuthEnvResolver):
+//   - claude-code:
 //   - anthropic              → APIKey
 //   - anthropic_oauth        → OAuthToken
-//   - deepseek / zhipu /
-//     openrouter             → BaseURL + AuthToken (native Anthropic endpoint провайдера)
+//   - deepseek/zhipu/openrouter → BaseURL + AuthToken (native Anthropic endpoint)
+//   - hermes: всё через Extra с провайдер-специфичными env (OPENROUTER_API_KEY, …)
 //
 // Результат сливается в SandboxOptions.EnvVars.
 type ClaudeCodeAuthEnv struct {
@@ -19,6 +24,10 @@ type ClaudeCodeAuthEnv struct {
 	BaseURL string
 	// AuthToken — Bearer-токен для BaseURL. Выставляется как ANTHROPIC_AUTH_TOKEN.
 	AuthToken string
+	// Extra — Sprint 16: backend-specific env-vars (для code_backend != claude-code,
+	// у которого свои имена переменных). Ключи — точные имена env, значения — plaintext.
+	// При коллизии с типизированными полями выше — Extra перетирает (последняя запись побеждает).
+	Extra map[string]string
 }
 
 // ToEnv возвращает map env, готовый для SandboxOptions.EnvVars.
@@ -37,11 +46,24 @@ func (e ClaudeCodeAuthEnv) ToEnv() map[string]string {
 	if e.APIKey != "" {
 		out[EnvAnthropicAPIKey] = e.APIKey
 	}
+	for k, v := range e.Extra {
+		if v != "" {
+			out[k] = v
+		}
+	}
 	return out
 }
 
 // HasCredential сообщает, есть ли хоть одна форма аутентификации.
-// Соответствует проверке в deployment/sandbox/claude/entrypoint.sh.
+// Соответствует проверке в deployment/sandbox/claude/entrypoint.sh и hermes entrypoint.
 func (e ClaudeCodeAuthEnv) HasCredential() bool {
-	return e.OAuthToken != "" || e.APIKey != "" || e.AuthToken != ""
+	if e.OAuthToken != "" || e.APIKey != "" || e.AuthToken != "" {
+		return true
+	}
+	for _, v := range e.Extra {
+		if v != "" {
+			return true
+		}
+	}
+	return false
 }

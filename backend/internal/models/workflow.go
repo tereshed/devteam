@@ -39,13 +39,16 @@ type CodeBackend string
 const (
 	CodeBackendClaudeCode CodeBackend = "claude-code"
 	CodeBackendAider      CodeBackend = "aider"
-	CodeBackendCustom     CodeBackend = "custom"
+	// CodeBackendHermes — Sprint 16: Hermes Agent (Nous Research). MIT, open-source
+	// мультипровайдерный агент. В sandbox запускается из образа devteam/sandbox-hermes.
+	CodeBackendHermes CodeBackend = "hermes"
+	CodeBackendCustom CodeBackend = "custom"
 )
 
 // IsValid проверяет валидность code backend
 func (cb CodeBackend) IsValid() bool {
 	switch cb {
-	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendCustom:
+	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendHermes, CodeBackendCustom:
 		return true
 	default:
 		return false
@@ -109,6 +112,57 @@ func (k AgentProviderKind) UserLLMProvider() UserLLMProvider {
 	default:
 		return ""
 	}
+}
+
+// HermesEnvVar — имя env переменной, под которой Hermes Agent ищет ключ
+// провайдера (см. hermes config / .env конвенцию). Sprint 16.
+// Возвращает пустую строку для kind'ов, которые Hermes нативно не поддерживает
+// (например, anthropic_oauth — у Hermes нет OAuth-flow Anthropic).
+func (k AgentProviderKind) HermesEnvVar() string {
+	switch k {
+	case AgentProviderKindAnthropic:
+		return "ANTHROPIC_API_KEY"
+	case AgentProviderKindDeepSeek:
+		// DeepSeek в Hermes идёт через OpenRouter; в hermes/.env DEEPSEEK_API_KEY
+		// не предусмотрен. Возвращаем пусто, чтобы резолвер выдал явный warn.
+		return ""
+	case AgentProviderKindZhipu:
+		return ""
+	case AgentProviderKindOpenRouter:
+		return "OPENROUTER_API_KEY"
+	default:
+		return ""
+	}
+}
+
+// HermesModelString — каноничный "provider/model" формат, который Hermes ждёт в
+// config.yaml > model: (см. их docs/user-guide/configuration). Sprint 16.
+// `agentModel` — короткое имя модели (например "anthropic/claude-haiku-4.5" или просто "haiku");
+// если уже содержит "/" — возвращается как есть, иначе склеивается с префиксом kind.
+func (k AgentProviderKind) HermesModelString(agentModel string) string {
+	if agentModel == "" {
+		return ""
+	}
+	if hasSlash(agentModel) {
+		return agentModel
+	}
+	switch k {
+	case AgentProviderKindOpenRouter:
+		return "openrouter/" + agentModel
+	case AgentProviderKindAnthropic:
+		return "anthropic/" + agentModel
+	default:
+		return agentModel
+	}
+}
+
+func hasSlash(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '/' {
+			return true
+		}
+	}
+	return false
 }
 
 // Agent представляет AI-агента

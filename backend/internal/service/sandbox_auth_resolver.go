@@ -81,6 +81,12 @@ func (r *sandboxAuthEnvResolver) Resolve(ctx context.Context, project *models.Pr
 		return env
 	}
 
+	// Sprint 16: Hermes Agent — собственная схема env (OPENROUTER_API_KEY, …),
+	// не Anthropic-совместимая. Резолвится отдельным путём.
+	if agent != nil && agent.CodeBackend != nil && *agent.CodeBackend == models.CodeBackendHermes {
+		return r.resolveHermes(ctx, project, agent)
+	}
+
 	// 1) Явный kind на агенте — основной путь после рефакторинга.
 	if agent != nil && agent.ProviderKind != nil && agent.ProviderKind.IsValid() {
 		return r.resolveByKind(ctx, project, *agent.ProviderKind)
@@ -164,5 +170,52 @@ func (r *sandboxAuthEnvResolver) resolveByKind(ctx context.Context, project *mod
 	}
 
 	logger.Warn("unknown provider_kind")
+	return env
+}
+
+// resolveHermes — Sprint 16: env для Hermes Agent sandbox.
+// Hermes сам выбирает провайдера по `model: "<provider>/<name>"` (см.
+// HermesModelString); ключ читает из env'а с провайдер-специфичным именем
+// (HermesEnvVar для kind). Контракт «не найдено != ошибка» из user_llm_credentials
+// сохраняется: при отсутствии ключа возвращаем пустой env, sandbox-entrypoint
+// упадёт fast-fail вместо тихого fallback.
+func (r *sandboxAuthEnvResolver) resolveHermes(ctx context.Context, project *models.Project, agent *models.Agent) sandbox.ClaudeCodeAuthEnv {
+	env := sandbox.ClaudeCodeAuthEnv{Extra: map[string]string{}}
+	logger := r.logger.With(
+		"project_id", project.ID.String(),
+		"user_id", project.UserID.String(),
+		"code_backend", "hermes",
+	)
+	if agent == nil || agent.ProviderKind == nil || !agent.ProviderKind.IsValid() {
+		logger.Warn("hermes: provider_kind required for this code_backend")
+		return env
+	}
+	kind := *agent.ProviderKind
+	logger = logger.With("provider_kind", string(kind))
+
+	envName := kind.HermesEnvVar()
+	if envName == "" {
+		logger.Warn("hermes: kind has no env-var mapping (provider not supported by hermes directly)")
+		return env
+	}
+	userProvider := kind.UserLLMProvider()
+	if userProvider == "" {
+		logger.Warn("hermes: kind has no user_llm_credentials mapping")
+		return env
+	}
+	if r.userCreds == nil {
+		logger.Warn("hermes: user credentials resolver is nil")
+		return env
+	}
+	key, err := r.userCreds.GetPlaintext(ctx, project.UserID, userProvider)
+	if errors.Is(err, repository.ErrUserLlmCredentialNotFound) {
+		logger.Warn("hermes: user has no credential for provider", "user_provider", string(userProvider))
+		return env
+	}
+	if err != nil {
+		logger.Warn("hermes: user credential lookup failed", "user_provider", string(userProvider), "err", err)
+		return env
+	}
+	env.Extra[envName] = key
 	return env
 }

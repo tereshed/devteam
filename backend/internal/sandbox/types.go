@@ -68,7 +68,11 @@ type CodeBackendType string
 const (
 	CodeBackendClaudeCode CodeBackendType = "claude-code"
 	CodeBackendAider      CodeBackendType = "aider"
-	CodeBackendCustom     CodeBackendType = "custom"
+	// CodeBackendHermes — Sprint 16: alternative AI-agent CLI (Nous Research), MIT.
+	// Sandbox-образ devteam/sandbox-hermes; entrypoint собирает .env по агенту и
+	// зовёт `hermes chat -q` с одной задачей.
+	CodeBackendHermes CodeBackendType = "hermes"
+	CodeBackendCustom CodeBackendType = "custom"
 )
 
 // SandboxStatusType — фаза жизненного цикла инстанса с точки зрения раннера.

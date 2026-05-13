@@ -149,3 +149,74 @@ func TestResolver_DeepSeek_LookupErrorDoesNotLeakToOtherProvider(t *testing.T) {
 	assert.NotEqual(t, "FALLBACK-SHOULD-NOT-LEAK", env.APIKey)
 	assert.Empty(t, env.BaseURL)
 }
+
+// Sprint 16: Hermes Agent → OpenRouter native env (OPENROUTER_API_KEY).
+// Никаких ANTHROPIC_* (Claude Code конвенций) при code_backend=hermes.
+func cbPtr(c models.CodeBackend) *models.CodeBackend { return &c }
+
+func TestResolver_Hermes_OpenRouter_SetsOpenRouterEnv(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderOpenRouter: "sk-or-USER",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+
+	env := r.Resolve(context.Background(), newProject(), &models.Agent{
+		CodeBackend:  cbPtr(models.CodeBackendHermes),
+		ProviderKind: kindPtr(models.AgentProviderKindOpenRouter),
+	})
+
+	assert.Equal(t, "sk-or-USER", env.Extra["OPENROUTER_API_KEY"])
+	assert.Empty(t, env.APIKey, "ANTHROPIC_API_KEY не должен ставиться для Hermes")
+	assert.Empty(t, env.BaseURL)
+	assert.Empty(t, env.AuthToken)
+	assert.Empty(t, env.OAuthToken)
+}
+
+func TestResolver_Hermes_Anthropic_SetsAnthropicEnv(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderAnthropic: "sk-ant-api03-USER",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+
+	env := r.Resolve(context.Background(), newProject(), &models.Agent{
+		CodeBackend:  cbPtr(models.CodeBackendHermes),
+		ProviderKind: kindPtr(models.AgentProviderKindAnthropic),
+	})
+
+	// Для Hermes ключ кладётся в Extra под именем ANTHROPIC_API_KEY (Hermes конвенция),
+	// а не в типизированное env.APIKey (которое Claude Code конвенция, но имя совпадает).
+	assert.Equal(t, "sk-ant-api03-USER", env.Extra["ANTHROPIC_API_KEY"])
+	// Никаких BaseURL/AuthToken — Hermes сам знает Anthropic endpoint.
+	assert.Empty(t, env.BaseURL)
+	assert.Empty(t, env.AuthToken)
+}
+
+func TestResolver_Hermes_DeepSeek_NotSupportedDirectly_ReturnsEmpty(t *testing.T) {
+	// DeepSeek через Hermes идёт только через OpenRouter (hermes/.env не имеет DEEPSEEK_API_KEY).
+	// Резолвер должен предупредить и вернуть пустой env — пользователь увидит fail-fast.
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderDeepSeek: "sk-ds-USER",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+
+	env := r.Resolve(context.Background(), newProject(), &models.Agent{
+		CodeBackend:  cbPtr(models.CodeBackendHermes),
+		ProviderKind: kindPtr(models.AgentProviderKindDeepSeek),
+	})
+
+	assert.False(t, env.HasCredential())
+}
+
+func TestResolver_Hermes_NoProviderKind_ReturnsEmpty(t *testing.T) {
+	// Без provider_kind резолвер не знает, какой env-var выставлять → пустой env, fail-fast.
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderOpenRouter: "sk-or-USER",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+
+	env := r.Resolve(context.Background(), newProject(), &models.Agent{
+		CodeBackend: cbPtr(models.CodeBackendHermes),
+	})
+
+	assert.False(t, env.HasCredential())
+}

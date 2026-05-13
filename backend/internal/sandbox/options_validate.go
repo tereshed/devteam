@@ -151,7 +151,7 @@ func (o SandboxOptions) validateWithoutResourceLimits(ctx context.Context) error
 		return fmt.Errorf("%w: backend is empty", ErrInvalidOptions)
 	}
 	switch o.Backend {
-	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendCustom:
+	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendHermes, CodeBackendCustom:
 	default:
 		return fmt.Errorf("%w: unsupported backend %q", ErrInvalidOptions, o.Backend)
 	}

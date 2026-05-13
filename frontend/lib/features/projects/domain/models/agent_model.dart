@@ -74,5 +74,6 @@ const agentRoles = [
 const codeBackends = [
   'claude-code',   // Claude Code CLI
   'aider',         // Aider
+  'hermes',        // Sprint 16: Hermes Agent (Nous Research, MIT)
   'custom',        // Пользовательский бэкенд
 ];

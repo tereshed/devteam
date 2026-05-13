@@ -20,15 +20,44 @@ import (
 // Это исключает возможность command injection.
 type SandboxAgentExecutor struct {
 	runner sandbox.SandboxRunner
-	image  string // Дефолтный образ, если не задан в ExecutionInput
+	image  string // Дефолтный образ (используется когда нет per-backend mapping)
+	// Sprint 16: per-backend образа. Если CodeBackend агента есть в этой map —
+	// используется соответствующий образ; иначе fallback на image.
+	imageByBackend map[string]string
 }
 
 // NewSandboxAgentExecutor создает новый экземпляр SandboxAgentExecutor.
+// defaultImage — fallback (например, devteam/sandbox-claude:local) когда
+// для CodeBackend нет специализированного образа.
 func NewSandboxAgentExecutor(runner sandbox.SandboxRunner, defaultImage string) *SandboxAgentExecutor {
 	return &SandboxAgentExecutor{
-		runner: runner,
-		image:  defaultImage,
+		runner:         runner,
+		image:          defaultImage,
+		imageByBackend: map[string]string{},
 	}
+}
+
+// WithBackendImage регистрирует образ для конкретного code_backend.
+// Sprint 16: используется в cmd/api/main.go для подвязки hermes к
+// devteam/sandbox-hermes:local. Возвращает self для chaining.
+func (e *SandboxAgentExecutor) WithBackendImage(codeBackend, image string) *SandboxAgentExecutor {
+	if codeBackend == "" || image == "" {
+		return e
+	}
+	if e.imageByBackend == nil {
+		e.imageByBackend = map[string]string{}
+	}
+	e.imageByBackend[codeBackend] = image
+	return e
+}
+
+// resolveImage выбирает образ контейнера по code_backend агента.
+// Если для backend образа не зарегистрировано — fallback на дефолтный.
+func (e *SandboxAgentExecutor) resolveImage(codeBackend string) string {
+	if img, ok := e.imageByBackend[codeBackend]; ok && img != "" {
+		return img
+	}
+	return e.image
 }
 
 // Execute запускает жизненный цикл задачи в контейнере.
@@ -95,7 +124,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		TaskID:      in.TaskID,
 		ProjectID:   in.ProjectID,
 		Backend:     sandbox.CodeBackendType(in.CodeBackend),
-		Image:       e.image, // В MVP берем дефолтный образ
+		Image:       e.resolveImage(in.CodeBackend),
 		RepoURL:     in.GitURL,
 		Branch:      in.BranchName,
 		Instruction: instruction,
