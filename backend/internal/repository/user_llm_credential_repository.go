@@ -13,6 +13,9 @@ import (
 // ErrUserLlmCredentialNotUpdated — UPDATE не затронул строку (параллельный DELETE и т.п.).
 var ErrUserLlmCredentialNotUpdated = errors.New("user llm credential row not updated")
 
+// ErrUserLlmCredentialNotFound — запись не найдена. (Получают, когда нужно различать "пусто" и реальную ошибку.)
+var ErrUserLlmCredentialNotFound = errors.New("user llm credential not found")
+
 // UserLlmCredentialRepository CRUD по user_llm_credentials и аудиту (bytea — уже зашифровано в service).
 type UserLlmCredentialRepository interface {
 	ListByUserID(ctx context.Context, userID uuid.UUID) ([]models.UserLlmCredential, error)

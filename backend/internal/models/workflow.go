@@ -37,19 +37,77 @@ func (r AgentRole) IsValid() bool {
 type CodeBackend string
 
 const (
-	CodeBackendClaudeCode         CodeBackend = "claude-code"
-	CodeBackendClaudeCodeViaProxy CodeBackend = "claude-code-via-proxy"
-	CodeBackendAider              CodeBackend = "aider"
-	CodeBackendCustom             CodeBackend = "custom"
+	CodeBackendClaudeCode CodeBackend = "claude-code"
+	CodeBackendAider      CodeBackend = "aider"
+	CodeBackendCustom     CodeBackend = "custom"
 )
 
 // IsValid проверяет валидность code backend
 func (cb CodeBackend) IsValid() bool {
 	switch cb {
-	case CodeBackendClaudeCode, CodeBackendClaudeCodeViaProxy, CodeBackendAider, CodeBackendCustom:
+	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendCustom:
 		return true
 	default:
 		return false
+	}
+}
+
+// AgentProviderKind — kind LLM-провайдера для агента (Sprint 15.e2e refactor).
+// Резолвер на основе этого поля выбирает base_url и берёт ключ из user_llm_credentials
+// (или OAuth-токен из claude_code_subscriptions для anthropic_oauth).
+type AgentProviderKind string
+
+const (
+	AgentProviderKindAnthropic      AgentProviderKind = "anthropic"
+	AgentProviderKindAnthropicOAuth AgentProviderKind = "anthropic_oauth"
+	AgentProviderKindDeepSeek       AgentProviderKind = "deepseek"
+	AgentProviderKindZhipu          AgentProviderKind = "zhipu"
+	AgentProviderKindOpenRouter     AgentProviderKind = "openrouter"
+)
+
+// IsValid проверяет валидность kind.
+func (k AgentProviderKind) IsValid() bool {
+	switch k {
+	case AgentProviderKindAnthropic, AgentProviderKindAnthropicOAuth,
+		AgentProviderKindDeepSeek, AgentProviderKindZhipu, AgentProviderKindOpenRouter:
+		return true
+	default:
+		return false
+	}
+}
+
+// AnthropicBaseURL возвращает Anthropic-совместимый base URL для kind.
+// Используется резолвером для установки ANTHROPIC_BASE_URL в env sandbox-агента
+// и для outgoing запросов LLMExecutor'а.
+// Для anthropic_oauth возвращает пустую строку (CLI идёт на api.anthropic.com по дефолту).
+// Для anthropic — также пустую строку (CLI использует свой дефолт).
+func (k AgentProviderKind) AnthropicBaseURL() string {
+	switch k {
+	case AgentProviderKindDeepSeek:
+		return "https://api.deepseek.com/anthropic"
+	case AgentProviderKindZhipu:
+		return "https://open.bigmodel.cn/api/anthropic"
+	case AgentProviderKindOpenRouter:
+		return "https://openrouter.ai/api/v1"
+	default:
+		return ""
+	}
+}
+
+// UserLLMProvider возвращает соответствующий kind для лукапа в user_llm_credentials.
+// Для anthropic_oauth — пустую строку (ключ берётся не из user_llm_credentials, а из claude_code_subscriptions).
+func (k AgentProviderKind) UserLLMProvider() UserLLMProvider {
+	switch k {
+	case AgentProviderKindAnthropic:
+		return UserLLMProviderAnthropic
+	case AgentProviderKindDeepSeek:
+		return UserLLMProviderDeepSeek
+	case AgentProviderKindZhipu:
+		return UserLLMProviderZhipu
+	case AgentProviderKindOpenRouter:
+		return UserLLMProviderOpenRouter
+	default:
+		return ""
 	}
 }
 
@@ -68,10 +126,14 @@ type Agent struct {
 	Settings    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
 	ModelConfig datatypes.JSON `gorm:"type:jsonb" json:"model_config"`
 	// Sprint 15.3 — связь с llm_providers и per-agent code-backend настройки.
-	LLMProviderID       *uuid.UUID     `gorm:"type:uuid" json:"llm_provider_id"`
-	LLMProvider         *LLMProvider   `gorm:"foreignKey:LLMProviderID" json:"llm_provider,omitempty"`
-	CodeBackendSettings datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"code_backend_settings"`
-	SandboxPermissions  datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions"`
+	// LLMProviderID — backwards compat (системный каталог). Резолвер использует ProviderKind.
+	LLMProviderID *uuid.UUID   `gorm:"type:uuid" json:"llm_provider_id"`
+	LLMProvider   *LLMProvider `gorm:"foreignKey:LLMProviderID" json:"llm_provider,omitempty"`
+	// Sprint 15.e2e refactor — kind провайдера: anthropic / anthropic_oauth / deepseek / zhipu / openrouter.
+	// По этому полю SandboxAuthEnvResolver выбирает base_url и user_llm_credentials.
+	ProviderKind        *AgentProviderKind `gorm:"type:varchar(32)" json:"provider_kind"`
+	CodeBackendSettings datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"code_backend_settings"`
+	SandboxPermissions  datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions"`
 	IsActive            bool           `gorm:"default:true" json:"is_active"`
 	RequiresCodeContext bool           `gorm:"default:false" json:"requires_code_context"`
 	CreatedAt           time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`

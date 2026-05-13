@@ -19,7 +19,7 @@ type Client struct {
 	applyAuth   func(req *http.Request, apiKey string)
 }
 
-// Option — функциональная опция для NewClient (Sprint 15.M11 — DRY с freeclaudeproxy).
+// Option — функциональная опция для NewClient.
 type Option func(*Client)
 
 // WithMessagePath переопределяет путь до /messages (например, "/v1/messages" для прокси).

@@ -40,8 +40,7 @@ type Client interface {
 }
 
 // ProviderAdapter оборачивает Provider, добавляя реализации Chat/Embed/HealthCheck/ResolveBaseURL.
-// Используется для существующих провайдеров (anthropic/openai/deepseek/gemini/qwen) и для
-// прокси-обёрток (free_claude_proxy), которые по сути являются Provider + метаданными.
+// Используется для существующих провайдеров (anthropic/openai/deepseek/gemini/qwen).
 type ProviderAdapter struct {
 	Provider Provider
 	// BaseURL — итоговый base URL клиента (для ResolveBaseURL).

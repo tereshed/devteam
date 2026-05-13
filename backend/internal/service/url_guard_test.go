@@ -16,7 +16,7 @@ import (
 )
 
 // Sprint 15.C5 regression — SSRF guard отвергает private/loopback/metadata hosts
-// для non-local kind'ов и принимает их для ollama/free_claude_proxy.
+// для non-local kind'ов и принимает их для ollama.
 
 func TestValidateBaseURLForProvider_RejectsLoopbackForOpenRouter(t *testing.T) {
 	err := validateBaseURLForProvider(context.Background(),
@@ -54,21 +54,6 @@ func TestValidateBaseURLForProvider_AllowsLocalhostForOllama(t *testing.T) {
 	err := validateBaseURLForProvider(context.Background(),
 		"http://localhost:11434/v1", models.LLMProviderKindOllama)
 	assert.NoError(t, err)
-}
-
-func TestValidateBaseURLForProvider_AllowsDockerNetworkForFreeClaudeProxy(t *testing.T) {
-	// free-claude-proxy внутри docker-compose сети — хост по имени сервиса.
-	// Имя резолвится только в Docker; в тесте ожидаем NoError на самом базовом разборе URL
-	// (DNS-резолв провалится, и guard для kind=free_claude_proxy пропустит).
-	err := validateBaseURLForProvider(context.Background(),
-		"http://free-claude-proxy:8787", models.LLMProviderKindFreeClaudeProxy)
-	// Допускаем оба исхода: либо NoError (если DNS не строгий), либо ошибка вида dns lookup
-	// (на bare-metal CI). Главное — не отказ за loopback/private. Проверим, что это
-	// НЕ ошибка вида "scheme must be https" / "host resolves to disallowed ip".
-	if err != nil {
-		assert.NotContains(t, err.Error(), "scheme must be https")
-		assert.NotContains(t, err.Error(), "disallowed ip")
-	}
 }
 
 func TestValidateBaseURLForProvider_EmptyBaseURL_Allowed(t *testing.T) {

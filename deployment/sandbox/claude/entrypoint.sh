@@ -360,8 +360,10 @@ PHASE="agent"
 # Headless: без TTY не ждём интерактива и телеметрию-приглашения (зависания по таймауту оркестратора).
 export CLAUDE_INTERACTIVE=0
 export ANTHROPIC_TELEMETRY_DISABLED=1
-# Claude Code 2.x: флаг --cwd удалён, рабочая директория задаётся через cd;
-# --bare снимает hooks/keychain/CLAUDE.md auto-discovery (sandbox изолирован).
+# Claude Code 2.x: флаг --cwd удалён, рабочая директория задаётся через cd.
+# Sprint 15.e2e: --bare убран — он блокирует аутентификацию через CLAUDE_CODE_OAUTH_TOKEN env
+# (proof: `claude -p ... --bare` → "Not logged in", без --bare → работает с тем же env-токеном).
+# Hooks/CLAUDE.md auto-discovery в sandbox не страшны: /workspace/repo — свежий клон, hooks нет.
 # --dangerously-skip-permissions: допустимо в изолированном контейнере (сеть к LLM — политика хоста).
 CLAUDE_MODEL_ARGS=()
 if [[ -n "${DEVTEAM_AGENT_MODEL:-}" ]]; then
@@ -395,7 +397,6 @@ esac
     printf '\n---\n'
     cat "$CONTEXT_FILE"
   } | claude -p "DevTeam sandbox: полные инструкции и контекст переданы через stdin; работай только в этом репозитории." \
-    --bare \
     "${CLAUDE_PERMS_ARGS[@]}" \
     "${CLAUDE_MODEL_ARGS[@]}" \
     --allowedTools "Bash,Edit,Read,Write,Glob,NotebookEdit" \

@@ -68,33 +68,6 @@ func TestNewLLMClient_OpenRouter_HealthCheck(t *testing.T) {
 	}
 }
 
-func TestNewLLMClient_FreeClaudeProxy_HealthCheck(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" {
-			_, _ = w.Write([]byte("ok"))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	p := &models.LLMProvider{
-		ID:                   uuid.New(),
-		Kind:                 models.LLMProviderKindFreeClaudeProxy,
-		BaseURL:              srv.URL,
-		AuthType:             models.LLMProviderAuthBearer,
-		Enabled:              true,
-		CredentialsEncrypted: []byte("blob"),
-	}
-	c, err := NewLLMClient(context.Background(), p, staticSecret("svc-token"), nil)
-	if err != nil {
-		t.Fatalf("NewLLMClient: %v", err)
-	}
-	if err := c.HealthCheck(context.Background()); err != nil {
-		t.Fatalf("HealthCheck: %v", err)
-	}
-}
-
 func TestNewLLMClient_AuthNoneSkipsResolver(t *testing.T) {
 	calls := 0
 	resolver := SecretsResolverFunc(func(ctx context.Context, _ *models.LLMProvider) (string, error) {

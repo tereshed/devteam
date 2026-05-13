@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -295,7 +294,7 @@ func main() {
 	sandboxSecrets := map[string]string{
 		sandbox.EnvAnthropicAPIKey: cfg.LLM.Anthropic.APIKey,
 	}
-	// Sprint 15.B/C — OAuth Claude Code subscription + free-claude-proxy.
+	// Sprint 15.B/C — OAuth Claude Code subscription.
 	// Создаём заранее (до orchestrator), чтобы динамический резолвер аутентификации sandbox-а
 	// (Sprint 15.18) мог опираться на ClaudeCodeAuthService.
 	claudeCodeSubRepo := repository.NewClaudeCodeSubscriptionRepository(db)
@@ -308,19 +307,14 @@ func main() {
 	})
 	claudeCodeAuthSvc := service.NewClaudeCodeAuthService(claudeCodeSubRepo, encryptor, claudeCodeOAuthProvider)
 
-	// Sprint 15.B5: fail-fast — нельзя включить free-claude-proxy и не задать service-token,
-	// иначе sandbox пойдёт на прокси с пустым Authorization (прокси примет без auth).
-	if cfg.FreeClaudeProxy.Enabled && strings.TrimSpace(cfg.FreeClaudeProxy.ServiceToken) == "" {
-		log.Fatalf("FREE_CLAUDE_PROXY_ENABLED=true requires FREE_CLAUDE_PROXY_SERVICE_TOKEN to be set")
-	}
+	// User-per-credential service (нужен резолверу аутентификации sandbox).
+	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
+	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
 
-	// Sprint 15.18 — динамический резолвер аутентификации sandbox (OAuth subscription / free-claude-proxy / api key).
+	// Sprint 15.18 — динамический резолвер аутентификации sandbox (OAuth subscription / per-user creds / api key).
 	sandboxAuthResolver := service.NewSandboxAuthEnvResolver(
 		claudeCodeAuthSvc,
-		service.FreeClaudeProxyAccess{
-			BaseURL:      cfg.FreeClaudeProxy.BaseURL,
-			ServiceToken: cfg.FreeClaudeProxy.ServiceToken,
-		},
+		llmCredSvc,
 		cfg.LLM.Anthropic.APIKey,
 		slog.Default(),
 	)
@@ -330,29 +324,9 @@ func main() {
 		service.WithSandboxAuthResolverOption(sandboxAuthResolver),
 	)
 
-	// Sprint 15.B5 — LLMProviderService + handler + перегенерация config.yaml для free-claude-proxy.
 	llmProviderRepo := repository.NewLLMProviderRepository(db)
 	llmProviderSvc := service.NewLLMProviderService(llmProviderRepo, encryptor)
 	llmProviderHandler := handler.NewLLMProviderHandler(llmProviderSvc)
-	if cfg.FreeClaudeProxy.Enabled {
-		proxyCfgBuilder := service.NewFreeClaudeProxyConfigBuilder(
-			llmProviderRepo, llmProviderSvc,
-			8787, // соответствует EXPOSE в free-claude-proxy/Dockerfile
-			cfg.FreeClaudeProxy.ServiceToken,
-		)
-		// Sprint 15.C4 — единый сериализованный reloader: WriteFile + POST <reload-path>.
-		proxyReloader := service.NewFreeClaudeProxyReloader(
-			proxyCfgBuilder,
-			cfg.FreeClaudeProxy.ConfigPath,
-			cfg.FreeClaudeProxy.BaseURL,
-			cfg.FreeClaudeProxy.ReloadPath,
-			cfg.FreeClaudeProxy.ServiceToken,
-			slog.Default(),
-		)
-		llmProviderHandler = llmProviderHandler.WithOnChange(proxyReloader.AsyncReloadHook())
-		// При старте — синхронизируем config с текущим состоянием БД (best-effort).
-		go proxyReloader.Reload(context.Background())
-	}
 
 	taskControlBus := service.NewUserTaskControlBus()
 
@@ -373,7 +347,6 @@ func main() {
 		taskControlBus,
 		service.WithTeamRepository(teamRepo),
 		service.WithPullRequestPublisher(service.NewGitPRPublisher(gitFactory, encryptor, slog.Default())),
-		service.WithFreeClaudeProxyHealthChecker(buildFreeClaudeProxyHealthChecker(cfg.FreeClaudeProxy)),
 	)
 
 	// Запускаем оркестратор (очистка зомби-задач)
@@ -407,9 +380,7 @@ func main() {
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
 
-	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
 	llmCredRL := middleware.NewLlmCredentialsPatchRateLimiter(30, time.Minute)
-	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
 	llmCredHandler := handler.NewUserLlmCredentialHandler(llmCredSvc)
 
 	claudeCodeAuthHandler := handler.NewClaudeCodeAuthHandler(claudeCodeAuthSvc)
@@ -621,13 +592,4 @@ func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	}
 
 	return db, nil
-}
-
-// buildFreeClaudeProxyHealthChecker — fail-fast health-check для free-claude-proxy (Sprint 15.19/15.M10).
-// Возвращает nil, если фича не включена (FREE_CLAUDE_PROXY_ENABLED=false) или BaseURL не задан.
-func buildFreeClaudeProxyHealthChecker(cfg config.FreeClaudeProxyConfig) service.FreeClaudeProxyHealthChecker {
-	if !cfg.Enabled || cfg.BaseURL == "" {
-		return nil
-	}
-	return service.NewFreeClaudeProxyHealthCheck(cfg.BaseURL, cfg.HealthPath)
 }

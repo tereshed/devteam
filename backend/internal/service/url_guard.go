@@ -22,8 +22,7 @@ import (
 //
 // Политика:
 //   - схема обязана быть https://, кроме провайдеров явно «локальных»
-//     (kind=ollama, kind=free_claude_proxy в docker-compose, kind=anthropic c base_url из
-//     defaultResolver).
+//     (kind=ollama, kind=anthropic c base_url из defaultResolver).
 //   - host НЕ должен разрешаться в loopback / RFC1918 / link-local / CGNAT (кроме «локальных»);
 //   - DNS-резолв выполняется с context, чтобы кто-то не подсунул бесконечно тормозящий host.
 
@@ -31,10 +30,10 @@ import (
 var ErrInsecureBaseURL = errors.New("insecure or disallowed base_url")
 
 // allowsLoopback — kind'ы, которые легально используют loopback/internal addresses.
-// ollama по дизайну на localhost; free_claude_proxy — sidecar в docker-compose сети.
+// ollama по дизайну на localhost.
 func allowsLoopback(kind models.LLMProviderKind) bool {
 	switch kind {
-	case models.LLMProviderKindOllama, models.LLMProviderKindFreeClaudeProxy:
+	case models.LLMProviderKindOllama:
 		return true
 	default:
 		return false
@@ -88,13 +87,13 @@ func validateBaseURLForProvider(ctx context.Context, baseURL string, kind models
 // Sprint 15.Major: учитываем IPv4-mapped IPv6 (`::ffff:127.0.0.1`).
 //
 // allowLoopback=false → запрещены loopback/private/link-local/CGNAT/metadata/unspecified.
-// allowLoopback=true  → loopback/private/link-local разрешены (для kind=ollama, free_claude_proxy в docker),
+// allowLoopback=true  → loopback/private/link-local разрешены (для kind=ollama),
 // но metadata (169.254.169.254) и unspecified остаются ВСЕГДА запрещёнными.
 func isDisallowedIP(ip net.IP) bool {
 	return isAlwaysBlockedIP(ip) || isLocalLikeIP(ip)
 }
 
-// isAlwaysBlockedIP — ip, который НИКОГДА не должен быть достижим, даже для kind=ollama/proxy.
+// isAlwaysBlockedIP — ip, который НИКОГДА не должен быть достижим, даже для kind=ollama.
 // Это: cloud-metadata, unspecified (0.0.0.0/::), multicast.
 func isAlwaysBlockedIP(ip net.IP) bool {
 	if ip.IsUnspecified() || ip.IsMulticast() {
@@ -111,7 +110,7 @@ func isAlwaysBlockedIP(ip net.IP) bool {
 }
 
 // isLocalLikeIP — loopback / RFC1918 / link-local / CGNAT.
-// Условно разрешено для kind=ollama / free_claude_proxy (allowLoopback=true).
+// Условно разрешено для kind=ollama (allowLoopback=true).
 func isLocalLikeIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() {
@@ -136,7 +135,7 @@ func isLocalLikeIP(ip net.IP) bool {
 //	client := newSSRFSafeHTTPClient(true /*allowLoopback*/)
 //	resp, err := client.Get("https://example.com")
 //
-// allowLoopback — для kind=ollama/free_claude_proxy.
+// allowLoopback — для kind=ollama.
 func newSSRFSafeHTTPClient(allowLoopback bool, timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{
 		Timeout:   timeout,

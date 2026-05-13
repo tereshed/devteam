@@ -19,7 +19,7 @@ import (
 // Доступ — admin-only (фронт UI Sprint 15.30 показывает форму только админу/проектному owner'у).
 type LLMProviderHandler struct {
 	svc service.LLMProviderService
-	// onChange — необязательный hook (например, перегенерация free-claude-proxy config).
+	// onChange — необязательный hook на любое мутирующее действие.
 	onChange func(ctx context.Context)
 }
 
@@ -28,7 +28,7 @@ func NewLLMProviderHandler(svc service.LLMProviderService) *LLMProviderHandler {
 	return &LLMProviderHandler{svc: svc}
 }
 
-// WithOnChange прицепляет hook на любое мутирующее действие (Sprint 15.B5: free-claude-proxy reload).
+// WithOnChange прицепляет hook на любое мутирующее действие.
 func (h *LLMProviderHandler) WithOnChange(hook func(ctx context.Context)) *LLMProviderHandler {
 	h.onChange = hook
 	return h

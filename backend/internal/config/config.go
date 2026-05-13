@@ -29,8 +29,6 @@ type Config struct {
 	WorkflowWorkerEnabled bool
 	// ClaudeCodeOAuth — настройки OAuth-провайдера Claude Code (Sprint 15.12).
 	ClaudeCodeOAuth ClaudeCodeOAuthConfig
-	// FreeClaudeProxy — настройки free-claude-proxy sidecar (Sprint 15.16).
-	FreeClaudeProxy FreeClaudeProxyConfig
 }
 
 // ClaudeCodeOAuthConfig — env CLAUDE_CODE_OAUTH_*. Пустой ClientID отключает фичу
@@ -41,27 +39,6 @@ type ClaudeCodeOAuthConfig struct {
 	TokenURL      string
 	RevokeURL     string
 	Scopes        string
-}
-
-// FreeClaudeProxyConfig — env FREE_CLAUDE_PROXY_* (Sprint 15.16/15.19).
-// Пустой BaseURL отключает фичу (claude-code-via-proxy агенты не получают валидную аутентификацию,
-// health-check оркестратора пропускается).
-type FreeClaudeProxyConfig struct {
-	// BaseURL — URL прокси внутри сети docker-compose (по умолчанию http://free-claude-proxy:8787).
-	BaseURL string
-	// ServiceToken — Bearer, который sandbox-агенты передают в Authorization прокси.
-	ServiceToken string
-	// ConfigPath — путь, по которому бэкенд пишет config.yaml для прокси
-	// (Sprint 15.17). По умолчанию /etc/free-claude-proxy/config.yaml (volume).
-	ConfigPath string
-	// Enabled — если true и BaseURL задан, оркестратор делает fail-fast health-check при старте (15.19).
-	Enabled bool
-	// HealthPath — путь health-эндпоинта прокси (Sprint 15.M10). По умолчанию /healthz.
-	// upstream-сборка может экспонировать /health, /api/health и т.д. — настраивается env.
-	HealthPath string
-	// ReloadPath — POST <baseURL><ReloadPath> просим прокси перечитать config.yaml (Sprint 15.C4).
-	// По умолчанию /reload. Пустое значение — reload отключён (backend только пишет файл).
-	ReloadPath string
 }
 
 // WebSocketConfig содержит конфигурацию WebSocket
@@ -217,14 +194,6 @@ func Load() (*Config, error) {
 			TokenURL:      getEnv("CLAUDE_CODE_OAUTH_TOKEN_URL", "https://console.anthropic.com/v1/oauth/token"),
 			RevokeURL:     getEnv("CLAUDE_CODE_OAUTH_REVOKE_URL", ""),
 			Scopes:        getEnv("CLAUDE_CODE_OAUTH_SCOPES", "org:create_api_key user:profile user:inference"),
-		},
-		FreeClaudeProxy: FreeClaudeProxyConfig{
-			BaseURL:      getEnv("FREE_CLAUDE_PROXY_URL", ""),
-			ServiceToken: getEnv("FREE_CLAUDE_PROXY_SERVICE_TOKEN", ""),
-			ConfigPath:   getEnv("FREE_CLAUDE_PROXY_CONFIG_PATH", "/etc/free-claude-proxy/config.yaml"),
-			Enabled:      getBoolEnv("FREE_CLAUDE_PROXY_ENABLED", false),
-			HealthPath:   getEnv("FREE_CLAUDE_PROXY_HEALTH_PATH", "/healthz"),
-			ReloadPath:   getEnv("FREE_CLAUDE_PROXY_RELOAD_PATH", "/reload"),
 		},
 	}
 

@@ -59,12 +59,12 @@ func TestValidateEnvKeys(t *testing.T) {
 }
 
 // Sprint 15 regression: три формы аутентификации Claude Code + permission-mode должны проходить allowlist.
-// Без этой строки SandboxAuthEnvResolver → EnvVars → ValidateEnvKeys валит RunTask с ErrInvalidEnvKeys и OAuth/proxy не работают.
+// Без этой строки SandboxAuthEnvResolver → EnvVars → ValidateEnvKeys валит RunTask с ErrInvalidEnvKeys и OAuth/per-user kind'ы не работают.
 func TestValidateEnvKeys_AcceptsClaudeAuthEnv(t *testing.T) {
 	cases := map[string]string{
 		EnvClaudeCodeOAuthToken:     "oauth-tok",
 		EnvAnthropicAuthToken:       "bearer-tok",
-		EnvAnthropicBaseURL:         "http://free-claude-proxy:8787",
+		EnvAnthropicBaseURL:         "https://api.deepseek.com/anthropic",
 		EnvClaudeCodePermissionMode: "bypassPermissions",
 	}
 	for k, v := range cases {

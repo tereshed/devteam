@@ -13,17 +13,16 @@ import (
 type LLMProviderKind string
 
 const (
-	LLMProviderKindAnthropic       LLMProviderKind = "anthropic"
-	LLMProviderKindAnthropicOAuth  LLMProviderKind = "anthropic_oauth"
-	LLMProviderKindOpenAI          LLMProviderKind = "openai"
-	LLMProviderKindGemini          LLMProviderKind = "gemini"
-	LLMProviderKindDeepSeek        LLMProviderKind = "deepseek"
-	LLMProviderKindQwen            LLMProviderKind = "qwen"
-	LLMProviderKindOpenRouter      LLMProviderKind = "openrouter"
-	LLMProviderKindMoonshot        LLMProviderKind = "moonshot"
-	LLMProviderKindOllama          LLMProviderKind = "ollama"
-	LLMProviderKindZhipu           LLMProviderKind = "zhipu"
-	LLMProviderKindFreeClaudeProxy LLMProviderKind = "free_claude_proxy"
+	LLMProviderKindAnthropic      LLMProviderKind = "anthropic"
+	LLMProviderKindAnthropicOAuth LLMProviderKind = "anthropic_oauth"
+	LLMProviderKindOpenAI         LLMProviderKind = "openai"
+	LLMProviderKindGemini         LLMProviderKind = "gemini"
+	LLMProviderKindDeepSeek       LLMProviderKind = "deepseek"
+	LLMProviderKindQwen           LLMProviderKind = "qwen"
+	LLMProviderKindOpenRouter     LLMProviderKind = "openrouter"
+	LLMProviderKindMoonshot       LLMProviderKind = "moonshot"
+	LLMProviderKindOllama         LLMProviderKind = "ollama"
+	LLMProviderKindZhipu          LLMProviderKind = "zhipu"
 )
 
 // IsValid проверяет, что kind является поддерживаемым.
@@ -32,7 +31,7 @@ func (k LLMProviderKind) IsValid() bool {
 	case LLMProviderKindAnthropic, LLMProviderKindAnthropicOAuth,
 		LLMProviderKindOpenAI, LLMProviderKindGemini, LLMProviderKindDeepSeek,
 		LLMProviderKindQwen, LLMProviderKindOpenRouter, LLMProviderKindMoonshot,
-		LLMProviderKindOllama, LLMProviderKindZhipu, LLMProviderKindFreeClaudeProxy:
+		LLMProviderKindOllama, LLMProviderKindZhipu:
 		return true
 	default:
 		return false

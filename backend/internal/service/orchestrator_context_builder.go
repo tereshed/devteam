@@ -190,9 +190,9 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 
 	if assignedAgent.CodeBackend != nil {
 		input.CodeBackend = string(*assignedAgent.CodeBackend)
-		// Sandbox-исполнителю (Developer/Tester c CodeBackend=claude-code/claude-code-via-proxy) нужны
+		// Sandbox-исполнителю (Developer/Tester c CodeBackend=claude-code) нужны
 		// аутентификационные креды внутри контейнера (entrypoint.sh fast-fail'ит без них).
-		// Если есть динамический резолвер (Sprint 15.18) — используем его (OAuth/proxy/api-key).
+		// Если есть динамический резолвер (Sprint 15.18) — используем его (OAuth/per-user creds/api-key).
 		// Иначе — статические sandboxSecrets из конфига (legacy: только ANTHROPIC_API_KEY).
 		if b.authResolver != nil {
 			for k, v := range b.authResolver.Resolve(ctx, project, assignedAgent).ToEnv() {

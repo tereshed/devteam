@@ -15,7 +15,6 @@ import (
 	"github.com/devteam/backend/pkg/llm"
 	"github.com/devteam/backend/pkg/llm/providers/anthropic"
 	"github.com/devteam/backend/pkg/llm/providers/deepseek"
-	"github.com/devteam/backend/pkg/llm/providers/freeclaudeproxy"
 	"github.com/devteam/backend/pkg/llm/providers/gemini"
 	"github.com/devteam/backend/pkg/llm/providers/moonshot"
 	"github.com/devteam/backend/pkg/llm/providers/oaicompat"
@@ -55,7 +54,7 @@ var ErrUnsupportedKind = errors.New("unsupported llm provider kind")
 // создаст &http.Client{} (legacy-поведение, без SSRF-защиты).
 type HTTPClientFactory interface {
 	// HTTPClient возвращает http.Client с SSRF-guard, конфигурированный под provider.Kind
-	// (kind=ollama/free_claude_proxy позволяет loopback; иначе — отказ).
+	// (kind=ollama позволяет loopback; иначе — отказ).
 	HTTPClient(provider *models.LLMProvider) *http.Client
 }
 
@@ -179,17 +178,6 @@ func NewLLMClient(ctx context.Context, provider *models.LLMProvider, secrets Sec
 			return nil, err
 		}
 		return wrapOAI(c), nil
-
-	case models.LLMProviderKindFreeClaudeProxy:
-		c, err := freeclaudeproxy.NewClient(cfg)
-		if err != nil {
-			return nil, err
-		}
-		return &llm.ProviderAdapter{
-			Provider:      c,
-			BaseURL:       c.BaseURL(),
-			HealthCheckFn: c.HealthCheck,
-		}, nil
 
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, provider.Kind)

@@ -2,72 +2,140 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/internal/repository"
-	"github.com/devteam/backend/internal/sandbox"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func makeAgent(backend models.CodeBackend) *models.Agent {
-	b := backend
-	return &models.Agent{ID: uuid.New(), CodeBackend: &b}
+// --- стабы зависимостей резолвера -------------------------------------------------------
+
+type stubClaudeCodeAuthSvc struct {
+	token string
+	err   error
 }
 
-func TestSandboxAuthResolver_FallbackToAPIKey(t *testing.T) {
-	r := NewSandboxAuthEnvResolver(nil, FreeClaudeProxyAccess{}, "static-api-key", nil)
-	env := r.Resolve(context.Background(), &models.Project{ID: uuid.New(), UserID: uuid.New()}, makeAgent(models.CodeBackendClaudeCode))
-	assert.Equal(t, "static-api-key", env.APIKey)
-	assert.Empty(t, env.OAuthToken)
-	assert.Empty(t, env.ProxyBaseURL)
+func (s *stubClaudeCodeAuthSvc) InitDeviceCode(ctx context.Context, userID uuid.UUID) (*ClaudeCodeDeviceInit, error) {
+	return nil, errors.New("not used")
+}
+func (s *stubClaudeCodeAuthSvc) CompleteDeviceCode(ctx context.Context, userID uuid.UUID, deviceCode string) (*ClaudeCodeAuthStatus, error) {
+	return nil, errors.New("not used")
+}
+func (s *stubClaudeCodeAuthSvc) Status(ctx context.Context, userID uuid.UUID) (*ClaudeCodeAuthStatus, error) {
+	return nil, errors.New("not used")
+}
+func (s *stubClaudeCodeAuthSvc) Revoke(ctx context.Context, userID uuid.UUID) error {
+	return errors.New("not used")
+}
+func (s *stubClaudeCodeAuthSvc) AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.token, s.err
+}
+func (s *stubClaudeCodeAuthSvc) RefreshOne(ctx context.Context, sub *models.ClaudeCodeSubscription) error {
+	return errors.New("not used")
 }
 
-func TestSandboxAuthResolver_ProxyMode(t *testing.T) {
-	r := NewSandboxAuthEnvResolver(nil, FreeClaudeProxyAccess{
-		BaseURL: "http://free-claude-proxy:8787", ServiceToken: "svc-tok",
-	}, "static-api-key", nil)
-	env := r.Resolve(context.Background(), &models.Project{ID: uuid.New(), UserID: uuid.New()}, makeAgent(models.CodeBackendClaudeCodeViaProxy))
-	out := env.ToEnv()
-	assert.Equal(t, "http://free-claude-proxy:8787", out[sandbox.EnvAnthropicBaseURL])
-	assert.Equal(t, "svc-tok", out[sandbox.EnvAnthropicAuthToken])
-	// В proxy-режиме нет ни OAuth, ни статического API-ключа.
-	_, hasOAuth := out[sandbox.EnvClaudeCodeOAuthToken]
-	_, hasAPIKey := out[sandbox.EnvAnthropicAPIKey]
-	assert.False(t, hasOAuth)
-	assert.False(t, hasAPIKey)
+type stubUserCreds struct {
+	byProvider map[models.UserLLMProvider]string
+	err        error
 }
 
-func TestSandboxAuthResolver_OAuthSubscription(t *testing.T) {
-	repo := newMockClaudeCodeSubRepo()
-	oauth := &stubOAuthProvider{
-		pollFn: func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
-			exp := time.Now().Add(time.Hour)
-			return &ClaudeCodeOAuthToken{AccessToken: "sub-token", RefreshToken: "r", TokenType: "Bearer", ExpiresAt: &exp}, nil
-		},
+func (s *stubUserCreds) GetPlaintext(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (string, error) {
+	if s.err != nil {
+		return "", s.err
 	}
-	uid := uuid.New()
-	authSvc := seedDeviceCode(NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth), uid, "dc")
-	_, err := authSvc.CompleteDeviceCode(context.Background(), uid, "dc")
-	require.NoError(t, err)
-
-	r := NewSandboxAuthEnvResolver(authSvc, FreeClaudeProxyAccess{}, "static-api-key", nil)
-	env := r.Resolve(context.Background(), &models.Project{ID: uuid.New(), UserID: uid}, makeAgent(models.CodeBackendClaudeCode))
-	assert.Equal(t, "sub-token", env.OAuthToken)
-	assert.Empty(t, env.APIKey, "OAuth должен иметь приоритет над static API key")
+	return s.byProvider[provider], nil
 }
 
-func TestSandboxAuthResolver_OAuthMissing_FallsBackToAPIKey(t *testing.T) {
-	repo := newMockClaudeCodeSubRepo()
-	oauth := &stubOAuthProvider{}
-	authSvc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
+func newProject() *models.Project {
+	return &models.Project{ID: uuid.New(), UserID: uuid.New()}
+}
 
-	r := NewSandboxAuthEnvResolver(authSvc, FreeClaudeProxyAccess{}, "static-api-key", nil)
-	env := r.Resolve(context.Background(), &models.Project{ID: uuid.New(), UserID: uuid.New()}, makeAgent(models.CodeBackendClaudeCode))
-	assert.Equal(t, "static-api-key", env.APIKey)
-	// убедиться, что ErrClaudeCodeSubscriptionNotFound не превращён в фатал, а просто молча проигнорирован
-	_ = repository.ErrClaudeCodeSubscriptionNotFound
+func kindPtr(k models.AgentProviderKind) *models.AgentProviderKind { return &k }
+
+// --- тесты ---------------------------------------------------------------------------------
+
+func TestResolver_Anthropic_UsesUserKey(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderAnthropic: "sk-ant-api03-USER",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindAnthropic)})
+
+	assert.Equal(t, "sk-ant-api03-USER", env.APIKey)
+	assert.Empty(t, env.BaseURL)
+	assert.Empty(t, env.AuthToken)
+	assert.Empty(t, env.OAuthToken)
+}
+
+func TestResolver_AnthropicOAuth_UsesSubscriptionToken(t *testing.T) {
+	auth := &stubClaudeCodeAuthSvc{token: "sk-ant-oat01-XYZ"}
+	r := NewSandboxAuthEnvResolver(auth, nil, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindAnthropicOAuth)})
+
+	assert.Equal(t, "sk-ant-oat01-XYZ", env.OAuthToken)
+	assert.Empty(t, env.APIKey)
+	assert.Empty(t, env.BaseURL)
+	assert.Empty(t, env.AuthToken)
+}
+
+func TestResolver_DeepSeek_UsesNativeAnthropicEndpoint(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderDeepSeek: "sk-deepseek-USER",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindDeepSeek)})
+
+	assert.Equal(t, "https://api.deepseek.com/anthropic", env.BaseURL)
+	assert.Equal(t, "sk-deepseek-USER", env.AuthToken)
+	assert.Empty(t, env.APIKey, "ANTHROPIC_API_KEY must NOT leak when using DeepSeek native endpoint")
+	assert.Empty(t, env.OAuthToken)
+}
+
+func TestResolver_Zhipu_UsesNativeAnthropicEndpoint(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderZhipu: "glm-key-USER",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindZhipu)})
+
+	assert.Equal(t, "https://open.bigmodel.cn/api/anthropic", env.BaseURL)
+	assert.Equal(t, "glm-key-USER", env.AuthToken)
+	assert.Empty(t, env.APIKey)
+}
+
+func TestResolver_NoKind_FallbackToOAuthThenAPIKey(t *testing.T) {
+	// OAuth есть → OAuth.
+	auth := &stubClaudeCodeAuthSvc{token: "sk-ant-oat01-FROM-SUB"}
+	r := NewSandboxAuthEnvResolver(auth, nil, "STATIC", nil)
+	env := r.Resolve(context.Background(), newProject(), &models.Agent{})
+	assert.Equal(t, "sk-ant-oat01-FROM-SUB", env.OAuthToken)
+	assert.Empty(t, env.APIKey)
+
+	// OAuth выключен → static API key.
+	r = NewSandboxAuthEnvResolver(nil, nil, "STATIC", nil)
+	env = r.Resolve(context.Background(), newProject(), &models.Agent{})
+	assert.Equal(t, "STATIC", env.APIKey)
+	assert.Empty(t, env.OAuthToken)
+}
+
+func TestResolver_DeepSeek_UserHasNoKey_ReturnsEmpty(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{}}
+	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindDeepSeek)})
+
+	// Никакого fallback на ANTHROPIC_API_KEY: kind=deepseek без ключа → пустой env,
+	// sandbox получит «нет креденшелов» и упадёт явно, а не позовёт чужой провайдер.
+	assert.False(t, env.HasCredential())
 }

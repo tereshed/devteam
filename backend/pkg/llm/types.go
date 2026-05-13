@@ -29,7 +29,6 @@ const (
 	ProviderMoonshot        ProviderType = "moonshot"
 	ProviderOllama          ProviderType = "ollama"
 	ProviderZhipu           ProviderType = "zhipu"
-	ProviderFreeClaudeProxy ProviderType = "free_claude_proxy"
 )
 
 // Config represents the configuration for a provider

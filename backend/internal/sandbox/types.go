@@ -27,8 +27,8 @@ const (
 	// EnvAnthropicAPIKey: entrypoint считает аутентификацию валидной, если задан хотя бы один из них.
 	EnvClaudeCodeOAuthToken = "CLAUDE_CODE_OAUTH_TOKEN"
 	// EnvAnthropicBaseURL — переопределение Anthropic API endpoint (Sprint 15.18,
-	// проброс на free-claude-proxy). Если задан вместе с EnvAnthropicAuthToken — Claude Code
-	// будет ходить на прокси.
+	// для Anthropic-совместимых providers: DeepSeek, Zhipu, и т.д.). Если задан вместе
+	// с EnvAnthropicAuthToken — Claude Code будет ходить на этот endpoint.
 	EnvAnthropicBaseURL   = "ANTHROPIC_BASE_URL"
 	EnvAnthropicAuthToken = "ANTHROPIC_AUTH_TOKEN"
 	// EnvClaudeCodePermissionMode — режим разрешений Claude Code CLI (Sprint 15.22).

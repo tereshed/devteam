@@ -191,7 +191,7 @@ func (s *llmProviderService) TestConnection(ctx context.Context, in LLMProviderI
 }
 
 // HTTPClient — Sprint 15.N8: реализация internallm.HTTPClientFactory.
-// Возвращает SSRF-safe http.Client, позволяющий loopback только для kind=ollama / free_claude_proxy.
+// Возвращает SSRF-safe http.Client, позволяющий loopback только для kind=ollama.
 // DialContext.Control + CheckRedirect ловят и DNS rebinding, и 30x → private/metadata.
 func (s *llmProviderService) HTTPClient(p *models.LLMProvider) *http.Client {
 	if p == nil {
@@ -199,7 +199,7 @@ func (s *llmProviderService) HTTPClient(p *models.LLMProvider) *http.Client {
 	}
 	allowLoopback := false
 	switch p.Kind {
-	case models.LLMProviderKindOllama, models.LLMProviderKindFreeClaudeProxy:
+	case models.LLMProviderKindOllama:
 		allowLoopback = true
 	}
 	return newSSRFSafeHTTPClient(allowLoopback, s.healthTimeout)

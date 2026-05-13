@@ -14,8 +14,8 @@ import (
 type ClaudeCodeSubscription struct {
 	ID                   uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	UserID               uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_claude_code_subscriptions_user" json:"user_id"`
-	OAuthAccessTokenEnc  []byte     `gorm:"type:bytea;not null" json:"-"`
-	OAuthRefreshTokenEnc []byte     `gorm:"type:bytea" json:"-"`
+	OAuthAccessTokenEnc  []byte     `gorm:"column:oauth_access_token_enc;type:bytea;not null" json:"-"`
+	OAuthRefreshTokenEnc []byte     `gorm:"column:oauth_refresh_token_enc;type:bytea" json:"-"`
 	TokenType            string     `gorm:"type:varchar(32);not null;default:'Bearer'" json:"token_type"`
 	Scopes               string     `gorm:"type:text;not null;default:''" json:"scopes"`
 	ExpiresAt            *time.Time `gorm:"type:timestamp with time zone" json:"expires_at"`

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -35,6 +36,10 @@ func (s *stubLlmCredSvc) Patch(ctx context.Context, uid uuid.UUID, req *dto.Patc
 		return s.patch(ctx, uid, req, ip, ua)
 	}
 	return &dto.LlmCredentialsResponse{}, nil
+}
+
+func (s *stubLlmCredSvc) GetPlaintext(ctx context.Context, uid uuid.UUID, provider models.UserLLMProvider) (string, error) {
+	return "", nil
 }
 
 func TestUserLlmCredentialHandler_Patch_BodyTooLarge(t *testing.T) {

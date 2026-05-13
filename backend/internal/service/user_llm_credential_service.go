@@ -56,6 +56,10 @@ var llmPatchFields = []struct {
 type UserLlmCredentialService interface {
 	GetMasked(ctx context.Context, userID uuid.UUID) (*dto.LlmCredentialsResponse, error)
 	Patch(ctx context.Context, userID uuid.UUID, req *dto.PatchLlmCredentialsRequest, ip, userAgent string) (*dto.LlmCredentialsResponse, error)
+	// GetPlaintext — Sprint 15.e2e refactor: внутренний API для SandboxAuthEnvResolver и LLMExecutor.
+	// Возвращает расшифрованный ключ пользователя для конкретного провайдера.
+	// Возвращает ("", nil), если у пользователя нет такого ключа.
+	GetPlaintext(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (string, error)
 }
 
 type userLlmCredentialService struct {
@@ -102,6 +106,27 @@ func (s *userLlmCredentialService) GetMasked(ctx context.Context, userID uuid.UU
 		setMaskedPreview(out, p, &m)
 	}
 	return out, nil
+}
+
+// GetPlaintext — расшифровывает ключ пользователя для конкретного провайдера.
+// AAD совпадает с тем, что используется при шифровании ([]byte(row.ID.String())).
+func (s *userLlmCredentialService) GetPlaintext(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (string, error) {
+	if !models.IsValidUserLLMProvider(string(provider)) {
+		return "", fmt.Errorf("invalid user llm provider: %q", provider)
+	}
+	row, err := s.repo.GetByUserAndProvider(ctx, userID, provider)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserLlmCredentialNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	plain, err := s.encryptor.Decrypt(row.EncryptedKey, []byte(row.ID.String()))
+	if err != nil {
+		s.log.Warn("llm credential decrypt failed", "user_id", userID, "provider", string(provider))
+		return "", fmt.Errorf("%w: %w", ErrDecryptionFailed, err)
+	}
+	return string(plain), nil
 }
 
 func setMaskedPreview(out *dto.LlmCredentialsResponse, p models.UserLLMProvider, preview *string) {

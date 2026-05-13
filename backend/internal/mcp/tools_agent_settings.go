@@ -34,7 +34,7 @@ type AgentSettingsUpdateParams struct {
 	AgentID             string          `json:"agent_id" jsonschema:"required,description=UUID агента"`
 	LLMProviderID       *string         `json:"llm_provider_id,omitempty" jsonschema:"description=UUID LLM-провайдера (или null/опустить для сохранения текущего)"`
 	ClearLLMProvider    bool            `json:"clear_llm_provider,omitempty" jsonschema:"description=Если true — сбрасывает llm_provider_id в null"`
-	CodeBackend         *string         `json:"code_backend,omitempty" jsonschema:"description=claude-code | claude-code-via-proxy | aider | custom"`
+	CodeBackend         *string         `json:"code_backend,omitempty" jsonschema:"description=claude-code | aider | custom"`
 	CodeBackendSettings json.RawMessage `json:"code_backend_settings,omitempty" jsonschema:"description=JSON-объект code_backend_settings"`
 	SandboxPermissions  json.RawMessage `json:"sandbox_permissions,omitempty" jsonschema:"description=JSON-объект permissions (allow/deny/defaultMode)"`
 }
