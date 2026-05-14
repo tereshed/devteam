@@ -119,16 +119,17 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	}
 
 	opts := sandbox.SandboxOptions{
-		TaskID:      in.TaskID,
-		ProjectID:   in.ProjectID,
-		Backend:     sandbox.CodeBackendType(in.CodeBackend),
-		Image:       e.resolveImage(in.CodeBackend),
-		RepoURL:     in.GitURL,
-		Branch:      in.BranchName,
-		Instruction: instruction,
-		Context:     EmbedJSONForXML(NormalizeJSONForParse(in.ContextJSON)),
-		EnvVars:     envVars,
-		Timeout:     0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
+		TaskID:        in.TaskID,
+		ProjectID:     in.ProjectID,
+		Backend:       sandbox.CodeBackendType(in.CodeBackend),
+		Image:         e.resolveImage(in.CodeBackend),
+		RepoURL:       in.GitURL,
+		Branch:        in.BranchName,
+		Instruction:   instruction,
+		Context:       EmbedJSONForXML(NormalizeJSONForParse(in.ContextJSON)),
+		EnvVars:       envVars,
+		Timeout:       0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
+		AgentSettings: in.AgentSettings,
 	}
 
 	// 4. Запуск задачи

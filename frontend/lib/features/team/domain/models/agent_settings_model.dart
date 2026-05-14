@@ -57,6 +57,31 @@ const List<String> kSupportedPermissionModes = [
   'bypassPermissions',
 ];
 
+/// Sprint 16.C — допустимые `permission_mode` для Hermes.
+/// Backend отклоняет `plan`/`default` на PUT /agents/{id}/settings (400),
+/// поэтому здесь их сознательно нет — UI не должен предлагать.
+const List<String> kHermesPermissionModes = ['yolo', 'accept'];
+
+/// Sprint 16.C — каталог Hermes toolsets (зеркало backend.HermesToolsetCatalog).
+/// При расширении (новые toolsets в hermes) обновлять обе локации.
+const List<String> kHermesToolsetCatalog = [
+  'file_ops',
+  'shell',
+  'web_fetch',
+  'web_search',
+  'code_review',
+  'todo',
+];
+
+/// Sprint 16.C — дефолтные значения Hermes-настроек (синхронизированы с
+/// service.hermesDefaults() в Go-бэке). Если значения расходятся — UI
+/// будет показывать другие defaults, чем backend применит для пустых полей.
+class HermesDefaults {
+  static const List<String> toolsets = ['file_ops', 'shell'];
+  static const String permissionMode = 'yolo';
+  static const int maxTurns = 12;
+}
+
 /// MCP-сервер из реестра mcp_servers_registry.
 @freezed
 abstract class MCPServerRegistryModel with _$MCPServerRegistryModel {

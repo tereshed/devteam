@@ -1,15 +1,19 @@
-// Package service / Sprint 15.21 — генерация артефактов настроек агента для sandbox-контейнера.
+// Package service / Sprint 15.21 + Sprint 16.C — генерация артефактов настроек
+// агента для sandbox-контейнера.
 //
-// Артефакты:
-//   1) ~/.claude/settings.json — permissions + env + hooks (Claude Code CLI).
-//   2) ~/.claude/.mcp.json    — MCP-серверы (из таблицы mcp_servers_registry + agent bindings).
-//   3) ~/.claude/skills/      — список Skills (имена/пути; реальные файлы кладутся отдельно).
+// Архитектура (Sprint 16.C):
+//   AgentSettingsService держит ArtifactBuilderRegistry и делегирует сборку
+//   per-backend билдеру (Claude / Hermes / …). См. claude_artifact_builder.go и
+//   hermes_artifact_builder.go. Жесткая логика «if codeBackend == claude» в
+//   service.BuildArtifacts удалена.
 //
-// Service не пишет файлы напрямую (это работа sandbox runner'а — он копирует JSON через CopyToContainer).
-// Здесь — только сборка структурированного содержимого.
+// Service не пишет файлы напрямую — runner'у отдаётся sandbox.AgentSettingsBundle
+// через ToSandboxBundle() (см. ниже), и runner копирует содержимое через
+// CopyToContainer.
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,20 +21,19 @@ import (
 	"strings"
 
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/sandbox"
 )
 
-// AgentSettingsArtifacts — то, что sandbox runner должен положить в контейнер агента.
-type AgentSettingsArtifacts struct {
-	// SettingsJSON — содержимое ~/.claude/settings.json.
-	SettingsJSON []byte
-	// MCPJSON — содержимое ~/.claude/.mcp.json (только если есть MCP-серверы; иначе nil).
-	MCPJSON []byte
-	// Skills — Skills, которые должны быть смонтированы / подгружены в контейнер.
-	Skills []AgentSkillArtifact
-	// PermissionMode — значение для CLI флага `--permission-mode` (acceptEdits | plan | bypassPermissions).
-	// Подставляется в entrypoint.sh при запуске claude.
-	PermissionMode string
-}
+// AgentSettingsArtifacts — Sprint 15.22 алиас для BackendArtifacts (claude-only поля).
+//
+// Sprint 16.C: задача «убрать зоопарк» — единственный struct, который
+// циркулирует между билдерами и сервисом, это BackendArtifacts. Этот алиас
+// сохраняет API существующих callsite'ов и тестов на claude-only пути; новые
+// потребители используют BackendArtifacts напрямую и/или ToSandboxBundle.
+//
+// Deprecated: переключайтесь на *BackendArtifacts, чтобы получить и
+// hermes-поля при agent.CodeBackend == hermes.
+type AgentSettingsArtifacts = BackendArtifacts
 
 // AgentSkillArtifact — описание skill для sandbox runner'а.
 // Source указывает, откуда взять содержимое skill (builtin/plugin/path).
@@ -151,12 +154,60 @@ func ValidateSandboxPermissions(p SandboxPermissions) error {
 
 // AgentCodeBackendSettings — JSON-структура из Agent.CodeBackendSettings.
 // Содержит per-agent параметры code-backend (model override, MCP-сервера, Skills, env, hooks).
+//
+// Sprint 16.C: добавлен подобъект `hermes` для Hermes-агента
+// (toolsets / permission_mode / max_turns / temperature). Поля валидируются
+// в validateCodeBackendSettingsStrict; permission_mode∈{plan,default}
+// для hermes отклоняется с 400 (см. validateHermesSection).
 type AgentCodeBackendSettings struct {
 	Model      string                 `json:"model,omitempty"`
 	MCPServers []AgentMCPServerRef    `json:"mcp_servers,omitempty"`
 	Skills     []AgentSkillRef        `json:"skills,omitempty"`
 	Env        map[string]string      `json:"env,omitempty"`
 	Hooks      map[string]any         `json:"hooks,omitempty"`
+
+	// Hermes — Sprint 16.C, опциональный hermes-specific блок.
+	Hermes *HermesAgentSettings `json:"hermes,omitempty"`
+}
+
+// HermesAgentSettings — per-agent параметры Hermes Agent (Sprint 16.C).
+//
+// Заполняется фронтом из advanced-диалога; сериализуется backend'ом в
+// ~/.hermes/config.yaml + ~/.hermes/mcp.json + DEVTEAM_HERMES_* env-vars
+// при сборке артефактов в HermesArtifactBuilder.
+type HermesAgentSettings struct {
+	// Toolsets — белый список Hermes toolset-имён (валидируется по каталогу
+	// HermesToolsetCatalog). Дефолт при пустом срезе: ["file_ops","shell"].
+	Toolsets []string `json:"toolsets,omitempty"`
+	// PermissionMode — режим разрешений Hermes CLI. Допустимы только "yolo" и
+	// "accept" в headless-sandbox; "plan"/"default" → 400 при сохранении агента.
+	// Дефолт: "yolo".
+	PermissionMode string `json:"permission_mode,omitempty"`
+	// MaxTurns — верхняя граница циклов agent loop (1..200). Дефолт 12.
+	MaxTurns int `json:"max_turns,omitempty"`
+	// Temperature — sampling temperature 0..2. Указатель: nil = «не передавать».
+	Temperature *float64 `json:"temperature,omitempty"`
+	// Skills — список Skills для предзагрузки в сессию.
+	Skills []HermesSkillRef `json:"skills,omitempty"`
+	// MCPServers — список MCP-серверов в hermes-формате (см. ~/.hermes/mcp.json).
+	MCPServers []HermesMCPServerSpec `json:"mcp_servers,omitempty"`
+}
+
+// HermesSkillRef — ссылка на skill для Hermes (Sprint 16.C).
+type HermesSkillRef struct {
+	Name   string `json:"name"`
+	Source string `json:"source"` // builtin | agentskills | path
+}
+
+// HermesMCPServerSpec — MCP-сервер в формате ~/.hermes/mcp.json.
+// Env поддерживает substitution ${secret:NAME} (резолвится в HermesArtifactBuilder).
+type HermesMCPServerSpec struct {
+	Name      string            `json:"name"`
+	Transport string            `json:"transport"` // stdio | http
+	Command   string            `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
 }
 
 // AgentMCPServerRef — ссылка на MCP-сервер (по имени из mcp_servers_registry).
@@ -172,9 +223,26 @@ type AgentSkillRef struct {
 	Config map[string]any          `json:"config,omitempty"`
 }
 
-// AgentSettingsService — собирает артефакты настроек для конкретного агента.
+// AgentSettingsService — Sprint 16.C: собирает per-backend артефакты через
+// ArtifactBuilderRegistry и упаковывает их в sandbox.AgentSettingsBundle.
+//
+// Старая сигнатура BuildArtifacts(agent, registry) сохранена ради совместимости
+// с тестами Sprint 15: registry-параметр имеет приоритет над сервис-deps, чтобы
+// не ломать unit-тесты, которые передают свой LookupMCPServer-стаб.
 type AgentSettingsService interface {
-	BuildArtifacts(agent *models.Agent, registry MCPRegistryLookup) (*AgentSettingsArtifacts, error)
+	// BuildArtifacts — legacy-вход: собирает per-agent артефакты.
+	// Делегирует ArtifactBuilder'у, выбранному по agent.CodeBackend.
+	// Если CodeBackend == nil — fallback на claude-code (исторический MVP).
+	//
+	// project — «якорь» владельца для резолва секретов; nil допустим только если
+	// агент не использует ${secret:NAME}-шаблоны в MCP-конфигах.
+	BuildArtifacts(agent *models.Agent, project *models.Project, registry MCPRegistryLookup) (*BackendArtifacts, error)
+
+	// BuildSandboxBundle — Sprint 16.C: возвращает готовый bundle для
+	// SandboxOptions.AgentSettings. Используется из orchestrator_context_builder.
+	// При agent == nil или agent.CodeBackend == nil возвращает (nil, nil) —
+	// caller просто не выставит opts.AgentSettings (legacy-поведение).
+	BuildSandboxBundle(ctx context.Context, agent *models.Agent, project *models.Project) (*sandbox.AgentSettingsBundle, error)
 }
 
 // MCPRegistryLookup — резолвит MCP-серверы по имени для подстановки в .mcp.json.
@@ -183,60 +251,124 @@ type MCPRegistryLookup interface {
 	LookupMCPServer(name string) (*models.MCPServerRegistry, bool)
 }
 
-type agentSettingsService struct{}
-
-// NewAgentSettingsService собирает сервис без зависимостей.
-func NewAgentSettingsService() AgentSettingsService {
-	return &agentSettingsService{}
+// agentSettingsService — реализация поверх ArtifactBuilderRegistry.
+//
+// Поля mcpRegistry/secretResolver — общие deps, передаются в каждый Build.
+// Конкретный per-backend builder использует то, что ему нужно (Claude — MCPRegistry,
+// Hermes — SecretResolver).
+type agentSettingsService struct {
+	registry       *ArtifactBuilderRegistry
+	mcpRegistry    MCPRegistryLookup
+	secretResolver SecretResolver
 }
 
-// BuildArtifacts собирает settings.json + .mcp.json + список Skills для агента.
-func (s *agentSettingsService) BuildArtifacts(agent *models.Agent, registry MCPRegistryLookup) (*AgentSettingsArtifacts, error) {
+// NewAgentSettingsService — Sprint 15.22 совместимый конструктор: создаёт сервис
+// с дефолтным реестром (Claude + Hermes) и без MCP/Secret-deps. Используется
+// в местах, где deps подставляются позже через MCPRegistryLookup-параметр в
+// BuildArtifacts (legacy-тесты).
+func NewAgentSettingsService() AgentSettingsService {
+	return NewAgentSettingsServiceWithDeps(nil, nil)
+}
+
+// NewAgentSettingsServiceWithDeps — Sprint 16.C: полная конфигурация.
+// mcpRegistry — Claude/Hermes резолв MCP-серверов по имени; nil допустим, если
+// агенты не используют MCP.
+// secretResolver — резолв ${secret:NAME} в Hermes mcp.json env; nil допустим,
+// если ни один агент не использует секрет-шаблоны.
+func NewAgentSettingsServiceWithDeps(mcpRegistry MCPRegistryLookup, secretResolver SecretResolver) AgentSettingsService {
+	reg := NewArtifactBuilderRegistry()
+	reg.Register(NewClaudeArtifactBuilder())
+	reg.Register(NewHermesArtifactBuilder())
+	return &agentSettingsService{
+		registry:       reg,
+		mcpRegistry:    mcpRegistry,
+		secretResolver: secretResolver,
+	}
+}
+
+// BuildArtifacts — Sprint 16.C: дисптачит на нужный builder по agent.CodeBackend.
+//
+// MCPRegistry-параметр имеет приоритет над сервисным mcpRegistry — это нужно для
+// существующих тестов Sprint 15.22, которые передают локальный stub. В рантайме
+// (orchestrator pipeline) caller передаёт nil → используется сервисный mcpRegistry.
+func (s *agentSettingsService) BuildArtifacts(agent *models.Agent, project *models.Project, registry MCPRegistryLookup) (*BackendArtifacts, error) {
 	if agent == nil {
 		return nil, errors.New("agent is nil")
 	}
-
-	perms, err := decodeSandboxPermissions(agent.SandboxPermissions)
-	if err != nil {
-		return nil, fmt.Errorf("sandbox_permissions: %w", err)
+	be := s.backendFor(agent)
+	builder, ok := s.registry.Get(be)
+	if !ok {
+		return nil, fmt.Errorf("no artifact builder registered for code_backend %q", be)
 	}
-	if err := ValidateSandboxPermissions(perms); err != nil {
+	deps := s.depsFor(registry)
+	return builder.Build(context.Background(), agent, project, deps)
+}
+
+// BuildSandboxBundle — Sprint 16.C: основной entrypoint для оркестратора.
+func (s *agentSettingsService) BuildSandboxBundle(ctx context.Context, agent *models.Agent, project *models.Project) (*sandbox.AgentSettingsBundle, error) {
+	if agent == nil || agent.CodeBackend == nil {
+		// Legacy: агенты без CodeBackend (LLM-only роли) не получают per-agent артефактов.
+		return nil, nil
+	}
+	be := *agent.CodeBackend
+	builder, ok := s.registry.Get(be)
+	if !ok {
+		return nil, fmt.Errorf("no artifact builder registered for code_backend %q", be)
+	}
+	art, err := builder.Build(ctx, agent, project, s.depsFor(nil))
+	if err != nil {
 		return nil, err
 	}
+	bundle := BackendArtifactsToSandboxBundle(art)
+	return bundle, nil
+}
 
-	codeSettings, err := decodeCodeBackendSettings(agent.CodeBackendSettings)
-	if err != nil {
-		return nil, fmt.Errorf("code_backend_settings: %w", err)
+// backendFor — выбираем backend для дисптача BuildArtifacts.
+// Для агентов без CodeBackend сохраняем legacy-поведение Sprint 15.22 — Claude.
+func (s *agentSettingsService) backendFor(a *models.Agent) models.CodeBackend {
+	if a == nil || a.CodeBackend == nil {
+		return models.CodeBackendClaudeCode
 	}
+	return *a.CodeBackend
+}
 
-	settingsJSON, err := buildSettingsJSON(perms, codeSettings)
-	if err != nil {
-		return nil, err
+// depsFor собирает ArtifactBuilderDeps. Если caller передал свой MCPRegistry
+// (legacy-тесты), он перебивает сервисный.
+func (s *agentSettingsService) depsFor(override MCPRegistryLookup) ArtifactBuilderDeps {
+	deps := ArtifactBuilderDeps{
+		MCPRegistry:    s.mcpRegistry,
+		SecretResolver: s.secretResolver,
 	}
-
-	mcpJSON, err := buildMCPJSON(codeSettings, registry)
-	if err != nil {
-		return nil, err
+	if override != nil {
+		deps.MCPRegistry = override
 	}
+	return deps
+}
 
-	skills := make([]AgentSkillArtifact, 0, len(codeSettings.Skills))
-	for _, sk := range codeSettings.Skills {
-		if !sk.Source.IsValid() {
-			return nil, fmt.Errorf("invalid skill source for %q: %q", sk.Name, sk.Source)
-		}
-		skills = append(skills, AgentSkillArtifact{
-			Name:   sk.Name,
-			Source: sk.Source,
-			Config: sk.Config,
-		})
+// BackendArtifactsToSandboxBundle — единый мостик между service и sandbox-пакетами.
+// Без этой функции бы пришлось дублировать поля в третьей структуре или
+// перекладывать байт за байтом из BackendArtifacts в AgentSettingsBundle на каждом
+// callsite.
+//
+// nil-on-empty: если ВСЕ поля пустые — возвращаем nil, чтобы runner следовал
+// legacy-пути (без CopyToContainer для пустого bundle).
+func BackendArtifactsToSandboxBundle(a *BackendArtifacts) *sandbox.AgentSettingsBundle {
+	if a == nil {
+		return nil
 	}
-
-	return &AgentSettingsArtifacts{
-		SettingsJSON:   settingsJSON,
-		MCPJSON:        mcpJSON,
-		Skills:         skills,
-		PermissionMode: perms.DefaultMode,
-	}, nil
+	if len(a.SettingsJSON) == 0 && len(a.MCPJSON) == 0 && a.PermissionMode == "" &&
+		len(a.HermesConfigYAML) == 0 && len(a.HermesMCPJSON) == 0 && len(a.HermesSkills) == 0 {
+		return nil
+	}
+	return &sandbox.AgentSettingsBundle{
+		SettingsJSON:     a.SettingsJSON,
+		MCPJSON:          a.MCPJSON,
+		PermissionMode:   a.PermissionMode,
+		HermesConfigYAML: a.HermesConfigYAML,
+		HermesMCPJSON:    a.HermesMCPJSON,
+		HermesSkills:     a.HermesSkills,
+		HermesEnv:        a.HermesEnv,
+	}
 }
 
 func decodeSandboxPermissions(raw []byte) (SandboxPermissions, error) {
@@ -259,6 +391,12 @@ func decodeCodeBackendSettings(raw []byte) (AgentCodeBackendSettings, error) {
 		return s, err
 	}
 	return s, nil
+}
+
+// jsonMarshalIndent — общий хелпер, чтобы билдеры не дублировали json.MarshalIndent
+// с одинаковыми отступами.
+func jsonMarshalIndent(v any) ([]byte, error) {
+	return json.MarshalIndent(v, "", "  ")
 }
 
 // settingsFile — корневой формат ~/.claude/settings.json (минимальный набор полей Claude Code CLI).

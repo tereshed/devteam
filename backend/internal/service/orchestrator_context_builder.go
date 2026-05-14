@@ -43,6 +43,10 @@ type contextBuilder struct {
 	// Sprint 15.18: динамический резолвер аутентификации sandbox-а (OAuth/proxy/api-key).
 	// Если задан, имеет приоритет над sandboxSecrets для ключей ANTHROPIC_*/CLAUDE_CODE_OAUTH_TOKEN.
 	authResolver SandboxAuthEnvResolver
+	// Sprint 16.C: per-agent артефакты для sandbox-runner'а (settings.json/.mcp.json/
+	// permission_mode для Claude; config.yaml/mcp.json/skills/env для Hermes).
+	// nil — пайплайн пропускает per-agent сборку и работает legacy-путём.
+	agentSettings AgentSettingsService
 }
 
 // NewContextBuilder создаёт сборщик контекста. agentCfg — предзагруженный кэш backend/agents (6.9); nil в тестах.
@@ -82,6 +86,13 @@ type ContextBuilderOption func(*contextBuilder)
 // через резолвер вместо статических sandboxSecrets.
 func WithSandboxAuthResolverOption(resolver SandboxAuthEnvResolver) ContextBuilderOption {
 	return func(b *contextBuilder) { b.authResolver = resolver }
+}
+
+// WithAgentSettingsServiceOption — Sprint 16.C: подключает AgentSettingsService.
+// Без него ContextBuilder возвращает ExecutionInput с AgentSettings == nil
+// (legacy: per-agent артефакты не пробрасываются, hermes Skills/MCP не работают).
+func WithAgentSettingsServiceOption(svc AgentSettingsService) ContextBuilderOption {
+	return func(b *contextBuilder) { b.agentSettings = svc }
 }
 
 // NewContextBuilderFull — полная конфигурация: секреты sandbox + репозиторий сообщений
@@ -233,6 +244,23 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 	// Подмешиваем артефакты предыдущего шага и недавнюю переписку — иначе
 	// reviewer/tester получают только title+description и не видят diff/output от developer.
 	b.appendPipelineHandoff(ctx, input, task, assignedAgent)
+
+	// Sprint 16.C — per-agent артефакты для sandbox (config.yaml/mcp.json/skills,
+	// permission_mode, hermes env). Без AgentSettingsService — пропускаем (legacy).
+	// project передаём явно: SecretResolver использует project.UserID для поиска
+	// user_llm_credentials, без него секрет-шаблоны в mcp.json не резолвятся.
+	if b.agentSettings != nil && assignedAgent.CodeBackend != nil {
+		bundle, err := b.agentSettings.BuildSandboxBundle(ctx, assignedAgent, project)
+		if err != nil {
+			// Per-agent артефакты — необязательная часть контракта: ошибка их сборки
+			// не должна заблокировать LLM-only пайплайн. Логируем и продолжаем
+			// с AgentSettings == nil (тот же путь, что и для агентов без CodeBackend).
+			slog.Warn("ContextBuilder: BuildSandboxBundle failed; falling back to no per-agent artifacts",
+				"agent_id", assignedAgent.ID, "code_backend", *assignedAgent.CodeBackend, "error", err)
+		} else {
+			input.AgentSettings = bundle
+		}
+	}
 
 	return input, nil
 }

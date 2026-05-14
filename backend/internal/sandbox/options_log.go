@@ -102,6 +102,12 @@ func sensitiveEnvKey(k string) bool {
 		strings.ToUpper(EnvAnthropicAuthToken):
 		return true
 	}
+	// Sprint 16.C: HERMES_MCP_* — секреты MCP-серверов Hermes (резолв ${secret:NAME}).
+	// Не имеют слова KEY/TOKEN в имени (например HERMES_MCP_GITHUB_GITHUB_PERSONAL_ACCESS_TOKEN
+	// сматчится по TOKEN, но HERMES_MCP_FOO_BAR — нет). Поэтому редактируем по префиксу.
+	if strings.HasPrefix(ku, "HERMES_MCP_") {
+		return true
+	}
 	return strings.Contains(ku, "API_KEY") ||
 		strings.Contains(ku, "SECRET") ||
 		strings.Contains(ku, "TOKEN") ||

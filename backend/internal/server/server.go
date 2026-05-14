@@ -59,6 +59,9 @@ type Dependencies struct {
 
 	// Sprint 15.B5 — CRUD над llm_providers (admin-only).
 	LLMProviderHandler *handler.LLMProviderHandler
+
+	// Sprint 16.C — Hermes-каталог (toolsets) для UI dropdown'а.
+	HermesHandler *handler.HermesHandler
 }
 
 // New создает новый экземпляр сервера
@@ -139,6 +142,11 @@ func (s *Server) setupRoutes(deps Dependencies) {
 
 		// Каталог tool_definitions (тот же auth, что у /projects)
 		api.GET("/tool-definitions", authMW, deps.ToolDefinitionHandler.List)
+
+		// Sprint 16.C — Hermes toolsets каталог (UI dropdown).
+		if deps.HermesHandler != nil {
+			api.GET("/hermes/toolsets", authMW, deps.HermesHandler.ListToolsets)
+		}
 
 		// Agents settings (Sprint 15.23)
 		if deps.AgentSettingsHandler != nil {

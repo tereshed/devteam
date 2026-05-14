@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/devteam/backend/internal/sandbox"
 )
 
 const stringLogTruncate = 256
@@ -49,6 +51,12 @@ type ExecutionInput struct {
 	BranchName       string
 
 	CodeBackend string
+
+	// AgentSettings — Sprint 16.C: per-agent артефакты для sandbox-runner'а
+	// (settings.json/.mcp.json/permission_mode для Claude; config.yaml/mcp.json/skills
+	// для Hermes). Заполняется ContextBuilder через AgentSettingsService.BuildSandboxBundle.
+	// nil — runner не копирует ничего сверх prompt/context (legacy-агенты без CodeBackend).
+	AgentSettings *sandbox.AgentSettingsBundle
 
 	EnvSecrets map[string]string
 

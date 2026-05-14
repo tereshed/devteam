@@ -52,7 +52,21 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 	// Имя hermes-провайдера для флага `hermes chat --provider $X`.
 	"DEVTEAM_HERMES_PROVIDER": {},
 	"OPENROUTER_API_KEY":      {},
+
+	// Sprint 16.C — per-agent customization для Hermes.
+	// Заполняются HermesArtifactBuilder и читаются entrypoint.sh.
+	"DEVTEAM_HERMES_TOOLSETS":        {},
+	"DEVTEAM_HERMES_SKILLS":          {},
+	"DEVTEAM_HERMES_PERMISSION_MODE": {},
+	"DEVTEAM_HERMES_MAX_TURNS":       {},
 }
+
+// hermesMCPEnvPrefix — префикс env-переменных, которые HermesArtifactBuilder
+// генерирует для секретов MCP-серверов (см. hermesMCPEnvName в service-пакете).
+// ValidateEnvKeys пропускает любые ключи с этим префиксом без явной записи в карте,
+// потому что имена детерминированно собираются из user-controlled MCP server name
+// (валидируется regex'ом codeBackendMCPNameRE) — перечислять их нельзя.
+const hermesMCPEnvPrefix = "HERMES_MCP_"
 
 // ValidateSandboxID проверяет формат идентификатора до обращения к Docker API.
 // Политика MVP: полный ID контейнера Docker Engine — 64 символа [0-9a-f]
@@ -130,7 +144,11 @@ func ValidateEnvKeys(env map[string]string) error {
 		if strings.HasPrefix(k, "APP_") {
 			continue
 		}
-		return fmt.Errorf("env: disallowed key %q (use known keys or APP_*): %w", k, ErrInvalidEnvKeys)
+		// Sprint 16.C: HERMES_MCP_* — секреты MCP-серверов Hermes (динамические имена).
+		if strings.HasPrefix(k, hermesMCPEnvPrefix) {
+			continue
+		}
+		return fmt.Errorf("env: disallowed key %q (use known keys or APP_* / HERMES_MCP_*): %w", k, ErrInvalidEnvKeys)
 	}
 	return nil
 }

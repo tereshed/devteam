@@ -377,11 +377,80 @@ func validateCodeBackendSettingsStrict(raw []byte) error {
 			return fmt.Errorf("hooks[%q]: value must be array (Claude Code hooks schema)", hookName)
 		}
 	}
+	// Sprint 16.C — отдельная валидация hermes-секции (toolsets/permission_mode/skills/mcp_servers).
+	// Permission_mode∈{plan,default} → 400 (защита от interactive prompt в headless-контейнере).
+	if parsed.Hermes != nil {
+		if err := validateHermesSection(parsed.Hermes); err != nil {
+			return fmt.Errorf("hermes: %w", err)
+		}
+	}
 	// Sprint 15.Major recursive DisallowUnknownFields: проверяем raw JSON на extra-keys
 	// в mcp_servers[] и skills[] (Go json.Decoder.DisallowUnknownFields рекурсивен только
 	// при использовании конкретных struct'ур, но Env-карты и hooks отображены в map[string]any,
 	// где extra-ключи проходят — поэтому верифицируем top-level отдельно).
 	return validateCodeBackendNestedKeys(raw)
+}
+
+// validateHermesSection — Sprint 16.C: проверки полей AgentCodeBackendSettings.Hermes.
+//
+// Жёсткое правило: для Hermes допустимы только permission_mode "yolo" и "accept";
+// "plan" и "default" отклоняются (interactive prompt в headless-контейнере → hang/timeout).
+// Никакой тихой подмены на yolo — пользователь должен исправить настройки явно.
+func validateHermesSection(h *HermesAgentSettings) error {
+	if h.PermissionMode != "" {
+		switch h.PermissionMode {
+		case "yolo", "accept":
+			// ok
+		case "plan", "default":
+			return fmt.Errorf(
+				"permission_mode=%q is not allowed for hermes in DevTeam (headless sandbox); "+
+					"use \"yolo\" or \"accept\"", h.PermissionMode)
+		default:
+			return fmt.Errorf("permission_mode: unknown value %q (allowed: yolo|accept)", h.PermissionMode)
+		}
+	}
+	if h.MaxTurns < 0 || h.MaxTurns > 200 {
+		return fmt.Errorf("max_turns: out of range 0..200, got %d", h.MaxTurns)
+	}
+	if h.Temperature != nil {
+		t := *h.Temperature
+		if t < 0 || t > 2 {
+			return fmt.Errorf("temperature: out of range 0..2, got %v", t)
+		}
+	}
+	for i, ts := range h.Toolsets {
+		if !codeBackendSkillNameRE.MatchString(ts) {
+			return fmt.Errorf("toolsets[%d]: invalid name %q (must match [a-zA-Z][a-zA-Z0-9_-]*)", i, ts)
+		}
+	}
+	for i, sk := range h.Skills {
+		if !codeBackendSkillNameRE.MatchString(sk.Name) {
+			return fmt.Errorf("skills[%d].name: invalid %q", i, sk.Name)
+		}
+		switch sk.Source {
+		case "builtin", "agentskills", "path":
+			// ok
+		default:
+			return fmt.Errorf("skills[%d].source: invalid %q (allowed: builtin|agentskills|path)", i, sk.Source)
+		}
+	}
+	for i, m := range h.MCPServers {
+		if !codeBackendMCPNameRE.MatchString(m.Name) {
+			return fmt.Errorf("mcp_servers[%d].name: invalid %q", i, m.Name)
+		}
+		switch m.Transport {
+		case "stdio", "http":
+			// ok
+		default:
+			return fmt.Errorf("mcp_servers[%d].transport: invalid %q (allowed: stdio|http)", i, m.Transport)
+		}
+		for k := range m.Env {
+			if !codeBackendEnvKeyRE.MatchString(k) {
+				return fmt.Errorf("mcp_servers[%d].env[%q]: key must be UPPER_SNAKE_CASE", i, k)
+			}
+		}
+	}
+	return nil
 }
 
 // claudeCodeHookNameRE — белый список имён хуков Claude Code CLI.

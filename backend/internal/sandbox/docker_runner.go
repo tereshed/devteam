@@ -60,6 +60,9 @@ func DefaultAllowedSandboxImages() []string {
 		"devteam/sandbox-claude:local",
 		"devteam/sandbox-aider:latest",
 		"devteam/sandbox-aider:local",
+		// Sprint 16: Hermes Agent (Nous Research) sandbox image.
+		"devteam/sandbox-hermes:latest",
+		"devteam/sandbox-hermes:local",
 	}
 }
 
@@ -161,6 +164,20 @@ func ptrInt(v int) *int { return &v }
 func mergeSandboxEnv(opts SandboxOptions) []string {
 	// Обязательные пары в конце (перекрывают дубликаты ключей из EnvVars).
 	var out []string
+	// Sprint 16.C: HermesEnv (DEVTEAM_HERMES_*, HERMES_MCP_*) приоритет НИЖЕ
+	// EnvVars — пользовательские переопределения через EnvVars побеждают.
+	// Ключи прошли whitelist в ValidateEnvKeys (включая префикс HERMES_MCP_*).
+	if opts.AgentSettings != nil && len(opts.AgentSettings.HermesEnv) > 0 {
+		for k, v := range opts.AgentSettings.HermesEnv {
+			if _, dup := opts.EnvVars[k]; dup {
+				continue
+			}
+			if k == EnvRepoURL || k == EnvBranchName || k == EnvBackend {
+				continue
+			}
+			out = append(out, k+"="+v)
+		}
+	}
 	for k, v := range opts.EnvVars {
 		if k == EnvRepoURL || k == EnvBranchName || k == EnvBackend {
 			continue
@@ -289,6 +306,10 @@ func (r *DockerSandboxRunner) removeNetworkBestEffort(ctx context.Context, netID
 // из AgentSettingsBundle, Sprint 15.22) в tar для CopyToContainer.
 // Все пути относительно /workspace; settings.json кладётся в .claude/settings.json, .mcp.json — в repo/.mcp.json
 // (entrypoint после clone положит его в корень репозитория).
+//
+// Sprint 16.C: tar содержит ТОЛЬКО /workspace-артефакты. Hermes-артефакты
+// (~/.hermes/...) копируются вторым CopyToContainer-вызовом в корень контейнера —
+// см. buildHermesHomeTar / RunTask.
 func buildPromptContextTar(instruction, contextText string, settings *AgentSettingsBundle) (io.ReadCloser, error) {
 	pr, pw := io.Pipe()
 	go func() {
@@ -351,6 +372,150 @@ func buildPromptContextTar(instruction, contextText string, settings *AgentSetti
 		}
 	}()
 	return pr, nil
+}
+
+// hermesHomeBase — корневая директория для tar Hermes-артефактов (relative to /).
+// Файлы кладутся в `home/sandbox/.hermes/...`; CopyToContainer вызывается с dst="/".
+const hermesHomeBase = "home/sandbox/.hermes"
+
+// buildHermesHomeTar — Sprint 16.C: упаковывает ~/.hermes/{config.yaml, mcp.json,
+// skills/<name>/<file>} в tar для CopyToContainer dst="/".
+//
+// Path-traversal: ключи Skills уже валидируются в HermesArtifactBuilder
+// (assertSafeRelativePath), но runner повторяет проверку defense-in-depth —
+// если кто-то соберёт AgentSettingsBundle минуя билдер, мы всё равно не запишем
+// файл вне ~/.hermes/skills/.
+//
+// Permissions: config.yaml и mcp.json — 0600 (содержат секрет-ссылки и токены),
+// директории — 0700, skills-файлы — 0644.
+//
+// Возвращает (nil, nil), если в bundle нет ни одного hermes-поля.
+func buildHermesHomeTar(b *AgentSettingsBundle) (io.ReadCloser, error) {
+	if b == nil {
+		return nil, nil
+	}
+	if len(b.HermesConfigYAML) == 0 && len(b.HermesMCPJSON) == 0 && len(b.HermesSkills) == 0 {
+		return nil, nil
+	}
+	type entry struct {
+		name    string
+		content []byte
+		mode    int64
+		isDir   bool
+	}
+	entries := []entry{
+		{name: hermesHomeBase, mode: 0o700, isDir: true},
+	}
+	if len(b.HermesConfigYAML) > 0 {
+		entries = append(entries, entry{
+			name: hermesHomeBase + "/config.yaml", content: b.HermesConfigYAML, mode: 0o600,
+		})
+	}
+	if len(b.HermesMCPJSON) > 0 {
+		entries = append(entries, entry{
+			name: hermesHomeBase + "/mcp.json", content: b.HermesMCPJSON, mode: 0o600,
+		})
+	}
+	if len(b.HermesSkills) > 0 {
+		entries = append(entries, entry{
+			name: hermesHomeBase + "/skills", mode: 0o700, isDir: true,
+		})
+		// Стабильный порядок (детерминированный tar для логов / снапшотов).
+		keys := make([]string, 0, len(b.HermesSkills))
+		for k := range b.HermesSkills {
+			keys = append(keys, k)
+		}
+		sortStrings(keys)
+		for _, rel := range keys {
+			if err := assertHermesSkillRelPath(rel); err != nil {
+				return nil, fmt.Errorf("hermes skill %q: %w", rel, err)
+			}
+			content := b.HermesSkills[rel]
+			// Создаём промежуточные директории, если skill кладёт файл глубже одного уровня.
+			parent := hermesHomeBase + "/skills/" + parentDirSlash(rel)
+			if parent != hermesHomeBase+"/skills/" {
+				entries = append(entries, entry{name: strings.TrimRight(parent, "/"), mode: 0o700, isDir: true})
+			}
+			entries = append(entries, entry{
+				name: hermesHomeBase + "/skills/" + rel, content: content, mode: 0o644,
+			})
+		}
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		var err error
+		tw := tar.NewWriter(pw)
+		defer func() {
+			_ = tw.Close()
+			_ = pw.CloseWithError(err)
+		}()
+		now := time.Now()
+		for _, f := range entries {
+			hdr := &tar.Header{
+				Name:    f.name,
+				Mode:    f.mode,
+				Uid:     1001,
+				Gid:     1001,
+				ModTime: now,
+			}
+			if f.isDir {
+				hdr.Typeflag = tar.TypeDir
+			} else {
+				hdr.Typeflag = tar.TypeReg
+				hdr.Size = int64(len(f.content))
+			}
+			if err = tw.WriteHeader(hdr); err != nil {
+				return
+			}
+			if !f.isDir {
+				if _, err = io.Copy(tw, strings.NewReader(string(f.content))); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	return pr, nil
+}
+
+// assertHermesSkillRelPath — defense-in-depth path-traversal проверка для tar-ключей.
+// Дублирует логику service.assertSafeRelativePath (в sandbox-пакете не зависим
+// от service/, поэтому повторяем), чтобы быть последней линией защиты до WriteHeader.
+func assertHermesSkillRelPath(rel string) error {
+	if rel == "" {
+		return errors.New("empty path")
+	}
+	for i := 0; i < len(rel); i++ {
+		if rel[i] == 0 {
+			return errors.New("null byte in path")
+		}
+	}
+	if strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "~") {
+		return fmt.Errorf("absolute or home path %q not allowed", rel)
+	}
+	for _, seg := range strings.Split(rel, "/") {
+		if seg == ".." {
+			return fmt.Errorf("parent traversal segment in %q", rel)
+		}
+	}
+	return nil
+}
+
+func parentDirSlash(rel string) string {
+	idx := strings.LastIndex(rel, "/")
+	if idx < 0 {
+		return ""
+	}
+	return rel[:idx+1]
+}
+
+func sortStrings(s []string) {
+	// Малый сорт без импорта sort — достаточно стабильности и предсказуемости в тестах.
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
 }
 
 // RunTask реализует SandboxRunner.RunTask.
@@ -561,6 +726,19 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	if cpErr := r.cli.CopyToContainer(ctx, containerID, WorkspacePath, tarRC, containertypes.CopyToContainerOptions{}); cpErr != nil {
 		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "copy_failed")
 		return nil, fmt.Errorf("copy to container: %w", errors.Join(ErrSandboxDocker, cpErr))
+	}
+
+	// Sprint 16.C — Hermes-артефакты копируем отдельным CopyToContainer'ом в "/",
+	// потому что home-каталог /home/sandbox/ лежит вне /workspace.
+	if hermesRC, herr := buildHermesHomeTar(opts.AgentSettings); herr != nil {
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "hermes_tar_build")
+		return nil, fmt.Errorf("build hermes tar: %w", herr)
+	} else if hermesRC != nil {
+		defer hermesRC.Close()
+		if cpErr := r.cli.CopyToContainer(ctx, containerID, "/", hermesRC, containertypes.CopyToContainerOptions{}); cpErr != nil {
+			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "copy_hermes_failed")
+			return nil, fmt.Errorf("copy hermes to container: %w", errors.Join(ErrSandboxDocker, cpErr))
+		}
 	}
 
 	if err := st.errIfInitCancelled(); err != nil {

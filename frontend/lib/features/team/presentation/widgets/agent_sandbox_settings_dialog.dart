@@ -101,8 +101,15 @@ class _BodyState extends ConsumerState<_Body>
   );
   late final _PermissionsForm _permissionsForm =
       _PermissionsForm.fromMap(widget.current.sandboxPermissions);
+  // Sprint 16.C — hermes-specific форма (видна, когда codeBackend == 'hermes').
+  late final _HermesForm _hermesForm = _HermesForm.fromMap(
+    (widget.current.codeBackendSettings['hermes'] as Map<String, dynamic>?) ??
+        const <String, dynamic>{},
+  );
   bool _busy = false;
   String? _error;
+
+  bool get _isHermes => _codeBackend == 'hermes';
 
   @override
   void initState() {
@@ -137,6 +144,9 @@ class _BodyState extends ConsumerState<_Body>
             ? '[]'
             : _skillsJSON.text),
       };
+      if (_isHermes) {
+        codeBackendSettings['hermes'] = _hermesForm.toMap();
+      }
     } catch (e) {
       setState(() {
         _busy = false;
@@ -203,7 +213,13 @@ class _BodyState extends ConsumerState<_Body>
             Tab(text: l10n.agentSandboxSettingsTabProvider),
             Tab(text: l10n.agentSandboxSettingsTabMCP),
             Tab(text: l10n.agentSandboxSettingsTabSkills),
-            Tab(text: l10n.agentSandboxSettingsTabPermissions),
+            // Sprint 16.C: для hermes 4-я вкладка — Toolsets вместо Permissions
+            // (у hermes нет per-tool allow/deny как у Claude Code).
+            Tab(
+              text: _isHermes
+                  ? l10n.agentSandboxSettingsTabToolsets
+                  : l10n.agentSandboxSettingsTabPermissions,
+            ),
           ],
         ),
         Expanded(
@@ -222,7 +238,10 @@ class _BodyState extends ConsumerState<_Body>
                 controller: _skillsJSON,
                 helperText: l10n.agentSandboxSettingsSkillsHelper,
               ),
-              _PermissionsTab(form: _permissionsForm),
+              if (_isHermes)
+                _HermesToolsetsTab(form: _hermesForm)
+              else
+                _PermissionsTab(form: _permissionsForm),
             ],
           ),
         ),
@@ -434,6 +453,177 @@ class _PatternListField extends StatefulWidget {
 
   @override
   State<_PatternListField> createState() => _PatternListFieldState();
+}
+
+/// Sprint 16.C — состояние Hermes-вкладки.
+///
+/// Хранит настройки Hermes как дискретные поля (а не raw JSON), чтобы UI мог
+/// предложить dropdown'ы и слайдеры. На сохранении конвертируется обратно в
+/// `Map<String, dynamic>`, который кладётся под ключ "hermes" в codeBackendSettings.
+///
+/// Переиспользуем JSON-вкладки MCP/Skills как есть — их формат у Hermes такой же
+/// гибкий, как у Claude Code (JSON-массивы), просто схема другая.
+class _HermesForm {
+  _HermesForm({
+    required this.toolsets,
+    required this.permissionMode,
+    required this.maxTurns,
+    required this.temperature,
+    required this.original,
+  });
+
+  factory _HermesForm.fromMap(Map<String, dynamic> m) {
+    final ts = (m['toolsets'] as List<dynamic>? ?? const ['file_ops', 'shell'])
+        .map((e) => e.toString())
+        .toList();
+    final mode = (m['permission_mode'] as String?) ?? 'yolo';
+    final turns = (m['max_turns'] is int)
+        ? m['max_turns'] as int
+        : int.tryParse('${m['max_turns'] ?? ''}') ?? 12;
+    final temp = (m['temperature'] is num) ? (m['temperature'] as num).toDouble() : null;
+    return _HermesForm(
+      toolsets: ts,
+      permissionMode: kHermesPermissionModes.contains(mode) ? mode : 'yolo',
+      maxTurns: turns,
+      temperature: temp,
+      original: Map<String, dynamic>.from(m),
+    );
+  }
+
+  List<String> toolsets;
+  String permissionMode;
+  int maxTurns;
+  double? temperature;
+  final Map<String, dynamic> original;
+
+  Map<String, dynamic> toMap() {
+    final out = <String, dynamic>{
+      ...original,
+      'toolsets': toolsets,
+      'permission_mode': permissionMode,
+      'max_turns': maxTurns,
+    };
+    if (temperature != null) {
+      out['temperature'] = temperature;
+    } else {
+      out.remove('temperature');
+    }
+    return out;
+  }
+}
+
+/// Sprint 16.C — вкладка Toolsets для Hermes.
+///
+/// Каталог toolsets — статичный (повторяет HermesToolsetCatalog в backend);
+/// при необходимости можно подменить на провайдер, который тянет с
+/// /api/v1/hermes/toolsets, но для MVP лишний round-trip избыточен.
+class _HermesToolsetsTab extends StatefulWidget {
+  const _HermesToolsetsTab({required this.form});
+  final _HermesForm form;
+
+  @override
+  State<_HermesToolsetsTab> createState() => _HermesToolsetsTabState();
+}
+
+class _HermesToolsetsTabState extends State<_HermesToolsetsTab> {
+  // Sprint 16.C: захардкожено зеркалом backend.HermesToolsetCatalog. При расширении
+  // (новые toolsets в hermes) обновлять обе локации.
+  static const _catalog = <String>[
+    'file_ops',
+    'shell',
+    'web_fetch',
+    'web_search',
+    'code_review',
+    'todo',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n =
+        requireAppLocalizations(context, where: 'agentSandboxSettingsDialog');
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(l10n.agentSandboxSettingsHermesToolsetsLabel,
+              style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            l10n.agentSandboxSettingsHermesToolsetsHelper,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final t in _catalog)
+                FilterChip(
+                  label: Text(t),
+                  selected: widget.form.toolsets.contains(t),
+                  onSelected: (sel) {
+                    setState(() {
+                      if (sel) {
+                        if (!widget.form.toolsets.contains(t)) {
+                          widget.form.toolsets.add(t);
+                        }
+                      } else {
+                        widget.form.toolsets.remove(t);
+                      }
+                    });
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          DropdownButtonFormField<String>(
+            initialValue: widget.form.permissionMode,
+            decoration: InputDecoration(
+              labelText: l10n.agentSandboxSettingsHermesPermLabel,
+              helperText: l10n.agentSandboxSettingsHermesPermHelper,
+            ),
+            items: kHermesPermissionModes
+                .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                .toList(),
+            onChanged: (v) =>
+                setState(() => widget.form.permissionMode = v ?? 'yolo'),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            initialValue: widget.form.maxTurns.toString(),
+            decoration: InputDecoration(
+              labelText: l10n.agentSandboxSettingsHermesMaxTurnsLabel,
+            ),
+            keyboardType: TextInputType.number,
+            onChanged: (v) {
+              final n = int.tryParse(v);
+              if (n != null && n > 0 && n <= 200) {
+                widget.form.maxTurns = n;
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            initialValue: widget.form.temperature?.toString() ?? '',
+            decoration: InputDecoration(
+              labelText: l10n.agentSandboxSettingsHermesTemperatureLabel,
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (v) {
+              if (v.trim().isEmpty) {
+                widget.form.temperature = null;
+                return;
+              }
+              final d = double.tryParse(v);
+              if (d != null && d >= 0 && d <= 2) {
+                widget.form.temperature = d;
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _PatternListFieldState extends State<_PatternListField> {

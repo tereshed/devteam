@@ -929,6 +929,13 @@
   "agentSandboxSettingsAsk": "Ask",
   "agentSandboxSettingsJsonInvalid": "Некорректный JSON",
   "agentSandboxSettingsPatternHint": "Read | Edit | Bash(go test:*) | mcp__server",
+  "agentSandboxSettingsTabToolsets": "Toolsets",
+  "agentSandboxSettingsHermesToolsetsLabel": "Hermes toolsets",
+  "agentSandboxSettingsHermesToolsetsHelper": "Выберите, какие Hermes toolsets доступны агенту.",
+  "agentSandboxSettingsHermesPermLabel": "Permission mode",
+  "agentSandboxSettingsHermesPermHelper": "В headless-sandbox разрешены только yolo и accept.",
+  "agentSandboxSettingsHermesMaxTurnsLabel": "Макс. число шагов",
+  "agentSandboxSettingsHermesTemperatureLabel": "Temperature (опц.)",
   "agentSandboxRevokeConfirmTitle": "Отозвать подписку Claude Code?",
   "agentSandboxRevokeConfirmBody": "Агенты будут использовать ANTHROPIC_API_KEY (если задан) при следующих sandbox-задачах. Подписку можно подключить заново в любой момент.",
 

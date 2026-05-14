@@ -135,10 +135,28 @@ type SandboxOptions struct {
 // AgentSettingsBundle — то, что копируется в контейнер при RunTask (Sprint 15.22).
 // SandboxRunner кладёт SettingsJSON в /workspace/.claude/settings.json, MCPJSON в /workspace/repo/.mcp.json,
 // и пробрасывает PermissionMode через env CLAUDE_CODE_PERMISSION_MODE (entrypoint подставит в флаг claude).
+//
+// Sprint 16.C: расширено Hermes-полями. Заполняется ровно одна семья полей —
+// Claude (SettingsJSON/MCPJSON/PermissionMode) ИЛИ Hermes (Hermes*).
+// Runner смотрит на opts.Backend и копирует то, что относится к нужному backend'у.
 type AgentSettingsBundle struct {
 	SettingsJSON   []byte
 	MCPJSON        []byte
 	PermissionMode string
+
+	// HermesConfigYAML — содержимое /home/sandbox/.hermes/config.yaml.
+	HermesConfigYAML []byte
+	// HermesMCPJSON — содержимое /home/sandbox/.hermes/mcp.json.
+	HermesMCPJSON []byte
+	// HermesSkills — относительный путь под /home/sandbox/.hermes/skills/ → содержимое.
+	// Ключи нормализованы и проверены на path-traversal в HermesArtifactBuilder
+	// (см. assertSafeRelativePath); runner делает defense-in-depth повторно.
+	HermesSkills map[string][]byte
+	// HermesEnv — per-agent env-vars (DEVTEAM_HERMES_TOOLSETS/SKILLS/PERMISSION_MODE/
+	// MAX_TURNS, HERMES_MCP_*). Runner мерджит в SandboxOptions.EnvVars в
+	// mergeSandboxEnv. Ключи проходят ValidateEnvKeys (есть whitelist для
+	// DEVTEAM_HERMES_* и префикс HERMES_MCP_*).
+	HermesEnv map[string]string
 }
 
 // Clone возвращает копию опций с глубокой копией EnvVars. Используйте в начале RunTask до чтения/передачи opts в горутины.

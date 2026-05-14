@@ -50,6 +50,9 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterClaudeCodeAuthTools(server, deps.ClaudeCodeAuthService)
 	RegisterAgentSettingsTools(server, deps.TeamService, deps.MCPServerRegistryRepo, deps.AgentSkillRepo)
 
+	// Sprint 16.C — Hermes-каталог (toolsets) для UI dropdown / агента.
+	RegisterHermesTools(server)
+
 	return server
 }
 

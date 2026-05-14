@@ -1274,6 +1274,29 @@ class AppLocalizationsRu extends AppLocalizations {
       'Read | Edit | Bash(go test:*) | mcp__server';
 
   @override
+  String get agentSandboxSettingsTabToolsets => 'Toolsets';
+
+  @override
+  String get agentSandboxSettingsHermesToolsetsLabel => 'Hermes toolsets';
+
+  @override
+  String get agentSandboxSettingsHermesToolsetsHelper =>
+      'Выберите, какие Hermes toolsets доступны агенту.';
+
+  @override
+  String get agentSandboxSettingsHermesPermLabel => 'Permission mode';
+
+  @override
+  String get agentSandboxSettingsHermesPermHelper =>
+      'В headless-sandbox разрешены только yolo и accept.';
+
+  @override
+  String get agentSandboxSettingsHermesMaxTurnsLabel => 'Макс. число шагов';
+
+  @override
+  String get agentSandboxSettingsHermesTemperatureLabel => 'Temperature (опц.)';
+
+  @override
   String get agentSandboxRevokeConfirmTitle => 'Отозвать подписку Claude Code?';
 
   @override

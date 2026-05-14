@@ -1269,6 +1269,30 @@ class AppLocalizationsEn extends AppLocalizations {
       'Read | Edit | Bash(go test:*) | mcp__server';
 
   @override
+  String get agentSandboxSettingsTabToolsets => 'Toolsets';
+
+  @override
+  String get agentSandboxSettingsHermesToolsetsLabel => 'Hermes toolsets';
+
+  @override
+  String get agentSandboxSettingsHermesToolsetsHelper =>
+      'Pick which Hermes toolsets are exposed to the agent.';
+
+  @override
+  String get agentSandboxSettingsHermesPermLabel => 'Permission mode';
+
+  @override
+  String get agentSandboxSettingsHermesPermHelper =>
+      'Only yolo and accept are allowed in headless sandbox.';
+
+  @override
+  String get agentSandboxSettingsHermesMaxTurnsLabel => 'Max turns';
+
+  @override
+  String get agentSandboxSettingsHermesTemperatureLabel =>
+      'Temperature (optional)';
+
+  @override
   String get agentSandboxRevokeConfirmTitle =>
       'Revoke Claude Code subscription?';
 

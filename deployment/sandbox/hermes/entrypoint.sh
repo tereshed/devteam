@@ -282,6 +282,27 @@ fi
 git config --global user.name "DevTeam Agent"
 git config --global user.email "agent@devteam.local"
 
+# --- prepare_hermes_dotdir (Sprint 16.C) ---
+# Раннер копирует ~/.hermes/{config.yaml,mcp.json,skills/*} через CopyToContainer
+# до старта; здесь — sanity-check каталога и быстрая валидация mcp-конфига.
+PHASE="prepare_hermes_dotdir"
+HERMES_HOME="/home/sandbox/.hermes"
+if [[ -d "$HERMES_HOME" ]]; then
+  chmod 0700 "$HERMES_HOME" 2>/dev/null || true
+  [[ -f "$HERMES_HOME/config.yaml" ]] && chmod 0600 "$HERMES_HOME/config.yaml" || true
+  [[ -f "$HERMES_HOME/mcp.json"   ]] && chmod 0600 "$HERMES_HOME/mcp.json"   || true
+  if [[ -f "$HERMES_HOME/mcp.json" ]]; then
+    # Sanity check: пытаемся распарсить mcp.json через hermes; падение — ошибка валидации
+    # (лучше упасть тут с понятным сообщением, чем получить мутный crash в фазе agent).
+    if ! hermes mcp list >>"$AGENT_LOG" 2>&1; then
+      echo "entrypoint: hermes mcp list failed (invalid ~/.hermes/mcp.json?)" >&2
+      LAST_EXIT_CODE=1
+      MESSAGE="invalid hermes mcp.json"
+      exit 1
+    fi
+  fi
+fi
+
 # --- agent: hermes chat -q "<PROMPT>" -m provider/model -Q --yolo ---
 # Sprint 16: Hermes принимает prompt как значение флага -q (не stdin); собираем
 # единый текст через cat, передаём в argv. ARG_MAX в Linux ≥2MB, чего хватает
@@ -314,13 +335,53 @@ if [[ -n "${DEVTEAM_HERMES_PROVIDER:-}" ]]; then
   HERMES_MODEL_ARGS+=("--provider" "${DEVTEAM_HERMES_PROVIDER}")
 fi
 
+# Sprint 16.C — per-agent toolsets/skills/permission_mode/max_turns.
+HERMES_TOOLSETS_ARGS=()
+if [[ -n "${DEVTEAM_HERMES_TOOLSETS:-}" ]]; then
+  HERMES_TOOLSETS_ARGS+=("-t" "${DEVTEAM_HERMES_TOOLSETS}")
+fi
+
+HERMES_SKILLS_ARGS=()
+if [[ -n "${DEVTEAM_HERMES_SKILLS:-}" ]]; then
+  HERMES_SKILLS_ARGS+=("-s" "${DEVTEAM_HERMES_SKILLS}")
+fi
+
+# Sprint 16.C — permission_mode mapping. Дефолт: yolo (изолированный контейнер).
+# plan/default отклоняются ещё на бэке (validateHermesSection → 400); если каким-то
+# чудом они дошли сюда — отказываем, никакой тихой подмены.
+HERMES_PERM_ARGS=("--yolo")
+case "${DEVTEAM_HERMES_PERMISSION_MODE:-yolo}" in
+  yolo)   HERMES_PERM_ARGS=("--yolo") ;;
+  accept) HERMES_PERM_ARGS=("--accept-hooks") ;;
+  plan|default)
+    echo "entrypoint: DEVTEAM_HERMES_PERMISSION_MODE=${DEVTEAM_HERMES_PERMISSION_MODE} is not allowed (headless sandbox); fix agent settings" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="permission_mode not allowed for hermes"
+    exit 1
+    ;;
+  *)
+    echo "entrypoint: DEVTEAM_HERMES_PERMISSION_MODE=${DEVTEAM_HERMES_PERMISSION_MODE} unknown (allowed: yolo|accept)" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="invalid permission_mode"
+    exit 1
+    ;;
+esac
+
+HERMES_MAX_TURNS_ARGS=()
+if [[ -n "${DEVTEAM_HERMES_MAX_TURNS:-}" ]]; then
+  HERMES_MAX_TURNS_ARGS+=("--max-turns" "${DEVTEAM_HERMES_MAX_TURNS}")
+fi
+
 (
   cd "$REPO_DIR"
   hermes chat \
     -q "$HERMES_QUERY" \
     -Q \
-    --yolo \
+    "${HERMES_PERM_ARGS[@]}" \
     "${HERMES_MODEL_ARGS[@]}" \
+    "${HERMES_TOOLSETS_ARGS[@]}" \
+    "${HERMES_SKILLS_ARGS[@]}" \
+    "${HERMES_MAX_TURNS_ARGS[@]}" \
     >>"$AGENT_LOG" 2>&1
 ) &
 HERMES_PID=$!

@@ -2480,6 +2480,48 @@ abstract class AppLocalizations {
   /// **'Read | Edit | Bash(go test:*) | mcp__server'**
   String get agentSandboxSettingsPatternHint;
 
+  /// No description provided for @agentSandboxSettingsTabToolsets.
+  ///
+  /// In ru, this message translates to:
+  /// **'Toolsets'**
+  String get agentSandboxSettingsTabToolsets;
+
+  /// No description provided for @agentSandboxSettingsHermesToolsetsLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Hermes toolsets'**
+  String get agentSandboxSettingsHermesToolsetsLabel;
+
+  /// No description provided for @agentSandboxSettingsHermesToolsetsHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите, какие Hermes toolsets доступны агенту.'**
+  String get agentSandboxSettingsHermesToolsetsHelper;
+
+  /// No description provided for @agentSandboxSettingsHermesPermLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Permission mode'**
+  String get agentSandboxSettingsHermesPermLabel;
+
+  /// No description provided for @agentSandboxSettingsHermesPermHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'В headless-sandbox разрешены только yolo и accept.'**
+  String get agentSandboxSettingsHermesPermHelper;
+
+  /// No description provided for @agentSandboxSettingsHermesMaxTurnsLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Макс. число шагов'**
+  String get agentSandboxSettingsHermesMaxTurnsLabel;
+
+  /// No description provided for @agentSandboxSettingsHermesTemperatureLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Temperature (опц.)'**
+  String get agentSandboxSettingsHermesTemperatureLabel;
+
   /// No description provided for @agentSandboxRevokeConfirmTitle.
   ///
   /// In ru, this message translates to:

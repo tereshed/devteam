@@ -620,6 +620,13 @@
   "agentSandboxSettingsAsk": "Ask",
   "agentSandboxSettingsJsonInvalid": "JSON is invalid",
   "agentSandboxSettingsPatternHint": "Read | Edit | Bash(go test:*) | mcp__server",
+  "agentSandboxSettingsTabToolsets": "Toolsets",
+  "agentSandboxSettingsHermesToolsetsLabel": "Hermes toolsets",
+  "agentSandboxSettingsHermesToolsetsHelper": "Pick which Hermes toolsets are exposed to the agent.",
+  "agentSandboxSettingsHermesPermLabel": "Permission mode",
+  "agentSandboxSettingsHermesPermHelper": "Only yolo and accept are allowed in headless sandbox.",
+  "agentSandboxSettingsHermesMaxTurnsLabel": "Max turns",
+  "agentSandboxSettingsHermesTemperatureLabel": "Temperature (optional)",
   "agentSandboxRevokeConfirmTitle": "Revoke Claude Code subscription?",
   "agentSandboxRevokeConfirmBody": "Agents will fall back to ANTHROPIC_API_KEY (if configured) for sandbox sessions. You can re-connect anytime.",
 

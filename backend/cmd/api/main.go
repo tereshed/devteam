@@ -328,10 +328,23 @@ func main() {
 		cfg.LLM.Anthropic.APIKey,
 		slog.Default(),
 	)
+	// Sprint 16.C — AgentSettingsService с полными зависимостями (MCP-реестр + secret-резолвер).
+	// MCP-реестр нужен и для Claude (.mcp.json) и для Hermes (mcp.json).
+	// DatabaseSecretResolver резолвит ${secret:<provider>} → user_llm_credentials по
+	// project.UserID. Без него hermes-MCP-сервер с секрет-шаблоном получит явную
+	// ошибку «secret resolver not configured» при сборке артефактов — лучше падение
+	// чем тихий пустой токен в HERMES_MCP_*_TOKEN.
+	mcpRegistryLookup := service.NewMCPRepositoryLookupAdapter(repository.NewMCPServerRegistryRepository(db))
+	secretResolver := service.NewDatabaseSecretResolver(db, encryptor)
+	agentSettingsSvc := service.NewAgentSettingsServiceWithDeps(mcpRegistryLookup, secretResolver)
+
 	// Sprint 15.M7 — функциональная опция вместо type-assertion-шима WithSandboxAuthResolver.
 	orchestratorContextBuilder := service.NewContextBuilderFull(
 		encryptor, pipelinePromptComposer, agentConfigCache, sandboxSecrets, taskMsgRepo,
 		service.WithSandboxAuthResolverOption(sandboxAuthResolver),
+		// Sprint 16.C — без этой опции AgentSettingsBundle никогда не доезжает
+		// до sandbox-runner'а: hermes-config/skills/permission-mode становятся мёртвым кодом.
+		service.WithAgentSettingsServiceOption(agentSettingsSvc),
 	)
 
 	llmProviderRepo := repository.NewLLMProviderRepository(db)
@@ -437,6 +450,7 @@ func main() {
 		ClaudeCodeAuthHandler: claudeCodeAuthHandler,
 		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
 		LLMProviderHandler:    llmProviderHandler,
+		HermesHandler:         handler.NewHermesHandler(),
 	})
 
 	go func() {

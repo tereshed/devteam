@@ -119,7 +119,7 @@ func TestBuildArtifacts_SettingsJSON(t *testing.T) {
 		CodeBackendSettings: datatypes.JSON(settingsJSON),
 	}
 
-	art, err := svc.BuildArtifacts(agent, nil)
+	art, err := svc.BuildArtifacts(agent, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, art)
 	assert.Equal(t, "acceptEdits", art.PermissionMode)
@@ -158,7 +158,7 @@ func TestBuildArtifacts_MCPJSON_ResolvesFromRegistry(t *testing.T) {
 		},
 	}}
 
-	art, err := svc.BuildArtifacts(agent, registry)
+	art, err := svc.BuildArtifacts(agent, nil, registry)
 	require.NoError(t, err)
 	require.NotNil(t, art.MCPJSON)
 
@@ -189,7 +189,7 @@ func TestBuildArtifacts_RejectsUnknownMCPServer(t *testing.T) {
 	agent := &models.Agent{ID: uuid.New(), CodeBackendSettings: datatypes.JSON(settingsJSON)}
 
 	registry := &fakeMCPRegistry{rows: map[string]*models.MCPServerRegistry{}}
-	_, err := svc.BuildArtifacts(agent, registry)
+	_, err := svc.BuildArtifacts(agent, nil, registry)
 	assert.Error(t, err)
 }
 
@@ -197,7 +197,7 @@ func TestBuildArtifacts_BypassPermissionMode(t *testing.T) {
 	svc := NewAgentSettingsService()
 	permsJSON, _ := json.Marshal(SandboxPermissions{DefaultMode: "bypassPermissions"})
 	agent := &models.Agent{ID: uuid.New(), SandboxPermissions: datatypes.JSON(permsJSON)}
-	art, err := svc.BuildArtifacts(agent, nil)
+	art, err := svc.BuildArtifacts(agent, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "bypassPermissions", art.PermissionMode)
 }
@@ -209,6 +209,6 @@ func TestBuildArtifacts_InvalidPermissionsBlock(t *testing.T) {
 		Allow:       []string{"NotARealTool"},
 	})
 	agent := &models.Agent{ID: uuid.New(), SandboxPermissions: datatypes.JSON(permsJSON)}
-	_, err := svc.BuildArtifacts(agent, nil)
+	_, err := svc.BuildArtifacts(agent, nil, nil)
 	assert.Error(t, err)
 }

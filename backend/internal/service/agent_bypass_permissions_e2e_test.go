@@ -41,7 +41,7 @@ func TestSprint15_36_BypassPermissions_FullWiring(t *testing.T) {
 	}
 
 	svc := NewAgentSettingsService()
-	art, err := svc.BuildArtifacts(agent, nil)
+	art, err := svc.BuildArtifacts(agent, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "bypassPermissions", art.PermissionMode)
 	assert.NotEmpty(t, art.SettingsJSON)
@@ -101,7 +101,7 @@ func readTarEntryNames(t *testing.T, rc io.ReadCloser) []string {
 // entrypoint в этом случае откатится на --dangerously-skip-permissions (обратная совместимость).
 func TestSprint15_36_NoDefaultMode_LegacyFallback(t *testing.T) {
 	agent := &models.Agent{ID: uuid.New(), Role: models.AgentRoleDeveloper}
-	art, err := NewAgentSettingsService().BuildArtifacts(agent, nil)
+	art, err := NewAgentSettingsService().BuildArtifacts(agent, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, art.PermissionMode)
 	assert.False(t, hasMCPJSON(art.SettingsJSON))
