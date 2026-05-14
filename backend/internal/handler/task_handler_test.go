@@ -105,7 +105,7 @@ func (m *MockTaskService) Correct(ctx context.Context, userID uuid.UUID, userRol
 	return args.Get(0).(*models.Task), args.Error(1)
 }
 
-func (m *MockTaskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts service.TransitionOpts) (*models.Task, error) {
+func (m *MockTaskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskState, opts service.TransitionOpts) (*models.Task, error) {
 	args := m.Called(ctx, taskID, newStatus, opts)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -183,7 +183,7 @@ func sampleTaskModel() *models.Task {
 		ProjectID:       testTaskProjectID,
 		Title:           "Task title",
 		Description:     "",
-		Status:          models.TaskStatusPending,
+		State:           models.TaskStateActive,
 		Priority:        models.TaskPriorityMedium,
 		CreatedByType:   models.CreatedByUser,
 		CreatedByID:     testProjectUserID,
@@ -563,7 +563,7 @@ func TestTask_Delete_Forbidden(t *testing.T) {
 func TestTask_Pause_Success(t *testing.T) {
 	mockSvc := new(MockTaskService)
 	task := sampleTaskModel()
-	task.Status = models.TaskStatusPaused
+	task.State = models.TaskStateNeedsHuman
 	mockSvc.On("Pause", mock.Anything, testProjectUserID, models.RoleUser, testTaskID).Return(task, nil)
 
 	w := httptest.NewRecorder()
@@ -573,7 +573,7 @@ func TestTask_Pause_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var got dto.TaskResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	assert.Equal(t, string(models.TaskStatusPaused), got.Status)
+	assert.Equal(t, string(models.TaskStateNeedsHuman), got.Status)
 }
 
 func TestTask_Pause_InvalidTransition(t *testing.T) {
@@ -603,7 +603,7 @@ func TestTask_Pause_NotFound(t *testing.T) {
 func TestTask_Cancel_Success(t *testing.T) {
 	mockSvc := new(MockTaskService)
 	task := sampleTaskModel()
-	task.Status = models.TaskStatusCancelled
+	task.State = models.TaskStateCancelled
 	mockSvc.On("Cancel", mock.Anything, testProjectUserID, models.RoleUser, testTaskID).Return(task, nil)
 
 	w := httptest.NewRecorder()
@@ -613,7 +613,7 @@ func TestTask_Cancel_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var got dto.TaskResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	assert.Equal(t, string(models.TaskStatusCancelled), got.Status)
+	assert.Equal(t, string(models.TaskStateCancelled), got.Status)
 }
 
 func TestTask_Cancel_TerminalStatus(t *testing.T) {
@@ -631,7 +631,7 @@ func TestTask_Cancel_TerminalStatus(t *testing.T) {
 func TestTask_Resume_Success(t *testing.T) {
 	mockSvc := new(MockTaskService)
 	task := sampleTaskModel()
-	task.Status = models.TaskStatusPending
+	task.State = models.TaskStateActive
 	mockSvc.On("Resume", mock.Anything, testProjectUserID, models.RoleUser, testTaskID).Return(task, nil)
 
 	w := httptest.NewRecorder()
@@ -641,7 +641,7 @@ func TestTask_Resume_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var got dto.TaskResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	assert.Equal(t, string(models.TaskStatusPending), got.Status)
+	assert.Equal(t, string(models.TaskStateActive), got.Status)
 }
 
 func TestTask_Resume_InvalidTransition(t *testing.T) {

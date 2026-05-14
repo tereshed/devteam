@@ -22,7 +22,7 @@ var allowedTaskOrderColumns = map[string]bool{
 	"created_at": true,
 	"updated_at": true,
 	"title":      true,
-	"status":     true,
+	"state":      true, // Sprint 17 / Orchestration v2 (was "status")
 	"priority":   true,
 	"started_at": true,
 }
@@ -38,11 +38,12 @@ func normalizeTaskListLimit(limit int) int {
 	return normalizeLimit(limit, taskListDefaultLimit, taskListMaxLimit)
 }
 
-// TaskFilter фильтры и пагинация для списка задач
+// TaskFilter фильтры и пагинация для списка задач.
+// Sprint 17 / Orchestration v2: state-based filtering. Legacy Status/Statuses удалены.
 type TaskFilter struct {
 	ProjectID       *uuid.UUID
-	Status          *models.TaskStatus
-	Statuses        []models.TaskStatus
+	State           *models.TaskState
+	States          []models.TaskState
 	Priority        *models.TaskPriority
 	AssignedAgentID *uuid.UUID
 	CreatedByType   *models.CreatedByType
@@ -63,8 +64,9 @@ type TaskRepository interface {
 	Create(ctx context.Context, task *models.Task) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Task, error)
 	List(ctx context.Context, filter TaskFilter) ([]models.Task, int64, error)
-	// Update атомарно сохраняет задачу при совпадении status и updated_at с момента чтения (optimistic lock).
-	Update(ctx context.Context, task *models.Task, expectedStatus models.TaskStatus, expectedUpdatedAt time.Time) error
+	// Update атомарно сохраняет задачу при совпадении state и updated_at с момента чтения (optimistic lock).
+	// Sprint 17: status → state.
+	Update(ctx context.Context, task *models.Task, expectedState models.TaskState, expectedUpdatedAt time.Time) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	CountByProjectID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	ListByParentID(ctx context.Context, parentTaskID uuid.UUID) ([]models.Task, error)
@@ -103,11 +105,11 @@ func (r *taskRepository) applyFilters(db *gorm.DB, filter TaskFilter) *gorm.DB {
 	if filter.ProjectID != nil {
 		db = db.Where("project_id = ?", *filter.ProjectID)
 	}
-	if filter.Status != nil {
-		db = db.Where("status = ?", *filter.Status)
+	if filter.State != nil {
+		db = db.Where("state = ?", *filter.State)
 	}
-	if len(filter.Statuses) > 0 {
-		db = db.Where("status IN ?", filter.Statuses)
+	if len(filter.States) > 0 {
+		db = db.Where("state IN ?", filter.States)
 	}
 	if filter.Priority != nil {
 		db = db.Where("priority = ?", *filter.Priority)
@@ -193,15 +195,16 @@ func (r *taskRepository) List(ctx context.Context, filter TaskFilter) ([]models.
 	return tasks, count, nil
 }
 
-// Update сохраняет поля задачи только если в БД всё ещё expectedStatus и expectedUpdatedAt (state machine + гонки).
-func (r *taskRepository) Update(ctx context.Context, task *models.Task, expectedStatus models.TaskStatus, expectedUpdatedAt time.Time) error {
+// Update сохраняет поля задачи только если в БД всё ещё expectedState и expectedUpdatedAt
+// (optimistic concurrency — защита от параллельных Step'ов).
+func (r *taskRepository) Update(ctx context.Context, task *models.Task, expectedState models.TaskState, expectedUpdatedAt time.Time) error {
 	db := gormDB(ctx, r.db)
 	now := time.Now().UTC()
 	updates := map[string]interface{}{
 		"parent_task_id":    task.ParentTaskID,
 		"title":             task.Title,
 		"description":       task.Description,
-		"status":            task.Status,
+		"state":             task.State,
 		"priority":          task.Priority,
 		"assigned_agent_id": task.AssignedAgentID,
 		"created_by_type":   task.CreatedByType,
@@ -216,7 +219,7 @@ func (r *taskRepository) Update(ctx context.Context, task *models.Task, expected
 		"updated_at":        now,
 	}
 	result := db.WithContext(ctx).Model(&models.Task{}).
-		Where("id = ? AND status = ? AND updated_at = ?", task.ID, expectedStatus, expectedUpdatedAt).
+		Where("id = ? AND state = ? AND updated_at = ?", task.ID, expectedState, expectedUpdatedAt).
 		Updates(updates)
 	if result.Error != nil {
 		if mapped := mapTaskFKViolation(result.Error); mapped != result.Error {

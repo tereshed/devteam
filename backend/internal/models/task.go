@@ -9,34 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// TaskStatus статус задачи в pipeline агентов
-type TaskStatus string
-
-const (
-	TaskStatusPending          TaskStatus = "pending"
-	TaskStatusPlanning         TaskStatus = "planning"
-	TaskStatusInProgress       TaskStatus = "in_progress"
-	TaskStatusReview           TaskStatus = "review"
-	TaskStatusChangesRequested TaskStatus = "changes_requested"
-	TaskStatusTesting          TaskStatus = "testing"
-	TaskStatusCompleted        TaskStatus = "completed"
-	TaskStatusFailed           TaskStatus = "failed"
-	TaskStatusCancelled        TaskStatus = "cancelled"
-	TaskStatusPaused           TaskStatus = "paused"
-)
-
-// IsValid проверяет валидность статуса задачи
-func (s TaskStatus) IsValid() bool {
-	switch s {
-	case TaskStatusPending, TaskStatusPlanning, TaskStatusInProgress,
-		TaskStatusReview, TaskStatusChangesRequested, TaskStatusTesting,
-		TaskStatusCompleted, TaskStatusFailed, TaskStatusCancelled, TaskStatusPaused:
-		return true
-	default:
-		return false
-	}
-}
-
 // TaskPriority приоритет задачи
 type TaskPriority string
 
@@ -76,8 +48,7 @@ func (c CreatedByType) IsValid() bool {
 }
 
 // TaskState — Sprint 17 / Orchestration v2 — упрощённое жизненное состояние задачи.
-// Заменяет TaskStatus (10 значений) на 5 high-level состояний. Введено параллельно;
-// TaskStatus останется до Sprint 3, когда удалится legacy-оркестратор.
+// Заменил legacy TaskStatus (10 значений) на 5 high-level состояний.
 type TaskState string
 
 const (
@@ -109,7 +80,6 @@ type Task struct {
 	SubTasks        []Task         `gorm:"foreignKey:ParentTaskID" json:"sub_tasks,omitempty"`
 	Title           string         `gorm:"type:varchar(500);not null" json:"title"`
 	Description     string         `gorm:"type:text;not null;default:''" json:"description"`
-	Status          TaskStatus     `gorm:"type:varchar(50);not null;default:'pending'" json:"status"`
 	Priority        TaskPriority   `gorm:"type:varchar(50);not null;default:'medium'" json:"priority"`
 	AssignedAgentID *uuid.UUID     `gorm:"type:uuid" json:"assigned_agent_id"`
 	AssignedAgent   *Agent         `gorm:"foreignKey:AssignedAgentID" json:"assigned_agent,omitempty"`
@@ -123,20 +93,19 @@ type Task struct {
 	StartedAt       *time.Time     `gorm:"type:timestamp with time zone" json:"started_at"`
 	CompletedAt     *time.Time     `gorm:"type:timestamp with time zone" json:"completed_at"`
 
-	// Sprint 17 / Orchestration v2 — новые поля. Status выше остаётся до Sprint 3.
-	// State — новый источник правды; маппится из Status через миграцию 037.
+	// Sprint 17 / Orchestration v2 — жизненное состояние задачи.
+	// State — единственный источник правды (5 значений: active|done|failed|cancelled|needs_human).
 	// CancelRequested — кооперативная отмена; Orchestrator.Step и Agent Worker'ы её поллят.
 	// CurrentStepNo — счётчик шагов оркестратора (для max_steps_per_task).
+	// CustomTimeout — per-task override task_timeout. PG INTERVAL → time.Duration через
+	//                 кастомный sql.Scanner/driver.Valuer (см. interval_duration.go).
 	// LockedBy/LockedAt — observability + детект "застрявших" Step-обработок.
-	//
-	// NB: колонка custom_timeout (INTERVAL) добавлена миграцией 037, но Go-поле
-	// введём в Sprint 3 — GORM ↔ PostgreSQL INTERVAL требует кастомного scanner'а
-	// (time.Duration сам по себе не маппится). Сейчас колонка просто NULL для всех задач.
-	State           TaskState  `gorm:"type:varchar(32);not null;default:'active'" json:"state"`
-	CancelRequested bool       `gorm:"type:boolean;not null;default:false" json:"cancel_requested"`
-	CurrentStepNo   int        `gorm:"type:integer;not null;default:0" json:"current_step_no"`
-	LockedBy        *string    `gorm:"type:varchar(255)" json:"locked_by,omitempty"`
-	LockedAt        *time.Time `gorm:"type:timestamp with time zone" json:"locked_at,omitempty"`
+	State           TaskState         `gorm:"type:varchar(32);not null;default:'active'" json:"state"`
+	CancelRequested bool              `gorm:"type:boolean;not null;default:false" json:"cancel_requested"`
+	CurrentStepNo   int               `gorm:"type:integer;not null;default:0" json:"current_step_no"`
+	CustomTimeout   *IntervalDuration `gorm:"type:interval" json:"custom_timeout,omitempty"`
+	LockedBy        *string           `gorm:"type:varchar(255)" json:"locked_by,omitempty"`
+	LockedAt        *time.Time        `gorm:"type:timestamp with time zone" json:"locked_at,omitempty"`
 
 	CreatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
 	UpdatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`

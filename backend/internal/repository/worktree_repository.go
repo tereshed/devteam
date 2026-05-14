@@ -30,6 +30,11 @@ type WorktreeRepository interface {
 	// Возвращает ErrWorktreeNotFound если запись не существует.
 	UpdateState(ctx context.Context, id uuid.UUID, newState models.WorktreeState) error
 
+	// MarkInUse — переход allocated → in_use одновременно с привязкой к agent_job.
+	// Атомарность важна: если просто UpdateState + отдельный SET agent_job_id, между
+	// ними воркер уже мог начать работу и попасть в гонку с cleanup-кроном.
+	MarkInUse(ctx context.Context, id uuid.UUID, agentJobID int64) error
+
 	// ListForCleanup — released worktree'ы старше cutoff, готовые к физическому удалению.
 	// Используется cron'ом (retention 1 сутки после release).
 	ListForCleanup(ctx context.Context, cutoff time.Time) ([]models.Worktree, error)
@@ -99,6 +104,28 @@ func (r *worktreeRepository) UpdateState(ctx context.Context, id uuid.UUID, newS
 		return fmt.Errorf("failed to update worktree %s state: %w", id, result.Error)
 	}
 	if result.RowsAffected == 0 {
+		return ErrWorktreeNotFound
+	}
+	return nil
+}
+
+// MarkInUse — атомарный переход в state='in_use' с одновременной привязкой agent_job_id.
+// Дополнительный guard в WHERE: переход разрешён только из 'allocated' (никогда нельзя
+// взять под работу уже released worktree). Это защищает от гонки с CleanupExpired.
+func (r *worktreeRepository) MarkInUse(ctx context.Context, id uuid.UUID, agentJobID int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&models.Worktree{}).
+		Where("id = ? AND state = ?", id, models.WorktreeStateAllocated).
+		Updates(map[string]any{
+			"state":        models.WorktreeStateInUse,
+			"agent_job_id": agentJobID,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("failed to mark worktree %s in_use: %w", id, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		// Либо worktree не существует, либо уже не в allocated (released/in_use/...).
+		// В обоих случаях AgentWorker должен прервать работу.
 		return ErrWorktreeNotFound
 	}
 	return nil

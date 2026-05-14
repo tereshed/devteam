@@ -639,14 +639,27 @@ In-flight jobs:
 7. `agent_dispatcher.go` — switch `execution_kind`.
 8. Юнит-тесты Router с mock LLM: фикстуры состояний (sequential, parallel, blocked, cancelled), кейсы галлюцинаций (markdown JSON, несуществующий агент, пустой массив, дубли target_artifact_id).
 
-### Sprint 3 — Worktrees, Queue, Workers, Step
-9. `worktree_manager.go` — allocate/release через `git worktree`, retention cron. Все git-команды с `--` separator перед user/LLM-аргументами. `ComputePath` от `Worktree.ID + TaskID` (из модели уже есть в Sprint 1).
-10. Worker pool: `task_events` через `SKIP LOCKED` polling (~500ms интервал) + **Redis Pub/Sub** wakeup (`SubscribeTaskEvents`) для low-latency. Race-free pattern в Agent Worker'е: Subscribe → SELECT `cancel_requested` → start Exec.
-11. `orchestrator_v2.go` — `Step()` использует `service.TryLockTaskForStep` (`SELECT FOR UPDATE NOWAIT` на `tasks.id`), cancel check, параллельный fan-out N `agent_jobs`.
-12. HTTP-хендлеры: `POST /tasks` (создание + первый `step_req` event), `POST /tasks/:id/cancel` (UPDATE `cancel_requested=true` + `NotifyTaskCancel`).
-13. Миграция 039 — `DROP COLUMN tasks.status` + `CHECK chk_tasks_status`. Одновременно удалить legacy: `orchestrator_pipeline.go`, `DetermineNextStatus`, статусная часть `handleExecutionResult`, `TaskStatus` enum + все его константы из `models/task.go`, все switch'и по `Task.Status` в handlers/services.
-14. Добавить Go-field `Task.CustomTimeout *time.Duration` с кастомным `sql.Scanner`/`driver.Valuer` для INTERVAL ↔ time.Duration маппинга.
-15. Cron: retention `router_decisions` (30 дней через `RouterDecisionRepository.DeleteOlderThan`) + retention worktrees (1 сутки после release через `WorktreeRepository.ListForCleanup` + `os.RemoveAll` с prefix-check).
+### Sprint 3 — Worktrees, Queue, Workers, Step ✅ ЗАВЕРШЁН (2026-05-14) с deferred-tail
+
+**Доставлено:**
+9. `worktree_manager.go` — Allocate (`git worktree add … -- <base>` с `--` separator), Release (idempotent, `--force`), MarkInUse, CleanupExpired. Путь вычисляется через `ComputePath`, БД-колонки `path` НЕТ; в CleanupExpired — defence-in-depth: OR-условие на prefix-check + равенство корню; `truncate()` rune-safe. 7 unit-тестов (5 без git + 2 integration с реальным git).
+10. Worker pool (`step_worker.go`, `agent_worker.go`): polling 500ms + Redis Pub/Sub wakeup. Race-free cancel: Subscribe → SELECT `cancel_requested` → start Exec. `AgentResponseEnvelope` контракт + fallback на `raw_output`. Exponential backoff на Fail (1s→60s, max 60s).
+11. `orchestrator_v2.go` — `Step()` через `TryLockTaskForStep` (`SELECT FOR UPDATE NOWAIT`). Внутри tx — **ТОЛЬКО** БД-операции (lock/load/router_decide/save_decision/enqueue_events/increment). `git worktree add` вынесен в AgentWorker (just-in-time перед Execute) — устраняет orphaned records при tx rollback. `worktree release` + `NotifyTaskCancel` — post-commit hooks (`scheduleWorktreeRelease`, `scheduleCancelNotify`).
+12. `task_lifecycle.go` (`RequestCancel`) + `retention.go` (`RunOnce*` / `Run` для cron). HTTP-хендлеры в Sprint 5 (см. ниже).
+14. `Task.CustomTimeout *IntervalDuration` с custom `sql.Scanner` + `driver.Valuer` ([interval_duration.go](backend/internal/models/interval_duration.go)). Поддержка форматов: `HH:MM:SS[.ffffff]`, `D days HH:MM:SS`, `N microseconds/seconds/minutes/hours/...`. 8 unit-тестов.
+
+**Stage 5b (частично доставлено):** удалены 10 legacy-файлов (~3000 строк): `orchestrator_pipeline.go`, `orchestrator_service.go` + tests, 5× `result_processor*.go` + test. `secretPatterns` сохранён в `secret_scrub.go`. Новый интерфейс `service.TaskOrchestrator` (`EnqueueInitialStep`); consumers (`conversation_service`, `handler/task_handler`, `mcp/tools_task`) переключены. В `main.go` — `stubV2Orchestrator` (кладёт step_req в очередь). Test suite зелёный, никаких регрессий.
+
+**Завершено в полном объёме (включая ранее DEFERRED-пункты):**
+
+| Пункт | Статус |
+|---|---|
+| 13 | ✅ Миграция [039](backend/db/migrations/039_drop_tasks_status_legacy.sql) — `DROP COLUMN tasks.status`. `TaskStatus` enum + `Task.Status` поле удалены из [models/task.go](backend/internal/models/task.go). State-machine упрощён 10→5: `allowedTransitions` теперь покрывает `active ↔ active|done|failed|cancelled|needs_human`, `needs_human → active|cancelled`, `failed → active`. Refactor 14 consumer-файлов: `task_service.go` (78 правок), `handler/task_handler.go`, `dto/task_dto.go`, `mcp/tools_task.go`, `indexer/task_indexer.go`, `repository/task_repository.go` (TaskFilter `Status` → `State`), + все их test-файлы (~120 правок). 6 legacy state-transition тестов удалены (тестировали несуществующую теперь 10-значную state-machine). |
+| 15a | ✅ Cron retention `router_decisions` (30 дней) — запущен goroutine в [main.go](backend/cmd/api/main.go) через `RetentionService.Run(ctxWorker)`. |
+| 15b | ✅ Cron retention worktrees (1 сутки после release) — same goroutine. |
+| 5g | ✅ Полный v2 DI в [main.go](backend/cmd/api/main.go): `SingletonLLMProviderResolver` + `SingletonSandboxExecutorFactory` + `DBAgentLoader` (adapters в [v2_di_adapters.go](backend/internal/service/v2_di_adapters.go)); `AgentDispatcher` + `RouterService` + опциональный `WorktreeManager` (`WORKTREES_ROOT`+`REPO_ROOT` env) + опциональный `RedisNotifier` (`REDIS_URL` env, fallback на polling); `Orchestrator` v2 заменил `stubV2Orchestrator`; 5×`StepWorker` + 22×`AgentWorker` запущены как goroutines с `ctxWorker` для graceful shutdown; `RetentionService` goroutine; `TaskLifecycleService` инициализирован. |
+
+**Status:** Sprint 3 закрыт полностью. Все 15 internal пакетов компилируются и тесты зелёные.
 
 ### Sprint 4 — Merger, Tester, Integration
 15. Merger-агент: промпт + sandbox-runner с поддержкой множественных worktree mounts.

@@ -24,7 +24,7 @@ func sampleTask(t *testing.T, uid, projectID uuid.UUID) *models.Task {
 		ProjectID:     projectID,
 		Title:         "T1",
 		Description:   "",
-		Status:        models.TaskStatusPending,
+		State:         models.TaskStateActive,
 		Priority:      models.TaskPriorityMedium,
 		CreatedByType: models.CreatedByUser,
 		CreatedByID:   uid,
@@ -174,7 +174,7 @@ func TestTaskGet_Success(t *testing.T) {
 	data := structured.(*Response).Data.(dto.TaskResponse)
 	assert.Equal(t, task.ID.String(), data.ID)
 	assert.Equal(t, "T1", data.Title)
-	assert.Equal(t, string(models.TaskStatusPending), data.Status)
+	assert.Equal(t, string(models.TaskStateActive), data.Status)
 	svc.AssertExpectations(t)
 }
 
@@ -461,7 +461,7 @@ func TestTaskUpdate_ChangeStatus(t *testing.T) {
 	uid, _ := UserIDFromContext(ctx)
 	pid := uuid.New()
 	task := sampleTask(t, uid, pid)
-	task.Status = models.TaskStatusPlanning
+	task.State = models.TaskStateActive
 
 	st := "planning"
 	svc.On("Update", mock.Anything, uid, models.RoleUser, task.ID, mock.MatchedBy(func(r dto.UpdateTaskRequest) bool {

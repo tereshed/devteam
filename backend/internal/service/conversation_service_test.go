@@ -159,7 +159,7 @@ func (m *mockTaskSvc) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 func (m *mockTaskSvc) Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error) {
 	return nil, nil
 }
-func (m *mockTaskSvc) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts TransitionOpts) (*models.Task, error) {
+func (m *mockTaskSvc) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskState, opts TransitionOpts) (*models.Task, error) {
 	return nil, nil
 }
 func (m *mockTaskSvc) AddMessage(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.CreateTaskMessageRequest) (*models.TaskMessage, error) {
@@ -174,9 +174,19 @@ func (m *mockTaskSvc) Close() error {
 
 type mockOrchestratorSvc struct{ mock.Mock }
 
+// Sprint 17: legacy ProcessTask остаётся для совместимости с накопленными
+// On("ProcessTask", ...) expectations в тестах (~50+ мест).
 func (m *mockOrchestratorSvc) ProcessTask(ctx context.Context, taskID uuid.UUID) error {
 	return m.Called(ctx, taskID).Error(0)
 }
+
+// EnqueueInitialStep — новый метод TaskOrchestrator interface.
+// Делегируем на ProcessTask чтобы существующие test fixtures продолжали работать
+// без массовой правки. Семантика идентична: enqueue event'а / запуск flow задачи.
+func (m *mockOrchestratorSvc) EnqueueInitialStep(ctx context.Context, taskID uuid.UUID) error {
+	return m.ProcessTask(ctx, taskID)
+}
+
 func (m *mockOrchestratorSvc) Start(ctx context.Context) error {
 	return nil
 }

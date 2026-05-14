@@ -77,7 +77,7 @@ func TestTaskRepository_Create_Success(t *testing.T) {
 		ProjectID:       p.ID,
 		Title:           "Full task",
 		Description:     "long desc",
-		Status:          models.TaskStatusInProgress,
+		Status:          models.TaskStateActive,
 		Priority:        models.TaskPriorityHigh,
 		AssignedAgentID: &agent.ID,
 		CreatedByType:   models.CreatedByAgent,
@@ -97,7 +97,7 @@ func TestTaskRepository_Create_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Full task", got.Title)
 	assert.Equal(t, "long desc", got.Description)
-	assert.Equal(t, models.TaskStatusInProgress, got.Status)
+	assert.Equal(t, models.TaskStateActive, got.Status)
 	assert.Equal(t, models.TaskPriorityHigh, got.Priority)
 	assert.Equal(t, agent.ID, *got.AssignedAgentID)
 	assert.Equal(t, models.CreatedByAgent, got.CreatedByType)
@@ -232,19 +232,19 @@ func TestTaskRepository_List_FilterByStatus(t *testing.T) {
 	ctx := context.Background()
 
 	t1 := newTestTask(p.ID, user.ID, "ip")
-	t1.Status = models.TaskStatusInProgress
+	t1.Status = models.TaskStateActive
 	t2 := newTestTask(p.ID, user.ID, "pend")
-	t2.Status = models.TaskStatusPending
+	t2.Status = models.TaskStateActive
 	require.NoError(t, repo.Create(ctx, t1))
 	require.NoError(t, repo.Create(ctx, t2))
 
-	st := models.TaskStatusInProgress
+	st := models.TaskStateActive
 	pid := p.ID
 	list, total, err := repo.List(ctx, TaskFilter{ProjectID: &pid, Status: &st, Limit: 20})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
-	assert.Equal(t, models.TaskStatusInProgress, list[0].Status)
+	assert.Equal(t, models.TaskStateActive, list[0].Status)
 }
 
 func TestTaskRepository_List_FilterByStatuses(t *testing.T) {
@@ -255,16 +255,16 @@ func TestTaskRepository_List_FilterByStatuses(t *testing.T) {
 	repo := NewTaskRepository(db)
 	ctx := context.Background()
 
-	for _, st := range []models.TaskStatus{models.TaskStatusCompleted, models.TaskStatusPlanning, models.TaskStatusPending} {
+	for _, st := range []models.TaskStatus{models.TaskStateDone, models.TaskStateActive, models.TaskStateActive} {
 		tk := newTestTask(p.ID, user.ID, string(st))
-		tk.Status = st
+		tk.State = st
 		require.NoError(t, repo.Create(ctx, tk))
 	}
 
 	pid := p.ID
 	list, total, err := repo.List(ctx, TaskFilter{
 		ProjectID: &pid,
-		Statuses:  []models.TaskStatus{models.TaskStatusPending, models.TaskStatusPlanning},
+		Statuses:  []models.TaskStatus{models.TaskStateActive, models.TaskStateActive},
 		Limit:     20,
 	})
 	require.NoError(t, err)
@@ -518,13 +518,13 @@ func TestTaskRepository_Update_Success(t *testing.T) {
 	require.NoError(t, err)
 	expStatus := loaded.Status
 	expUpdated := loaded.UpdatedAt
-	loaded.Status = models.TaskStatusReview
+	loaded.Status = models.TaskStateActive
 	loaded.AssignedAgentID = &agent.ID
 	require.NoError(t, repo.Update(ctx, loaded, expStatus, expUpdated))
 
 	again, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	assert.Equal(t, models.TaskStatusReview, again.Status)
+	assert.Equal(t, models.TaskStateActive, again.Status)
 	assert.Equal(t, agent.ID, *again.AssignedAgentID)
 	assert.True(t, again.UpdatedAt.After(before) || !again.UpdatedAt.Equal(before))
 }
@@ -550,14 +550,14 @@ func TestTaskRepository_Update_StaleOptimisticLock(t *testing.T) {
 	require.NoError(t, err)
 	expBStatus := b.Status
 	expBUpdated := b.UpdatedAt
-	b.Status = models.TaskStatusPlanning
+	b.Status = models.TaskStateActive
 	require.NoError(t, repo.Update(ctx, b, expBStatus, expBUpdated))
 
 	c, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	assert.Equal(t, models.TaskStatusPlanning, c.Status)
+	assert.Equal(t, models.TaskStateActive, c.Status)
 
-	c.Status = models.TaskStatusReview
+	c.Status = models.TaskStateActive
 	c.AssignedAgentID = &agent.ID
 	err = repo.Update(ctx, c, staleStatus, staleUpdated)
 	assert.ErrorIs(t, err, ErrTaskConcurrentUpdate)

@@ -34,7 +34,7 @@ func TestToTaskResponse_AllFields(t *testing.T) {
 		ParentTaskID:  &parentID,
 		Title:         "Root task",
 		Description:   "Full description",
-		Status:        models.TaskStatusInProgress,
+		State:         models.TaskStateActive,
 		Priority:      models.TaskPriorityHigh,
 		AssignedAgent: &models.Agent{ID: agentID, Name: "DevBot", Role: models.AgentRoleDeveloper},
 		CreatedByType: models.CreatedByUser,
@@ -58,7 +58,7 @@ func TestToTaskResponse_AllFields(t *testing.T) {
 	assert.Equal(t, parentID.String(), *got.ParentTaskID)
 	assert.Equal(t, "Root task", got.Title)
 	assert.Equal(t, "Full description", got.Description)
-	assert.Equal(t, string(models.TaskStatusInProgress), got.Status)
+	assert.Equal(t, string(models.TaskStateActive), got.Status)
 	assert.Equal(t, string(models.TaskPriorityHigh), got.Priority)
 	require.NotNil(t, got.AssignedAgent)
 	assert.Equal(t, agentID.String(), got.AssignedAgent.ID)
@@ -88,7 +88,7 @@ func TestToTaskResponse_NilAgent(t *testing.T) {
 		ID:            uuid.New(),
 		ProjectID:     uuid.New(),
 		Title:         "T",
-		Status:        models.TaskStatusPending,
+		State:         models.TaskStateActive,
 		Priority:      models.TaskPriorityMedium,
 		CreatedByType: models.CreatedByUser,
 		CreatedByID:   uuid.New(),
@@ -113,7 +113,7 @@ func TestToTaskResponse_WithAgent(t *testing.T) {
 		ID:            uuid.New(),
 		ProjectID:     uuid.New(),
 		Title:         "With agent",
-		Status:        models.TaskStatusPending,
+		State:         models.TaskStateActive,
 		Priority:      models.TaskPriorityLow,
 		AssignedAgent: &models.Agent{ID: aid, Name: "Planner", Role: models.AgentRolePlanner},
 		CreatedByType: models.CreatedByAgent,
@@ -141,16 +141,16 @@ func TestToTaskResponse_WithSubTasks(t *testing.T) {
 		ID:            uuid.New(),
 		ProjectID:     uuid.New(),
 		Title:         "Parent",
-		Status:        models.TaskStatusPlanning,
+		State:         models.TaskStateActive,
 		Priority:      models.TaskPriorityMedium,
 		CreatedByType: models.CreatedByUser,
 		CreatedByID:   uuid.New(),
 		Context:       datatypes.JSON(`{}`),
 		Artifacts:     datatypes.JSON(`{}`),
 		SubTasks: []models.Task{
-			{ID: st1, Title: "A", Status: models.TaskStatusPending, Priority: models.TaskPriorityHigh},
-			{ID: st2, Title: "B", Status: models.TaskStatusInProgress, Priority: models.TaskPriorityMedium},
-			{ID: st3, Title: "C", Status: models.TaskStatusCompleted, Priority: models.TaskPriorityLow},
+			{ID: st1, Title: "A", State: models.TaskStateActive, Priority: models.TaskPriorityHigh},
+			{ID: st2, Title: "B", State: models.TaskStateActive, Priority: models.TaskPriorityMedium},
+			{ID: st3, Title: "C", State: models.TaskStateDone, Priority: models.TaskPriorityLow},
 		},
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
@@ -160,7 +160,7 @@ func TestToTaskResponse_WithSubTasks(t *testing.T) {
 	require.Len(t, got.SubTasks, 3)
 	assert.Equal(t, st1.String(), got.SubTasks[0].ID)
 	assert.Equal(t, "A", got.SubTasks[0].Title)
-	assert.Equal(t, string(models.TaskStatusPending), got.SubTasks[0].Status)
+	assert.Equal(t, string(models.TaskStateActive), got.SubTasks[0].Status)
 	assert.Equal(t, string(models.TaskPriorityHigh), got.SubTasks[0].Priority)
 	assert.Equal(t, st3.String(), got.SubTasks[2].ID)
 }
@@ -172,7 +172,7 @@ func TestToTaskResponse_NilOptionalFields(t *testing.T) {
 		ID:            uuid.New(),
 		ProjectID:     uuid.New(),
 		Title:         "Minimal",
-		Status:        models.TaskStatusPending,
+		State:         models.TaskStateActive,
 		Priority:      models.TaskPriorityMedium,
 		CreatedByType: models.CreatedByUser,
 		CreatedByID:   uuid.New(),
@@ -204,7 +204,7 @@ func TestToTaskListItem(t *testing.T) {
 		ID:            uuid.New(),
 		ProjectID:     uuid.New(),
 		Title:         "List item",
-		Status:        models.TaskStatusReview,
+		State:         models.TaskStateActive,
 		Priority:      models.TaskPriorityCritical,
 		CreatedByType: models.CreatedByAgent,
 		CreatedByID:   uuid.New(),
@@ -212,7 +212,7 @@ func TestToTaskListItem(t *testing.T) {
 		Result:        &res,
 		Artifacts:     datatypes.JSON(`{"big":"data"}`),
 		BranchName:    &branch,
-		SubTasks:      []models.Task{{ID: uuid.New(), Title: "child", Status: models.TaskStatusPending, Priority: models.TaskPriorityLow}},
+		SubTasks:      []models.Task{{ID: uuid.New(), Title: "child", State: models.TaskStateActive, Priority: models.TaskPriorityLow}},
 		CreatedAt:     time.Now().UTC(),
 		UpdatedAt:     time.Now().UTC(),
 	}
@@ -221,7 +221,7 @@ func TestToTaskListItem(t *testing.T) {
 	assert.Equal(t, task.ID.String(), got.ID)
 	assert.Equal(t, task.ProjectID.String(), got.ProjectID)
 	assert.Equal(t, "List item", got.Title)
-	assert.Equal(t, string(models.TaskStatusReview), got.Status)
+	assert.Equal(t, string(models.TaskStateActive), got.Status)
 	assert.Equal(t, string(models.TaskPriorityCritical), got.Priority)
 
 	raw, err := json.Marshal(got)
@@ -237,14 +237,14 @@ func TestToTaskListResponse(t *testing.T) {
 
 	t1 := models.Task{
 		ID: uuid.MustParse("55555555-5555-5555-5555-555555555555"), ProjectID: uuid.New(),
-		Title: "One", Status: models.TaskStatusPending, Priority: models.TaskPriorityMedium,
+		Title: "One", State: models.TaskStateActive, Priority: models.TaskPriorityMedium,
 		CreatedByType: models.CreatedByUser, CreatedByID: uuid.New(),
 		Context: datatypes.JSON(`{}`), Artifacts: datatypes.JSON(`{}`),
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	t2 := models.Task{
 		ID: uuid.MustParse("66666666-6666-6666-6666-666666666666"), ProjectID: uuid.New(),
-		Title: "Two", Status: models.TaskStatusCompleted, Priority: models.TaskPriorityLow,
+		Title: "Two", State: models.TaskStateDone, Priority: models.TaskPriorityLow,
 		CreatedByType: models.CreatedByUser, CreatedByID: uuid.New(),
 		Context: datatypes.JSON(`{}`), Artifacts: datatypes.JSON(`{}`),
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),

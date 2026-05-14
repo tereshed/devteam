@@ -56,7 +56,7 @@ type TaskUpdateParams struct {
 }
 
 // RegisterTaskTools регистрирует MCP-инструменты для задач.
-func RegisterTaskTools(server *mcp.Server, taskSvc service.TaskService, orchestratorSvc service.OrchestratorService) {
+func RegisterTaskTools(server *mcp.Server, taskSvc service.TaskService, orchestratorSvc service.TaskOrchestrator) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "task_list",
 		Description: "Список задач проекта с фильтрацией и пагинацией. Как GET /projects/:id/tasks.",
@@ -172,7 +172,7 @@ func makeTaskGetHandler(taskSvc service.TaskService) func(ctx context.Context, r
 	}
 }
 
-func makeTaskCreateHandler(taskSvc service.TaskService, orchestratorSvc service.OrchestratorService) func(ctx context.Context, req *mcp.CallToolRequest, params *TaskCreateParams) (*mcp.CallToolResult, any, error) {
+func makeTaskCreateHandler(taskSvc service.TaskService, orchestratorSvc service.TaskOrchestrator) func(ctx context.Context, req *mcp.CallToolRequest, params *TaskCreateParams) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TaskCreateParams) (*mcp.CallToolResult, any, error) {
 		if params == nil || params.Title == "" {
 			return ValidationErr("title is required")
@@ -232,7 +232,7 @@ func makeTaskCreateHandler(taskSvc service.TaskService, orchestratorSvc service.
 						slog.Error("Panic in background task orchestration (mcp create)", "error", r, "task_id", task.ID)
 					}
 				}()
-				if err := orchestratorSvc.ProcessTask(context.Background(), task.ID); err != nil {
+				if err := orchestratorSvc.EnqueueInitialStep(context.Background(), task.ID); err != nil {
 					slog.Error("Background task orchestration failed (mcp create)", "error", err, "task_id", task.ID)
 				}
 			}()
@@ -243,7 +243,7 @@ func makeTaskCreateHandler(taskSvc service.TaskService, orchestratorSvc service.
 	}
 }
 
-func makeTaskUpdateHandler(taskSvc service.TaskService, orchestratorSvc service.OrchestratorService) func(ctx context.Context, req *mcp.CallToolRequest, params *TaskUpdateParams) (*mcp.CallToolResult, any, error) {
+func makeTaskUpdateHandler(taskSvc service.TaskService, orchestratorSvc service.TaskOrchestrator) func(ctx context.Context, req *mcp.CallToolRequest, params *TaskUpdateParams) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TaskUpdateParams) (*mcp.CallToolResult, any, error) {
 		if params == nil || params.TaskID == "" {
 			return ValidationErr("task_id is required")
@@ -284,15 +284,16 @@ func makeTaskUpdateHandler(taskSvc service.TaskService, orchestratorSvc service.
 			return taskServiceMCPError(err)
 		}
 
-		// Если статус изменился на pending (Resume), запускаем оркестрацию
-		if params.Status != nil && *params.Status == string(models.TaskStatusPending) && orchestratorSvc != nil {
+		// Если state изменился на active (Resume), запускаем оркестрацию.
+		// Sprint 17: pending/in_progress/review/... → все active.
+		if params.Status != nil && *params.Status == string(models.TaskStateActive) && orchestratorSvc != nil {
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
 						slog.Error("Panic in background task orchestration (mcp update)", "error", r, "task_id", task.ID)
 					}
 				}()
-				if err := orchestratorSvc.ProcessTask(context.Background(), task.ID); err != nil {
+				if err := orchestratorSvc.EnqueueInitialStep(context.Background(), task.ID); err != nil {
 					slog.Error("Background task orchestration failed (mcp update)", "error", err, "task_id", task.ID)
 				}
 			}()

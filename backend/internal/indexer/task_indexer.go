@@ -105,7 +105,7 @@ func (i *taskIndexer) IndexTaskWithData(ctx context.Context, task *models.Task, 
 		doc.Category = "task_history"
 		doc.SetMetadata("task_id", task.ID.String())
 		doc.SetMetadata("project_id", task.ProjectID.String())
-		doc.SetMetadata("status", string(task.Status))
+		doc.SetMetadata("state", string(task.State)) // Sprint 17: was task.Status
 		doc.SetMetadata("priority", string(task.Priority))
 		if len(contents) > 1 {
 			doc.SetMetadata("chunk_index", idx)

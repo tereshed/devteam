@@ -186,7 +186,7 @@ func ToTaskSummary(t *models.Task) TaskSummary {
 	return TaskSummary{
 		ID:       t.ID.String(),
 		Title:    t.Title,
-		Status:   string(t.Status),
+		Status:   string(t.State),
 		Priority: string(t.Priority),
 	}
 }
@@ -207,7 +207,7 @@ func ToTaskResponse(t *models.Task) TaskResponse {
 		ParentTaskID:  uuidPtrToStringPtr(t.ParentTaskID),
 		Title:         t.Title,
 		Description:   t.Description,
-		Status:        string(t.Status),
+		Status:        string(t.State),
 		Priority:      string(t.Priority),
 		AssignedAgent: ToAgentSummary(t.AssignedAgent),
 		CreatedByType: string(t.CreatedByType),
@@ -235,7 +235,7 @@ func ToTaskListItem(t *models.Task) TaskListItem {
 		ProjectID:     t.ProjectID.String(),
 		ParentTaskID:  uuidPtrToStringPtr(t.ParentTaskID),
 		Title:         t.Title,
-		Status:        string(t.Status),
+		Status:        string(t.State),
 		Priority:      string(t.Priority),
 		AssignedAgent: ToAgentSummary(t.AssignedAgent),
 		CreatedByType: string(t.CreatedByType),

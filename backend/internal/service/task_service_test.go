@@ -93,7 +93,7 @@ func (m *mockTaskRepository) List(ctx context.Context, filter repository.TaskFil
 	}
 	return list, args.Get(1).(int64), args.Error(2)
 }
-func (m *mockTaskRepository) Update(ctx context.Context, task *models.Task, expectedStatus models.TaskStatus, expectedUpdatedAt time.Time) error {
+func (m *mockTaskRepository) Update(ctx context.Context, task *models.Task, expectedStatus models.TaskState, expectedUpdatedAt time.Time) error {
 	return m.Called(ctx, task, expectedStatus, expectedUpdatedAt).Error(0)
 }
 func (m *mockTaskRepository) Delete(ctx context.Context, id uuid.UUID) error {
@@ -278,7 +278,7 @@ func TestTaskCreate_Success(t *testing.T) {
 
 	got, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{Title: "Hello"})
 	require.NoError(t, err)
-	assert.Equal(t, models.TaskStatusPending, got.Status)
+	assert.Equal(t, models.TaskStateActive, got.State)
 	assert.Equal(t, models.CreatedByUser, got.CreatedByType)
 	assert.Equal(t, tsUserID, got.CreatedByID)
 
@@ -299,7 +299,7 @@ func TestTaskEvents_Create(t *testing.T) {
 
 	bus.On("Publish", mock.Anything, mock.MatchedBy(func(ev events.DomainEvent) bool {
 		e, ok := ev.(events.TaskStatusChanged)
-		return ok && e.TaskID == tsTaskID && e.Current == string(models.TaskStatusPending) && e.Previous == ""
+		return ok && e.TaskID == tsTaskID && e.Current == string(models.TaskStateActive) && e.Previous == ""
 	})).Return()
 
 	idx.On("IndexTaskFromModel", mock.Anything, mock.Anything).Return(nil)
@@ -316,15 +316,15 @@ func TestTaskEvents_Cancel(t *testing.T) {
 	tr, _, ps, _, _, bus, idx, svc := newTaskServiceHarnessFull()
 	ctx := context.Background()
 
-	task := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress, UpdatedAt: time.Now()}
+	task := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive, UpdatedAt: time.Now()}
 	tr.On("GetByID", ctx, tsTaskID).Return(task, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
-	tr.On("Update", ctx, mock.Anything, models.TaskStatusInProgress, mock.Anything).Return(nil)
+	tr.On("Update", ctx, mock.Anything, models.TaskStateActive, mock.Anything).Return(nil)
 
 	bus.On("Publish", mock.Anything, mock.MatchedBy(func(ev events.DomainEvent) bool {
 		e, ok := ev.(events.TaskStatusChanged)
-		return ok && e.TaskID == tsTaskID && e.Current == string(models.TaskStatusCancelled) && e.Previous == string(models.TaskStatusInProgress)
+		return ok && e.TaskID == tsTaskID && e.Current == string(models.TaskStateCancelled) && e.Previous == string(models.TaskStateActive)
 	})).Return()
 
 	idx.On("IndexTaskFromModel", mock.Anything, mock.Anything).Return(nil)
@@ -341,7 +341,7 @@ func TestTaskEvents_AddMessage(t *testing.T) {
 	tr, tmr, ps, _, _, bus, idx, svc := newTaskServiceHarnessFull()
 	ctx := context.Background()
 
-	task := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress}
+	task := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(task, nil)
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
@@ -547,10 +547,10 @@ func TestTaskList_MaxLimit(t *testing.T) {
 func TestTaskUpdate_Success(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Title: "old", Status: models.TaskStatusPending, Priority: models.TaskPriorityLow}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Title: "old", State: models.TaskStateActive, Priority: models.TaskPriorityLow}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
-	tr.On("Update", ctx, mock.Anything, models.TaskStatusPending, mock.AnythingOfType("time.Time")).Return(nil)
+	tr.On("Update", ctx, mock.Anything, models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
 	newTitle := "new"
 	desc := "d"
@@ -570,41 +570,16 @@ func TestTaskUpdate_Forbidden(t *testing.T) {
 	assert.ErrorIs(t, err, ErrProjectForbidden)
 }
 
-func TestTaskUpdate_ChangeStatus(t *testing.T) {
-	tr, _, ps, _, _, svc := newTaskServiceHarness()
-	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPlanning}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
-	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
-	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusInProgress && tk.StartedAt != nil
-	}), models.TaskStatusPlanning, mock.AnythingOfType("time.Time")).Return(nil)
 
-	st := "in_progress"
-	_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID, dto.UpdateTaskRequest{Status: &st})
-	require.NoError(t, err)
-}
-
-func TestTaskUpdate_InvalidTransition(t *testing.T) {
-	tr, _, ps, _, _, svc := newTaskServiceHarness()
-	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil)
-	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
-
-	st := "completed"
-	_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID, dto.UpdateTaskRequest{Status: &st})
-	assert.ErrorIs(t, err, ErrTaskInvalidTransition)
-}
 
 func TestTaskUpdate_ReassignAgent(t *testing.T) {
 	tr, _, ps, ts, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	ts.On("GetByProjectID", ctx, tsProjectID).Return(&models.Team{Agents: []models.Agent{{ID: tsAgentID}}}, nil)
-	tr.On("Update", ctx, mock.Anything, models.TaskStatusPending, mock.AnythingOfType("time.Time")).Return(nil)
+	tr.On("Update", ctx, mock.Anything, models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID, dto.UpdateTaskRequest{AssignedAgentID: &tsAgentID})
 	require.NoError(t, err)
@@ -613,7 +588,7 @@ func TestTaskUpdate_ReassignAgent(t *testing.T) {
 func TestTaskUpdate_ReassignAgentNotInTeam(t *testing.T) {
 	tr, _, ps, ts, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil)
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	ts.On("GetByProjectID", ctx, tsProjectID).Return(&models.Team{Agents: []models.Agent{}}, nil)
@@ -625,114 +600,71 @@ func TestTaskUpdate_ReassignAgentNotInTeam(t *testing.T) {
 func TestTaskUpdate_Concurrent(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Title: "t", Status: models.TaskStatusPending}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Title: "t", State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
-	tr.On("Update", ctx, mock.Anything, models.TaskStatusPending, mock.AnythingOfType("time.Time")).Return(repository.ErrTaskConcurrentUpdate)
+	tr.On("Update", ctx, mock.Anything, models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(repository.ErrTaskConcurrentUpdate)
 
 	newTitle := "x"
 	_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID, dto.UpdateTaskRequest{Title: &newTitle})
 	assert.ErrorIs(t, err, ErrTaskConcurrentUpdate)
 }
 
-func TestTaskTransition_PendingToPlanning(t *testing.T) {
-	tr, _, _, _, _, svc := newTaskServiceHarness()
-	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
-	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool { return tk.Status == models.TaskStatusPlanning }), models.TaskStatusPending, mock.AnythingOfType("time.Time")).Return(nil)
 
-	got, err := svc.Transition(ctx, tsTaskID, models.TaskStatusPlanning, TransitionOpts{})
-	require.NoError(t, err)
-	assert.Equal(t, models.TaskStatusPlanning, got.Status)
-}
 
-func TestTaskTransition_InProgressToReview(t *testing.T) {
-	tr, _, _, _, _, svc := newTaskServiceHarness()
-	ctx := context.Background()
-	started := time.Now().Add(-time.Hour)
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress, StartedAt: &started}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
-	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusReview && tk.StartedAt != nil
-	}), models.TaskStatusInProgress, mock.AnythingOfType("time.Time")).Return(nil)
-
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusReview, TransitionOpts{})
-	require.NoError(t, err)
-}
-
-func TestTaskTransition_ReviewToChangesRequested(t *testing.T) {
-	tr, _, _, _, _, svc := newTaskServiceHarness()
-	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusReview}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
-	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool { return tk.Status == models.TaskStatusChangesRequested }), models.TaskStatusReview, mock.AnythingOfType("time.Time")).Return(nil)
-
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusChangesRequested, TransitionOpts{})
-	require.NoError(t, err)
-}
 
 func TestTaskTransition_TestingToCompleted(t *testing.T) {
 	tr, _, _, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusTesting}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusCompleted && tk.CompletedAt != nil
-	}), models.TaskStatusTesting, mock.AnythingOfType("time.Time")).Return(nil)
+		return tk.State == models.TaskStateDone && tk.CompletedAt != nil
+	}), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusCompleted, TransitionOpts{})
+	_, err := svc.Transition(ctx, tsTaskID, models.TaskStateDone, TransitionOpts{})
 	require.NoError(t, err)
 }
 
 func TestTaskTransition_ToFailed(t *testing.T) {
 	tr, _, _, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPlanning}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	em := "boom"
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusFailed && tk.CompletedAt != nil && tk.ErrorMessage != nil && *tk.ErrorMessage == "boom"
-	}), models.TaskStatusPlanning, mock.AnythingOfType("time.Time")).Return(nil)
+		return tk.State == models.TaskStateFailed && tk.CompletedAt != nil && tk.ErrorMessage != nil && *tk.ErrorMessage == "boom"
+	}), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusFailed, TransitionOpts{ErrorMessage: &em})
+	_, err := svc.Transition(ctx, tsTaskID, models.TaskStateFailed, TransitionOpts{ErrorMessage: &em})
 	require.NoError(t, err)
 }
 
-func TestTaskTransition_InvalidTransition(t *testing.T) {
-	tr, _, _, _, _, svc := newTaskServiceHarness()
-	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil)
-
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusCompleted, TransitionOpts{})
-	assert.ErrorIs(t, err, ErrTaskInvalidTransition)
-}
 
 func TestTaskTransition_FromTerminal(t *testing.T) {
 	tr, _, _, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusCompleted}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateDone}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil)
 
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusPlanning, TransitionOpts{})
+	_, err := svc.Transition(ctx, tsTaskID, models.TaskStateActive, TransitionOpts{})
 	assert.ErrorIs(t, err, ErrTaskTerminalStatus)
 }
 
 func TestTaskTransition_WithOpts(t *testing.T) {
 	tr, _, _, ts, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ts.On("GetByProjectID", ctx, tsProjectID).Return(&models.Team{Agents: []models.Agent{{ID: tsAgentID}}}, nil)
 	res := "done"
 	art := datatypes.JSON([]byte(`{"pr":"http://x"}`))
 	tr.On("Update", mock.Anything, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusPlanning && tk.AssignedAgentID != nil && *tk.AssignedAgentID == tsAgentID &&
+		return tk.State == models.TaskStateActive && tk.AssignedAgentID != nil && *tk.AssignedAgentID == tsAgentID &&
 			tk.Result != nil && *tk.Result == "done" && len(tk.Artifacts) > 0
-	}), models.TaskStatusPending, mock.AnythingOfType("time.Time")).Return(nil)
+	}), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusPlanning, TransitionOpts{
+	_, err := svc.Transition(ctx, tsTaskID, models.TaskStateActive, TransitionOpts{
 		AssignedAgentID: &tsAgentID,
 		Result:          &res,
 		Artifacts:       &art,
@@ -743,54 +675,45 @@ func TestTaskTransition_WithOpts(t *testing.T) {
 func TestTaskTransition_WithOptsAgentNotInTeam(t *testing.T) {
 	tr, _, _, ts, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil)
 	ts.On("GetByProjectID", ctx, tsProjectID).Return(&models.Team{Agents: []models.Agent{}}, nil)
 
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusPlanning, TransitionOpts{AssignedAgentID: &tsAgentID})
+	_, err := svc.Transition(ctx, tsTaskID, models.TaskStateActive, TransitionOpts{AssignedAgentID: &tsAgentID})
 	assert.ErrorIs(t, err, ErrAgentNotInTeam)
 }
 
 func TestTaskTransition_EmptyArtifactsBecomesEmptyJSONObject(t *testing.T) {
 	tr, _, _, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	emptySlice := datatypes.JSON([]byte{})
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	tr.On("Update", mock.Anything, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusPlanning && string(tk.Artifacts) == "{}"
-	}), models.TaskStatusPending, mock.AnythingOfType("time.Time")).Return(nil)
+		return tk.State == models.TaskStateActive && string(tk.Artifacts) == "{}"
+	}), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
-	_, err := svc.Transition(ctx, tsTaskID, models.TaskStatusPlanning, TransitionOpts{Artifacts: &emptySlice})
+	_, err := svc.Transition(ctx, tsTaskID, models.TaskStateActive, TransitionOpts{Artifacts: &emptySlice})
 	require.NoError(t, err)
 }
 
 func TestTaskPause_Success(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
-	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool { return tk.Status == models.TaskStatusPaused }), models.TaskStatusInProgress, mock.AnythingOfType("time.Time")).Return(nil)
+	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool { return tk.State == models.TaskStateNeedsHuman }), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
 	require.NoError(t, err)
 }
 
-func TestTaskPause_FromPending(t *testing.T) {
-	tr, _, ps, _, _, svc := newTaskServiceHarness()
-	ctx := context.Background()
-	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPending}, nil)
-	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
-
-	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
-	assert.ErrorIs(t, err, ErrTaskInvalidTransition)
-}
 
 func TestTaskPause_AlreadyPaused(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPaused}, nil)
+	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateNeedsHuman}, nil)
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
 	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
@@ -800,12 +723,12 @@ func TestTaskPause_AlreadyPaused(t *testing.T) {
 func TestTaskCancel_Success(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusCancelled && tk.CompletedAt != nil
-	}), models.TaskStatusInProgress, mock.AnythingOfType("time.Time")).Return(nil)
+		return tk.State == models.TaskStateCancelled && tk.CompletedAt != nil
+	}), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Cancel(ctx, tsUserID, models.RoleUser, tsTaskID)
 	require.NoError(t, err)
@@ -814,7 +737,7 @@ func TestTaskCancel_Success(t *testing.T) {
 func TestTaskCancel_FromTerminal(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusCompleted}, nil)
+	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateDone}, nil)
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
 	_, err := svc.Cancel(ctx, tsUserID, models.RoleUser, tsTaskID)
@@ -824,12 +747,12 @@ func TestTaskCancel_FromTerminal(t *testing.T) {
 func TestTaskResume_FromPaused(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusPaused, CompletedAt: ptrTime(time.Now())}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateNeedsHuman, CompletedAt: ptrTime(time.Now())}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusPending && tk.CompletedAt == nil
-	}), models.TaskStatusPaused, mock.AnythingOfType("time.Time")).Return(nil)
+		return tk.State == models.TaskStateActive && tk.CompletedAt == nil
+	}), models.TaskStateNeedsHuman, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Resume(ctx, tsUserID, models.RoleUser, tsTaskID)
 	require.NoError(t, err)
@@ -838,12 +761,12 @@ func TestTaskResume_FromPaused(t *testing.T) {
 func TestTaskResume_FromFailed(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusFailed, CompletedAt: ptrTime(time.Now())}
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateFailed, CompletedAt: ptrTime(time.Now())}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.Status == models.TaskStatusPending && tk.CompletedAt == nil
-	}), models.TaskStatusFailed, mock.AnythingOfType("time.Time")).Return(nil)
+		return tk.State == models.TaskStateActive && tk.CompletedAt == nil
+	}), models.TaskStateFailed, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Resume(ctx, tsUserID, models.RoleUser, tsTaskID)
 	require.NoError(t, err)
@@ -852,7 +775,7 @@ func TestTaskResume_FromFailed(t *testing.T) {
 func TestTaskResume_NotPausedOrFailed(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, Status: models.TaskStatusInProgress}, nil)
+	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}, nil)
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
 	_, err := svc.Resume(ctx, tsUserID, models.RoleUser, tsTaskID)

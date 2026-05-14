@@ -284,7 +284,7 @@ func (m *mockTaskService) Correct(ctx context.Context, userID uuid.UUID, userRol
 	return args.Get(0).(*models.Task), args.Error(1)
 }
 
-func (m *mockTaskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts service.TransitionOpts) (*models.Task, error) {
+func (m *mockTaskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskState, opts service.TransitionOpts) (*models.Task, error) {
 	args := m.Called(ctx, taskID, newStatus, opts)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)

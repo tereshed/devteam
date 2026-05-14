@@ -39,7 +39,7 @@ func (m *MockTaskRepo) List(ctx context.Context, filter repository.TaskFilter) (
 	return args.Get(0).([]models.Task), args.Get(1).(int64), args.Error(2)
 }
 
-func (m *MockTaskRepo) Update(ctx context.Context, task *models.Task, expectedStatus models.TaskStatus, expectedUpdatedAt time.Time) error {
+func (m *MockTaskRepo) Update(ctx context.Context, task *models.Task, expectedStatus models.TaskState, expectedUpdatedAt time.Time) error {
 	args := m.Called(ctx, task, expectedStatus, expectedUpdatedAt)
 	return args.Error(0)
 }
@@ -174,7 +174,7 @@ func TestTaskIndexer_IndexTask(t *testing.T) {
 		ID:        taskID,
 		ProjectID: projectID,
 		Title:     "Test Task",
-		Status:    models.TaskStatusCompleted,
+		State:     models.TaskStateDone,
 	}
 
 	mockTaskRepo.On("GetByID", ctx, taskID).Return(task, nil)

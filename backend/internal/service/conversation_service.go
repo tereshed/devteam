@@ -64,12 +64,19 @@ type ConversationService interface {
 	Shutdown(ctx context.Context) error
 }
 
+// TaskOrchestrator — минимальный интерфейс оркестратора задач для conversation_service.
+// Sprint 17: заменяет legacy OrchestratorService.ProcessTask на v2 enqueue-flow.
+// Реализуется *service.Orchestrator (см. orchestrator_v2.go) через EnqueueInitialStep.
+type TaskOrchestrator interface {
+	EnqueueInitialStep(ctx context.Context, taskID uuid.UUID) error
+}
+
 type conversationService struct {
 	convRepo        repository.ConversationRepository
 	msgRepo         repository.ConversationMessageRepository
 	projectSvc      ProjectService
 	taskSvc         TaskService
-	orchestratorSvc OrchestratorService
+	orchestratorSvc TaskOrchestrator
 	indexer         indexer.ConversationIndexer
 	txManager       repository.TransactionManager
 	eventBus        events.EventBus
@@ -94,7 +101,7 @@ func NewConversationService(
 	msgRepo repository.ConversationMessageRepository,
 	projectSvc ProjectService,
 	taskSvc TaskService,
-	orchestratorSvc OrchestratorService,
+	orchestratorSvc TaskOrchestrator,
 	indexer indexer.ConversationIndexer,
 	txManager repository.TransactionManager,
 	eventBus events.EventBus,
@@ -463,9 +470,11 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 		return
 	}
 
-	// 2. Запуск оркестратора
-	if err := s.orchestratorSvc.ProcessTask(ctx, task.ID); err != nil {
-		slog.Error("Orchestrator failed to process task",
+	// 2. Sprint 17 / Orchestration v2: enqueue первого step_req в durable очередь.
+	// StepWorker подберёт его, вызовет Orchestrator.Step → Router → fan-out агентов.
+	// В отличие от legacy ProcessTask, эта операция мгновенная (только INSERT в task_events).
+	if err := s.orchestratorSvc.EnqueueInitialStep(ctx, task.ID); err != nil {
+		slog.Error("Orchestrator failed to enqueue initial step",
 			"userID", userID,
 			"projectID", projectID,
 			"taskID", task.ID,

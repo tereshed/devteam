@@ -20,7 +20,7 @@ type Dependencies struct {
 	TaskService     service.TaskService
 	ToolDefinitionService service.ToolDefinitionService
 	ConversationSvc service.ConversationService
-	OrchestratorSvc service.OrchestratorService
+	OrchestratorSvc service.TaskOrchestrator
 	ApiKeyService   service.ApiKeyService
 
 	// Sprint 15.15: опционально. nil — инструменты не регистрируются.

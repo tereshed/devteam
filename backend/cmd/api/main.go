@@ -16,6 +16,7 @@ import (
 	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler"
 	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/logging"
 	mcpserver "github.com/devteam/backend/internal/mcp"
 	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/models"
@@ -36,6 +37,7 @@ import (
 	"github.com/devteam/backend/pkg/workflowloader"
 	"github.com/docker/docker/client"
 	"github.com/pressly/goose/v3"
+	"github.com/redis/go-redis/v9"
 	"log/slog"
 	"sync"
 
@@ -279,8 +281,8 @@ func main() {
 		},
 	)
 
-	// Orchestrator Components
-	orchestratorPipeline := service.NewPipelineEngine(5)
+	// Sprint 17 / Orchestration v2 — legacy PipelineEngine удалён.
+	// Новый Orchestrator (orchestrator_v2.go) подключается ниже.
 
 	agentConfigCache, err := agentsloader.NewCache("agents", "prompts")
 	if err != nil {
@@ -352,30 +354,90 @@ func main() {
 	llmProviderHandler := handler.NewLLMProviderHandler(llmProviderSvc)
 
 	taskControlBus := service.NewUserTaskControlBus()
+	_ = orchestratorContextBuilder // переиспользуется sandbox-резолвером через WithContextBuilderOption (если потребуется); основной путь — через sandboxAgentExecutor
+	_ = codeIndexer                // legacy hooks — остаётся для backward-compat handlers
+	_ = sandboxRunner              // используется через sandboxAgentExecutor
+	_ = gitFactory                 // используется через NewGitPRPublisher (legacy)
 
-	// Orchestrator Service
-	orchestratorService := service.NewOrchestratorService(
-		taskRepo,
-		taskMsgRepo,
-		workflowRepo,
-		projectService,
-		txManager,
-		llmAgentExecutor,
-		sandboxAgentExecutor,
-		taskService,
-		orchestratorPipeline,
-		orchestratorContextBuilder,
-		codeIndexer,
-		sandboxRunner,
-		taskControlBus,
-		service.WithTeamRepository(teamRepo),
-		service.WithPullRequestPublisher(service.NewGitPRPublisher(gitFactory, encryptor, slog.Default())),
+	// ─────────────────────────────────────────────────────────────────────────
+	// Sprint 17 / Orchestration v2 — Stage 5g wiring.
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// V2 репозитории.
+	taskEventRepoV2 := repository.NewTaskEventRepository(db)
+	artifactRepoV2 := repository.NewArtifactRepository(db)
+	routerDecisionRepoV2 := repository.NewRouterDecisionRepository(db)
+	worktreeRepoV2 := repository.NewWorktreeRepository(db)
+
+	// Logger с redact-обёрткой для всех v2-компонентов.
+	v2Logger := slog.New(logging.NewHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	// Redis-notifier — опциональный. Если REDIS_URL не задан, остаётся nil и
+	// воркеры работают через polling-only (latency ~500ms vs ~10ms с Redis).
+	var v2Notifier *service.RedisNotifier
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		opts, err := redis.ParseURL(redisURL)
+		if err != nil {
+			log.Printf("REDIS_URL parse failed: %v — workers will run in polling-only mode", err)
+		} else {
+			rc := redis.NewClient(opts)
+			if pingErr := rc.Ping(context.Background()).Err(); pingErr != nil {
+				log.Printf("Redis ping failed: %v — workers will run in polling-only mode", pingErr)
+				_ = rc.Close()
+			} else {
+				v2Notifier = service.NewRedisNotifier(rc)
+				log.Printf("Redis notifier active: %s", redisURL)
+			}
+		}
+	} else {
+		log.Println("REDIS_URL not set; workers will use polling-only (no low-latency wakeup)")
+	}
+
+	// WorktreeManager — опциональный. Требует WORKTREES_ROOT и REPO_ROOT env.
+	// Без них sandbox-агенты работают по старому пути (clone в контейнере).
+	var v2WorktreeMgr *service.WorktreeManager
+	if wtRoot, repoRoot := os.Getenv("WORKTREES_ROOT"), os.Getenv("REPO_ROOT"); wtRoot != "" && repoRoot != "" {
+		mgr, err := service.NewWorktreeManager(
+			service.WorktreeManagerConfig{RepoRoot: repoRoot, WorktreesRoot: wtRoot},
+			worktreeRepoV2, v2Logger,
+		)
+		if err != nil {
+			log.Printf("WorktreeManager init failed: %v — sandbox isolation via worktree disabled", err)
+		} else {
+			v2WorktreeMgr = mgr
+			log.Printf("WorktreeManager active: repo=%s worktrees=%s", repoRoot, wtRoot)
+		}
+	} else {
+		log.Println("WORKTREES_ROOT/REPO_ROOT not set; sandbox worktree-isolation disabled (legacy clone path)")
+	}
+
+	// AgentDispatcher — резолвит executor для агента по execution_kind.
+	v2LLMResolver := service.NewSingletonLLMProviderResolver(llmService)
+	v2SandboxFactory := service.NewSingletonSandboxExecutorFactory(sandboxAgentExecutor)
+	v2Dispatcher := service.NewAgentDispatcher(v2LLMResolver, v2SandboxFactory)
+
+	// RouterService — LLM-диспатчер с retry-pipeline на галлюцинации.
+	v2AgentLoader := service.NewDBAgentLoader(db)
+	v2RouterSvc := service.NewRouterService(v2AgentLoader, v2Dispatcher, v2Logger, service.DefaultRouterConfig())
+
+	// Orchestrator (v2) — ядро. Реализует service.TaskOrchestrator интерфейс через
+	// EnqueueInitialStep, плюс полноценный Step() для StepWorker'ов.
+	orchestratorService := service.NewOrchestrator(
+		db,
+		artifactRepoV2,
+		taskEventRepoV2,
+		routerDecisionRepoV2,
+		v2WorktreeMgr,
+		v2RouterSvc,
+		v2Notifier,
+		v2Logger,
+		service.DefaultOrchestratorConfig(),
 	)
 
-	// Запускаем оркестратор (очистка зомби-задач)
-	if err := orchestratorService.Start(context.Background()); err != nil {
-		log.Printf("Failed to start orchestrator: %v", err)
-	}
+	// TaskLifecycleService — POST /tasks/:id/cancel handler использует.
+	v2TaskLifecycle := service.NewTaskLifecycleService(db, v2Notifier, v2Logger)
+	_ = v2TaskLifecycle // подключается в task_handler через wiring ниже (Stage 5g.6)
+	_ = llmAgentExecutor // ссылка остаётся для обратной совместимости conversation/handler инициализации
 
 	// Запускаем Workflow Worker в фоне (отключить: WORKFLOW_WORKER_ENABLED=false)
 	ctxWorker, cancelWorker := context.WithCancel(context.Background())
@@ -414,6 +476,61 @@ func main() {
 	} else {
 		log.Println("Claude Code OAuth: disabled (set CLAUDE_CODE_OAUTH_CLIENT_ID to enable)")
 	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Sprint 17 / Orchestration v2 — запуск пулов воркеров и retention.
+	// Пулы: step=5, agent_llm=20, agent_sandbox=2 (план §2.7, дефолт для VPS 8-16GB).
+	// Если в config будут per-env overrides — подключить через cfg.Orchestrator.{...}.
+	// ─────────────────────────────────────────────────────────────────────────
+	const (
+		stepWorkersCount         = 5
+		agentWorkersCount        = 22 // 20 llm + 2 sandbox; пул общий, ClaimNext sequencing уже разводит
+	)
+	for i := 0; i < stepWorkersCount; i++ {
+		w := service.NewStepWorker(
+			taskEventRepoV2,
+			orchestratorService,
+			v2Notifier,
+			v2Logger,
+			service.StepWorkerConfig{WorkerID: fmt.Sprintf("step-worker-%d", i), PollInterval: 500 * time.Millisecond},
+		)
+		go func() {
+			if err := w.Run(ctxWorker); err != nil {
+				log.Printf("step worker exited with error: %v", err)
+			}
+		}()
+	}
+	for i := 0; i < agentWorkersCount; i++ {
+		w := service.NewAgentWorker(
+			db,
+			taskEventRepoV2,
+			artifactRepoV2,
+			v2Dispatcher,
+			v2WorktreeMgr,
+			v2Notifier,
+			v2Logger,
+			service.AgentWorkerConfig{
+				WorkerID:        fmt.Sprintf("agent-worker-%d", i),
+				PollInterval:    500 * time.Millisecond,
+				AgentJobTimeout: time.Hour,
+			},
+		)
+		go func() {
+			if err := w.Run(ctxWorker); err != nil {
+				log.Printf("agent worker exited with error: %v", err)
+			}
+		}()
+	}
+	log.Printf("Orchestrator v2 workers started: %d step + %d agent", stepWorkersCount, agentWorkersCount)
+
+	// Retention: 30 дней router_decisions + 1 сутки released worktrees. Раз в час.
+	v2Retention := service.NewRetentionService(routerDecisionRepoV2, v2WorktreeMgr, v2Logger, service.DefaultRetentionConfig())
+	go func() {
+		if err := v2Retention.Run(ctxWorker); err != nil {
+			log.Printf("retention service exited with error: %v", err)
+		}
+	}()
+	log.Println("Orchestrator v2 retention service started")
 
 	// WebSocket Handler
 	wsHandler := ws.NewWebSocketHandler(hub, projectService, ws.HandlerConfig{
@@ -617,3 +734,6 @@ func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
 
 	return db, nil
 }
+
+// Sprint 17 / Orchestration v2 — stub удалён. Используется реальный
+// service.Orchestrator(v2), сконструированный выше.

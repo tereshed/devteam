@@ -44,15 +44,34 @@ const (
 	taskTitleMaxLen         = 500
 )
 
-var allowedTransitions = map[models.TaskStatus][]models.TaskStatus{
-	models.TaskStatusPending:          {models.TaskStatusPlanning, models.TaskStatusCancelled},
-	models.TaskStatusPlanning:         {models.TaskStatusInProgress, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
-	models.TaskStatusInProgress:       {models.TaskStatusReview, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
-	models.TaskStatusReview:           {models.TaskStatusTesting, models.TaskStatusChangesRequested, models.TaskStatusInProgress, models.TaskStatusFailed, models.TaskStatusCancelled, models.TaskStatusPaused},
-	models.TaskStatusChangesRequested: {models.TaskStatusInProgress, models.TaskStatusCancelled, models.TaskStatusPaused},
-	models.TaskStatusTesting:          {models.TaskStatusCompleted, models.TaskStatusFailed, models.TaskStatusInProgress, models.TaskStatusCancelled, models.TaskStatusPaused},
-	models.TaskStatusPaused:           {models.TaskStatusPending},
-	models.TaskStatusFailed:           {models.TaskStatusPending},
+// allowedTransitions — Sprint 17 / Orchestration v2: упрощённый state-machine 5 состояний.
+// Прежняя 10-значная pipeline-таблица (pending|planning|in_progress|review|...) сводится
+// к 5 высокоуровневым state'ам. Внутреннее течение active-задачи (через какие фазы
+// прошла) отражается в artifacts, не в state.
+//
+// Переходы:
+//   active       → done | failed | cancelled | needs_human
+//   needs_human  → active | cancelled (resume или отмена оператором)
+//   failed       → active (retry с теми же параметрами)
+//   done | cancelled — терминальные
+var allowedTransitions = map[models.TaskState][]models.TaskState{
+	models.TaskStateActive: {
+		// Active → Active разрешён: метаданные task'а (assigned_agent, result,
+		// artifacts, branch, context) могут обновляться без смены state.
+		// В legacy 10-state модели это были переходы planning↔in_progress↔review etc.
+		models.TaskStateActive,
+		models.TaskStateDone,
+		models.TaskStateFailed,
+		models.TaskStateCancelled,
+		models.TaskStateNeedsHuman,
+	},
+	models.TaskStateNeedsHuman: {
+		models.TaskStateActive,
+		models.TaskStateCancelled,
+	},
+	models.TaskStateFailed: {
+		models.TaskStateActive,
+	},
 }
 
 // TransitionOpts опции программного перехода статуса (оркестратор).
@@ -79,7 +98,7 @@ type TaskService interface {
 	Resume(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error)
 	Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error)
 
-	Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts TransitionOpts) (*models.Task, error)
+	Transition(ctx context.Context, taskID uuid.UUID, newState models.TaskState, opts TransitionOpts) (*models.Task, error)
 
 	AddMessage(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.CreateTaskMessageRequest) (*models.TaskMessage, error)
 	ListMessages(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.ListTaskMessagesRequest) ([]models.TaskMessage, int64, error)
@@ -127,7 +146,7 @@ func (s *taskService) Close() error {
 	return nil
 }
 
-func canTransition(from, to models.TaskStatus) bool {
+func canTransition(from, to models.TaskState) bool {
 	targets, ok := allowedTransitions[from]
 	if !ok {
 		return false
@@ -140,8 +159,8 @@ func canTransition(from, to models.TaskStatus) bool {
 	return false
 }
 
-func isTerminalTaskStatus(s models.TaskStatus) bool {
-	return s == models.TaskStatusCompleted || s == models.TaskStatusCancelled
+func isTerminalTaskState(s models.TaskState) bool {
+	return s == models.TaskStateDone || s == models.TaskStateCancelled
 }
 
 func normalizeTaskServicePagination(limit, offset int) (int, int) {
@@ -202,25 +221,32 @@ func parseTaskPriority(s string) (models.TaskPriority, error) {
 	return p, nil
 }
 
-func parseTaskStatus(s string) (models.TaskStatus, error) {
-	st := models.TaskStatus(strings.TrimSpace(s))
+func parseTaskState(s string) (models.TaskState, error) {
+	st := models.TaskState(strings.TrimSpace(s))
 	if !st.IsValid() {
 		return "", ErrTaskInvalidStatus
 	}
 	return st, nil
 }
 
-func applyTimestampsOnStatusChange(task *models.Task, _from, to models.TaskStatus) {
+// applyTimestampsOnStateChange проставляет started_at/completed_at в зависимости
+// от целевого state. Sprint 17: 10 статусов → 5 state'ов; pending+in_progress→active
+// сворачиваются (одна логика "started_at"). pending→active "reopen" моделируется как
+// явный Resume (failed/needs_human → active), где completed_at сбрасывается.
+func applyTimestampsOnStateChange(task *models.Task, from, to models.TaskState) {
 	now := time.Now().UTC()
 	switch to {
-	case models.TaskStatusInProgress:
+	case models.TaskStateActive:
 		if task.StartedAt == nil {
 			task.StartedAt = &now
 		}
-	case models.TaskStatusCompleted, models.TaskStatusFailed, models.TaskStatusCancelled:
+		// Resume (failed|needs_human → active): сбрасываем completed_at, чтобы
+		// заново отметить терминал при следующем переходе.
+		if from == models.TaskStateFailed || from == models.TaskStateNeedsHuman {
+			task.CompletedAt = nil
+		}
+	case models.TaskStateDone, models.TaskStateFailed, models.TaskStateCancelled:
 		task.CompletedAt = &now
-	case models.TaskStatusPending:
-		task.CompletedAt = nil
 	}
 }
 
@@ -242,7 +268,7 @@ func (s *taskService) checkTaskAccess(ctx context.Context, userID uuid.UUID, use
 	return err
 }
 
-func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models.UserRole, task *models.Task, prevStatus models.TaskStatus, msg *models.TaskMessage, occurredAt time.Time) {
+func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models.UserRole, task *models.Task, prevState models.TaskState, msg *models.TaskMessage, occurredAt time.Time) {
 	// Отвязываем от родительского ctx, чтобы закрытая вкладка клиента
 	// не заблокировала доставку остальным подписчикам проекта.
 	pubCtx := context.WithoutCancel(ctx)
@@ -252,7 +278,7 @@ func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models
 	}
 
 	// Публикуем TaskStatusChanged ТОЛЬКО при реальном переходе
-	if task != nil && task.Status != prevStatus {
+	if task != nil && task.State != prevState {
 		agentRole := ""
 		if task.AssignedAgent != nil {
 			agentRole = string(task.AssignedAgent.Role)
@@ -263,8 +289,8 @@ func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models
 			ProjectID:       task.ProjectID,
 			TaskID:          task.ID,
 			ParentTaskID:    task.ParentTaskID,
-			Previous:        string(prevStatus),
-			Current:         string(task.Status),
+			Previous:        string(prevState),
+			Current:         string(task.State),
 			AssignedAgentID: task.AssignedAgentID,
 			AgentRole:       agentRole,
 			ErrorMessage:    getSafeErrorMessage(task),
@@ -300,12 +326,12 @@ func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models
 	}
 }
 
-func (s *taskService) publishEvents(ctx context.Context, userRole models.UserRole, task *models.Task, prevStatus models.TaskStatus, msg *models.TaskMessage) {
-	s.publishEventsWithTime(ctx, userRole, task, prevStatus, msg, time.Now().UTC())
+func (s *taskService) publishEvents(ctx context.Context, userRole models.UserRole, task *models.Task, prevState models.TaskState, msg *models.TaskMessage) {
+	s.publishEventsWithTime(ctx, userRole, task, prevState, msg, time.Now().UTC())
 }
 
 func getSafeErrorMessage(task *models.Task) string {
-	if task.Status == models.TaskStatusFailed && task.ErrorMessage != nil {
+	if task.State == models.TaskStateFailed && task.ErrorMessage != nil {
 		return *task.ErrorMessage
 	}
 	return ""
@@ -326,18 +352,18 @@ func (s *taskService) listRequestToFilter(projectID uuid.UUID, req dto.ListTasks
 		ParentTaskID:    req.ParentTaskID,
 	}
 	if req.Status != nil && *req.Status != "" {
-		st, err := parseTaskStatus(*req.Status)
+		st, err := parseTaskState(*req.Status)
 		if err != nil {
 			return f, err
 		}
-		f.Status = &st
+		f.State = &st
 	}
 	for _, raw := range req.Statuses {
-		st, err := parseTaskStatus(raw)
+		st, err := parseTaskState(raw)
 		if err != nil {
 			return f, err
 		}
-		f.Statuses = append(f.Statuses, st)
+		f.States = append(f.States, st)
 	}
 	if req.Priority != nil && *req.Priority != "" {
 		pr, err := parseTaskPriority(*req.Priority)
@@ -462,7 +488,7 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		ProjectID:     projectID,
 		Title:         strings.TrimSpace(req.Title),
 		Description:   req.Description,
-		Status:        models.TaskStatusPending,
+		State:         models.TaskStateActive,
 		Priority:      priority,
 		CreatedByType: models.CreatedByUser,
 		CreatedByID:   userID,
@@ -536,7 +562,7 @@ func (s *taskService) List(ctx context.Context, userID uuid.UUID, userRole model
 func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.UpdateTaskRequest) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevStatus models.TaskStatus
+		prevState models.TaskState
 		occurredAt time.Time
 	)
 
@@ -548,9 +574,9 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
 		}
-		expectedStatus := task.Status
+		expectedStatus := task.State
 		expectedUpdatedAt := task.UpdatedAt
-		prevStatus = task.Status
+		prevState = task.State
 
 		if req.Title != nil {
 			if err := validateTaskTitle(*req.Title); err != nil {
@@ -580,25 +606,22 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 			task.BranchName = req.BranchName
 		}
 		if req.Status != nil {
-			newStatus, err := parseTaskStatus(*req.Status)
+			newState, err := parseTaskState(*req.Status)
 			if err != nil {
 				return err
 			}
-			if newStatus != task.Status {
-				if isTerminalTaskStatus(task.Status) {
+			if newState != task.State {
+				if isTerminalTaskState(task.State) {
 					return ErrTaskTerminalStatus
 				}
-				// Переход review/testing → in_progress только через API correct (задача 6.7).
-				if newStatus == models.TaskStatusInProgress {
-					if task.Status == models.TaskStatusReview || task.Status == models.TaskStatusTesting {
-						return ErrTaskInvalidTransition
-					}
-				}
-				if !canTransition(task.Status, newStatus) {
+				// Sprint 17: легаси-ограничение "review/testing → in_progress только через correct API"
+				// больше не применимо в 5-state модели — этот guard убран. Все правомерные переходы
+				// в active разрешаются стандартным canTransition (needs_human/failed → active).
+				if !canTransition(task.State, newState) {
 					return ErrTaskInvalidTransition
 				}
-				task.Status = newStatus
-				applyTimestampsOnStatusChange(task, prevStatus, newStatus)
+				task.State = newState
+				applyTimestampsOnStateChange(task, prevState, newState)
 			}
 		}
 		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
@@ -616,8 +639,8 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 		return nil, err
 	}
 
-	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
-	if isTerminalTaskStatus(updated.Status) {
+	s.publishEventsWithTime(ctx, userRole, updated, prevState, nil, occurredAt)
+	if isTerminalTaskState(updated.State) {
 		s.indexTaskAsync(ctx, updated)
 	}
 	return updated, nil
@@ -641,7 +664,7 @@ func (s *taskService) Delete(ctx context.Context, userID uuid.UUID, userRole mod
 func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevStatus models.TaskStatus
+		prevState models.TaskState
 		occurredAt time.Time
 	)
 
@@ -653,13 +676,13 @@ func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole mode
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
 		}
-		expectedStatus := task.Status
+		expectedStatus := task.State
 		expectedUpdatedAt := task.UpdatedAt
-		if !canTransition(task.Status, models.TaskStatusPaused) {
+		if !canTransition(task.State, models.TaskStateNeedsHuman) {
 			return ErrTaskInvalidTransition
 		}
-		prevStatus = task.Status
-		task.Status = models.TaskStatusPaused
+		prevState = task.State
+		task.State = models.TaskStateNeedsHuman
 		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
 			return mapTaskRepoErr(err)
 		}
@@ -672,8 +695,8 @@ func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole mode
 		return nil, err
 	}
 
-	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
-	if isTerminalTaskStatus(updated.Status) {
+	s.publishEventsWithTime(ctx, userRole, updated, prevState, nil, occurredAt)
+	if isTerminalTaskState(updated.State) {
 		s.indexTaskAsync(ctx, updated)
 	}
 	return updated, nil
@@ -682,7 +705,7 @@ func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole mode
 func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevStatus models.TaskStatus
+		prevState models.TaskState
 		occurredAt time.Time
 	)
 
@@ -694,14 +717,14 @@ func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole mod
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
 		}
-		expectedStatus := task.Status
+		expectedStatus := task.State
 		expectedUpdatedAt := task.UpdatedAt
-		if !canTransition(task.Status, models.TaskStatusCancelled) {
+		if !canTransition(task.State, models.TaskStateCancelled) {
 			return ErrTaskInvalidTransition
 		}
-		prevStatus = task.Status
-		task.Status = models.TaskStatusCancelled
-		applyTimestampsOnStatusChange(task, prevStatus, models.TaskStatusCancelled)
+		prevState = task.State
+		task.State = models.TaskStateCancelled
+		applyTimestampsOnStateChange(task, prevState, models.TaskStateCancelled)
 		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
 			return mapTaskRepoErr(err)
 		}
@@ -714,8 +737,8 @@ func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole mod
 		return nil, err
 	}
 
-	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
-	if isTerminalTaskStatus(updated.Status) {
+	s.publishEventsWithTime(ctx, userRole, updated, prevState, nil, occurredAt)
+	if isTerminalTaskState(updated.State) {
 		s.indexTaskAsync(ctx, updated)
 	}
 	return updated, nil
@@ -724,7 +747,7 @@ func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole mod
 func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevStatus models.TaskStatus
+		prevState models.TaskState
 		occurredAt time.Time
 	)
 
@@ -736,17 +759,17 @@ func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
 		}
-		expectedStatus := task.Status
+		expectedStatus := task.State
 		expectedUpdatedAt := task.UpdatedAt
-		if task.Status != models.TaskStatusPaused && task.Status != models.TaskStatusFailed {
+		if task.State != models.TaskStateNeedsHuman && task.State != models.TaskStateFailed {
 			return ErrTaskInvalidTransition
 		}
-		if !canTransition(task.Status, models.TaskStatusPending) {
+		if !canTransition(task.State, models.TaskStateActive) {
 			return ErrTaskInvalidTransition
 		}
-		prevStatus = task.Status
-		task.Status = models.TaskStatusPending
-		applyTimestampsOnStatusChange(task, prevStatus, models.TaskStatusPending)
+		prevState = task.State
+		task.State = models.TaskStateActive
+		applyTimestampsOnStateChange(task, prevState, models.TaskStateActive)
 		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
 			return mapTaskRepoErr(err)
 		}
@@ -759,8 +782,8 @@ func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 		return nil, err
 	}
 
-	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, nil, occurredAt)
-	if isTerminalTaskStatus(updated.Status) {
+	s.publishEventsWithTime(ctx, userRole, updated, prevState, nil, occurredAt)
+	if isTerminalTaskState(updated.State) {
 		s.indexTaskAsync(ctx, updated)
 	}
 	return updated, nil
@@ -774,7 +797,7 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 
 	var (
 		updated    *models.Task
-		prevStatus models.TaskStatus
+		prevState models.TaskState
 		msg        *models.TaskMessage
 		occurredAt time.Time
 	)
@@ -787,7 +810,7 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
 		}
-		if isTerminalTaskStatus(task.Status) || task.Status == models.TaskStatusPaused {
+		if isTerminalTaskState(task.State) || task.State == models.TaskStateNeedsHuman {
 			return ErrTaskInvalidTransition
 		}
 
@@ -814,26 +837,23 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 		}
 		msg = m
 
-		prevStatus = task.Status
+		prevState = task.State
 		expectedUpdatedAt := task.UpdatedAt
-		nextStatus := prevStatus
-		switch prevStatus {
-		case models.TaskStatusReview, models.TaskStatusTesting:
-			nextStatus = models.TaskStatusInProgress
-		default:
-			// planning, in_progress, changes_requested — только обновление контекста
-		}
+		// Sprint 17: коллапс 10→5 убрал распознавание review→in_progress/changes_requested→in_progress
+		// (всё active). Correct теперь обновляет ТОЛЬКО context; state остаётся прежним.
+		// Если задача в needs_human/failed — оператор сам Resume'ит её отдельным вызовом.
+		nextState := prevState
 
 		task.Context = newContext
-		if nextStatus != prevStatus {
-			if !canTransition(prevStatus, nextStatus) {
+		if nextState != prevState {
+			if !canTransition(prevState, nextState) {
 				return ErrTaskInvalidTransition
 			}
-			task.Status = nextStatus
-			applyTimestampsOnStatusChange(task, prevStatus, nextStatus)
+			task.State = nextState
+			applyTimestampsOnStateChange(task, prevState, nextState)
 		}
 
-		if err := s.taskRepo.Update(txCtx, task, prevStatus, expectedUpdatedAt); err != nil {
+		if err := s.taskRepo.Update(txCtx, task, prevState, expectedUpdatedAt); err != nil {
 			return mapTaskRepoErr(err)
 		}
 		updated = task
@@ -845,19 +865,19 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 		return nil, err
 	}
 
-	s.publishEventsWithTime(ctx, userRole, updated, prevStatus, msg, occurredAt)
+	s.publishEventsWithTime(ctx, userRole, updated, prevState, msg, occurredAt)
 	s.indexTaskAsync(ctx, updated)
 	return updated, nil
 }
 
-func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newStatus models.TaskStatus, opts TransitionOpts) (*models.Task, error) {
-	if !newStatus.IsValid() {
+func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newState models.TaskState, opts TransitionOpts) (*models.Task, error) {
+	if !newState.IsValid() {
 		return nil, ErrTaskInvalidStatus
 	}
 
 	var (
 		updated    *models.Task
-		from       models.TaskStatus
+		from       models.TaskState
 		occurredAt time.Time
 	)
 
@@ -866,12 +886,12 @@ func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newStatu
 		if err != nil {
 			return mapTaskRepoErr(err)
 		}
-		from = task.Status
+		from = task.State
 		expectedUpdatedAt := task.UpdatedAt
-		if isTerminalTaskStatus(from) {
+		if isTerminalTaskState(from) {
 			return ErrTaskTerminalStatus
 		}
-		if !canTransition(from, newStatus) {
+		if !canTransition(from, newState) {
 			return ErrTaskInvalidTransition
 		}
 		if opts.AssignedAgentID != nil {
@@ -899,8 +919,8 @@ func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newStatu
 		if opts.Context != nil {
 			task.Context = *opts.Context
 		}
-		task.Status = newStatus
-		applyTimestampsOnStatusChange(task, from, newStatus)
+		task.State = newState
+		applyTimestampsOnStateChange(task, from, newState)
 		if err := s.taskRepo.Update(txCtx, task, from, expectedUpdatedAt); err != nil {
 			if errors.Is(err, repository.ErrAgentNotFound) {
 				return fmt.Errorf("assigned agent not found: %w", err)
@@ -917,7 +937,7 @@ func (s *taskService) Transition(ctx context.Context, taskID uuid.UUID, newStatu
 	}
 
 	s.publishEventsWithTime(ctx, models.RoleUser, updated, from, nil, occurredAt)
-	if isTerminalTaskStatus(updated.Status) {
+	if isTerminalTaskState(updated.State) {
 		s.indexTaskAsync(ctx, updated)
 	}
 	return updated, nil
@@ -969,7 +989,7 @@ func (s *taskService) AddMessage(ctx context.Context, userID uuid.UUID, userRole
 		return nil, err
 	}
 
-	s.publishEvents(ctx, userRole, task, task.Status, createdMsg)
+	s.publishEvents(ctx, userRole, task, task.State, createdMsg)
 
 	// Индексируем только важные типы сообщений
 	mt := createdMsg.MessageType
