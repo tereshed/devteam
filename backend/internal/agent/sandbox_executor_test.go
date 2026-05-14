@@ -62,7 +62,7 @@ func (m *MockSandboxRunner) Cleanup(ctx context.Context, sandboxID string) error
 
 func TestSandboxAgentExecutor_Execute_Success(t *testing.T) {
 	mockRunner := new(MockSandboxRunner)
-	executor := NewSandboxAgentExecutor(mockRunner, "test-image")
+	executor := NewSandboxAgentExecutor(mockRunner, "test-image", nil)
 
 	input := ExecutionInput{
 		TaskID:      "task-123",
@@ -105,12 +105,12 @@ func TestSandboxAgentExecutor_Execute_Success(t *testing.T) {
 }
 
 func TestSandboxAgentExecutor_Execute_InvalidInput(t *testing.T) {
-	executor := NewSandboxAgentExecutor(nil, "test-image")
+	executor := NewSandboxAgentExecutor(nil, "test-image", nil)
 	_, err := executor.Execute(context.Background(), ExecutionInput{})
 	assert.ErrorIs(t, err, ErrExecutorNotConfigured)
 
 	mockRunner := new(MockSandboxRunner)
-	executor = NewSandboxAgentExecutor(mockRunner, "test-image")
+	executor = NewSandboxAgentExecutor(mockRunner, "test-image", nil)
 	_, err = executor.Execute(context.Background(), ExecutionInput{TaskID: "1", ProjectID: "1", GitURL: "https://github.com/repo", BranchName: "-bad"})
 	assert.ErrorIs(t, err, ErrInvalidExecutionInput)
 	assert.Contains(t, err.Error(), "must not start with '-'")
@@ -118,7 +118,7 @@ func TestSandboxAgentExecutor_Execute_InvalidInput(t *testing.T) {
 
 func TestSandboxAgentExecutor_Execute_RunError(t *testing.T) {
 	mockRunner := new(MockSandboxRunner)
-	executor := NewSandboxAgentExecutor(mockRunner, "test-image")
+	executor := NewSandboxAgentExecutor(mockRunner, "test-image", nil)
 
 	input := ExecutionInput{
 		TaskID:     "task-123",
@@ -136,7 +136,7 @@ func TestSandboxAgentExecutor_Execute_RunError(t *testing.T) {
 
 func TestSandboxAgentExecutor_Execute_RunErrorWithID(t *testing.T) {
 	mockRunner := new(MockSandboxRunner)
-	executor := NewSandboxAgentExecutor(mockRunner, "test-image")
+	executor := NewSandboxAgentExecutor(mockRunner, "test-image", nil)
 
 	input := ExecutionInput{
 		TaskID:     "task-123",
@@ -162,7 +162,7 @@ func TestSandboxAgentExecutor_Execute_RunErrorWithID(t *testing.T) {
 
 func TestSandboxAgentExecutor_Execute_InvalidGitURL(t *testing.T) {
 	mockRunner := new(MockSandboxRunner)
-	executor := NewSandboxAgentExecutor(mockRunner, "test-image")
+	executor := NewSandboxAgentExecutor(mockRunner, "test-image", nil)
 
 	badURLs := []string{
 		"file:///etc/passwd",
@@ -187,7 +187,7 @@ func TestSandboxAgentExecutor_Execute_InvalidGitURL(t *testing.T) {
 func TestSandboxAgentExecutor_Execute_PreservesInstructionContent(t *testing.T) {
 	// Проверяем, что инструкция передается без изменений (без деструктивной санитизации)
 	mockRunner := new(MockSandboxRunner)
-	executor := NewSandboxAgentExecutor(mockRunner, "test-image")
+	executor := NewSandboxAgentExecutor(mockRunner, "test-image", nil)
 
 	// Инструкция с кодом Python и shell-командами - должна передаваться как есть
 	input := ExecutionInput{

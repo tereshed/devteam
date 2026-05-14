@@ -153,11 +153,10 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		EnvSecrets:  make(map[string]string),
 	}
 
+	var yamlModel string
 	if b.agentCfg != nil {
 		if cfg := b.resolveDefaultAgentConfig(assignedAgent); cfg != nil {
-			if cfg.ModelConfig.Model != "" {
-				input.Model = cfg.ModelConfig.Model
-			}
+			yamlModel = cfg.ModelConfig.Model
 			input.PromptName = cfg.PromptName
 			input.Temperature = llm.Float64Ptr(cfg.ModelConfig.Temperature)
 			if cfg.ModelConfig.MaxTokens > 0 {
@@ -165,13 +164,7 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 			}
 		}
 	}
-	// Sprint 16: БД-Model — источник истины (пользователь выставляет модель через UI или
-	// SQL); YAML default используется только когда в БД пусто. Раньше приоритет был
-	// обратный, что не позволяло Hermes-агенту использовать "openrouter/..." пока
-	// tester.yaml жёстко хардкодит "claude-haiku-4-5-20251001".
-	if assignedAgent.Model != nil && *assignedAgent.Model != "" {
-		input.Model = *assignedAgent.Model
-	}
+	input.Model = resolveInputModel(yamlModel, assignedAgent)
 
 	// Системный промпт агента (из БД; при наличии композера pipeline — переопределяется YAML base+role)
 	if assignedAgent.Prompt != nil {
@@ -431,4 +424,37 @@ func (b *contextBuilder) WithCodeChunks(input *agent.ExecutionInput, chunks []in
 	}
 
 	return nil
+}
+
+// resolveInputModel — Sprint 16: правила выбора модели для ExecutionInput.
+//
+//	yamlModel        — `model:` из backend/agents/<role>.yaml (Sprint 6.9)
+//	agent.Model      — из БД (PATCH-эндпоинт + UI / seed)
+//	agent.CodeBackend — определяет, какой бэкенд исполняет агента
+//
+// Контракт:
+//   - claude-code/aider/custom/nil: YAML > DB (historical behaviour). YAML
+//     задаёт sensible default; DB-Model используется только если YAML пуст.
+//   - hermes: DB > YAML. YAML default'ы (типа "claude-haiku-4-5-...") некорректны
+//     для Hermes — он ждёт `provider/model` форму, которую может задать только
+//     пользователь через UI/SQL.
+//
+// Это узкое исключение, а не глобальная инверсия — чтобы не сломать поведение
+// уже существующих claude-code/aider агентов.
+func resolveInputModel(yamlModel string, agent *models.Agent) string {
+	if agent == nil {
+		return yamlModel
+	}
+	dbModel := ""
+	if agent.Model != nil {
+		dbModel = *agent.Model
+	}
+	hermes := agent.CodeBackend != nil && *agent.CodeBackend == models.CodeBackendHermes
+	if hermes && dbModel != "" {
+		return dbModel
+	}
+	if yamlModel != "" {
+		return yamlModel
+	}
+	return dbModel
 }

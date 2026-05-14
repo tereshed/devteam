@@ -62,7 +62,9 @@ check-docker:
 # целей из .PHONY — получается «Nothing to be done» без сборки образа.
 $(SANDBOX_BUILD_TARGETS): sandbox-build-%: check-docker
 	$(if $(filter $*,$(SANDBOX_BUILDABLE_STEMS)),,$(error Unknown sandbox stem '$*'. Expected one of: $(SANDBOX_BUILDABLE_STEMS)))
-	docker build -t "devteam/sandbox-$*:local" -f "deployment/sandbox/$*/Dockerfile" "deployment/sandbox/$*"
+	# BUILD_ENV=local — отключает prod-guard на SHA-only ref (см. hermes/Dockerfile Sprint 16).
+	# Production-сборка делается через CI с явной --build-arg HERMES_REF=<sha>.
+	docker build --build-arg BUILD_ENV=local -t "devteam/sandbox-$*:local" -f "deployment/sandbox/$*/Dockerfile" "deployment/sandbox/$*"
 
 sandbox-build: sandbox-build-claude sandbox-build-hermes
 

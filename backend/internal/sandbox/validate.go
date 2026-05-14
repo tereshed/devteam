@@ -43,25 +43,15 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 	EnvClaudeCodeOAuthToken:     {},
 	EnvClaudeCodePermissionMode: {},
 
-	// Sprint 16 — Hermes Agent (code_backend=hermes) использует провайдер-специфичные
-	// env-имена (см. AgentProviderKind.HermesEnvVar). Список синхронизирован с тем,
-	// что entrypoint sandbox-hermes принимает в auth-check (см.
-	// deployment/sandbox/hermes/entrypoint.sh).
-	// ANTHROPIC_API_KEY уже выше (EnvAnthropicAPIKey) — переиспользуем для kind=anthropic.
+	// Sprint 16 — Hermes Agent (code_backend=hermes). Whitelist строго ограничен
+	// провайдерами, которые реально маппит AgentProviderKind.HermesEnvVar; добавлять
+	// новые env-имена ТОЛЬКО вместе с расширением AgentProviderKind enum'а и
+	// HermesEnvVar/HermesProviderName маппинга (см. internal/models/workflow.go).
+	// ANTHROPIC_API_KEY уже выше (EnvAnthropicAPIKey) — переиспользуется для kind=anthropic.
+	//
 	// Имя hermes-провайдера для флага `hermes chat --provider $X`.
-	// Sprint 16: ставится резолвером через AgentProviderKind.HermesProviderName().
 	"DEVTEAM_HERMES_PROVIDER": {},
 	"OPENROUTER_API_KEY":      {},
-	"OPENAI_API_KEY":          {},
-	"KIMI_API_KEY":        {},
-	"MOONSHOT_API_KEY":    {},
-	"NOUS_PORTAL_API_KEY": {},
-	"NVIDIA_NIM_API_KEY":  {},
-	"HUGGINGFACE_API_KEY": {},
-	"MINIMAX_API_KEY":     {},
-	"XIAOMI_MIMO_API_KEY": {},
-	"ZAI_API_KEY":         {},
-	"GLM_API_KEY":         {},
 }
 
 // ValidateSandboxID проверяет формат идентификатора до обращения к Docker API.

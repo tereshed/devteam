@@ -24,32 +24,29 @@ type SandboxAgentExecutor struct {
 	image  string // Дефолтный образ (используется когда нет per-backend mapping)
 	// Sprint 16: per-backend образа. Если CodeBackend агента есть в этой map —
 	// используется соответствующий образ; иначе fallback на image.
+	// Immutable после конструктора: read-only из горячего Execute, не требует
+	// синхронизации. Регистрация образов происходит при сборке executor'а.
 	imageByBackend map[string]string
 }
 
 // NewSandboxAgentExecutor создает новый экземпляр SandboxAgentExecutor.
 // defaultImage — fallback (например, devteam/sandbox-claude:local) когда
 // для CodeBackend нет специализированного образа.
-func NewSandboxAgentExecutor(runner sandbox.SandboxRunner, defaultImage string) *SandboxAgentExecutor {
+// backendImages — read-only map code_backend → docker image; копируется
+// внутрь executor'а, последующая мутация исходной map не влияет на executor.
+// Передайте nil или пустой map, если кастомных образов нет.
+func NewSandboxAgentExecutor(runner sandbox.SandboxRunner, defaultImage string, backendImages map[string]string) *SandboxAgentExecutor {
+	images := make(map[string]string, len(backendImages))
+	for k, v := range backendImages {
+		if k != "" && v != "" {
+			images[k] = v
+		}
+	}
 	return &SandboxAgentExecutor{
 		runner:         runner,
 		image:          defaultImage,
-		imageByBackend: map[string]string{},
+		imageByBackend: images,
 	}
-}
-
-// WithBackendImage регистрирует образ для конкретного code_backend.
-// Sprint 16: используется в cmd/api/main.go для подвязки hermes к
-// devteam/sandbox-hermes:local. Возвращает self для chaining.
-func (e *SandboxAgentExecutor) WithBackendImage(codeBackend, image string) *SandboxAgentExecutor {
-	if codeBackend == "" || image == "" {
-		return e
-	}
-	if e.imageByBackend == nil {
-		e.imageByBackend = map[string]string{}
-	}
-	e.imageByBackend[codeBackend] = image
-	return e
 }
 
 // resolveImage выбирает образ контейнера по code_backend агента.

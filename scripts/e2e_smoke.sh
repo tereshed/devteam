@@ -26,8 +26,9 @@
 #   ENCRYPTION_KEY                        — в backend/.env, 32 байта hex
 #
 # Опционально:
-#   HERMES_MODEL — каноничная "provider/model" строка для tester (default
-#                  `openrouter/anthropic/claude-3.5-haiku`).
+#   HERMES_MODEL — raw имя модели Hermes для tester (БЕЗ `openrouter/` префикса —
+#                  провайдер передаётся отдельным флагом entrypoint'ом).
+#                  Default: `anthropic/claude-3.5-haiku`.
 #
 # Использование:
 #   GITHUB_PAT=ghp_xxx ./scripts/e2e_smoke.sh \
@@ -165,9 +166,10 @@ run_go_seeder seed_user_llm_credential env \
 # Sprint 16: tester теперь использует hermes + openrouter (раньше был claude-code+oauth).
 # Тестируем Hermes-агент в реальном pipeline.
 #
-# Модель tester'а — каноничная provider/model строка для Hermes (см.
-# HermesModelString). DEVTEAM_AGENT_MODEL пробрасывается в env sandbox-а через
-# обычный context_builder; entrypoint передаёт её в `hermes chat -m`.
+# Модель tester'а — raw имя модели для Hermes (без openrouter/ префикса; провайдер
+# передаётся отдельным флагом --provider, см. AgentProviderKind.HermesProviderName).
+# DEVTEAM_AGENT_MODEL пробрасывается context_builder'ом в env sandbox-а;
+# entrypoint передаёт её в `hermes chat -m`.
 log "seeding 5 agents — mixed (claude-code OAuth + DeepSeek + Hermes/OpenRouter)"
 ysql "
 INSERT INTO agents (id, name, role, team_id, model, code_backend, provider_kind, is_active, requires_code_context, skills, settings)

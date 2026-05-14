@@ -187,18 +187,20 @@ if [[ "$BACKEND" != "hermes" ]]; then
   exit 1
 fi
 
-# --- auth: должен быть хотя бы один <PROVIDER>_API_KEY в env (резолвер кладёт). ---
+# --- auth: должен быть хотя бы один поддерживаемый <PROVIDER>_API_KEY в env. ---
+# Список синхронизирован с backend/internal/sandbox/validate.go whitelist и
+# AgentProviderKind.HermesEnvVar mapping. При расширении на Kimi/NIM/etc.
+# обновляйте BOTH whitelist в Go-коде И этот список (одновременно с добавлением
+# AgentProviderKind* константы).
 HAS_AUTH=0
-for var in OPENROUTER_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY KIMI_API_KEY MOONSHOT_API_KEY \
-           NOUS_PORTAL_API_KEY NVIDIA_NIM_API_KEY HUGGINGFACE_API_KEY MINIMAX_API_KEY \
-           XIAOMI_MIMO_API_KEY ZAI_API_KEY GLM_API_KEY; do
+for var in OPENROUTER_API_KEY ANTHROPIC_API_KEY; do
   if [[ -n "${!var:-}" ]]; then
     HAS_AUTH=1
     break
   fi
 done
 if [[ "$HAS_AUTH" -eq 0 ]]; then
-  echo "entrypoint: hermes requires at least one *_API_KEY env (OPENROUTER_API_KEY, ANTHROPIC_API_KEY, …)" >&2
+  echo "entrypoint: hermes requires OPENROUTER_API_KEY or ANTHROPIC_API_KEY in env" >&2
   LAST_EXIT_CODE=1
   MESSAGE="hermes authentication is required"
   exit 1
@@ -354,6 +356,9 @@ if ! git rev-parse --verify --quiet -- "${ORIGIN_BASE}" >/dev/null; then
   fi
 fi
 
+# ref до «--»: иначе после -- Git трактует origin/… как pathspec → пустой diff
+# (тот же подвох, что в claude/entrypoint.sh; не «упрощать» порядок аргументов
+# при рефакторинге — здесь именно `<ref> -- <pathspec>`, не наоборот).
 if ! git diff --cached "${ORIGIN_BASE}" -- >"$FULL_DIFF" 2>>"$AGENT_LOG"; then
   echo "entrypoint: git diff --cached failed" >&2
   LAST_EXIT_CODE=1

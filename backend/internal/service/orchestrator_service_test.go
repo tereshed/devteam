@@ -1460,7 +1460,7 @@ func TestEdgeCase_ContextCancelledBeforeStart(t *testing.T) {
 
 func TestSecurity_SanitizesSandboxInputs(t *testing.T) {
 	runner := new(mockSandboxRunner)
-	ex := agent.NewSandboxAgentExecutor(runner, "img")
+	ex := agent.NewSandboxAgentExecutor(runner, "img", nil)
 	ctx := context.Background()
 	_, err := ex.Execute(ctx, agent.ExecutionInput{
 		TaskID: "1", ProjectID: "2", GitURL: "https://github.com/o/r.git",

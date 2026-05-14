@@ -16,9 +16,23 @@ ALTER TABLE agents ADD CONSTRAINT chk_agents_code_backend
 -- +goose Down
 -- +goose StatementBegin
 
--- Возвращаем CHECK без 'hermes'. ВНИМАНИЕ: data loss — все строки с
--- code_backend='hermes' нужно перевести во что-то другое перед откатом.
-UPDATE agents SET code_backend = NULL WHERE code_backend = 'hermes';
+-- Возвращаем CHECK без 'hermes'. ВНИМАНИЕ: data loss — Hermes-агенты
+-- получают code_backend=NULL И is_active=false, чтобы оркестратор не пытался
+-- их рутить и оператор видел, какие записи деактивированы. Полный rollback
+-- (восстановление code_backend='hermes') невозможен после повторного up.
+DO $$
+DECLARE
+    affected INT;
+BEGIN
+    UPDATE agents
+       SET code_backend = NULL,
+           is_active    = false
+     WHERE code_backend = 'hermes';
+    GET DIAGNOSTICS affected = ROW_COUNT;
+    IF affected > 0 THEN
+        RAISE NOTICE 'sprint16 down: % agents had code_backend=hermes; set to NULL + is_active=false. Reactivate manually after re-routing.', affected;
+    END IF;
+END $$;
 
 ALTER TABLE agents DROP CONSTRAINT IF EXISTS chk_agents_code_backend;
 ALTER TABLE agents ADD CONSTRAINT chk_agents_code_backend

@@ -174,11 +174,12 @@ func (r *sandboxAuthEnvResolver) resolveByKind(ctx context.Context, project *mod
 }
 
 // resolveHermes — Sprint 16: env для Hermes Agent sandbox.
-// Hermes сам выбирает провайдера по `model: "<provider>/<name>"` (см.
-// HermesModelString); ключ читает из env'а с провайдер-специфичным именем
-// (HermesEnvVar для kind). Контракт «не найдено != ошибка» из user_llm_credentials
-// сохраняется: при отсутствии ключа возвращаем пустой env, sandbox-entrypoint
-// упадёт fast-fail вместо тихого fallback.
+// Hermes принимает провайдера через CLI-флаг `--provider` (см. HermesProviderName)
+// и модель через `-m <name>` (DEVTEAM_AGENT_MODEL передаётся context_builder'ом).
+// Ключ читает из env'а с провайдер-специфичным именем (HermesEnvVar для kind).
+// Контракт «не найдено != ошибка» из user_llm_credentials сохраняется: при
+// отсутствии ключа возвращаем пустой env, sandbox-entrypoint упадёт fast-fail
+// вместо тихого fallback.
 func (r *sandboxAuthEnvResolver) resolveHermes(ctx context.Context, project *models.Project, agent *models.Agent) sandbox.ClaudeCodeAuthEnv {
 	env := sandbox.ClaudeCodeAuthEnv{Extra: map[string]string{}}
 	logger := r.logger.With(

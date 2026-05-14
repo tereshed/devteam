@@ -6,8 +6,54 @@ import (
 
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/models"
 	"github.com/stretchr/testify/assert"
 )
+
+// Sprint 16: resolveInputModel — regress-страховка под ревью #1. Контракт:
+// claude-code/aider/custom/nil → YAML > DB (historical); hermes → DB > YAML.
+func TestResolveInputModel_HermesPrefersDB(t *testing.T) {
+	yaml := "claude-haiku-4-5-20251001"
+	db := "anthropic/claude-3.5-haiku"
+	cbHermes := models.CodeBackendHermes
+	got := resolveInputModel(yaml, &models.Agent{CodeBackend: &cbHermes, Model: &db})
+	assert.Equal(t, db, got, "hermes должен брать DB-Model, а не YAML-дефолт")
+}
+
+func TestResolveInputModel_HermesFallbacksToYAMLWhenDBEmpty(t *testing.T) {
+	yaml := "default-model"
+	cbHermes := models.CodeBackendHermes
+	got := resolveInputModel(yaml, &models.Agent{CodeBackend: &cbHermes})
+	assert.Equal(t, yaml, got, "если DB пуст — даже для hermes падаем на YAML")
+}
+
+func TestResolveInputModel_ClaudeCodePreservesHistoricalYAMLWinsPrecedence(t *testing.T) {
+	yaml := "claude-haiku-4-5-20251001"
+	db := "some-other-model"
+	cbCC := models.CodeBackendClaudeCode
+	got := resolveInputModel(yaml, &models.Agent{CodeBackend: &cbCC, Model: &db})
+	assert.Equal(t, yaml, got, "claude-code: YAML побеждает (Sprint 6.9 контракт)")
+}
+
+func TestResolveInputModel_ClaudeCodeFallsBackToDBWhenYAMLEmpty(t *testing.T) {
+	db := "explicit-db"
+	cbCC := models.CodeBackendClaudeCode
+	got := resolveInputModel("", &models.Agent{CodeBackend: &cbCC, Model: &db})
+	assert.Equal(t, db, got, "claude-code: DB используется только когда YAML пуст")
+}
+
+func TestResolveInputModel_NoCodeBackendPreservesHistorical(t *testing.T) {
+	// orchestrator/planner агенты (code_backend=nil) — тоже сохраняют YAML > DB.
+	yaml := "yaml-pick"
+	db := "db-pick"
+	got := resolveInputModel(yaml, &models.Agent{Model: &db})
+	assert.Equal(t, yaml, got)
+}
+
+func TestResolveInputModel_NilAgent(t *testing.T) {
+	got := resolveInputModel("yaml", nil)
+	assert.Equal(t, "yaml", got)
+}
 
 func TestContextBuilder_WithCodeChunks(t *testing.T) {
 	builder := &contextBuilder{}

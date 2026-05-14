@@ -270,10 +270,14 @@ func main() {
 	}, sandbox.WithLogPublisher(sandboxLogAdapter))
 	// Sprint 16: per-backend образа. claude-code/aider/custom уходят в default
 	// (sandbox-claude), hermes — в свой образ. Если в будущем у aider будет
-	// отдельный образ — регистрируем здесь же без правок executor'а.
-	sandboxAgentExecutor := agent.
-		NewSandboxAgentExecutor(sandboxRunner, "devteam/sandbox-claude:local").
-		WithBackendImage(string(models.CodeBackendHermes), "devteam/sandbox-hermes:local")
+	// отдельный образ — добавляем в map здесь же без правок executor'а.
+	sandboxAgentExecutor := agent.NewSandboxAgentExecutor(
+		sandboxRunner,
+		"devteam/sandbox-claude:local",
+		map[string]string{
+			string(models.CodeBackendHermes): "devteam/sandbox-hermes:local",
+		},
+	)
 
 	// Orchestrator Components
 	orchestratorPipeline := service.NewPipelineEngine(5)
