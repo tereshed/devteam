@@ -19,6 +19,10 @@ const (
 	AgentRoleReviewer     AgentRole = "reviewer"
 	AgentRoleTester       AgentRole = "tester"
 	AgentRoleDevOps       AgentRole = "devops"
+	// Sprint 17 / Orchestration v2 — новые роли для LLM-driven flow.
+	AgentRoleRouter     AgentRole = "router"
+	AgentRoleDecomposer AgentRole = "decomposer"
+	AgentRoleMerger     AgentRole = "merger"
 )
 
 // IsValid проверяет валидность роли агента
@@ -26,7 +30,8 @@ func (r AgentRole) IsValid() bool {
 	switch r {
 	case AgentRoleWorker, AgentRoleSupervisor, AgentRoleOrchestrator,
 		AgentRolePlanner, AgentRoleDeveloper, AgentRoleReviewer,
-		AgentRoleTester, AgentRoleDevOps:
+		AgentRoleTester, AgentRoleDevOps,
+		AgentRoleRouter, AgentRoleDecomposer, AgentRoleMerger:
 		return true
 	default:
 		return false
@@ -73,6 +78,30 @@ func (k AgentProviderKind) IsValid() bool {
 	switch k {
 	case AgentProviderKindAnthropic, AgentProviderKindAnthropicOAuth,
 		AgentProviderKindDeepSeek, AgentProviderKindZhipu, AgentProviderKindOpenRouter:
+		return true
+	default:
+		return false
+	}
+}
+
+// AgentExecutionKind — Sprint 17 / Orchestration v2.
+// Определяет КАК запускается агент:
+//   - llm — потоковый вызов LLM через internal/llm/factory.go (Planner, Reviewer, Router и т.д.)
+//   - sandbox — Docker-контейнер с code_backend (Developer, Tester, Merger)
+//
+// Жёстко связано с миграцией 031: llm требует model, sandbox требует code_backend, и они
+// взаимоисключающи (CHECK chk_agents_kind_requirements).
+type AgentExecutionKind string
+
+const (
+	AgentExecutionKindLLM     AgentExecutionKind = "llm"
+	AgentExecutionKindSandbox AgentExecutionKind = "sandbox"
+)
+
+// IsValid проверяет валидность execution kind.
+func (k AgentExecutionKind) IsValid() bool {
+	switch k {
+	case AgentExecutionKindLLM, AgentExecutionKindSandbox:
 		return true
 	default:
 		return false
@@ -172,8 +201,20 @@ type Agent struct {
 	SandboxPermissions  datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions"`
 	IsActive            bool           `gorm:"default:true" json:"is_active"`
 	RequiresCodeContext bool           `gorm:"default:false" json:"requires_code_context"`
-	CreatedAt           time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
-	UpdatedAt   time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
+
+	// Sprint 17 / Orchestration v2 — поля для LLM-driven Router.
+	// ExecutionKind — обязательно (NOT NULL в БД). Llm vs sandbox runtime.
+	// RoleDescription — текст для промпта Router'а ("кому я могу делегировать").
+	// SystemPrompt — системный промпт самого агента (inline). Опциональный fallback на PromptID.
+	// Temperature, MaxTokens — параметры LLM (только для llm-агентов).
+	ExecutionKind   AgentExecutionKind `gorm:"type:varchar(16);not null" json:"execution_kind"`
+	RoleDescription *string            `gorm:"type:text" json:"role_description"`
+	SystemPrompt    *string            `gorm:"type:text" json:"system_prompt"`
+	Temperature     *float64           `gorm:"type:numeric(4,3)" json:"temperature"`
+	MaxTokens       *int               `gorm:"type:integer" json:"max_tokens"`
+
+	CreatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
+	UpdatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
 
 	ToolBindings []AgentToolBinding `gorm:"foreignKey:AgentID" json:"tool_bindings,omitempty"`
 	MCPBindings  []AgentMCPBinding  `gorm:"foreignKey:AgentID" json:"mcp_bindings,omitempty"`
