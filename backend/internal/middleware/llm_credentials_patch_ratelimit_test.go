@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -48,10 +49,20 @@ func TestLlmCredentialsPatchRateLimiter_429AndRetryAfter(t *testing.T) {
 
 func TestLlmCredentialsPatchRateLimiter_GCPrunesMapBeforeReuse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	cur := time.Unix(1_700_000_000, 0)
+	// `cur` шарится между тестовой goroutine (write) и gcLoop-goroutine,
+	// которая дёргает clock-closure. Read-modify-write плюс concurrent reader
+	// без синхронизации = data race (поймано `go test -race`). atomic.Pointer
+	// гарантирует видимость записей и атомарную замену.
+	var cur atomic.Pointer[time.Time]
+	t0 := time.Unix(1_700_000_000, 0)
+	cur.Store(&t0)
+	advance := func(d time.Duration) {
+		next := cur.Load().Add(d)
+		cur.Store(&next)
+	}
 	window := 40 * time.Millisecond
 	lim := NewLlmCredentialsPatchRateLimiter(2, window,
-		WithPatchRateLimitClock(func() time.Time { return cur }),
+		WithPatchRateLimitClock(func() time.Time { return *cur.Load() }),
 		WithPatchRateLimitGCInterval(12*time.Millisecond),
 	)
 	t.Cleanup(func() { lim.Close() })
@@ -70,16 +81,16 @@ func TestLlmCredentialsPatchRateLimiter_GCPrunesMapBeforeReuse(t *testing.T) {
 	code, aborted := call()
 	require.Equal(t, http.StatusOK, code)
 	require.False(t, aborted)
-	cur = cur.Add(time.Millisecond)
+	advance(time.Millisecond)
 	code, aborted = call()
 	require.Equal(t, http.StatusOK, code)
 	require.False(t, aborted)
-	cur = cur.Add(time.Millisecond)
+	advance(time.Millisecond)
 	code, aborted = call()
 	require.Equal(t, http.StatusTooManyRequests, code)
 	require.True(t, aborted)
 
-	cur = cur.Add(2 * window)
+	advance(2 * window)
 	time.Sleep(45 * time.Millisecond)
 
 	lim.mu.Lock()
@@ -87,7 +98,7 @@ func TestLlmCredentialsPatchRateLimiter_GCPrunesMapBeforeReuse(t *testing.T) {
 	lim.mu.Unlock()
 	assert.Equal(t, 0, nAfterGC, "gcLoop must drop stale uid entries before next request")
 
-	cur = cur.Add(time.Millisecond)
+	advance(time.Millisecond)
 	code, aborted = call()
 	require.Equal(t, http.StatusOK, code)
 	require.False(t, aborted)
