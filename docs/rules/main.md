@@ -723,3 +723,33 @@ type GitProvider interface {
 - [ ] Метрики и аналитика агентов (стоимость, время, качество)
 - [ ] Marketplace скиллов и промптов
 - [ ] Auto-scaling контейнеров (Kubernetes / Docker Swarm)
+
+-----
+
+## Orchestration v2 (Sprint 17 — LLM-driven, flow-as-data)
+
+С 2026-05 архитектура оркестрации задач **полностью переписана** на LLM-driven модель.
+Подробный план: [`docs/orchestration-v2-plan.md`](../orchestration-v2-plan.md).
+
+**Ключевые принципы:**
+
+1. **Flow — это данные, не код.** Никакого hardcoded state-machine в Go.
+   Маршрутизация между фазами решается LLM-агентом `router` по реестру `agents`
+   из БД + текущим артефактам. Добавление новой роли = `INSERT INTO agents`,
+   правки промптов = `UPDATE agents.system_prompt` (или через UI Agents Management).
+
+2. **Event-driven Step.** `Orchestrator.Step` — атомарный шаг, открывается через
+   `task_events` очередь (`step_req`/`agent_job`). `SELECT FOR UPDATE NOWAIT`
+   per-task сериализует step'ы; agent_jobs параллельны по подзадачам через
+   git-worktree-изоляцию.
+
+3. **Безопасность по дефолту:** см. `docs/rules/backend.md` §2.3 — `--` separator
+   в git, redact-обёртка logger'а, шифрование секретов через `pkg/crypto`,
+   `filepath.Clean` + prefix-check перед `os.RemoveAll`.
+
+**5 высокоуровневых состояний задачи** (`tasks.state`):
+`active` | `done` | `failed` | `cancelled` | `needs_human`.
+Legacy `TaskStatus` (10 значений pipeline) удалён в Sprint 5.
+
+**MCP-инструменты v2:** `agent_list/get/create/update/set_secret/delete_secret`,
+`artifact_list/get`, `router_decision_list`, `worktree_list`, `task_cancel_v2`.

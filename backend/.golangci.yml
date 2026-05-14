@@ -1,0 +1,49 @@
+# .golangci.yml — Sprint 17 / Sprint 5
+#
+# Минимальная конфигурация для линтинга, плюс ОСНОВНОЕ правило проекта:
+#
+#   В файлах оркестрации (Sprint 17 / orchestration v2) запрещено использовать
+#   `slog.Default()` напрямую. Эти модули обязаны получать logger через DI
+#   (с обёрткой logging.NewHandler, маскирующей sensitive поля).
+#
+# Если файл не в orchestrator-списке — slog.Default() разрешён.
+# Расширять список можно добавляя имя в `path-except` ниже.
+
+run:
+  timeout: 5m
+  go: "1.22"
+
+linters:
+  # По умолчанию golangci-lint включает свой "fast" набор; мы НЕ включаем экстра-линтеры,
+  # чтобы Sprint 5 не запускал лавину предупреждений по легаси-коду. Forbidigo — единственный
+  # явно-включённый extra.
+  enable:
+    - forbidigo
+
+linters-settings:
+  forbidigo:
+    # forbid: список запрещённых паттернов (regex по тексту вызова).
+    # `slog\.Default` ловит и `slog.Default()` и `slog.Default().With(...)`.
+    forbid:
+      - pattern: 'slog\.Default'
+        msg: >-
+          Sprint 17 / orchestration v2: file must NOT use slog.Default() —
+          inject a redact-aware logger via constructor (see internal/logging/redact.go).
+          If this file is NOT part of orchestrator chain, add it to .golangci.yml
+          issues.exclude-rules[forbidigo].path-except.
+
+issues:
+  # Для forbidigo: ИСКЛЮЧАЕМ предупреждение во ВСЕХ путях, КРОМЕ orchestrator-файлов.
+  # path-except поддерживается golangci-lint и работает как «не применять exclude если path-except совпал».
+  exclude-rules:
+    - linters:
+        - forbidigo
+      # Этот regex применяется к пути файла. Если файл МАТЧИТ — мы НЕ исключаем
+      # ошибку (то есть forbidigo продолжит ругаться). Если НЕ матчит — исключение
+      # применяется (forbidigo молчит). Получается: forbidigo активен ТОЛЬКО для перечисленных файлов.
+      path-except: |-
+        internal/service/(router_service\.go|orchestrator_v2\.go|agent_dispatcher\.go|agent_worker\.go|step_worker\.go|task_lifecycle\.go|worktree_manager\.go|retention\.go)$
+
+  # Глобальные предельные значения, чтобы CI не падал на легаси-сходимости.
+  max-issues-per-linter: 0
+  max-same-issues: 0

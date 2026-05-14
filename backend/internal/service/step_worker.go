@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 )
@@ -55,7 +56,7 @@ func NewStepWorker(
 	cfg StepWorkerConfig,
 ) *StepWorker {
 	if logger == nil {
-		logger = slog.Default()
+		logger = logging.NopLogger()
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 500 * time.Millisecond

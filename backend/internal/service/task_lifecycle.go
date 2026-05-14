@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -30,7 +31,7 @@ type TaskLifecycleService struct {
 // NewTaskLifecycleService — конструктор.
 func NewTaskLifecycleService(db *gorm.DB, notifier *RedisNotifier, logger *slog.Logger) *TaskLifecycleService {
 	if logger == nil {
-		logger = slog.Default()
+		logger = logging.NopLogger()
 	}
 	return &TaskLifecycleService{db: db, notifier: notifier, logger: logger}
 }

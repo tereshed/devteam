@@ -29,6 +29,13 @@ type Dependencies struct {
 	// Sprint 15.24 — реестр MCP-серверов и Claude Code skills (опционально).
 	MCPServerRegistryRepo repository.MCPServerRegistryRepository
 	AgentSkillRepo        repository.AgentSkillRepository
+
+	// Sprint 17 / Sprint 5 — v2 orchestration tools.
+	// Sprint 5 review fix #1 (layer violation): handlers depend on SERVICES, not repos.
+	// Все поля опциональны: nil → соответствующие tools НЕ регистрируются.
+	AgentSvcV2              *service.AgentService
+	OrchestrationQuerySvcV2 *service.OrchestrationQueryService
+	TaskLifecycleV2         *service.TaskLifecycleService
 }
 
 // NewMCPServer создает MCP-сервер с зарегистрированными инструментами
@@ -52,6 +59,14 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 
 	// Sprint 16.C — Hermes-каталог (toolsets) для UI dropdown / агента.
 	RegisterHermesTools(server)
+
+	// Sprint 17 / Sprint 5 — v2 orchestration tools (опционально, через service-слой).
+	if deps.AgentSvcV2 != nil {
+		RegisterAgentV2Tools(server, deps.AgentSvcV2)
+	}
+	if deps.OrchestrationQuerySvcV2 != nil {
+		RegisterOrchestrationV2Tools(server, deps.OrchestrationQuerySvcV2, deps.TaskLifecycleV2)
+	}
 
 	return server
 }

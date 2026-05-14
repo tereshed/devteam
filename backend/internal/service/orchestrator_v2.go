@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
@@ -83,7 +84,7 @@ func NewOrchestrator(
 	cfg OrchestratorConfig,
 ) *Orchestrator {
 	if logger == nil {
-		logger = slog.Default()
+		logger = logging.NopLogger()
 	}
 	if cfg.MaxStepsPerTask <= 0 {
 		cfg.MaxStepsPerTask = 100

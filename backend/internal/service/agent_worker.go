@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,7 +87,7 @@ func NewAgentWorker(
 	cfg AgentWorkerConfig,
 ) *AgentWorker {
 	if logger == nil {
-		logger = slog.Default()
+		logger = logging.NopLogger()
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 500 * time.Millisecond
@@ -405,6 +407,31 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		content = json.RawMessage(`{}`)
 	}
 
+	// Sprint 4 review fix §1: scrubbing для test_result.raw_output_truncated.
+	// Tester может включить stack trace / env-dump в raw_output; пройдёмся
+	// secret_scrub'ом перед записью в artifact.content (jsonb незашифрован).
+	//
+	// Sprint 4 review fix §2 (stricter): на ОШИБКЕ scrub'а raw_output_truncated
+	// ЗАМЕНЯЕТСЯ на sentinel {"_scrub_failed": true, "len": N, "head_sha256_8": "..."}.
+	// Безопасность > availability: лучше потерять детали падений, чем pers'нуть
+	// потенциально-сырой env-dump в jsonb. Остальные поля test_result (счётчики,
+	// boolean'ы checks) сохраняются как есть — их семантика не sensitive.
+	if envelope.Kind == string(models.ArtifactKindTestResult) {
+		scrubbed, err := scrubTestResultRawOutput(content)
+		if err != nil {
+			w.logger.WarnContext(ctx, "test_result raw_output scrub failed, replacing with sentinel",
+				"task_id", taskID, "error", err.Error())
+			if redacted, rerr := redactRawOutputToSentinel(content); rerr == nil {
+				content = redacted
+			} else {
+				// Даже sentinel-замена не вышла — это критично, артефакт не сохраняем.
+				return fmt.Errorf("scrub failed and sentinel redaction failed: scrub=%w, redact=%v", err, rerr)
+			}
+		} else {
+			content = scrubbed
+		}
+	}
+
 	art := &models.Artifact{
 		TaskID:        taskID,
 		ParentID:      envelope.ParentArtifactID,
@@ -484,6 +511,89 @@ func (w *AgentWorker) enqueueFollowupStep(ctx context.Context, taskID uuid.UUID)
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+// redactRawOutputToSentinel — fallback на отказ scrub'а: ЗАМЕНЯЕТ raw_output_truncated
+// на безопасный sentinel (длина + хэш первых 64 байт). Если поля не было — возвращает
+// content без изменений (нечего редактировать).
+//
+// Sprint 4 review fix §2: stricter policy "безопасность > availability". Эта функция
+// должна СПРАВЛЯТЬСЯ всегда (это просто json marshal); если она тоже упала — caller
+// возвращает ошибку и отказывается сохранять артефакт целиком.
+func redactRawOutputToSentinel(content []byte) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(content, &m); err != nil {
+		return nil, fmt.Errorf("unmarshal content for sentinel: %w", err)
+	}
+	rawField, ok := m["raw_output_truncated"]
+	if !ok {
+		return content, nil // нечего редактировать
+	}
+	// Различаем "пустой valid string" и "non-string (агент нарушил контракт)" —
+	// семантика разная: первая — нормальный edge-case (tester не сохранил output),
+	// вторая — баг в промпте/агенте, видим из отдельного флага в sentinel.
+	var raw string
+	typeMismatch := false
+	if err := json.Unmarshal(rawField, &raw); err != nil {
+		typeMismatch = true
+		raw = ""
+	}
+	// Тот же primitive что и logging.SafeRawAttr — длина + sha256[:8].
+	hash := sha256.Sum256([]byte(raw)[:min(64, len(raw))])
+	sentinel := map[string]any{
+		"_scrub_failed": true,
+		"len":           len(raw),
+		"head_sha256_8": hex.EncodeToString(hash[:8]),
+	}
+	if typeMismatch {
+		sentinel["_type_mismatch"] = true
+	}
+	sentinelBytes, err := json.Marshal(sentinel)
+	if err != nil {
+		return nil, fmt.Errorf("marshal sentinel: %w", err)
+	}
+	m["raw_output_truncated"] = sentinelBytes
+	return json.Marshal(m)
+}
+
+// min — для Go <1.21 (хотя у нас новее, оставим locally чтобы не зависеть).
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// scrubTestResultRawOutput — Sprint 4 review fix §1.
+// Распаковывает content как map, прогоняет raw_output_truncated через ScrubSecrets,
+// упаковывает обратно. Если поля нет — возвращает content без изменений.
+//
+// Альтернатива (ParseTestResult + повторная сериализация) теряла бы неизвестные
+// поля контракта; map-подход сохраняет всё что прислал агент.
+func scrubTestResultRawOutput(content []byte) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(content, &m); err != nil {
+		return nil, fmt.Errorf("unmarshal content: %w", err)
+	}
+	rawField, ok := m["raw_output_truncated"]
+	if !ok {
+		return content, nil
+	}
+	var raw string
+	if err := json.Unmarshal(rawField, &raw); err != nil {
+		// Поле есть, но это не строка — пропускаем (агент сломал контракт, но не наше дело).
+		return content, nil
+	}
+	scrubbed := ScrubSecrets(raw)
+	if scrubbed == raw {
+		return content, nil // ничего не изменилось — экономим re-marshal
+	}
+	scrubbedBytes, err := json.Marshal(scrubbed)
+	if err != nil {
+		return nil, fmt.Errorf("marshal scrubbed: %w", err)
+	}
+	m["raw_output_truncated"] = scrubbedBytes
+	return json.Marshal(m)
+}
 
 // allocateWorktreeForJob — just-in-time allocation для sandbox-агента.
 // Распаковывает base_branch из payload.Input и зовёт WorktreeManager.Allocate.

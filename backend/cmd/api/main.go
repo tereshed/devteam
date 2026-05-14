@@ -594,6 +594,20 @@ func main() {
 			ClaudeCodeAuthService: claudeCodeAuthSvc,
 			MCPServerRegistryRepo: repository.NewMCPServerRegistryRepository(db),
 			AgentSkillRepo:        repository.NewAgentSkillRepository(db),
+
+			// Sprint 17 / Sprint 5 — v2 orchestration MCP tools через SERVICE-слой.
+			AgentSvcV2: service.NewAgentService(
+				repository.NewAgentRepository(db),
+				repository.NewAgentSecretRepository(db),
+				encryptor,
+				txManager,
+			),
+			OrchestrationQuerySvcV2: service.NewOrchestrationQueryService(
+				artifactRepoV2,
+				routerDecisionRepoV2,
+				worktreeRepoV2,
+			),
+			TaskLifecycleV2: v2TaskLifecycle,
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
@@ -85,7 +86,7 @@ func NewWorktreeManager(cfg WorktreeManagerConfig, repo repository.WorktreeRepos
 		return nil, fmt.Errorf("worktree manager: create WorktreesRoot: %w", err)
 	}
 	if logger == nil {
-		logger = slog.Default()
+		logger = logging.NopLogger()
 	}
 	return &WorktreeManager{cfg: cfg, repo: repo, logger: logger}, nil
 }

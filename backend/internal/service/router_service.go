@@ -126,7 +126,7 @@ func NewRouterService(loader AgentLoader, dispatcher AgentDispatcher, logger *sl
 		cfg.MaxRetries = 0
 	}
 	if logger == nil {
-		logger = slog.Default()
+		logger = logging.NopLogger()
 	}
 	return &RouterService{
 		loader:     loader,

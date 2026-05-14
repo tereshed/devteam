@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -88,16 +89,36 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 }
 
 // redactAttr возвращает Attr с замаскированным значением, если ключ — sensitive.
-// Иначе возвращает Attr как есть.
+// Если значение — slog.Group (содержит вложенные attrs), рекурсивно обходим
+// его содержимое и маскируем все sensitive-поля на любой глубине вложенности.
+//
+// Sprint 5 review fix #2: ранее мы рекурсию НЕ делали, рассчитывая на
+// дисциплину разработчиков (SafeRawAttr/SafeStringAttr). Это была уязвимость:
+// slog.Group("data", slog.String("raw_response", "...")) — ключ "data" не sensitive,
+// и старый код возвращал группу как есть. Теперь любая вложенность маскируется.
 func redactAttr(a slog.Attr) slog.Attr {
+	// Резолвим LogValuer-обёртки (например, fmt.Stringer-like объекты, которые
+	// сами решают, что отдать в лог) перед проверкой ключа. Это критично:
+	// LogValuer может вернуть group/string с sensitive payload.
+	a.Value = a.Value.Resolve()
+
+	// Если ключ верхнего уровня — sensitive, маскируем целиком, без рекурсии.
 	key := strings.ToLower(a.Key)
-	if _, ok := SensitiveFieldNames[key]; !ok {
-		// Не sensitive по верхнему ключу. Группы внутри не разворачиваем —
-		// если разработчик кладёт чувствительные данные внутрь group, он должен
-		// явно использовать SafeRawAttr / SafeStringAttr.
-		return a
+	if _, ok := SensitiveFieldNames[key]; ok {
+		return slog.Attr{Key: a.Key, Value: slog.StringValue(redactedValueString(a.Value))}
 	}
-	return slog.Attr{Key: a.Key, Value: slog.StringValue(redactedValueString(a.Value))}
+
+	// Не sensitive по верхнему ключу — но если внутри group, обходим рекурсивно.
+	if a.Value.Kind() == slog.KindGroup {
+		inner := a.Value.Group()
+		redacted := make([]slog.Attr, len(inner))
+		for i, child := range inner {
+			redacted[i] = redactAttr(child)
+		}
+		return slog.Attr{Key: a.Key, Value: slog.GroupValue(redacted...)}
+	}
+
+	return a
 }
 
 // redactedValueString возвращает маркер для значения, в зависимости от его типа.
@@ -110,6 +131,17 @@ func redactedValueString(v slog.Value) string {
 	default:
 		return "<redacted>"
 	}
+}
+
+// NopLogger возвращает redact-обёрнутый logger, который сбрасывает всё в io.Discard.
+// Используется как nil-fallback в конструкторах orchestrator-сервисов (Sprint 5):
+// CI lint forbids `slog.Default()` в orchestrator-файлах, чтобы случайно не
+// залогировать чувствительные данные через app-wide default-handler без redact.
+//
+// Тестам стоит использовать кастомные buffer-based handlers вокруг NewHandler
+// для assert'ов на содержимое; NopLogger — для production-fallback "ничего не делать".
+func NopLogger() *slog.Logger {
+	return slog.New(NewHandler(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // SafeRawAttr — единственный санкционированный способ упомянуть сырой LLM-ввод/вывод

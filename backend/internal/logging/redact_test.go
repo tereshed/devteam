@@ -107,6 +107,92 @@ func TestHandler_NonSensitivePassThrough(t *testing.T) {
 	}
 }
 
+// TestHandler_RedactsInsideGroup — Sprint 5 review fix #2 (CRITICAL security):
+// slog.Group("data", slog.String("raw_response", "leak")) — старый код пропускал
+// потому что верхний ключ "data" не sensitive. Новый рекурсивный обход маскирует
+// "raw_response" внутри группы.
+func TestHandler_RedactsInsideGroup(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(NewHandler(slog.NewJSONHandler(&buf, nil)))
+
+	canary := "GROUP_LEAK_CANARY_xyz_must_not_appear"
+	logger.Info("dispatch result",
+		slog.Group("data",
+			slog.String("task_id", "abc-123"),
+			slog.String("raw_response", canary),
+		),
+	)
+
+	out := buf.String()
+	if strings.Contains(out, canary) {
+		t.Fatalf("CANARY LEAKED via nested slog.Group: %s", out)
+	}
+	// task_id внутри той же группы должен остаться (не sensitive).
+	if !strings.Contains(out, "abc-123") {
+		t.Errorf("non-sensitive task_id inside group MUST stay, got: %s", out)
+	}
+}
+
+// TestHandler_RedactsInsideDeeplyNestedGroup — глубина 3+ уровня тоже маскируется.
+func TestHandler_RedactsInsideDeeplyNestedGroup(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(NewHandler(slog.NewJSONHandler(&buf, nil)))
+
+	canary := "DEEP_GROUP_CANARY_alpha_beta_gamma"
+	logger.Info("nested",
+		slog.Group("outer",
+			slog.Group("middle",
+				slog.Group("inner",
+					slog.String("api_key", canary),
+				),
+			),
+		),
+	)
+
+	out := buf.String()
+	if strings.Contains(out, canary) {
+		t.Fatalf("CANARY LEAKED through 3-level nesting: %s", out)
+	}
+}
+
+// TestHandler_RedactsLogValuer — slog.LogValuer'ы (объекты, которые сами
+// решают, что выдать в лог через LogValue()) тоже проходят через redact
+// после .Resolve() в redactAttr.
+func TestHandler_RedactsLogValuer(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(NewHandler(slog.NewJSONHandler(&buf, nil)))
+
+	canary := "LOGVALUER_CANARY_must_be_redacted"
+	logger.Info("via valuer",
+		"prompt", logValuerString(canary), // ключ sensitive → маскируется после Resolve
+	)
+
+	out := buf.String()
+	if strings.Contains(out, canary) {
+		t.Fatalf("CANARY LEAKED via LogValuer: %s", out)
+	}
+}
+
+// logValuerString — мини-обёртка для теста LogValuer-резолва.
+type logValuerString string
+
+func (s logValuerString) LogValue() slog.Value { return slog.StringValue(string(s)) }
+
+// TestNopLogger_DiscardsButHasRedactWrapper — NopLogger ничего не пишет, но handler
+// — наш redact-wrapper, не raw default. Гарантия: даже sensitive ключи проходят
+// через маскирование "по дороге к null'у" — это защищает от случайного wrap'а
+// NopLogger в другой sink через WithGroup/WithAttrs.
+func TestNopLogger_DiscardsButHasRedactWrapper(t *testing.T) {
+	logger := NopLogger()
+	// Не должно паниковать; ничего не пишется (io.Discard).
+	logger.Info("noop", "raw_response", "supposed secret")
+	logger.Error("noop", "api_key", "abc")
+	// Дополнительная проверка: вытащить inner handler и убедиться что он — наш *Handler.
+	if _, ok := logger.Handler().(*Handler); !ok {
+		t.Errorf("NopLogger must wrap with redact *Handler, got %T", logger.Handler())
+	}
+}
+
 // TestHandler_Enabled — делегирует уровню inner handler'а.
 func TestHandler_Enabled(t *testing.T) {
 	var buf bytes.Buffer

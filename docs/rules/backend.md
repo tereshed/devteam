@@ -73,6 +73,38 @@ alwaysApply: true
       * **ЗАПРЕЩЕНО** `handler`'у обращаться напрямую к `repository`. Только через `service`.
       * **ЗАПРЕЩЕНО** писать SQL-запросы в `handler`.
 
+### 2.3. Правила безопасности (Sprint 17 / Orchestration v2)
+
+1.  **`--` separator в shell-командах** (особенно `git`): после фиксированных флагов и
+    ПЕРЕД любыми пользовательскими/LLM-данными ОБЯЗАН быть `--`. Это блокирует
+    flag-injection (например, `branch_name="-h"` или `"--upload-pack=evil"`).
+    Любые операции вида `exec.Command("git", "worktree", "add", path, "-b", name, "--", baseBranch)` —
+    канонический шаблон. CI lint-grep по `exec.Command*("git", ...)` без `--` — TODO.
+
+2.  **Запрет `slog.Default()` в orchestrator-файлах**: всё что лежит в
+    `internal/service/router_*`, `orchestrator_*`, `agent_dispatcher.go`,
+    `agent_worker.go`, `step_worker.go`, `task_lifecycle.go`, `worktree_manager.go`,
+    `retention.go` — ОБЯЗАНО получать `*slog.Logger` через DI (с обёрткой
+    `internal/logging.NewHandler`, маскирующей `raw_response`/`prompt`/`content`/`token`/`api_key` и т.д.).
+    Запрет проверяется автоматически через `.golangci.yml` (forbidigo). В nil-fallback
+    конструктора используется `logging.NopLogger()` (discard + redact wrapper), а НЕ `slog.Default()`.
+
+3.  **Никакого сырого LLM-вывода в логах**: `raw_response`, `prompt`, `system_prompt`,
+    `content`, `output`, `token`, `api_key`, `password` (case-insensitive) автоматически
+    заменяются на `<redacted len=N>` через `logging.NewHandler`. Для безопасного
+    упоминания факта получения raw-данных в логах есть `logging.SafeRawAttr(raw)` —
+    отдаёт `{len, head_sha256_8}` без содержимого.
+
+4.  **Path-безопасность**: пути файловой системы для worktree, sandbox и т.д.
+    ВСЕГДА вычисляются в Go через `filepath.Join` от типизированных `uuid.UUID`,
+    НИКОГДА не читаются из БД-строк. Перед `os.RemoveAll` обязательна
+    defence-in-depth проверка через `filepath.Clean` + prefix-check на root.
+
+5.  **Шифрование секретов**: `agent_secrets.encrypted_value`,
+    `router_decisions.encrypted_raw_response`, `user_llm_credentials.encrypted_key`,
+    `mcp_server_config.*` — все через `pkg/crypto.AESEncryptor` с AAD = id записи.
+    Минимальная длина blob ≥ 29 байт (`crypto.MinCiphertextBlobLen` = version(1) + nonce(12) + GCM tag(16)).
+
 -----
 
 ## 3\. Правило 3: Работа с Базой (YugabyteDB + GORM + Goose)

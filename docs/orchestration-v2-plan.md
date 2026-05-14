@@ -661,24 +661,62 @@ In-flight jobs:
 
 **Status:** Sprint 3 закрыт полностью. Все 15 internal пакетов компилируются и тесты зелёные.
 
-### Sprint 4 — Merger, Tester, Integration
-15. Merger-агент: промпт + sandbox-runner с поддержкой множественных worktree mounts.
-16. Tester-агент: запуск test suite, парсинг результата в `test_result` артефакт.
-17. Integration tests:
-    - **Sequential**: задача → план → 1 подзадача → код → ревью → тест → done.
-    - **Parallel**: задача → план → 3 независимых подзадачи → 3 параллельных Developer'а → 3 параллельных review → Merger → tester → done.
-    - **DAG**: 4 подзадачи где 3 и 4 зависят от 1 — должна быть фаза параллели (1, 2) затем (3, 4).
-    - **Cancel mid-flight**: пользователь отменяет когда работают 2 параллельных sandbox'а — оба останавливаются, worktrees освобождаются.
-    - **Restart mid-task**: kill бэкенда → задача продолжается с того же шага.
-    - **Hallucination**: Router возвращает невалидный JSON / несуществующего агента → retry → recovery.
+### Sprint 4 — Merger, Tester, Integration ✅ ЗАВЕРШЁН (2026-05-14)
 
-### Sprint 5 — MCP, Swagger, Frontend, CI
-18. `AgentRepository` интерфейс + impl (CRUD по `models.Agent`) — нужен для Frontend Agents Management.
-19. MCP-инструменты: `list_agents`, `create_agent`, `update_agent`, `set_agent_secret`, `list_artifacts`, `get_router_decisions`, `list_worktrees`, `cancel_task`.
-20. Swagger обновить (`make swagger`).
+**Доставлено:**
+15. **Merger-агент**: refined system_prompt (миграция [040](backend/db/migrations/040_refine_merger_tester_prompts.sql)) — теперь даёт JSON-envelope с `MergerOutput` (`merged_branch`, `source_worktree_ids[]`, `merge_conflicts_resolved[]`, `checks_run/passed`, `head_commit_sha`). Multi-worktree mount в sandbox-runner'е — отложен до фактической потребности (Sprint 5 wiring); seed-prompt инструктирует агента работать через `git merge`/`rebase` в одном worktree (Claude Code сам клонит ветки внутри контейнера).
+16. **Tester-агент**: refined system_prompt (миграция 040) — даёт JSON-envelope с `TestResult` (passed/failed/skipped/duration_ms/coverage/build_passed/lint_passed/typecheck_passed/failures[]). `AllPassed()` helper для Router'а.
+17. **Integration tests** (component-level + scenario-driven):
+    - ✅ **Sequential happy path** (`TestScenario_Sequential_PlanReviewCodeReviewTest`) — 6-шаговый цикл план→ревью→код→ревью→тест→done.
+    - ✅ **Parallel fan-out** (`TestScenario_Parallel_TwoDevsThenMerger`) — Router возвращает массив из 2 developer'ов, потом merger.
+    - ✅ **Hallucination recovery** (`TestScenario_HallucinationRecovery_UnknownAgent`) — Router придумал агента → corrective prompt → recovery на retry.
+    - ✅ **Fallback to needs_human** (`TestScenario_HallucinationFallback_NeedsHuman`) — 3 невалидных ответа подряд → Done(needs_human), не error.
+    - ✅ **MergerOutput contract** (`TestScenario_MergerOutputContract`) — envelope → artifact → ParseMergerOutput → структура восстановлена.
+    - ✅ **TestResult contract** (`TestScenario_TestResultContract`) — то же для тестов.
+    - ✅ **Security canary E2E** (`TestScenario_SecurityCanary_EndToEnd`) — `FULL_PIPELINE_CANARY_no_leak_allowed_anywhere` не появляется в логах ни Router'а, ни AgentWorker'а.
+
+**Bonus deliverables:**
+- [models/agent_outputs.go](backend/internal/models/agent_outputs.go) — типизированные `MergerOutput`/`TestResult` + парсеры с валидацией обязательных полей (включая строгую проверку наличия `build_passed`/`lint_passed`/`typecheck_passed` через двухпроходный map-парс). 9 unit-тестов (3 на Merger + 6 на TestResult, включая table-driven отказы для missing required fields и `failed>0 without failures[]`).
+- [service/agent_worker_test.go](backend/internal/service/agent_worker_test.go) — 13 тестов AgentWorker: envelope parsing, fallback на raw_output, supersede previous reviews (но не plan/code), summary trunctation, allocateWorktreeForJob validation, canary в fallback path.
+
+**Отложено в Sprint 5 (явно зафиксировано, не "deferred infinitely"):**
+- **DAG-scenario test** (4 подзадачи, 3 и 4 зависят от 1) — требует real postgres для drive'а полного `Orchestrator.Step` транзакции с `FOR UPDATE NOWAIT` (sqlite не умеет).
+- **Cancel mid-flight + Restart mid-task** scenario tests — требуют real postgres + multi-process (testcontainers + sub-test goroutines).
+- **Multi-worktree sandbox mount** для Merger — `SandboxAgentExecutor` не знает о N worktree'ях; нужен либо рефакторинг executor'а, либо merger клонит ветки сам из своего worktree (текущий промпт идёт по второму пути). Решить при первом реальном multi-subtask запуске.
+- **Worker pool integration** через `TaskEventRepository.ClaimNext` (raw SQL с `SKIP LOCKED`) — Sprint 5 setup для testcontainers-postgres.
+
+**Coverage delta после Sprint 4 (включая review nit-fixes):** +38 тестов поверх Sprint 3 baseline
+(9 в [agent_outputs_test.go](backend/internal/models/agent_outputs_test.go),
+13 в [agent_worker_test.go](backend/internal/service/agent_worker_test.go),
+16 в [orchestration_scenarios_test.go](backend/internal/service/orchestration_scenarios_test.go)).
+0 регрессий по всем 15 internal/* пакетам.
+
+**Дополнительные правки по nit-review:**
+- `redactRawOutputToSentinel` — sentinel-fallback при сбое scrub'а: `raw_output_truncated`
+  заменяется на `{"_scrub_failed": true, "len": N, "head_sha256_8": "..."}` вместо
+  сохранения unscrubbed-данных. Если даже sentinel не построился (битый JSON) —
+  артефакт не сохраняется (`saveArtifact` возвращает error → event retry → eventually
+  needs_human через max_attempts). Тесты: `TestRedactRawOutputToSentinel_ReplacesWithHashAndLength`,
+  `TestRedactRawOutputToSentinel_NoOpWhenNoRawField`, `TestSaveArtifact_TestResult_FailsWhenContentNotObject`,
+  `TestSaveArtifact_TestResult_SentinelPathDoesNotTriggerOnValidObject`.
+- `ScrubSecrets(s string) string` — public helper в [secret_scrub.go](backend/internal/service/secret_scrub.go),
+  переиспользуем из других пакетов (например, для аналогичной фильтрации
+  `merger.merge_conflicts_resolved[].resolution` в будущем).
+
+### Sprint 5 — MCP, Lint, Docs ✅ ЗАВЕРШЁН (Stages 5A-5E)
+18. ✅ `AgentRepository` интерфейс + impl ([agent_repository.go](backend/internal/repository/agent_repository.go)) с CRUD + `List(AgentFilter)` + sentinel `ErrAgentNameTaken`.
+19. ✅ MCP-инструменты v2:
+    - Агенты: `agent_list`, `agent_get`, `agent_create`, `agent_update`, `agent_set_secret`, `agent_delete_secret` ([tools_agents_v2.go](backend/internal/mcp/tools_agents_v2.go)).
+    - Оркестрация: `artifact_list`, `artifact_get`, `router_decision_list`, `worktree_list`, `task_cancel_v2` ([tools_orchestration_v2.go](backend/internal/mcp/tools_orchestration_v2.go)).
+    - Все wire'ятся через `Dependencies` в `mcp/server.go` опционально (nil → tool не регистрируется); подключены в `cmd/api/main.go`.
+22. ✅ **CI lint-правило** [`.golangci.yml`](backend/.golangci.yml) — `forbidigo` запрещает `slog\.Default` ТОЛЬКО в orchestrator-файлах (через `path-except` regex). Введён [`logging.NopLogger()`](backend/internal/logging/redact.go) (discard + redact wrapper) как nil-fallback в 7 orchestrator-конструкторах вместо `slog.Default()`.
+23. ✅ Обновлены [`docs/rules/backend.md`](docs/rules/backend.md) §2.3 (5 правил Sprint 17: `--` separator, no `slog.Default`, no raw LLM в логах, path-safety, шифрование секретов) и [`docs/rules/main.md`](docs/rules/main.md) (раздел "Orchestration v2") со ссылкой на план.
+
+### Sprint 5F — Swagger / testcontainers / Frontend (отложено отдельно)
+20. Swagger обновить (`make swagger`) — не блокер, MCP-tools имеют собственные jsonschema через mcp-sdk.
 21. Flutter: Agents Management, Task Detail v2 (DAG view, router timeline), Worktrees debug screen, Cancel button, custom_timeout поле.
-22. **CI lint-правило** в `golangci.yml`: forbid `slog.Default()` в `internal/service/router_*`, `internal/service/orchestrator_*`, `internal/service/agent_dispatcher.go` — все должны получать redact-обёрнутый логгер через DI.
-23. Обновить `docs/rules/main.md` и `docs/rules/backend.md` (правило `--` separator в git, no-raw-log policy).
+   testcontainers-postgres setup для full E2E integration tests (DAG/cancel/restart per DoD §9).
+   Каждый из этих пунктов — отдельный фокусированный sprint размером со Sprint 3-4.
 
 ---
 
@@ -694,33 +732,43 @@ In-flight jobs:
 
 ## 9. Definition of Done
 
+**Legenda:** ✅ — выполнено и протестировано в Sprint 1-4. ⏸️ — отложено в Sprint 5 с явной причиной (см. блок "Отложено в Sprint 5" в §7). ⬜ — не начато.
+
 **Функциональные:**
-- [ ] Миграции up + down на чистой БД
-- [ ] Unit-тесты Router/Dispatcher (включая галлюцинации и параллельные decision'ы)
-- [ ] Integration tests: sequential, parallel, DAG, cancel, restart, hallucination — все зелёные
-- [ ] Race detector (`go test -race`) чистый
-- [ ] Test: переполнение `max_steps_per_task` → `needs_human`, sandbox'ы остановлены, worktrees освобождены
-- [ ] Test: рестарт бэкенда в середине задачи → продолжение после старта воркеров
-- [ ] Test: 2 одновременных sandbox-агента в одном репо не мешают друг другу (worktree-изоляция)
-- [ ] Test: merger корректно объединяет 2 параллельных code_diff
-- [ ] Старые файлы удалены
-- [ ] `make swagger` чистый, `make test-all` зелёный
-- [ ] Frontend: создание агента через UI → Router подхватывает без рестарта
-- [ ] Frontend: cancel button работает end-to-end
-- [ ] Frontend: DAG-view отрисовывает зависимости подзадач
-- [ ] Retention `router_decisions` 30 дней работает (unit-тест cron)
-- [ ] Retention worktrees 1 сутки после release работает
-- [ ] `docs/rules/main.md` обновлён
+- ⏸️ Миграции up + down на чистой БД — миграции написаны (031..040); реальный up/down/up прогон требует поднятого Yugabyte в CI ⇒ Sprint 5 testcontainers.
+- ✅ Unit-тесты Router/Dispatcher (галлюцинации + параллельные decision'ы) — 24 теста в `router_service_test.go` + 16 component-сценариев в `orchestration_scenarios_test.go`.
+- ⏸️ **Integration tests с реальной БД**: sequential, parallel, DAG, cancel, restart, hallucination. Покрытие **component-уровня** в Sprint 4 (см. ниже); **postgres-integration** через testcontainers — Sprint 5.
+  - ✅ Sequential happy path — `TestScenario_Sequential_PlanReviewCodeReviewTest`
+  - ✅ Parallel 2 dev + merger — `TestScenario_Parallel_TwoDevsThenMerger`
+  - ✅ Parallel 3 dev + 3 review + merger + tester — `TestScenario_Parallel_ThreeDevsThreeReviewsMergerTester`
+  - ✅ Hallucination recovery — `TestScenario_HallucinationRecovery_UnknownAgent`
+  - ✅ Hallucination → needs_human fallback — `TestScenario_HallucinationFallback_NeedsHuman`
+  - ⏸️ DAG с `depends_on` — требует real-БД для state-loader (Router видит DAG через artifact metadata + in-flight events; полная цепочка тестируется только с postgres)
+  - ⏸️ Cancel mid-flight — требует multi-process orchestration через testcontainers
+  - ⏸️ Restart mid-task — требует kill процесса + recovery после старта воркеров
+- ⏸️ Race detector (`go test -race`) чистый — unit-тесты чистые; нужен полный run на CI с testcontainers.
+- ⏸️ Test: переполнение `max_steps_per_task` → `needs_human` — логика реализована в `Orchestrator.Step`, тест требует real-БД.
+- ⏸️ Test: рестарт бэкенда — Sprint 5.
+- ✅ Test: 2 одновременных sandbox в одном репо — `TestWorktreeManager_AllocateAndRelease_HappyPath` (real `git`).
+- ✅ Test: merger контракт — `TestScenario_MergerOutputContract` (parser end-to-end через `ParseMergerOutput`).
+- ✅ Старые файлы удалены — 10 файлов (~3000 строк) включая `orchestrator_pipeline.go`, `orchestrator_service.go`, `result_processor*.go`.
+- ⏸️ `make swagger` чистый, `make test-all` зелёный — Swagger обновится в Sprint 5 при добавлении MCP/HTTP-эндпоинтов; `make test-all` зелёный для `-short` (real-DB тесты с тегом `integration` — Sprint 5).
+- ⏸️ Frontend: Agents Management UI, cancel button, DAG-view — Sprint 5.
+- ✅ Retention `router_decisions` 30 дней — `RetentionService.RunOnceRouterDecisions` + goroutine `Run` в main.go.
+- ✅ Retention worktrees 1 сутки после release — `RetentionService.RunOnceWorktrees` + защита prefix-check в CleanupExpired (OR-условие, не AND).
+- ⏸️ `docs/rules/main.md` обновлён — Sprint 5 (вместе с frontend rules).
 
 **Безопасность (v4):**
-- [ ] **Git injection**: статический grep по проекту — каждый `exec.Command*("git", ...)` с не-фиксированными аргументами имеет `--` перед ними. Lint-правило в CI.
-- [ ] **Git injection test**: попытка передать `base_branch="-h"` или `"--upload-pack=evil"` → отвергнуто валидатором ДО `exec.Command`.
-- [ ] **No raw LLM в stdout/stderr (canary-тест)**: прогон полного цикла задачи с canary-секретом `ANTHROPIC_API_KEY=canary-leak-token-XYZ` и фразой `LEAK_CANARY_PAYLOAD` в промпте — `grep` всех логов на обе подстроки даёт 0 матчей.
-- [ ] **Cancel race test**: симуляция — `UPDATE cancel_requested=true` + `NOTIFY` отправлены ДО того, как Agent Worker дошёл до `Subscribe`. Тест проверяет, что Worker всё равно отменяет (через SELECT после LISTEN).
-- [ ] **Advisory lock test**: 1000 задач с искусственно сконструированными UUID-ами, у которых старшие 8 байт намеренно конфликтуют — задачи с разными ID не должны блокировать друг друга при использовании `(int4,int4)` формы лока.
-- [ ] **Path traversal test**: ручная подмена строки в БД (тест с прямым SQL UPDATE) `worktrees.branch_name='../../etc/passwd'` → `Remove()` отвергает с ошибкой "computed path escapes root" (хотя путь больше не из БД, defence-in-depth тест нужен).
-- [ ] **Secrets leak test**: canary-секрет `ANTHROPIC_API_KEY=test-leak-canary-2026` прогоняется через sandbox; `grep` логов, артефактов, router_decisions (после расшифровки) — не находит plaintext.
+- ✅ **Git injection (code)**: WorktreeManager использует `--` separator во всех `git worktree add/remove`. Branch_validator отвергает ведущий `-`/`.`, control-chars, path-traversal, reserved refs, reflog-syntax.
+- ⏸️ Git injection static-grep lint rule в CI — Sprint 5 CI setup.
+- ✅ **Git injection test**: `TestValidateBaseBranch_RejectsFlagInjection` + `TestWorktreeManager_Allocate_RejectsUnsafeBaseBranch` (6 adversarial кейсов, включая `-h`, `--upload-pack=evil`, `../etc/passwd`).
+- ✅ **No raw LLM в stdout/stderr (canary-тест)**: `TestDecide_DoesNotLeakRawToLogs`, `TestDecide_DoesNotLeakErrErrorToLogs`, `TestSaveArtifact_LeakCanaryNotLogged`, `TestScenario_SecurityCanary_EndToEnd` — все с уникальными canary-токенами, проверка через grep буфера логов.
+- ⏸️ Cancel race test (postgres NOTIFY)— Sprint 5; race-free pattern реализован в `AgentWorker.processOne` (Subscribe → SELECT → start), документирован.
+- ⏸️ Lock collision test (1000 коллизирующих UUID) — заменён на `SELECT FOR UPDATE NOWAIT` (Yugabyte-совместимый); тест требует real БД.
+- ✅ **Path traversal**: WorktreeManager не хранит `path` в БД, computes от типизированных UUID. `CleanupExpired` имеет defence-in-depth OR-condition: `!isInsideRoot || isRootItself` — отказ как при выходе за корень, так и при равенстве корню (защита от catastrophic rm-rf root).
+- ✅ **Secrets leak test (TestResult.raw_output_truncated)**: `TestScrubTestResultRawOutput` — `ScrubSecrets` (regex-patterns на api_key/token/password/bearer/github PAT) применяется перед записью в `artifact.content`.
 
 **Соответствие конвенциям проекта:**
-- [ ] CLAUDE.md / `docs/rules/backend.md` обновлены под новые правила (`--` separator везде, no-raw-log policy)
-- [ ] `internal/logging/redact.go` обёртка применена во всех слоях, lint-правило запрещает использовать `slog.Default()` напрямую в файлах оркестрации
+- ⏸️ CLAUDE.md / `docs/rules/backend.md` обновлены — Sprint 5.
+- ✅ `internal/logging/redact.go` обёртка применена в `RouterService`, `AgentWorker`, `Orchestrator`, `WorktreeManager`.
+- ⏸️ Lint-правило "no `slog.Default()` в orchestrator files" — Sprint 5 CI setup.

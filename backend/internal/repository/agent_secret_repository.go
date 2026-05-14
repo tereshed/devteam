@@ -47,7 +47,7 @@ func (r *agentSecretRepository) Create(ctx context.Context, secret *models.Agent
 		// Защита от случайной записи нешифрованных данных.
 		return fmt.Errorf("encrypted_value too short (%d bytes), refusing to write — looks unencrypted", len(secret.EncryptedValue))
 	}
-	if err := r.db.WithContext(ctx).Create(secret).Error; err != nil {
+	if err := gormDB(ctx, r.db).WithContext(ctx).Create(secret).Error; err != nil {
 		return fmt.Errorf("failed to create agent secret: %w", err)
 	}
 	return nil
@@ -55,7 +55,7 @@ func (r *agentSecretRepository) Create(ctx context.Context, secret *models.Agent
 
 func (r *agentSecretRepository) GetByName(ctx context.Context, agentID uuid.UUID, keyName string) (*models.AgentSecret, error) {
 	var s models.AgentSecret
-	err := r.db.WithContext(ctx).
+	err := gormDB(ctx, r.db).WithContext(ctx).
 		Where("agent_id = ? AND key_name = ?", agentID, keyName).
 		First(&s).Error
 	if err != nil {
@@ -69,7 +69,7 @@ func (r *agentSecretRepository) GetByName(ctx context.Context, agentID uuid.UUID
 
 func (r *agentSecretRepository) ListByAgentID(ctx context.Context, agentID uuid.UUID) ([]models.AgentSecret, error) {
 	var secrets []models.AgentSecret
-	err := r.db.WithContext(ctx).
+	err := gormDB(ctx, r.db).WithContext(ctx).
 		Select(agentSecretListColumns). // encrypted_value не тащим
 		Where("agent_id = ?", agentID).
 		Order("key_name ASC").
@@ -81,7 +81,7 @@ func (r *agentSecretRepository) ListByAgentID(ctx context.Context, agentID uuid.
 }
 
 func (r *agentSecretRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.AgentSecret{})
+	result := gormDB(ctx, r.db).WithContext(ctx).Where("id = ?", id).Delete(&models.AgentSecret{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete agent secret %s: %w", id, result.Error)
 	}

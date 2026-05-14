@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/repository"
 )
 
@@ -61,7 +62,7 @@ func NewRetentionService(
 	cfg RetentionConfig,
 ) *RetentionService {
 	if logger == nil {
-		logger = slog.Default()
+		logger = logging.NopLogger()
 	}
 	if cfg.RouterDecisionsAge <= 0 {
 		cfg.RouterDecisionsAge = 30 * 24 * time.Hour
