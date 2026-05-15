@@ -2917,6 +2917,168 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Артефактов пока нет.'**
   String get artifactsEmpty;
+
+  /// No description provided for @artifactViewerOpen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть артефакт полностью'**
+  String get artifactViewerOpen;
+
+  /// No description provided for @artifactViewerTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'{kind} · {idShort}'**
+  String artifactViewerTitle(String kind, String idShort);
+
+  /// No description provided for @artifactViewerClose.
+  ///
+  /// In ru, this message translates to:
+  /// **'Закрыть'**
+  String get artifactViewerClose;
+
+  /// No description provided for @artifactViewerCopyFull.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировать всё содержимое'**
+  String get artifactViewerCopyFull;
+
+  /// No description provided for @artifactViewerCopyFullForKind.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировать весь {kind}'**
+  String artifactViewerCopyFullForKind(String kind);
+
+  /// No description provided for @artifactViewerCopiedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировано {bytes} байт в буфер обмена.'**
+  String artifactViewerCopiedSnack(int bytes);
+
+  /// No description provided for @artifactViewerCopyFailedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось скопировать в буфер обмена.'**
+  String get artifactViewerCopyFailedSnack;
+
+  /// No description provided for @artifactViewerShowFull.
+  ///
+  /// In ru, this message translates to:
+  /// **'Показать полностью ({kb} КБ)'**
+  String artifactViewerShowFull(int kb);
+
+  /// No description provided for @artifactViewerShowNext.
+  ///
+  /// In ru, this message translates to:
+  /// **'Показать следующие {n}'**
+  String artifactViewerShowNext(int n);
+
+  /// No description provided for @artifactViewerTruncatedNotice.
+  ///
+  /// In ru, this message translates to:
+  /// **'Показаны первые {kb} КБ из {totalKb} КБ.'**
+  String artifactViewerTruncatedNotice(int kb, int totalKb);
+
+  /// No description provided for @artifactViewerEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'У артефакта нет сохранённого содержимого.'**
+  String get artifactViewerEmpty;
+
+  /// No description provided for @artifactViewerLoadFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить артефакт: {error}'**
+  String artifactViewerLoadFailed(String error);
+
+  /// No description provided for @artifactViewerReviewDecision.
+  ///
+  /// In ru, this message translates to:
+  /// **'Решение'**
+  String get artifactViewerReviewDecision;
+
+  /// No description provided for @artifactViewerReviewIssues.
+  ///
+  /// In ru, this message translates to:
+  /// **'Замечания'**
+  String get artifactViewerReviewIssues;
+
+  /// No description provided for @artifactViewerReviewSummary.
+  ///
+  /// In ru, this message translates to:
+  /// **'Итог'**
+  String get artifactViewerReviewSummary;
+
+  /// No description provided for @artifactViewerReviewNoIssues.
+  ///
+  /// In ru, this message translates to:
+  /// **'Замечаний нет.'**
+  String get artifactViewerReviewNoIssues;
+
+  /// No description provided for @artifactViewerTestPassed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Прошло'**
+  String get artifactViewerTestPassed;
+
+  /// No description provided for @artifactViewerTestFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Упало'**
+  String get artifactViewerTestFailed;
+
+  /// No description provided for @artifactViewerTestSkipped.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пропущено'**
+  String get artifactViewerTestSkipped;
+
+  /// No description provided for @artifactViewerTestDuration.
+  ///
+  /// In ru, this message translates to:
+  /// **'Длительность'**
+  String get artifactViewerTestDuration;
+
+  /// No description provided for @artifactViewerTestDurationMs.
+  ///
+  /// In ru, this message translates to:
+  /// **'{ms} мс'**
+  String artifactViewerTestDurationMs(int ms);
+
+  /// No description provided for @artifactViewerTestFailuresHeader.
+  ///
+  /// In ru, this message translates to:
+  /// **'Падения ({n})'**
+  String artifactViewerTestFailuresHeader(int n);
+
+  /// No description provided for @artifactViewerTestFailureFile.
+  ///
+  /// In ru, this message translates to:
+  /// **'{file}:{line}'**
+  String artifactViewerTestFailureFile(String file, int line);
+
+  /// No description provided for @artifactViewerTestNoFailures.
+  ///
+  /// In ru, this message translates to:
+  /// **'Все проверки зелёные.'**
+  String get artifactViewerTestNoFailures;
+
+  /// No description provided for @artifactsNoSummary.
+  ///
+  /// In ru, this message translates to:
+  /// **'(без описания)'**
+  String get artifactsNoSummary;
+
+  /// No description provided for @artifactViewerTestUnnamed.
+  ///
+  /// In ru, this message translates to:
+  /// **'(без имени)'**
+  String get artifactViewerTestUnnamed;
+
+  /// No description provided for @artifactViewerFullTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'{kind} · полностью'**
+  String artifactViewerFullTitle(String kind);
 }
 
 class _AppLocalizationsDelegate

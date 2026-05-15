@@ -4,12 +4,23 @@ import 'package:frontend/shared/widgets/diff_viewer_parsing.dart';
 /// Отображение unified git diff с подсветкой по [ColorScheme] (M3).
 ///
 /// [diff] — непустой raw-текст; пустой diff на стороне call-site (12.7).
+///
+/// Использует [ListView.builder] с фиксированным [itemExtent] — на больших
+/// диффах (5K-15K строк, типичный output developer-агента) рендерится только
+/// окно viewport, а layout остаётся O(1) на строку (6.4 performance).
 class DiffViewer extends StatefulWidget {
   const DiffViewer({
     super.key,
     required this.diff,
     this.maxHeight,
   });
+
+  /// Фиксированная высота одной diff-строки.
+  ///
+  /// Текст — monospace bodySmall (~12pt) с межстрочным разделителем. Значение
+  /// подобрано так, чтобы ни одна стандартная строка не клиппилась; небольшой
+  /// запас (≈2px) безопаснее, чем точная подгонка по теме.
+  static const double lineExtent = 18.0;
 
   final String diff;
   final double? maxHeight;
@@ -67,9 +78,10 @@ class _DiffViewerState extends State<DiffViewer> {
           primary: false,
           physics: const ClampingScrollPhysics(),
           itemCount: parsed.length,
+          itemExtent: DiffViewer.lineExtent,
           itemBuilder: (context, index) {
             final line = parsed[index];
-            return _DiffLineRow(
+            return DiffLineRow(
               line: line,
               monoStyle: mono,
               scheme: scheme,
@@ -81,8 +93,11 @@ class _DiffViewerState extends State<DiffViewer> {
   }
 }
 
-class _DiffLineRow extends StatelessWidget {
-  const _DiffLineRow({
+/// Один ряд diff. Public, чтобы тесты могли посчитать [LineTile]-метрики
+/// (см. `TestDiffViewer_LargeDiff_DoesNotBuildAllTilesAtOnce`).
+class DiffLineRow extends StatelessWidget {
+  const DiffLineRow({
+    super.key,
     required this.line,
     required this.monoStyle,
     required this.scheme,

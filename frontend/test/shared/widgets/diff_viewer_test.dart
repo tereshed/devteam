@@ -270,6 +270,41 @@ index 111..222 100644
       );
     });
 
+    testWidgets(
+        'TestDiffViewer_LargeDiff_DoesNotBuildAllTilesAtOnce: 5000-строчный diff '
+        'строит < 100 DiffLineRow в viewport (lazy ListView.builder + itemExtent)',
+        (tester) async {
+      // 5000 строк-additions — попадаем в типичный размер code_diff'а агента.
+      // С `itemExtent` и ListView.builder только viewport-видимые ряды
+      // материализуются; всё остальное — lazy.
+      final sb = StringBuffer()
+        ..writeln('--- a/x')
+        ..writeln('+++ b/x')
+        ..writeln('@@ -0,0 +1,5000 @@');
+      for (var i = 0; i < 5000; i++) {
+        sb.writeln('+line $i');
+      }
+      await tester.pumpWidget(
+        harness(DiffViewer(diff: sb.toString(), maxHeight: 400)),
+      );
+      await tester.pumpAndSettle();
+      // 400px / 18px ≈ 22 строки + cacheExtent ⇒ десятки, точно < 100.
+      final builtRows = find.byType(DiffLineRow).evaluate().length;
+      expect(builtRows, lessThan(100),
+          reason:
+              'ListView должен рендерить только viewport; всё $builtRows материализовано');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('itemExtent применён в ListView (фиксированная высота строки)',
+        (tester) async {
+      await tester.pumpWidget(
+        harness(const DiffViewer(diff: typicalDiff)),
+      );
+      final lv = tester.widget<ListView>(find.byType(ListView));
+      expect(lv.itemExtent, DiffViewer.lineExtent);
+    });
+
     testWidgets('большой diff ≥1000 строк: pumpAndSettle без исключений', (tester) async {
       final sb = StringBuffer()
         ..writeln('--- a/x')

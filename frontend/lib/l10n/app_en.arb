@@ -698,6 +698,97 @@
   "routerTimelineSection": "Router timeline",
   "routerTimelineEmpty": "No router decisions logged yet.",
   "artifactsSection": "Artifacts",
-  "artifactsEmpty": "No artifacts produced yet."
+  "artifactsEmpty": "No artifacts produced yet.",
+
+  "artifactViewerOpen": "Open full artifact",
+  "@artifactViewerOpen": { "description": "Tooltip for IconButton that opens the artifact detail dialog (6.4)" },
+  "artifactViewerTitle": "{kind} · {idShort}",
+  "@artifactViewerTitle": {
+    "description": "Title for the artifact detail dialog (6.4)",
+    "placeholders": {
+      "kind": { "type": "String" },
+      "idShort": { "type": "String" }
+    }
+  },
+  "artifactViewerClose": "Close",
+  "artifactViewerCopyFull": "Copy full content",
+  "artifactViewerCopyFullForKind": "Copy full {kind}",
+  "@artifactViewerCopyFullForKind": {
+    "placeholders": {
+      "kind": { "type": "String" }
+    }
+  },
+  "artifactViewerCopiedSnack": "Copied {bytes} bytes to clipboard.",
+  "@artifactViewerCopiedSnack": {
+    "placeholders": {
+      "bytes": { "type": "int" }
+    }
+  },
+  "artifactViewerCopyFailedSnack": "Failed to copy to clipboard.",
+  "artifactViewerShowFull": "Show full ({kb} KB)",
+  "@artifactViewerShowFull": {
+    "placeholders": {
+      "kb": { "type": "int" }
+    }
+  },
+  "artifactViewerShowNext": "Show next {n}",
+  "@artifactViewerShowNext": {
+    "placeholders": {
+      "n": { "type": "int" }
+    }
+  },
+  "artifactViewerTruncatedNotice": "Showing first {kb} KB out of {totalKb} KB.",
+  "@artifactViewerTruncatedNotice": {
+    "placeholders": {
+      "kb": { "type": "int" },
+      "totalKb": { "type": "int" }
+    }
+  },
+  "artifactViewerEmpty": "No content stored for this artifact.",
+  "artifactViewerLoadFailed": "Failed to load artifact: {error}",
+  "@artifactViewerLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "artifactViewerReviewDecision": "Decision",
+  "artifactViewerReviewIssues": "Issues",
+  "artifactViewerReviewSummary": "Summary",
+  "artifactViewerReviewNoIssues": "No issues reported.",
+  "artifactViewerTestPassed": "Passed",
+  "artifactViewerTestFailed": "Failed",
+  "artifactViewerTestSkipped": "Skipped",
+  "artifactViewerTestDuration": "Duration",
+  "artifactViewerTestDurationMs": "{ms} ms",
+  "@artifactViewerTestDurationMs": {
+    "placeholders": {
+      "ms": { "type": "int" }
+    }
+  },
+  "artifactViewerTestFailuresHeader": "Failures ({n})",
+  "@artifactViewerTestFailuresHeader": {
+    "placeholders": {
+      "n": { "type": "int" }
+    }
+  },
+  "artifactViewerTestFailureFile": "{file}:{line}",
+  "@artifactViewerTestFailureFile": {
+    "placeholders": {
+      "file": { "type": "String" },
+      "line": { "type": "int" }
+    }
+  },
+  "artifactViewerTestNoFailures": "All checks green.",
+  "artifactsNoSummary": "(no summary)",
+  "@artifactsNoSummary": { "description": "Placeholder for artifact card title when both subtask_title and summary are empty (6.4)" },
+  "artifactViewerTestUnnamed": "(unnamed)",
+  "@artifactViewerTestUnnamed": { "description": "Fallback for missing test_name in a test_result failure (6.4)" },
+  "artifactViewerFullTitle": "{kind} · full",
+  "@artifactViewerFullTitle": {
+    "description": "Title of the fullscreen artifact dialog (6.4)",
+    "placeholders": {
+      "kind": { "type": "String" }
+    }
+  }
 }
 

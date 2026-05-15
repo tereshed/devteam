@@ -69,6 +69,34 @@ class OrchestrationV2Repository {
     }
   }
 
+  /// Полный артефакт с заполненным `content` (`code_diff`/`merged_code`/
+  /// `test_result`/`review`).
+  ///
+  /// list-endpoint отдаёт только metadata; для просмотра одного артефакта
+  /// нужен этот вызов.
+  Future<Artifact> getArtifact(
+    String taskId,
+    String artifactId, {
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/tasks/$taskId/artifacts/$artifactId',
+        cancelToken: cancelToken,
+      );
+      final data = response.data;
+      if (data is! Map<String, dynamic>) {
+        throw OrchestrationV2ApiException(
+          'Unexpected payload for artifact $artifactId: '
+          '${data.runtimeType}',
+        );
+      }
+      return Artifact.fromJson(data);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
   Future<List<RouterDecision>> listRouterDecisions(String taskId,
       {CancelToken? cancelToken}) async {
     try {

@@ -1007,6 +1007,92 @@
   "routerTimelineSection": "Лента решений Router'а",
   "routerTimelineEmpty": "Решений Router'а пока нет.",
   "artifactsSection": "Артефакты",
-  "artifactsEmpty": "Артефактов пока нет."
+  "artifactsEmpty": "Артефактов пока нет.",
+
+  "artifactViewerOpen": "Открыть артефакт полностью",
+  "artifactViewerTitle": "{kind} · {idShort}",
+  "@artifactViewerTitle": {
+    "placeholders": {
+      "kind": { "type": "String" },
+      "idShort": { "type": "String" }
+    }
+  },
+  "artifactViewerClose": "Закрыть",
+  "artifactViewerCopyFull": "Скопировать всё содержимое",
+  "artifactViewerCopyFullForKind": "Скопировать весь {kind}",
+  "@artifactViewerCopyFullForKind": {
+    "placeholders": {
+      "kind": { "type": "String" }
+    }
+  },
+  "artifactViewerCopiedSnack": "Скопировано {bytes} байт в буфер обмена.",
+  "@artifactViewerCopiedSnack": {
+    "placeholders": {
+      "bytes": { "type": "int" }
+    }
+  },
+  "artifactViewerCopyFailedSnack": "Не удалось скопировать в буфер обмена.",
+  "artifactViewerShowFull": "Показать полностью ({kb} КБ)",
+  "@artifactViewerShowFull": {
+    "placeholders": {
+      "kb": { "type": "int" }
+    }
+  },
+  "artifactViewerShowNext": "Показать следующие {n}",
+  "@artifactViewerShowNext": {
+    "placeholders": {
+      "n": { "type": "int" }
+    }
+  },
+  "artifactViewerTruncatedNotice": "Показаны первые {kb} КБ из {totalKb} КБ.",
+  "@artifactViewerTruncatedNotice": {
+    "placeholders": {
+      "kb": { "type": "int" },
+      "totalKb": { "type": "int" }
+    }
+  },
+  "artifactViewerEmpty": "У артефакта нет сохранённого содержимого.",
+  "artifactViewerLoadFailed": "Не удалось загрузить артефакт: {error}",
+  "@artifactViewerLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "artifactViewerReviewDecision": "Решение",
+  "artifactViewerReviewIssues": "Замечания",
+  "artifactViewerReviewSummary": "Итог",
+  "artifactViewerReviewNoIssues": "Замечаний нет.",
+  "artifactViewerTestPassed": "Прошло",
+  "artifactViewerTestFailed": "Упало",
+  "artifactViewerTestSkipped": "Пропущено",
+  "artifactViewerTestDuration": "Длительность",
+  "artifactViewerTestDurationMs": "{ms} мс",
+  "@artifactViewerTestDurationMs": {
+    "placeholders": {
+      "ms": { "type": "int" }
+    }
+  },
+  "artifactViewerTestFailuresHeader": "Падения ({n})",
+  "@artifactViewerTestFailuresHeader": {
+    "placeholders": {
+      "n": { "type": "int" }
+    }
+  },
+  "artifactViewerTestFailureFile": "{file}:{line}",
+  "@artifactViewerTestFailureFile": {
+    "placeholders": {
+      "file": { "type": "String" },
+      "line": { "type": "int" }
+    }
+  },
+  "artifactViewerTestNoFailures": "Все проверки зелёные.",
+  "artifactsNoSummary": "(без описания)",
+  "artifactViewerTestUnnamed": "(без имени)",
+  "artifactViewerFullTitle": "{kind} · полностью",
+  "@artifactViewerFullTitle": {
+    "placeholders": {
+      "kind": { "type": "String" }
+    }
+  }
 }
 

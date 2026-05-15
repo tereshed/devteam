@@ -1500,4 +1500,107 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get artifactsEmpty => 'No artifacts produced yet.';
+
+  @override
+  String get artifactViewerOpen => 'Open full artifact';
+
+  @override
+  String artifactViewerTitle(String kind, String idShort) {
+    return '$kind · $idShort';
+  }
+
+  @override
+  String get artifactViewerClose => 'Close';
+
+  @override
+  String get artifactViewerCopyFull => 'Copy full content';
+
+  @override
+  String artifactViewerCopyFullForKind(String kind) {
+    return 'Copy full $kind';
+  }
+
+  @override
+  String artifactViewerCopiedSnack(int bytes) {
+    return 'Copied $bytes bytes to clipboard.';
+  }
+
+  @override
+  String get artifactViewerCopyFailedSnack => 'Failed to copy to clipboard.';
+
+  @override
+  String artifactViewerShowFull(int kb) {
+    return 'Show full ($kb KB)';
+  }
+
+  @override
+  String artifactViewerShowNext(int n) {
+    return 'Show next $n';
+  }
+
+  @override
+  String artifactViewerTruncatedNotice(int kb, int totalKb) {
+    return 'Showing first $kb KB out of $totalKb KB.';
+  }
+
+  @override
+  String get artifactViewerEmpty => 'No content stored for this artifact.';
+
+  @override
+  String artifactViewerLoadFailed(String error) {
+    return 'Failed to load artifact: $error';
+  }
+
+  @override
+  String get artifactViewerReviewDecision => 'Decision';
+
+  @override
+  String get artifactViewerReviewIssues => 'Issues';
+
+  @override
+  String get artifactViewerReviewSummary => 'Summary';
+
+  @override
+  String get artifactViewerReviewNoIssues => 'No issues reported.';
+
+  @override
+  String get artifactViewerTestPassed => 'Passed';
+
+  @override
+  String get artifactViewerTestFailed => 'Failed';
+
+  @override
+  String get artifactViewerTestSkipped => 'Skipped';
+
+  @override
+  String get artifactViewerTestDuration => 'Duration';
+
+  @override
+  String artifactViewerTestDurationMs(int ms) {
+    return '$ms ms';
+  }
+
+  @override
+  String artifactViewerTestFailuresHeader(int n) {
+    return 'Failures ($n)';
+  }
+
+  @override
+  String artifactViewerTestFailureFile(String file, int line) {
+    return '$file:$line';
+  }
+
+  @override
+  String get artifactViewerTestNoFailures => 'All checks green.';
+
+  @override
+  String get artifactsNoSummary => '(no summary)';
+
+  @override
+  String get artifactViewerTestUnnamed => '(unnamed)';
+
+  @override
+  String artifactViewerFullTitle(String kind) {
+    return '$kind · full';
+  }
 }

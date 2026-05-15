@@ -14,6 +14,19 @@ final taskArtifactsProvider =
   return ref.watch(orchestrationV2RepositoryProvider).listArtifacts(taskId);
 });
 
+/// Identifier для запроса полного артефакта: (taskId, artifactId).
+///
+/// Reverse-name: tuple фиксирован, Equatable не нужен — record-types в Dart 3
+/// получают value-equality бесплатно.
+typedef ArtifactDetailId = (String taskId, String artifactId);
+
+final artifactDetailProvider = FutureProvider.autoDispose
+    .family<Artifact, ArtifactDetailId>((ref, id) {
+  return ref
+      .watch(orchestrationV2RepositoryProvider)
+      .getArtifact(id.$1, id.$2);
+});
+
 final taskRouterDecisionsProvider = FutureProvider.autoDispose
     .family<List<RouterDecision>, String>((ref, taskId) {
   return ref

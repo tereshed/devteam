@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
-import 'package:frontend/core/l10n/require.dart';
+import 'package:frontend/features/tasks/presentation/widgets/artifact_viewer_dialog.dart';
 
 /// DAG-секция артефактов задачи (Task Detail v2):
 ///   • Все артефакты группируются по kind.
@@ -61,7 +62,7 @@ class ArtifactsDagSection extends ConsumerWidget {
                       fontWeight: FontWeight.w600,
                     )),
               ),
-              ...groups[kind]!.map((a) => _ArtifactTile(artifact: a)),
+              ...groups[kind]!.map((a) => _ArtifactTile(artifact: a, taskId: taskId)),
             ],
           ],
         );
@@ -71,15 +72,18 @@ class ArtifactsDagSection extends ConsumerWidget {
 }
 
 class _ArtifactTile extends StatelessWidget {
-  const _ArtifactTile({required this.artifact});
+  const _ArtifactTile({required this.artifact, required this.taskId});
 
   final Artifact artifact;
+  final String taskId;
 
   String _shortId(String id) =>
       id.length > 8 ? '${id.substring(0, 8)}…' : id;
 
   @override
   Widget build(BuildContext context) {
+    final l10n =
+        requireAppLocalizations(context, where: 'artifacts_dag_section');
     final title = artifact.subtaskTitle ?? artifact.summary;
     final isSubtask = artifact.kind == 'subtask_description';
     final depsLabel = isSubtask && artifact.dependsOn.isNotEmpty
@@ -98,13 +102,26 @@ class _ArtifactTile extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    title.isEmpty ? '(no summary)' : title,
+                    title.isEmpty ? l10n.artifactsNoSummary : title,
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
                 Text(
                   '${artifact.producerAgent} · #${artifact.iteration}',
                   style: Theme.of(context).textTheme.bodySmall,
+                ),
+                IconButton(
+                  tooltip: l10n.artifactViewerOpen,
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.open_in_new),
+                  onPressed: () => showArtifactViewerDialog(
+                    context,
+                    taskId: taskId,
+                    artifactId: artifact.id,
+                  ),
                 ),
               ],
             ),

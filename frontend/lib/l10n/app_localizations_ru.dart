@@ -1505,4 +1505,108 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get artifactsEmpty => 'Артефактов пока нет.';
+
+  @override
+  String get artifactViewerOpen => 'Открыть артефакт полностью';
+
+  @override
+  String artifactViewerTitle(String kind, String idShort) {
+    return '$kind · $idShort';
+  }
+
+  @override
+  String get artifactViewerClose => 'Закрыть';
+
+  @override
+  String get artifactViewerCopyFull => 'Скопировать всё содержимое';
+
+  @override
+  String artifactViewerCopyFullForKind(String kind) {
+    return 'Скопировать весь $kind';
+  }
+
+  @override
+  String artifactViewerCopiedSnack(int bytes) {
+    return 'Скопировано $bytes байт в буфер обмена.';
+  }
+
+  @override
+  String get artifactViewerCopyFailedSnack =>
+      'Не удалось скопировать в буфер обмена.';
+
+  @override
+  String artifactViewerShowFull(int kb) {
+    return 'Показать полностью ($kb КБ)';
+  }
+
+  @override
+  String artifactViewerShowNext(int n) {
+    return 'Показать следующие $n';
+  }
+
+  @override
+  String artifactViewerTruncatedNotice(int kb, int totalKb) {
+    return 'Показаны первые $kb КБ из $totalKb КБ.';
+  }
+
+  @override
+  String get artifactViewerEmpty => 'У артефакта нет сохранённого содержимого.';
+
+  @override
+  String artifactViewerLoadFailed(String error) {
+    return 'Не удалось загрузить артефакт: $error';
+  }
+
+  @override
+  String get artifactViewerReviewDecision => 'Решение';
+
+  @override
+  String get artifactViewerReviewIssues => 'Замечания';
+
+  @override
+  String get artifactViewerReviewSummary => 'Итог';
+
+  @override
+  String get artifactViewerReviewNoIssues => 'Замечаний нет.';
+
+  @override
+  String get artifactViewerTestPassed => 'Прошло';
+
+  @override
+  String get artifactViewerTestFailed => 'Упало';
+
+  @override
+  String get artifactViewerTestSkipped => 'Пропущено';
+
+  @override
+  String get artifactViewerTestDuration => 'Длительность';
+
+  @override
+  String artifactViewerTestDurationMs(int ms) {
+    return '$ms мс';
+  }
+
+  @override
+  String artifactViewerTestFailuresHeader(int n) {
+    return 'Падения ($n)';
+  }
+
+  @override
+  String artifactViewerTestFailureFile(String file, int line) {
+    return '$file:$line';
+  }
+
+  @override
+  String get artifactViewerTestNoFailures => 'Все проверки зелёные.';
+
+  @override
+  String get artifactsNoSummary => '(без описания)';
+
+  @override
+  String get artifactViewerTestUnnamed => '(без имени)';
+
+  @override
+  String artifactViewerFullTitle(String kind) {
+    return '$kind · полностью';
+  }
 }
