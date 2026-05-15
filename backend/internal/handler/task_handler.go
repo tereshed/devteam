@@ -338,7 +338,7 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 
 // Pause приостанавливает задачу
 // @Summary Приостановка задачи
-// @Description Переводит задачу в статус paused. Допустимо из: planning, in_progress, review, changes_requested, testing.
+// @Description Переводит задачу в state='paused'. Допустимо только из state='active'. Воркеры при pickup проверяют state и пропускают agent_job до Resume.
 // @Tags tasks
 // @Security BearerAuth
 // @Security ApiKeyAuth
@@ -349,7 +349,7 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 // @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
 // @Failure 403 {object} apierror.ErrorResponse "Нет доступа к проекту задачи"
 // @Failure 404 {object} apierror.ErrorResponse "Задача не найдена"
-// @Failure 409 {object} apierror.ErrorResponse "Недопустимый переход (задача в pending/completed/cancelled/failed)"
+// @Failure 409 {object} apierror.ErrorResponse "Задача не в state='active' или уже терминальная"
 // @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
 // @Router /tasks/{id}/pause [post]
 func (h *TaskHandler) Pause(c *gin.Context) {
@@ -430,7 +430,7 @@ func (h *TaskHandler) Cancel(c *gin.Context) {
 
 // Resume возобновляет задачу
 // @Summary Возобновление задачи
-// @Description Переводит задачу из paused/failed в pending (полный рестарт пайплайна). Сбрасывает completed_at.
+// @Description Переводит задачу из paused/needs_human/failed в active. Сбрасывает completed_at и пинает оркестратор (Router пересчитает следующее действие).
 // @Tags tasks
 // @Security BearerAuth
 // @Security ApiKeyAuth
@@ -441,7 +441,7 @@ func (h *TaskHandler) Cancel(c *gin.Context) {
 // @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
 // @Failure 403 {object} apierror.ErrorResponse "Нет доступа к проекту задачи"
 // @Failure 404 {object} apierror.ErrorResponse "Задача не найдена"
-// @Failure 409 {object} apierror.ErrorResponse "Задача не в статусе paused/failed"
+// @Failure 409 {object} apierror.ErrorResponse "Задача не в статусе paused/needs_human/failed"
 // @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
 // @Router /tasks/{id}/resume [post]
 func (h *TaskHandler) Resume(c *gin.Context) {

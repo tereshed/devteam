@@ -57,13 +57,18 @@ const (
 	TaskStateFailed      TaskState = "failed"
 	TaskStateCancelled   TaskState = "cancelled"
 	TaskStateNeedsHuman  TaskState = "needs_human"
+	// TaskStatePaused — Sprint 17 / 6.10: пользователь приостановил задачу. Отличается
+	// от needs_human (туда уходит сам оркестратор) тем что инициируется явно через
+	// POST /tasks/:id/pause. Воркеры при pickup проверяют state и пропускают шаг
+	// если он не active; Resume возвращает active.
+	TaskStatePaused      TaskState = "paused"
 )
 
 // IsValid проверяет валидность состояния.
 func (s TaskState) IsValid() bool {
 	switch s {
 	case TaskStateActive, TaskStateDone, TaskStateFailed,
-		TaskStateCancelled, TaskStateNeedsHuman:
+		TaskStateCancelled, TaskStateNeedsHuman, TaskStatePaused:
 		return true
 	default:
 		return false

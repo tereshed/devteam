@@ -9,14 +9,14 @@ import (
 
 func TestTaskStatus_IsValid(t *testing.T) {
 	valid := []TaskState{
-		TaskStateActive, TaskStateActive, TaskStateActive,
-		TaskStateActive, TaskStateActive, TaskStateActive,
-		TaskStateDone, TaskStateFailed, TaskStateCancelled, TaskStateNeedsHuman,
+		TaskStateActive, TaskStateDone, TaskStateFailed,
+		TaskStateCancelled, TaskStateNeedsHuman, TaskStatePaused,
 	}
 	for _, s := range valid {
 		assert.True(t, s.IsValid(), "expected valid: %s", s)
 	}
 	assert.False(t, TaskState("unknown").IsValid())
+	assert.False(t, TaskState("").IsValid())
 }
 
 func TestTaskPriority_IsValid(t *testing.T) {

@@ -211,6 +211,19 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		return
 	}
 
+	// Sprint 17 / 6.10: Pause/Resume v2. Если задача не в active (paused, needs_human,
+	// done/failed/cancelled), не запускаем агента: помечаем event как Complete и пинаем
+	// Orchestrator.Step. Step увидит state и либо выйдет (paused/needs_human),
+	// либо подтвердит финализацию. Resume позже создаст новый step_req и Router
+	// пересчитает следующее действие на актуальном артефакт-state.
+	if state, err := w.checkTaskState(parentCtx, ev.TaskID); err != nil {
+		w.failEvent(parentCtx, ev, fmt.Errorf("check task state: %w", err))
+		return
+	} else if state != models.TaskStateActive {
+		w.handleNonActiveSkip(parentCtx, ev, state)
+		return
+	}
+
 	// Ctx с таймаутом + cancel-hook через Redis-канал.
 	execCtx, cancel := context.WithTimeout(parentCtx, w.cfg.AgentJobTimeout)
 	defer cancel()
@@ -361,6 +374,37 @@ func (w *AgentWorker) checkCancelRequested(ctx context.Context, taskID uuid.UUID
 		return false, err
 	}
 	return cancelled, nil
+}
+
+// checkTaskState — текущий state задачи. Используется при pickup, чтобы пропустить
+// agent_job если задача в paused/needs_human/terminal (см. Sprint 17 / 6.10).
+func (w *AgentWorker) checkTaskState(ctx context.Context, taskID uuid.UUID) (models.TaskState, error) {
+	var state models.TaskState
+	err := w.db.WithContext(ctx).
+		Raw(`SELECT state FROM tasks WHERE id = ?`, taskID).
+		Scan(&state).Error
+	if err != nil {
+		return "", err
+	}
+	return state, nil
+}
+
+// handleNonActiveSkip — задача не в active (paused/needs_human/terminal). Worktree
+// ещё не аллоцирован (state-check идёт ДО allocate), поэтому никакой очистки не
+// требуется. Помечаем event как Complete (без attempts++) и пинаем Orchestrator
+// чтобы он отработал текущее state (например: дождался Resume или подтвердил
+// финализацию). На Resume orchestrator пересчитает Router-decision на актуальном
+// artifact-state.
+func (w *AgentWorker) handleNonActiveSkip(ctx context.Context, ev *models.TaskEvent, state models.TaskState) {
+	w.logger.InfoContext(ctx, "agent_job skipped — task not active",
+		"worker_id", w.cfg.WorkerID, "task_event_id", ev.ID,
+		"task_id", ev.TaskID, "task_state", string(state))
+
+	if err := w.eventRepo.Complete(ctx, ev.ID); err != nil {
+		w.logger.ErrorContext(ctx, "mark skipped event complete failed",
+			"task_event_id", ev.ID, "error", err.Error())
+	}
+	w.enqueueFollowupStep(ctx, ev.TaskID)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

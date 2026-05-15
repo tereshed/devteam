@@ -704,13 +704,15 @@ func TestTaskTransition_EmptyArtifactsBecomesEmptyJSONObject(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Sprint 17 / 6.10: Pause → state='paused' (а не needs_human). Использует
+// GetByIDForUpdate для NOWAIT-защиты от гонок с финализацией воркером.
 func TestTaskPause_Success(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
 	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
-	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool { return tk.State == models.TaskStateNeedsHuman }), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
+	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool { return tk.State == models.TaskStatePaused }), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
 	require.NoError(t, err)
@@ -720,11 +722,34 @@ func TestTaskPause_Success(t *testing.T) {
 func TestTaskPause_AlreadyPaused(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateNeedsHuman}, nil)
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStatePaused}, nil)
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
 	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
 	assert.ErrorIs(t, err, ErrTaskInvalidTransition)
+}
+
+// Sprint 17 / 6.10: Pause при уже-терминальной задаче → ErrTaskAlreadyTerminal (HTTP 409),
+// чтобы фронт показал info-toast, а не красный snack.
+func TestTaskPause_FromTerminal(t *testing.T) {
+	tr, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateDone}, nil)
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+
+	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
+	assert.ErrorIs(t, err, ErrTaskAlreadyTerminal)
+}
+
+// Sprint 17 / 6.10: row-lock race — воркер прямо сейчас финализирует задачу.
+// Pause не должен блокировать UI; отдаём 409.
+func TestTaskPause_RowLocked_ReturnsAlreadyTerminal(t *testing.T) {
+	tr, _, _, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(nil, repository.ErrTaskLocked)
+
+	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
+	assert.ErrorIs(t, err, ErrTaskAlreadyTerminal)
 }
 
 func TestTaskCancel_Success(t *testing.T) {
@@ -763,7 +788,22 @@ func TestTaskCancel_RowLocked_ReturnsAlreadyTerminal(t *testing.T) {
 	assert.ErrorIs(t, err, ErrTaskAlreadyTerminal)
 }
 
-func TestTaskResume_FromPaused(t *testing.T) {
+// Sprint 17 / 6.10: Resume из настоящего paused-состояния (новый v2-сентинель).
+func TestTaskResume_FromPausedV2(t *testing.T) {
+	tr, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStatePaused}
+	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
+		return tk.State == models.TaskStateActive && tk.CompletedAt == nil
+	}), models.TaskStatePaused, mock.AnythingOfType("time.Time")).Return(nil)
+
+	_, err := svc.Resume(ctx, tsUserID, models.RoleUser, tsTaskID)
+	require.NoError(t, err)
+}
+
+func TestTaskResume_FromNeedsHuman(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
 	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateNeedsHuman, CompletedAt: ptrTime(time.Now())}

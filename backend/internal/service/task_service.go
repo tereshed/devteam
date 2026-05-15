@@ -75,13 +75,14 @@ func parseCustomTimeout(s string) (*models.IntervalDuration, error) {
 	return &iv, nil
 }
 
-// allowedTransitions — Sprint 17 / Orchestration v2: упрощённый state-machine 5 состояний.
+// allowedTransitions — Sprint 17 / Orchestration v2: упрощённый state-machine 6 состояний.
 // Прежняя 10-значная pipeline-таблица (pending|planning|in_progress|review|...) сводится
-// к 5 высокоуровневым state'ам. Внутреннее течение active-задачи (через какие фазы
+// к высокоуровневым state'ам. Внутреннее течение active-задачи (через какие фазы
 // прошла) отражается в artifacts, не в state.
 //
 // Переходы:
-//   active       → done | failed | cancelled | needs_human
+//   active       → done | failed | cancelled | needs_human | paused
+//   paused       → active | cancelled (Sprint 17 / 6.10 — Pause/Resume v2)
 //   needs_human  → active | cancelled (resume или отмена оператором)
 //   failed       → active (retry с теми же параметрами)
 //   done | cancelled — терминальные
@@ -95,6 +96,11 @@ var allowedTransitions = map[models.TaskState][]models.TaskState{
 		models.TaskStateFailed,
 		models.TaskStateCancelled,
 		models.TaskStateNeedsHuman,
+		models.TaskStatePaused,
+	},
+	models.TaskStatePaused: {
+		models.TaskStateActive,
+		models.TaskStateCancelled,
 	},
 	models.TaskStateNeedsHuman: {
 		models.TaskStateActive,
@@ -271,9 +277,12 @@ func applyTimestampsOnStateChange(task *models.Task, from, to models.TaskState) 
 		if task.StartedAt == nil {
 			task.StartedAt = &now
 		}
-		// Resume (failed|needs_human → active): сбрасываем completed_at, чтобы
-		// заново отметить терминал при следующем переходе.
-		if from == models.TaskStateFailed || from == models.TaskStateNeedsHuman {
+		// Resume (failed|needs_human|paused → active): сбрасываем completed_at, чтобы
+		// заново отметить терминал при следующем переходе. paused не выставляет
+		// completed_at (это не финиш), но из failed/needs_human возможно надо чистить.
+		if from == models.TaskStateFailed ||
+			from == models.TaskStateNeedsHuman ||
+			from == models.TaskStatePaused {
 			task.CompletedAt = nil
 		}
 	case models.TaskStateDone, models.TaskStateFailed, models.TaskStateCancelled:
@@ -723,20 +732,30 @@ func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole mode
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		// SELECT ... FOR UPDATE NOWAIT — pause-vs-finalization race: если строку
+		// держит воркер прямо сейчас, не блокируем UI, отдаём 409.
+		task, err := s.taskRepo.GetByIDForUpdate(txCtx, taskID)
 		if err != nil {
+			if errors.Is(err, repository.ErrTaskLocked) {
+				return ErrTaskAlreadyTerminal
+			}
 			return mapTaskRepoErr(err)
 		}
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
 		}
+		if isTerminalTaskState(task.State) {
+			return ErrTaskAlreadyTerminal
+		}
 		expectedStatus := task.State
 		expectedUpdatedAt := task.UpdatedAt
-		if !canTransition(task.State, models.TaskStateNeedsHuman) {
+		// Sprint 17 / 6.10: Pause → state='paused' (не needs_human). Воркеры при pickup
+		// видят non-active state и пропускают шаг до Resume.
+		if !canTransition(task.State, models.TaskStatePaused) {
 			return ErrTaskInvalidTransition
 		}
 		prevState = task.State
-		task.State = models.TaskStateNeedsHuman
+		task.State = models.TaskStatePaused
 		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
 			return mapTaskRepoErr(err)
 		}
@@ -826,7 +845,11 @@ func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 		}
 		expectedStatus := task.State
 		expectedUpdatedAt := task.UpdatedAt
-		if task.State != models.TaskStateNeedsHuman && task.State != models.TaskStateFailed {
+		// Sprint 17 / 6.10: Resume теперь поддерживает paused (новое v2-состояние) дополнительно
+		// к legacy needs_human/failed. allowedTransitions гарантирует корректность переходов.
+		if task.State != models.TaskStateNeedsHuman &&
+			task.State != models.TaskStateFailed &&
+			task.State != models.TaskStatePaused {
 			return ErrTaskInvalidTransition
 		}
 		if !canTransition(task.State, models.TaskStateActive) {
@@ -875,7 +898,9 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
 		}
-		if isTerminalTaskState(task.State) || task.State == models.TaskStateNeedsHuman {
+		if isTerminalTaskState(task.State) ||
+			task.State == models.TaskStateNeedsHuman ||
+			task.State == models.TaskStatePaused {
 			return ErrTaskInvalidTransition
 		}
 

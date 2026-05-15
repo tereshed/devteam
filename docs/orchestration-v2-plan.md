@@ -931,16 +931,21 @@ In-flight jobs:
 
 **Why.** Без актуальной документации новые контрибьюторы (включая агентов в этом самом проекте 🙂) будут писать по старым правилам. Swagger out-of-sync — частая регрессия при добавлении полей в DTO.
 
-#### 6.10. (Nice-to-have) Pause/Resume для v2
+#### ✅ 6.10. Pause/Resume для v2
 **Проблема.** Сейчас pause/resume не имеют v2-семантики. Cancel перешёл в v2, pause/resume — нет.
 
-**Что сделать (если решим оставить эти операции).**
-- Добавить `state='paused'` в `tasks.state` CHECK constraint (миграция 042).
-- В `task_service.allowedTransitions`: `active → paused`, `paused → active|cancelled`.
-- Pause: `tasks.cancel_requested` НЕ выставляем; вместо этого ставим `paused`. Worker'ы при pickup проверяют `state == 'active'` перед началом Step.
-- В UI кнопки Pause/Resume переподключить на новые сентинели.
+**Сделано (Sprint 17 / 6.10):**
+- ✅ Миграция 042 — `state='paused'` добавлен в `chk_tasks_state` CHECK ([042_tasks_state_paused.sql](backend/db/migrations/042_tasks_state_paused.sql)).
+- ✅ `models.TaskStatePaused` + `IsValid()` ([task.go](backend/internal/models/task.go)).
+- ✅ `task_service.allowedTransitions`: `active → paused`, `paused → active|cancelled` ([task_service.go](backend/internal/service/task_service.go)).
+- ✅ `TaskService.Pause` использует `GetByIDForUpdate` (NOWAIT) + ставит `state='paused'` (не `needs_human`); `cancel_requested` не трогаем. Возврат 409 при row-lock race или terminal state.
+- ✅ `TaskService.Resume` принимает `paused` дополнительно к `needs_human`/`failed`.
+- ✅ `AgentWorker.processOne` при pickup проверяет `state == 'active'` через `checkTaskState`; если paused/needs_human/terminal — `Complete` без запуска агента + `enqueueFollowupStep` (Orchestrator пересчитает).
+- ✅ Frontend: `TaskLifecycleMutation.pause/resume`, Pause-кнопка из `active`, Resume-кнопка из `paused/needs_human/failed`, Cancel-кнопка из `active/needs_human/paused`. Виджет-тесты обновлены (`paused narrow: Resume + Cancel доступны`, `failed: доступен Resume (retry)`).
+- ✅ Swagger перегенерирован (`make swagger`).
+- ✅ Unit-тесты: `TestTaskPause_Success` (state→paused), `TestTaskPause_AlreadyPaused`, `TestTaskPause_FromTerminal` (409), `TestTaskPause_RowLocked_ReturnsAlreadyTerminal`, `TestTaskResume_FromPausedV2`.
 
-**Why nice-to-have, не must.** Cancel + custom_timeout уже покрывают main use case ("я передумал" / "слишком долго работает"). Pause полезен только при дорогих LLM-вызовах ("дай я гляну до того как продолжать") — добавим если будет реальный запрос.
+**Why.** Cancel + custom_timeout покрывают «передумал» / «слишком долго». Pause полезен при дорогих LLM-вызовах («дай я гляну до того как продолжать») — реализовано полностью под v2-семантику, чтобы UI кнопки не были декоративными.
 
 ---
 

@@ -775,6 +775,18 @@ class TaskDetailController extends _$TaskDetailController {
         (repo) => repo.cancelTask(_taskId, cancelToken: null),
       );
 
+  /// Sprint 17 / 6.10 — Pause v2: state='active' → state='paused'.
+  Future<TaskMutationOutcome> pauseTask() => _runLifecycleMutation(
+        TaskLifecycleMutation.pause,
+        (repo) => repo.pauseTask(_taskId, cancelToken: null),
+      );
+
+  /// Sprint 17 / 6.10 — Resume v2: state='paused'|'needs_human'|'failed' → 'active'.
+  Future<TaskMutationOutcome> resumeTask() => _runLifecycleMutation(
+        TaskLifecycleMutation.resume,
+        (repo) => repo.resumeTask(_taskId, cancelToken: null),
+      );
+
   Future<TaskMutationOutcome> correctTask(String text) async {
     if (text.trim().isEmpty) {
       return TaskMutationOutcome.validationFailed;

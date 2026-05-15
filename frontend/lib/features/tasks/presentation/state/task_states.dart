@@ -7,8 +7,11 @@ import 'package:frontend/features/tasks/domain/requests.dart';
 part 'task_states.freezed.dart';
 
 /// Мутация жизненного цикла задачи в полёте (12.8).
+/// Sprint 17 / 6.10: добавлены pause/resume под v2-семантику state='paused'.
 enum TaskLifecycleMutation {
   cancel,
+  pause,
+  resume,
 }
 
 /// Состояние списка задач проекта (Kanban / таблица — UI в 12.4).

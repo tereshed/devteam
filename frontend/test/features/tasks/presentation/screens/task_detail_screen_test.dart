@@ -570,7 +570,8 @@ void main() {
     expect(find.textContaining('sk-'), findsNothing);
   });
 
-  testWidgets('active wide: только Cancel в AppBar', (tester) async {
+  // Sprint 17 / 6.10: active wide → Pause + Cancel в AppBar (Resume не виден).
+  testWidgets('active wide: Pause + Cancel в AppBar', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
@@ -587,11 +588,12 @@ void main() {
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
     expect(find.byTooltip(l10n.taskActionCancel), findsOneWidget);
-    expect(find.byTooltip(l10n.taskActionPause), findsNothing);
+    expect(find.byTooltip(l10n.taskActionPause), findsOneWidget);
     expect(find.byTooltip(l10n.taskActionResume), findsNothing);
   });
 
-  testWidgets('needs_human narrow: Cancel доступен', (tester) async {
+  // Sprint 17 / 6.10: needs_human → Resume + Cancel (Pause не виден — нет смысла из не-active).
+  testWidgets('needs_human narrow: Resume + Cancel доступны', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
@@ -609,8 +611,31 @@ void main() {
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
     expect(find.text(l10n.taskActionCancel), findsOneWidget);
+    expect(find.text(l10n.taskActionResume), findsOneWidget);
     expect(find.text(l10n.taskActionPause), findsNothing);
-    expect(find.text(l10n.taskActionResume), findsNothing);
+  });
+
+  // Sprint 17 / 6.10: новое v2-состояние — paused → Resume + Cancel.
+  testWidgets('paused narrow: Resume + Cancel доступны', (tester) async {
+    final seed = TaskDetailState.initial().copyWith(
+      task: _minimalTask(
+        id: _kTid,
+        projectId: kTaskFixtureProjectId,
+        status: 'paused',
+      ),
+      isLoadingTask: false,
+      isLoadingMessages: false,
+    );
+    await _pumpDetail(
+      tester,
+      logicalSize: const Size(400, 800),
+      detailController: () => _CountingDetailController(seed),
+    );
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizationsEn();
+    expect(find.text(l10n.taskActionCancel), findsOneWidget);
+    expect(find.text(l10n.taskActionResume), findsOneWidget);
+    expect(find.text(l10n.taskActionPause), findsNothing);
   });
 
   testWidgets('done: панель lifecycle отсутствует', (tester) async {
@@ -635,7 +660,9 @@ void main() {
     expect(find.text(l10n.taskActionResume), findsNothing);
   });
 
-  testWidgets('failed: панель lifecycle отсутствует (терминальный state)', (
+  // Sprint 17 / 6.10: failed теперь не терминальное в plain-смысле — allowedTransitions
+  // разрешает Resume (failed → active) для retry с теми же параметрами. UI показывает Resume.
+  testWidgets('failed: доступен Resume (retry)', (
     tester,
   ) async {
     final seed = TaskDetailState.initial().copyWith(
@@ -656,7 +683,7 @@ void main() {
     final l10n = AppLocalizationsEn();
     expect(find.text(l10n.taskActionPause), findsNothing);
     expect(find.text(l10n.taskActionCancel), findsNothing);
-    expect(find.text(l10n.taskActionResume), findsNothing);
+    expect(find.text(l10n.taskActionResume), findsOneWidget);
   });
 
   testWidgets('cancelled: панель lifecycle отсутствует', (tester) async {

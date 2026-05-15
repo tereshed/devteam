@@ -32,12 +32,27 @@ const ValueKey<String> kTaskDetailMessagesLoadMoreErrorBannerKey =
     ValueKey<String>('task_detail_messages_load_more_error_banner');
 
 bool _taskDetailShowCancelForStatus(String status) {
-  return status == 'active' || status == 'needs_human';
+  return status == 'active' || status == 'needs_human' || status == 'paused';
+}
+
+/// Sprint 17 / 6.10: Pause доступен только из state='active'.
+bool _taskDetailShowPauseForStatus(String status) {
+  return status == 'active';
+}
+
+/// Sprint 17 / 6.10: Resume доступен из paused (новое v2-состояние), а также
+/// из legacy needs_human/failed (по семантике allowedTransitions в backend).
+bool _taskDetailShowResumeForStatus(String status) {
+  return status == 'paused' ||
+      status == 'needs_human' ||
+      status == 'failed';
 }
 
 /// Панель lifecycle только если есть хотя бы одно действие (12.8; неизвестный статус — без пустого отступа).
 bool taskDetailLifecyclePanelVisibleForStatus(String status) {
-  return _taskDetailShowCancelForStatus(status);
+  return _taskDetailShowCancelForStatus(status) ||
+      _taskDetailShowPauseForStatus(status) ||
+      _taskDetailShowResumeForStatus(status);
 }
 
 class _LifecycleActionRow {
@@ -60,6 +75,8 @@ List<_LifecycleActionRow> _taskDetailLifecycleActionRows(
   AppLocalizations l10n,
   TaskDetailState data, {
   required VoidCallback onCancel,
+  required VoidCallback onPause,
+  required VoidCallback onResume,
 }) {
   final status = data.task!.status;
   final rt = data.realtimeMutationBlocked;
@@ -67,6 +84,20 @@ List<_LifecycleActionRow> _taskDetailLifecycleActionRows(
   final canPress = !rt && inflight == null;
 
   return [
+    _LifecycleActionRow(
+      visible: _taskDetailShowPauseForStatus(status),
+      busy: inflight == TaskLifecycleMutation.pause,
+      label: l10n.taskActionPause,
+      icon: Icons.pause_circle_outline,
+      onPressed: canPress ? onPause : null,
+    ),
+    _LifecycleActionRow(
+      visible: _taskDetailShowResumeForStatus(status),
+      busy: inflight == TaskLifecycleMutation.resume,
+      label: l10n.taskActionResume,
+      icon: Icons.play_circle_outline,
+      onPressed: canPress ? onResume : null,
+    ),
     _LifecycleActionRow(
       visible: _taskDetailShowCancelForStatus(status),
       busy: inflight == TaskLifecycleMutation.cancel,
@@ -325,6 +356,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     await _applyLifecycleMutation((n) => n.cancelTask());
   }
 
+  /// Sprint 17 / 6.10: Pause v2 — без диалога подтверждения (обратимое действие).
+  Future<void> _onPausePressed() =>
+      _applyLifecycleMutation((n) => n.pauseTask());
+
+  /// Sprint 17 / 6.10: Resume v2 — без диалога (явный жест на возобновление).
+  Future<void> _onResumePressed() =>
+      _applyLifecycleMutation((n) => n.resumeTask());
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -409,6 +448,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                     l10n,
                     value,
                     onCancel: () => unawaited(_onCancelPressed()),
+                    onPause: () => unawaited(_onPausePressed()),
+                    onResume: () => unawaited(_onResumePressed()),
                   )
                 : const <Widget>[],
           _ => const <Widget>[],
@@ -550,6 +591,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               l10n: l10n,
               data: data,
               onCancel: () => unawaited(_onCancelPressed()),
+              onPause: () => unawaited(_onPausePressed()),
+              onResume: () => unawaited(_onResumePressed()),
             ),
           ),
         SliverToBoxAdapter(
@@ -798,11 +841,15 @@ List<Widget> _taskDetailLifecycleAppBarActions(
   AppLocalizations l10n,
   TaskDetailState data, {
   required VoidCallback onCancel,
+  required VoidCallback onPause,
+  required VoidCallback onResume,
 }) {
   final rows = _taskDetailLifecycleActionRows(
     l10n,
     data,
     onCancel: onCancel,
+    onPause: onPause,
+    onResume: onResume,
   );
   return [
     for (final r in rows)
@@ -826,11 +873,15 @@ class _TaskLifecycleMobileActions extends StatelessWidget {
     required this.l10n,
     required this.data,
     required this.onCancel,
+    required this.onPause,
+    required this.onResume,
   });
 
   final AppLocalizations l10n;
   final TaskDetailState data;
   final VoidCallback onCancel;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
 
   @override
   Widget build(BuildContext context) {
@@ -838,6 +889,8 @@ class _TaskLifecycleMobileActions extends StatelessWidget {
       l10n,
       data,
       onCancel: onCancel,
+      onPause: onPause,
+      onResume: onResume,
     );
 
     return Padding(
