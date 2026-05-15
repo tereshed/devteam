@@ -8,6 +8,9 @@ enum TaskMutationOutcome {
   /// Нет поверхности состояния ([AsyncData]) — мутации не выполняем «тихим» HTTP.
   notReady,
   blockedByRealtime,
+  /// Cancel race: backend вернул 409 task_already_terminal — задача уже завершена.
+  /// UI должен показать info-toast (не красный snack) и обновить state из БД.
+  alreadyTerminal,
   completed,
 }
 

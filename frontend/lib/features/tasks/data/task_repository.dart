@@ -397,11 +397,16 @@ class TaskRepository {
           originalError: err,
         );
       },
-      on409: (msg, err, code) => TaskConflictException(
-        msg,
-        originalError: err,
-        apiErrorCode: code,
-      ),
+      on409: (msg, err, code) {
+        if (code == 'task_already_terminal') {
+          return TaskAlreadyTerminalException(msg, originalError: err);
+        }
+        return TaskConflictException(
+          msg,
+          originalError: err,
+          apiErrorCode: code,
+        );
+      },
       on422: (msg, err, code) => TaskUnprocessableException(
         msg,
         originalError: err,

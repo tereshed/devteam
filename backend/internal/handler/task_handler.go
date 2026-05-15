@@ -67,6 +67,8 @@ func writeTaskServiceError(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusNotFound, apierror.ErrNotFound, err.Error())
 	case errors.Is(err, service.ErrProjectForbidden):
 		apierror.JSON(c, http.StatusForbidden, apierror.ErrForbidden, err.Error())
+	case errors.Is(err, service.ErrTaskAlreadyTerminal):
+		apierror.JSON(c, http.StatusConflict, apierror.ErrTaskAlreadyTerminal, err.Error())
 	case errors.Is(err, service.ErrTaskInvalidTransition):
 		apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, err.Error())
 	case errors.Is(err, service.ErrTaskTerminalStatus):
@@ -82,6 +84,8 @@ func writeTaskServiceError(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrTaskInvalidPriority):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTaskInvalidStatus):
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
+	case errors.Is(err, service.ErrTaskInvalidTimeout):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTaskMessageInvalidType):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())

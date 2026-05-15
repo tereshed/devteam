@@ -897,6 +897,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Can\'t change the task while updates are temporarily unavailable.';
 
   @override
+  String get taskActionAlreadyTerminalSnack => 'Task already finished';
+
+  @override
   String get taskMessageTypeUnknown => 'Unknown message type';
 
   @override
@@ -1305,4 +1308,178 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commonRequestFailed => 'Request failed';
+
+  @override
+  String get commonRequiredField => 'Required';
+
+  @override
+  String get commonCancel => 'Cancel';
+
+  @override
+  String get commonSave => 'Save';
+
+  @override
+  String get commonCreate => 'Create';
+
+  @override
+  String get commonConfirm => 'Confirm';
+
+  @override
+  String get agentsV2Title => 'Agents (v2)';
+
+  @override
+  String get agentsV2Empty => 'No agents registered yet.';
+
+  @override
+  String get agentsV2Refresh => 'Refresh';
+
+  @override
+  String get agentsV2CreateButton => 'New agent';
+
+  @override
+  String get agentsV2CreateTitle => 'Create agent';
+
+  @override
+  String get agentsV2DetailTitle => 'Agent';
+
+  @override
+  String get agentsV2KindLlm => 'LLM';
+
+  @override
+  String get agentsV2KindSandbox => 'Sandbox';
+
+  @override
+  String get agentsV2FieldId => 'ID';
+
+  @override
+  String get agentsV2FieldName => 'Name';
+
+  @override
+  String get agentsV2FieldRole => 'Role';
+
+  @override
+  String get agentsV2FieldExecutionKind => 'Execution kind';
+
+  @override
+  String get agentsV2FieldRoleDescription =>
+      'Role description (used in Router prompt)';
+
+  @override
+  String get agentsV2FieldSystemPrompt => 'System prompt';
+
+  @override
+  String get agentsV2FieldModel => 'Model';
+
+  @override
+  String get agentsV2FieldTemperature => 'Temperature';
+
+  @override
+  String get agentsV2FieldMaxTokens => 'Max tokens';
+
+  @override
+  String get agentsV2FieldCodeBackend => 'Code backend';
+
+  @override
+  String get agentsV2FieldIsActive => 'Active';
+
+  @override
+  String get agentsV2SectionConfig => 'Configuration';
+
+  @override
+  String get agentsV2AddSecretButton => 'Add / update secret';
+
+  @override
+  String get agentsV2SavedSnackbar => 'Agent saved.';
+
+  @override
+  String get agentsV2SecretSaved => 'Secret saved (encrypted).';
+
+  @override
+  String get agentsV2SecretDialogTitle => 'Set agent secret';
+
+  @override
+  String get agentsV2SecretKeyName => 'Key name';
+
+  @override
+  String get agentsV2SecretValue => 'Value';
+
+  @override
+  String get agentsV2SecretValueHelper =>
+      'Stored AES-256-GCM encrypted. Read-back is not available — re-enter to rotate.';
+
+  @override
+  String get agentsV2SecretsHint =>
+      'Secrets are stored encrypted server-side and never returned. Use the button above to set/rotate a secret value.';
+
+  @override
+  String get tasksCancelButton => 'Cancel task';
+
+  @override
+  String get tasksCancelConfirmTitle => 'Cancel task?';
+
+  @override
+  String get tasksCancelConfirmBody =>
+      'All in-flight agents will be interrupted and the task moved to cancelled state.';
+
+  @override
+  String get tasksCancelInflightSuccess =>
+      'Cancel requested. Agents will stop shortly.';
+
+  @override
+  String get tasksCustomTimeoutLabel => 'Custom timeout (e.g. 4h, 90m, 3600s)';
+
+  @override
+  String get tasksCustomTimeoutHelper =>
+      'Overrides the default 4h orchestration timeout for this task.';
+
+  @override
+  String get tasksCustomTimeoutInvalid => 'Invalid duration. Use Nh / Nm / Ns.';
+
+  @override
+  String get worktreesTitle => 'Worktrees (debug)';
+
+  @override
+  String get worktreesEmpty => 'No active worktrees.';
+
+  @override
+  String get worktreesColTask => 'Task';
+
+  @override
+  String get worktreesColBranch => 'Branch';
+
+  @override
+  String get worktreesColState => 'State';
+
+  @override
+  String get worktreesColAllocated => 'Allocated';
+
+  @override
+  String get worktreesReleaseButton => 'Force release';
+
+  @override
+  String get worktreesReleasedSnackbar => 'Worktree released.';
+
+  @override
+  String get worktreesFilterAll => 'All';
+
+  @override
+  String get worktreesFilterAllocated => 'Allocated';
+
+  @override
+  String get worktreesFilterInUse => 'In use';
+
+  @override
+  String get worktreesFilterReleased => 'Released';
+
+  @override
+  String get routerTimelineSection => 'Router timeline';
+
+  @override
+  String get routerTimelineEmpty => 'No router decisions logged yet.';
+
+  @override
+  String get artifactsSection => 'Artifacts';
+
+  @override
+  String get artifactsEmpty => 'No artifacts produced yet.';
 }

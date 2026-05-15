@@ -745,6 +745,14 @@ class TaskDetailController extends _$TaskDetailController {
       return TaskMutationOutcome.completed;
     } catch (e, st) {
       if (ref.mounted && epoch == _lifecycleEpoch) {
+        // Race-кейс: backend вернул 409 task_already_terminal — задача уже завершена
+        // (worker успел финализировать между чтением state на UI и POST /cancel).
+        // НЕ выставляем AsyncError (красный snack пугает на штатной ситуации);
+        // перечитываем task из БД и возвращаем alreadyTerminal — UI покажет info-toast.
+        if (e is TaskAlreadyTerminalException) {
+          unawaited(_reloadTaskReconcileFromServer().catchError((_) {}));
+          return TaskMutationOutcome.alreadyTerminal;
+        }
         _setAsyncErrorPreservingPrevious(e, st);
         rethrow;
       }
@@ -761,16 +769,6 @@ class TaskDetailController extends _$TaskDetailController {
       }
     }
   }
-
-  Future<TaskMutationOutcome> pauseTask() => _runLifecycleMutation(
-        TaskLifecycleMutation.pause,
-        (repo) => repo.pauseTask(_taskId, cancelToken: null),
-      );
-
-  Future<TaskMutationOutcome> resumeTask() => _runLifecycleMutation(
-        TaskLifecycleMutation.resume,
-        (repo) => repo.resumeTask(_taskId, cancelToken: null),
-      );
 
   Future<TaskMutationOutcome> cancelTask() => _runLifecycleMutation(
         TaskLifecycleMutation.cancel,

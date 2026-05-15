@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -63,6 +64,10 @@ type TaskFilter struct {
 type TaskRepository interface {
 	Create(ctx context.Context, task *models.Task) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Task, error)
+	// GetByIDForUpdate — SELECT ... FOR UPDATE NOWAIT, должен вызываться внутри транзакции.
+	// Возвращает ErrTaskLocked, если строка уже залочена (SQLSTATE 55P03).
+	// Используется в Cancel/RequestCancel против race condition cancel-vs-finalization.
+	GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Task, error)
 	List(ctx context.Context, filter TaskFilter) ([]models.Task, int64, error)
 	// Update атомарно сохраняет задачу при совпадении state и updated_at с момента чтения (optimistic lock).
 	// Sprint 17: status → state.
@@ -167,6 +172,29 @@ func (r *taskRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Tas
 			return nil, ErrTaskNotFound
 		}
 		return nil, fmt.Errorf("failed to get task: %w", err)
+	}
+	return &task, nil
+}
+
+// pgErrCodeLockNotAvailable — SQLSTATE 55P03 (NOWAIT и lock уже занят).
+const pgErrCodeLockNotAvailable = "55P03"
+
+func (r *taskRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Task, error) {
+	db := gormDB(ctx, r.db)
+	var task models.Task
+	err := db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE", Options: "NOWAIT"}).
+		Where("id = ?", id).
+		First(&task).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTaskNotFound
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgErrCodeLockNotAvailable {
+			return nil, ErrTaskLocked
+		}
+		return nil, fmt.Errorf("failed to get task for update: %w", err)
 	}
 	return &task, nil
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -60,6 +61,44 @@ func (r *memWorktreeRepo) ListByTaskID(_ context.Context, taskID uuid.UUID) ([]m
 		}
 	}
 	return out, nil
+}
+
+// List — стаб для in-memory mock'а: фильтрует по task_id/state, сортирует по
+// allocated_at DESC. Покрывает потребности WorktreeManager unit-тестов без
+// дублирования логики реальной репы.
+func (r *memWorktreeRepo) List(_ context.Context, filter repository.WorktreeFilter) ([]models.Worktree, error) {
+	if filter.State != nil && !filter.State.IsValid() {
+		return nil, repository.ErrWorktreeNotFound
+	}
+	out := make([]models.Worktree, 0, len(r.data))
+	for _, w := range r.data {
+		if filter.TaskID != nil && w.TaskID != *filter.TaskID {
+			continue
+		}
+		if filter.State != nil && w.State != *filter.State {
+			continue
+		}
+		out = append(out, *w)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].AllocatedAt.After(out[j].AllocatedAt)
+	})
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = repository.WorktreeListDefaultLimit
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(out) {
+		return []models.Worktree{}, nil
+	}
+	end := offset + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[offset:end], nil
 }
 
 func (r *memWorktreeRepo) UpdateState(_ context.Context, id uuid.UUID, s models.WorktreeState) error {

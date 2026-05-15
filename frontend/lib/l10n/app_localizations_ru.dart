@@ -899,6 +899,9 @@ class AppLocalizationsRu extends AppLocalizations {
       'Сейчас нельзя изменить задачу: обновления по сети временно недоступны.';
 
   @override
+  String get taskActionAlreadyTerminalSnack => 'Задача уже завершена';
+
+  @override
   String get taskMessageTypeUnknown => 'Неизвестный тип сообщения';
 
   @override
@@ -1308,4 +1311,180 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get commonRequestFailed => 'Ошибка запроса';
+
+  @override
+  String get commonRequiredField => 'Обязательное поле';
+
+  @override
+  String get commonCancel => 'Отмена';
+
+  @override
+  String get commonSave => 'Сохранить';
+
+  @override
+  String get commonCreate => 'Создать';
+
+  @override
+  String get commonConfirm => 'Подтвердить';
+
+  @override
+  String get agentsV2Title => 'Агенты (v2)';
+
+  @override
+  String get agentsV2Empty => 'Пока нет ни одного агента.';
+
+  @override
+  String get agentsV2Refresh => 'Обновить';
+
+  @override
+  String get agentsV2CreateButton => 'Новый агент';
+
+  @override
+  String get agentsV2CreateTitle => 'Создать агента';
+
+  @override
+  String get agentsV2DetailTitle => 'Агент';
+
+  @override
+  String get agentsV2KindLlm => 'LLM';
+
+  @override
+  String get agentsV2KindSandbox => 'Sandbox';
+
+  @override
+  String get agentsV2FieldId => 'ID';
+
+  @override
+  String get agentsV2FieldName => 'Имя';
+
+  @override
+  String get agentsV2FieldRole => 'Роль';
+
+  @override
+  String get agentsV2FieldExecutionKind => 'Тип исполнения';
+
+  @override
+  String get agentsV2FieldRoleDescription =>
+      'Описание роли (попадает в промпт Router\'а)';
+
+  @override
+  String get agentsV2FieldSystemPrompt => 'Системный промпт';
+
+  @override
+  String get agentsV2FieldModel => 'Модель';
+
+  @override
+  String get agentsV2FieldTemperature => 'Температура';
+
+  @override
+  String get agentsV2FieldMaxTokens => 'Max tokens';
+
+  @override
+  String get agentsV2FieldCodeBackend => 'Code backend';
+
+  @override
+  String get agentsV2FieldIsActive => 'Активен';
+
+  @override
+  String get agentsV2SectionConfig => 'Конфигурация';
+
+  @override
+  String get agentsV2AddSecretButton => 'Добавить / обновить секрет';
+
+  @override
+  String get agentsV2SavedSnackbar => 'Агент сохранён.';
+
+  @override
+  String get agentsV2SecretSaved => 'Секрет сохранён (зашифрован).';
+
+  @override
+  String get agentsV2SecretDialogTitle => 'Установить секрет агента';
+
+  @override
+  String get agentsV2SecretKeyName => 'Имя ключа';
+
+  @override
+  String get agentsV2SecretValue => 'Значение';
+
+  @override
+  String get agentsV2SecretValueHelper =>
+      'Шифруется AES-256-GCM. Прочитать обратно нельзя — введите заново для ротации.';
+
+  @override
+  String get agentsV2SecretsHint =>
+      'Секреты хранятся зашифрованными на сервере и никогда не возвращаются клиенту. Используйте кнопку выше, чтобы установить/обновить значение.';
+
+  @override
+  String get tasksCancelButton => 'Отменить задачу';
+
+  @override
+  String get tasksCancelConfirmTitle => 'Отменить задачу?';
+
+  @override
+  String get tasksCancelConfirmBody =>
+      'Все активные агенты будут прерваны, задача переведётся в статус cancelled.';
+
+  @override
+  String get tasksCancelInflightSuccess =>
+      'Отмена отправлена. Агенты остановятся в ближайшее время.';
+
+  @override
+  String get tasksCustomTimeoutLabel =>
+      'Свой таймаут (например 4h, 90m, 3600s)';
+
+  @override
+  String get tasksCustomTimeoutHelper =>
+      'Переопределяет дефолтные 4 часа оркестрации для этой задачи.';
+
+  @override
+  String get tasksCustomTimeoutInvalid =>
+      'Некорректный формат. Используйте Nh / Nm / Ns.';
+
+  @override
+  String get worktreesTitle => 'Worktrees (отладка)';
+
+  @override
+  String get worktreesEmpty => 'Нет активных worktree\'ов.';
+
+  @override
+  String get worktreesColTask => 'Задача';
+
+  @override
+  String get worktreesColBranch => 'Ветка';
+
+  @override
+  String get worktreesColState => 'Статус';
+
+  @override
+  String get worktreesColAllocated => 'Создан';
+
+  @override
+  String get worktreesReleaseButton => 'Принудительно освободить';
+
+  @override
+  String get worktreesReleasedSnackbar => 'Worktree освобождён.';
+
+  @override
+  String get worktreesFilterAll => 'Все';
+
+  @override
+  String get worktreesFilterAllocated => 'Allocated';
+
+  @override
+  String get worktreesFilterInUse => 'In use';
+
+  @override
+  String get worktreesFilterReleased => 'Released';
+
+  @override
+  String get routerTimelineSection => 'Лента решений Router\'а';
+
+  @override
+  String get routerTimelineEmpty => 'Решений Router\'а пока нет.';
+
+  @override
+  String get artifactsSection => 'Артефакты';
+
+  @override
+  String get artifactsEmpty => 'Артефактов пока нет.';
 }

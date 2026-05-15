@@ -4,8 +4,11 @@ import 'package:frontend/core/routing/auth_guard.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
 import 'package:frontend/core/routing/root_router_redirect.dart';
 import 'package:frontend/core/routing/router_error_screen.dart';
+import 'package:frontend/features/admin/agents_v2/presentation/screens/agent_v2_detail_screen.dart';
+import 'package:frontend/features/admin/agents_v2/presentation/screens/agents_v2_list_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompt_edit_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompts_list_screen.dart';
+import 'package:frontend/features/admin/worktrees_v2/presentation/screens/worktrees_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/execution_detail_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/executions_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/workflows_list_screen.dart';
@@ -155,6 +158,39 @@ class AppRouter {
       ),
 
       // Admin Routes (в реальном проекте нужен отдельный adminGuard)
+      // Agents v2 — реестр LLM/sandbox-агентов (Orchestration v2 / Sprint 17).
+      GoRoute(
+        path: '/admin/agents-v2',
+        name: 'admin_agents_v2',
+        redirect: authGuard,
+        pageBuilder: (context, state) => MaterialPage(
+          key: state.pageKey,
+          child: const AgentsV2ListScreen(),
+        ),
+        routes: [
+          GoRoute(
+            path: ':id',
+            name: 'admin_agents_v2_detail',
+            pageBuilder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return MaterialPage(
+                key: state.pageKey,
+                child: AgentV2DetailScreen(agentId: id),
+              );
+            },
+          ),
+        ],
+      ),
+      // Worktrees debug — текущие активные git worktree'ы (Orchestration v2 / Sprint 17).
+      GoRoute(
+        path: '/admin/worktrees',
+        name: 'admin_worktrees',
+        redirect: authGuard,
+        pageBuilder: (context, state) => MaterialPage(
+          key: state.pageKey,
+          child: const WorktreesListScreen(),
+        ),
+      ),
       GoRoute(
         path: '/admin/prompts',
         name: 'admin_prompts',

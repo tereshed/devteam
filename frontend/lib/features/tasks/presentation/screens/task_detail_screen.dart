@@ -13,6 +13,8 @@ import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_display.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_metadata_redaction.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
+import 'package:frontend/features/tasks/presentation/widgets/artifacts_dag_section.dart';
+import 'package:frontend/features/tasks/presentation/widgets/router_timeline_section.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/shared/widgets/diff_viewer.dart';
 import 'package:go_router/go_router.dart';
@@ -28,37 +30,13 @@ const int kTaskDetailMessageLoadMoreTrailingThreshold = 3;
 const ValueKey<String> kTaskDetailMessagesLoadMoreErrorBannerKey =
     ValueKey<String>('task_detail_messages_load_more_error_banner');
 
-bool _taskDetailShowPauseForStatus(String status) {
-  const s = {
-    'planning',
-    'in_progress',
-    'review',
-    'changes_requested',
-    'testing',
-  };
-  return s.contains(status);
-}
-
 bool _taskDetailShowCancelForStatus(String status) {
-  const s = {
-    'pending',
-    'planning',
-    'in_progress',
-    'review',
-    'changes_requested',
-    'testing',
-  };
-  return s.contains(status);
+  return status == 'active' || status == 'needs_human';
 }
-
-bool _taskDetailShowResumeForStatus(String status) =>
-    status == 'paused' || status == 'failed';
 
 /// Панель lifecycle только если есть хотя бы одно действие (12.8; неизвестный статус — без пустого отступа).
 bool taskDetailLifecyclePanelVisibleForStatus(String status) {
-  return _taskDetailShowPauseForStatus(status) ||
-      _taskDetailShowCancelForStatus(status) ||
-      _taskDetailShowResumeForStatus(status);
+  return _taskDetailShowCancelForStatus(status);
 }
 
 class _LifecycleActionRow {
@@ -80,9 +58,7 @@ class _LifecycleActionRow {
 List<_LifecycleActionRow> _taskDetailLifecycleActionRows(
   AppLocalizations l10n,
   TaskDetailState data, {
-  required VoidCallback onPause,
   required VoidCallback onCancel,
-  required VoidCallback onResume,
 }) {
   final status = data.task!.status;
   final rt = data.realtimeMutationBlocked;
@@ -91,25 +67,11 @@ List<_LifecycleActionRow> _taskDetailLifecycleActionRows(
 
   return [
     _LifecycleActionRow(
-      visible: _taskDetailShowPauseForStatus(status),
-      busy: inflight == TaskLifecycleMutation.pause,
-      label: l10n.taskActionPause,
-      icon: Icons.pause,
-      onPressed: canPress ? onPause : null,
-    ),
-    _LifecycleActionRow(
       visible: _taskDetailShowCancelForStatus(status),
       busy: inflight == TaskLifecycleMutation.cancel,
       label: l10n.taskActionCancel,
       icon: Icons.cancel_outlined,
       onPressed: canPress ? onCancel : null,
-    ),
-    _LifecycleActionRow(
-      visible: _taskDetailShowResumeForStatus(status),
-      busy: inflight == TaskLifecycleMutation.resume,
-      label: l10n.taskActionResume,
-      icon: Icons.play_arrow,
-      onPressed: canPress ? onResume : null,
     ),
   ];
 }
@@ -326,15 +288,16 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         messenger.showSnackBar(
           SnackBar(content: Text(l10n.taskActionBlockedByRealtimeSnack)),
         );
+      } else if (o == TaskMutationOutcome.alreadyTerminal) {
+        // Race: задача уже завершена — info-toast, не красный snack.
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.taskActionAlreadyTerminalSnack)),
+        );
       }
     } catch (_) {
       // [TaskDetailController] выставляет AsyncError с copyWithPrevious; snack — через [ref.listen].
     }
   }
-
-  Future<void> _onPause() => _applyLifecycleMutation((n) => n.pauseTask());
-
-  Future<void> _onResume() => _applyLifecycleMutation((n) => n.resumeTask());
 
   Future<void> _onCancelPressed() async {
     final l10n = AppLocalizations.of(context)!;
@@ -444,8 +407,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                 ? _taskDetailLifecycleAppBarActions(
                     l10n,
                     value,
-                    onPause: () => unawaited(_onPause()),
-                    onResume: () => unawaited(_onResume()),
                     onCancel: () => unawaited(_onCancelPressed()),
                   )
                 : const <Widget>[],
@@ -585,8 +546,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             child: _TaskLifecycleMobileActions(
               l10n: l10n,
               data: data,
-              onPause: () => unawaited(_onPause()),
-              onResume: () => unawaited(_onResume()),
               onCancel: () => unawaited(_onCancelPressed()),
             ),
           ),
@@ -623,6 +582,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             projectId: widget.projectId,
             l10n: l10n,
             data: data,
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _SectionBlock(
+            title: l10n.artifactsSection,
+            child: ArtifactsDagSection(taskId: widget.taskId),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _SectionBlock(
+            title: l10n.routerTimelineSection,
+            child: RouterTimelineSection(taskId: widget.taskId),
           ),
         ),
         SliverToBoxAdapter(
@@ -823,16 +794,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 List<Widget> _taskDetailLifecycleAppBarActions(
   AppLocalizations l10n,
   TaskDetailState data, {
-  required VoidCallback onPause,
-  required VoidCallback onResume,
   required VoidCallback onCancel,
 }) {
   final rows = _taskDetailLifecycleActionRows(
     l10n,
     data,
-    onPause: onPause,
     onCancel: onCancel,
-    onResume: onResume,
   );
   return [
     for (final r in rows)
@@ -855,15 +822,11 @@ class _TaskLifecycleMobileActions extends StatelessWidget {
   const _TaskLifecycleMobileActions({
     required this.l10n,
     required this.data,
-    required this.onPause,
-    required this.onResume,
     required this.onCancel,
   });
 
   final AppLocalizations l10n;
   final TaskDetailState data;
-  final VoidCallback onPause;
-  final VoidCallback onResume;
   final VoidCallback onCancel;
 
   @override
@@ -871,9 +834,7 @@ class _TaskLifecycleMobileActions extends StatelessWidget {
     final rows = _taskDetailLifecycleActionRows(
       l10n,
       data,
-      onPause: onPause,
       onCancel: onCancel,
-      onResume: onResume,
     );
 
     return Padding(

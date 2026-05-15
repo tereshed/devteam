@@ -60,6 +60,9 @@ type Dependencies struct {
 	// Sprint 17 / Sprint 5F.3 — CRUD + секреты для реестра агентов v2.
 	AgentV2Handler *handler.AgentV2Handler
 
+	// Sprint 17 / Orchestration v2 — read-only API для DAG / Router timeline / Worktrees.
+	OrchestrationV2Handler *handler.OrchestrationV2Handler
+
 	// Sprint 15.B5 — CRUD над llm_providers (admin-only).
 	LLMProviderHandler *handler.LLMProviderHandler
 
@@ -239,6 +242,22 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			tasks.POST("/:id/correct", deps.TaskHandler.Correct)
 			tasks.GET("/:id/messages", deps.TaskHandler.ListMessages)
 			tasks.POST("/:id/messages", deps.TaskHandler.AddMessage)
+
+			// Sprint 17 / Orchestration v2 — read-only API для UI (DAG / Router timeline).
+			if deps.OrchestrationV2Handler != nil {
+				tasks.GET("/:id/artifacts", deps.OrchestrationV2Handler.ListArtifacts)
+				tasks.GET("/:id/artifacts/:artifactId", deps.OrchestrationV2Handler.GetArtifact)
+				tasks.GET("/:id/router-decisions", deps.OrchestrationV2Handler.ListRouterDecisions)
+			}
+		}
+
+		// Sprint 17 / Orchestration v2 — debug-эндпоинт для worktrees.
+		if deps.OrchestrationV2Handler != nil {
+			worktrees := api.Group("/worktrees")
+			worktrees.Use(authMW)
+			{
+				worktrees.GET("", deps.OrchestrationV2Handler.ListWorktrees)
+			}
 		}
 
 		// LLM routes (admin only)

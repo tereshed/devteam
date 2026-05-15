@@ -1772,6 +1772,12 @@ abstract class AppLocalizations {
   /// **'Сейчас нельзя изменить задачу: обновления по сети временно недоступны.'**
   String get taskActionBlockedByRealtimeSnack;
 
+  /// Info-toast когда Cancel проиграл гонку финализации (6.1)
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача уже завершена'**
+  String get taskActionAlreadyTerminalSnack;
+
   /// Фоллбэк message_type (12.5)
   ///
   /// In ru, this message translates to:
@@ -2545,6 +2551,342 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Ошибка запроса'**
   String get commonRequestFailed;
+
+  /// No description provided for @commonRequiredField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обязательное поле'**
+  String get commonRequiredField;
+
+  /// No description provided for @commonCancel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get commonCancel;
+
+  /// No description provided for @commonSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get commonSave;
+
+  /// No description provided for @commonCreate.
+  ///
+  /// In ru, this message translates to:
+  /// **'Создать'**
+  String get commonCreate;
+
+  /// No description provided for @commonConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтвердить'**
+  String get commonConfirm;
+
+  /// No description provided for @agentsV2Title.
+  ///
+  /// In ru, this message translates to:
+  /// **'Агенты (v2)'**
+  String get agentsV2Title;
+
+  /// No description provided for @agentsV2Empty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока нет ни одного агента.'**
+  String get agentsV2Empty;
+
+  /// No description provided for @agentsV2Refresh.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновить'**
+  String get agentsV2Refresh;
+
+  /// No description provided for @agentsV2CreateButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый агент'**
+  String get agentsV2CreateButton;
+
+  /// No description provided for @agentsV2CreateTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Создать агента'**
+  String get agentsV2CreateTitle;
+
+  /// No description provided for @agentsV2DetailTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Агент'**
+  String get agentsV2DetailTitle;
+
+  /// No description provided for @agentsV2KindLlm.
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM'**
+  String get agentsV2KindLlm;
+
+  /// No description provided for @agentsV2KindSandbox.
+  ///
+  /// In ru, this message translates to:
+  /// **'Sandbox'**
+  String get agentsV2KindSandbox;
+
+  /// No description provided for @agentsV2FieldId.
+  ///
+  /// In ru, this message translates to:
+  /// **'ID'**
+  String get agentsV2FieldId;
+
+  /// No description provided for @agentsV2FieldName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя'**
+  String get agentsV2FieldName;
+
+  /// No description provided for @agentsV2FieldRole.
+  ///
+  /// In ru, this message translates to:
+  /// **'Роль'**
+  String get agentsV2FieldRole;
+
+  /// No description provided for @agentsV2FieldExecutionKind.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тип исполнения'**
+  String get agentsV2FieldExecutionKind;
+
+  /// No description provided for @agentsV2FieldRoleDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание роли (попадает в промпт Router\'а)'**
+  String get agentsV2FieldRoleDescription;
+
+  /// No description provided for @agentsV2FieldSystemPrompt.
+  ///
+  /// In ru, this message translates to:
+  /// **'Системный промпт'**
+  String get agentsV2FieldSystemPrompt;
+
+  /// No description provided for @agentsV2FieldModel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Модель'**
+  String get agentsV2FieldModel;
+
+  /// No description provided for @agentsV2FieldTemperature.
+  ///
+  /// In ru, this message translates to:
+  /// **'Температура'**
+  String get agentsV2FieldTemperature;
+
+  /// No description provided for @agentsV2FieldMaxTokens.
+  ///
+  /// In ru, this message translates to:
+  /// **'Max tokens'**
+  String get agentsV2FieldMaxTokens;
+
+  /// No description provided for @agentsV2FieldCodeBackend.
+  ///
+  /// In ru, this message translates to:
+  /// **'Code backend'**
+  String get agentsV2FieldCodeBackend;
+
+  /// No description provided for @agentsV2FieldIsActive.
+  ///
+  /// In ru, this message translates to:
+  /// **'Активен'**
+  String get agentsV2FieldIsActive;
+
+  /// No description provided for @agentsV2SectionConfig.
+  ///
+  /// In ru, this message translates to:
+  /// **'Конфигурация'**
+  String get agentsV2SectionConfig;
+
+  /// No description provided for @agentsV2AddSecretButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить / обновить секрет'**
+  String get agentsV2AddSecretButton;
+
+  /// No description provided for @agentsV2SavedSnackbar.
+  ///
+  /// In ru, this message translates to:
+  /// **'Агент сохранён.'**
+  String get agentsV2SavedSnackbar;
+
+  /// No description provided for @agentsV2SecretSaved.
+  ///
+  /// In ru, this message translates to:
+  /// **'Секрет сохранён (зашифрован).'**
+  String get agentsV2SecretSaved;
+
+  /// No description provided for @agentsV2SecretDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Установить секрет агента'**
+  String get agentsV2SecretDialogTitle;
+
+  /// No description provided for @agentsV2SecretKeyName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя ключа'**
+  String get agentsV2SecretKeyName;
+
+  /// No description provided for @agentsV2SecretValue.
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение'**
+  String get agentsV2SecretValue;
+
+  /// No description provided for @agentsV2SecretValueHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'Шифруется AES-256-GCM. Прочитать обратно нельзя — введите заново для ротации.'**
+  String get agentsV2SecretValueHelper;
+
+  /// No description provided for @agentsV2SecretsHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Секреты хранятся зашифрованными на сервере и никогда не возвращаются клиенту. Используйте кнопку выше, чтобы установить/обновить значение.'**
+  String get agentsV2SecretsHint;
+
+  /// No description provided for @tasksCancelButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить задачу'**
+  String get tasksCancelButton;
+
+  /// No description provided for @tasksCancelConfirmTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить задачу?'**
+  String get tasksCancelConfirmTitle;
+
+  /// No description provided for @tasksCancelConfirmBody.
+  ///
+  /// In ru, this message translates to:
+  /// **'Все активные агенты будут прерваны, задача переведётся в статус cancelled.'**
+  String get tasksCancelConfirmBody;
+
+  /// No description provided for @tasksCancelInflightSuccess.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена отправлена. Агенты остановятся в ближайшее время.'**
+  String get tasksCancelInflightSuccess;
+
+  /// No description provided for @tasksCustomTimeoutLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Свой таймаут (например 4h, 90m, 3600s)'**
+  String get tasksCustomTimeoutLabel;
+
+  /// No description provided for @tasksCustomTimeoutHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'Переопределяет дефолтные 4 часа оркестрации для этой задачи.'**
+  String get tasksCustomTimeoutHelper;
+
+  /// No description provided for @tasksCustomTimeoutInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Некорректный формат. Используйте Nh / Nm / Ns.'**
+  String get tasksCustomTimeoutInvalid;
+
+  /// No description provided for @worktreesTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Worktrees (отладка)'**
+  String get worktreesTitle;
+
+  /// No description provided for @worktreesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет активных worktree\'ов.'**
+  String get worktreesEmpty;
+
+  /// No description provided for @worktreesColTask.
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача'**
+  String get worktreesColTask;
+
+  /// No description provided for @worktreesColBranch.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ветка'**
+  String get worktreesColBranch;
+
+  /// No description provided for @worktreesColState.
+  ///
+  /// In ru, this message translates to:
+  /// **'Статус'**
+  String get worktreesColState;
+
+  /// No description provided for @worktreesColAllocated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Создан'**
+  String get worktreesColAllocated;
+
+  /// No description provided for @worktreesReleaseButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Принудительно освободить'**
+  String get worktreesReleaseButton;
+
+  /// No description provided for @worktreesReleasedSnackbar.
+  ///
+  /// In ru, this message translates to:
+  /// **'Worktree освобождён.'**
+  String get worktreesReleasedSnackbar;
+
+  /// No description provided for @worktreesFilterAll.
+  ///
+  /// In ru, this message translates to:
+  /// **'Все'**
+  String get worktreesFilterAll;
+
+  /// No description provided for @worktreesFilterAllocated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Allocated'**
+  String get worktreesFilterAllocated;
+
+  /// No description provided for @worktreesFilterInUse.
+  ///
+  /// In ru, this message translates to:
+  /// **'In use'**
+  String get worktreesFilterInUse;
+
+  /// No description provided for @worktreesFilterReleased.
+  ///
+  /// In ru, this message translates to:
+  /// **'Released'**
+  String get worktreesFilterReleased;
+
+  /// No description provided for @routerTimelineSection.
+  ///
+  /// In ru, this message translates to:
+  /// **'Лента решений Router\'а'**
+  String get routerTimelineSection;
+
+  /// No description provided for @routerTimelineEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Решений Router\'а пока нет.'**
+  String get routerTimelineEmpty;
+
+  /// No description provided for @artifactsSection.
+  ///
+  /// In ru, this message translates to:
+  /// **'Артефакты'**
+  String get artifactsSection;
+
+  /// No description provided for @artifactsEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Артефактов пока нет.'**
+  String get artifactsEmpty;
 }
 
 class _AppLocalizationsDelegate

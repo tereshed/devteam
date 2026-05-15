@@ -35,6 +35,9 @@ const (
 	ErrRequestEntityTooLarge = "request_entity_too_large"
 	// ErrExternalService — сбой внешнего сервиса (GitHub API, git remote и т.д.), HTTP 502.
 	ErrExternalService = "external_service_error"
+	// ErrTaskAlreadyTerminal — race condition при Cancel: задача уже завершена.
+	// HTTP 409, фронт обрабатывает тихо (invalidate + info-toast вместо красного snack).
+	ErrTaskAlreadyTerminal = "task_already_terminal"
 )
 
 // JSON sends a structured error response

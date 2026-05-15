@@ -1,13 +1,14 @@
 # Orchestration v2 — LLM-driven, flow-as-data
 
-Статус: **PLAN / pending approval (revision 3)**
-Дата: 2026-05-14
+Статус: **MVP реализован, Sprint 17 (Sprints 1-5F) завершён 2026-05-15**
+Дата последнего обновления: 2026-05-15
 История:
 - v1 — MVP-набросок (детерминированные точки вызова Router)
 - v2 — учтены замечания по ревью: async execution, secrets, hallucinations, context budget, locking
 - v3 — параллелизм подзадач в MVP: worktree-изоляция, Merger-агент, DAG в декомпозиции, Router-decision возвращает массив агентов
 - v4 — безопасность по второму ревью: `--` separator в git, запрет логирования сырых LLM-ответов в stdout, корректный LISTEN→SELECT порядок в Agent Worker, advisory lock через (int4,int4), типизированные UUID-пути для worktree
-- v5 (текущая) — адаптация под ограничения YugabyteDB: polling + Redis Pub/Sub вместо `LISTEN/NOTIFY` (не поддерживается YSQL), `SELECT FOR UPDATE NOWAIT` на `tasks.id` вместо advisory locks (нестабильно в распределённой среде)
+- v5 — адаптация под ограничения YugabyteDB: polling + Redis Pub/Sub вместо `LISTEN/NOTIFY`, `SELECT FOR UPDATE NOWAIT` на `tasks.id` вместо advisory locks
+- v6 (текущая) — Sprint 5F закрыт: 4 postgres-integration теста (testcontainers + race-clean), HTTP read-only API для v2 (artifacts/router-decisions/worktrees), Flutter Agents Management UI + DAG-view + Router timeline + Worktrees debug, миграция 038 fix (partial unique + chk_agents_role roles). Sprint 6 follow-ups зафиксированы в §7.
 
 ---
 
@@ -712,11 +713,225 @@ In-flight jobs:
 22. ✅ **CI lint-правило** [`.golangci.yml`](backend/.golangci.yml) — `forbidigo` запрещает `slog\.Default` ТОЛЬКО в orchestrator-файлах (через `path-except` regex). Введён [`logging.NopLogger()`](backend/internal/logging/redact.go) (discard + redact wrapper) как nil-fallback в 7 orchestrator-конструкторах вместо `slog.Default()`.
 23. ✅ Обновлены [`docs/rules/backend.md`](docs/rules/backend.md) §2.3 (5 правил Sprint 17: `--` separator, no `slog.Default`, no raw LLM в логах, path-safety, шифрование секретов) и [`docs/rules/main.md`](docs/rules/main.md) (раздел "Orchestration v2") со ссылкой на план.
 
-### Sprint 5F — Swagger / testcontainers / Frontend (отложено отдельно)
-20. Swagger обновить (`make swagger`) — не блокер, MCP-tools имеют собственные jsonschema через mcp-sdk.
-21. Flutter: Agents Management, Task Detail v2 (DAG view, router timeline), Worktrees debug screen, Cancel button, custom_timeout поле.
-   testcontainers-postgres setup для full E2E integration tests (DAG/cancel/restart per DoD §9).
-   Каждый из этих пунктов — отдельный фокусированный sprint размером со Sprint 3-4.
+### Sprint 5F — Swagger / testcontainers / Frontend ✅ ЗАКРЫТО (2026-05-15)
+20. ✅ Swagger перегенерирован (`make swagger` чистый).
+21. ✅ Flutter v2:
+    - **Agents Management** ([agents_v2_list_screen.dart](backend/../frontend/lib/features/admin/agents_v2/presentation/screens/agents_v2_list_screen.dart) + [agent_v2_detail_screen.dart](backend/../frontend/lib/features/admin/agents_v2/presentation/screens/agent_v2_detail_screen.dart)) — CRUD + диалог секретов с masked-input, AES-GCM на бэке.
+    - **Task Detail v2 sections** — [ArtifactsDagSection](backend/../frontend/lib/features/tasks/presentation/widgets/artifacts_dag_section.dart) (группировка по `kind`, `depends_on` стрелки) + [RouterTimelineSection](backend/../frontend/lib/features/tasks/presentation/widgets/router_timeline_section.dart) (карточки шагов с outcome/reason).
+    - **Worktrees debug** ([worktrees_list_screen.dart](backend/../frontend/lib/features/admin/worktrees_v2/presentation/screens/worktrees_list_screen.dart)) — read-only список (release-кнопка отложена в Sprint 6).
+    - **Cancel button** — уже работало через `TaskHandler.Cancel` → `lifecycleV2.RequestCancel`; v2 wiring подтверждён.
+    - **custom_timeout** — добавлен в `CreateTaskRequest` Dart-модель и backend DTO (`time.ParseDuration` + `ErrTaskInvalidTimeout` → 400). UI-формы создания задачи в проекте нет (задачи рождаются из чата) — поле готово к проводке когда форма появится.
+22. ✅ testcontainers-postgres setup для full E2E integration tests:
+    - `backend/internal/service/orchestrator_pg_integration_test.go` — build tag `integration`, harness через `tcpostgres.Run`.
+    - 4 новых сценария + baseline DONE: `TestPGIntegration_DAG_DependsOn`, `TestPGIntegration_CancelMidFlight`, `TestPGIntegration_RestartMidTask`, `TestPGIntegration_MaxStepsPerTask_NeedsHuman`.
+    - `go test -tags integration -race ./internal/service/...` зелёный в Docker.
+23. ✅ HTTP read-only API для v2 (`internal/handler/orchestration_v2_handler.go`):
+    - `GET /tasks/:id/artifacts` (metadata) + `GET /tasks/:id/artifacts/:artifactId` (full content с cross-task ownership check)
+    - `GET /tasks/:id/router-decisions` (без `encrypted_raw_response`)
+    - `GET /worktrees?task_id=...` (без `path`-колонки)
+24. ✅ Миграция 038 fix (партиальный unique index + расширение `chk_agents_role` ролями router/decomposer/merger) — было блокером для всего goose up на свежей БД.
+
+### Sprint 6 — Follow-ups после Sprint 17 (план зафиксирован 2026-05-15, ревью 2026-05-15)
+
+Это backlog задач, которые либо вылезли по ходу Sprint 17, либо были явно отложены. Каждая — небольшая (½–1 дня), фокусированная.
+
+**Code review pass (2026-05-15)** добавил в каждый пункт security/performance/compliance корректировки. Они отмечены как *"добавлено code review 2026-05-15"* и закрывают:
+- 6.1 — race condition Cancel-vs-done: SELECT FOR UPDATE + HTTP 409, штатная обработка на клиенте
+- 6.2 — admin-only branch без task_id, composite b-tree index `(state, allocated_at)` против Full Table Scan
+- 6.3 — command/flag/path injection в `git worktree remove`: array exec.CommandContext + `--` separator + computed path validation
+- 6.4 — lazy `ListView.builder` + truncation (50K chars, "Copy full" для гигантских артефактов)
+- 6.5 — server-side bounds `1m..72h` против целочисленного переполнения и DoS через 0s
+- 6.7 — обязательный freezed pattern `abstract class with _$Model` для новых моделей
+- 6.8 — реальный YugabyteDB через `docker-compose` в CI + правильный scope `./...` (не `./internal/service/...`)
+- 6.9 — обязательное обновление `make swagger` после правок DTO
+
+#### ✅ 6.1. Cancel/pause logic под v2 state-machine
+**Проблема.** [task_detail_screen.dart:42-55](backend/../frontend/lib/features/tasks/presentation/screens/task_detail_screen.dart) держит legacy-проверки на 10-значные статусы (`pending`/`planning`/`in_progress`/`review`/`changes_requested`/`testing`/`paused`/`failed`). После миграции 039 `tasks.status` дропнут, `TaskResponse.Status` теперь маппится на 5-значный `state` (`active`/`done`/`failed`/`cancelled`/`needs_human`) — старые предикаты не сматчатся.
+
+**Что сделать.**
+- В `_taskDetailShowCancelForStatus` оставить только `state == 'active'` (или `active|needs_human` если решим разрешать).
+- `_taskDetailShowPauseForStatus` — pause-эндпоинт остался legacy (см. [task_handler.go:373](backend/internal/handler/task_handler.go)), но v2-pause не реализован. Либо убираем кнопку, либо реализуем `tasks.state='paused'` (потребует +1 значение в CHECK + transition в `task_service.allowedTransitions`).
+- `_taskDetailShowResumeForStatus` — то же, что pause.
+- Обновить юнит-тесты `task_detail_screen_test.dart` (там тестируется панель lifecycle).
+
+**Race condition при Cancel** *(добавлено code review 2026-05-15)*.
+Между моментом, когда фронт прочитал `state='active'`, и моментом, когда дёргает `POST /tasks/:id/cancel`, задача может завершиться (`state='done'`). Сейчас `TaskHandler.Cancel` → `task_service.Cancel` делает UPDATE без явного guarding на текущий state — возможно перезаписывание `done` → `cancelled` (теряем finalization).
+
+- Backend: `task_service.RequestCancel` (или `Cancel`) **обязан** использовать `SELECT ... FOR UPDATE NOWAIT` на `tasks.id`, проверить `state == 'active'`, затем UPDATE. Если state уже терминальный — вернуть sentinel `ErrTaskAlreadyTerminal` → handler маппит в **HTTP 409 Conflict** (не 500, не 200).
+- В `lifecycleV2.RequestCancel` тот же контракт; уже работает через `SELECT FOR UPDATE` на task. Подтвердить тестом `TestPGIntegration_CancelAfterDone_Returns409`.
+- Frontend: dio-репозиторий ловит `DioException` со `statusCode == 409` и маппит в `TaskAlreadyTerminalException` (или extends существующего). Контроллер при ловле — **не показывает красный SnackBar**, а просто `ref.invalidate(taskDetailProvider)` (обновляем state из БД) + info-toast "Task already finished".
+
+**Why это блокер UX.** Иначе кнопка Cancel будет показываться/скрываться неправильно — пользователь не сможет отменить активную задачу или, наоборот, увидит Cancel у уже-завершённой; race-кейс выдаст 500-ошибку и пугающий красный экран на штатной ситуации.
+
+#### 6.2. GET /worktrees без task_id
+**Проблема.** Backend handler `ListWorktrees` сейчас требует `?task_id=...` (см. отчёт agent'а в Sprint 5F), потому что `WorktreeRepository` экспонирует только `ListByTaskID`. Фронт-экран `worktrees_list_screen.dart` зовёт `repo.list()` без taskId → 400 Bad Request.
+
+**Что сделать.**
+- В `internal/repository/worktree_repository.go` добавить `List(ctx, WorktreeFilter)` с фильтрами `state ∈ {allocated|in_use|released}`, `task_id *UUID`, `limit`, `offset`. Сортировка `allocated_at DESC`.
+- В handler `ListWorktrees` снять обязательность `task_id`, при отсутствии — вернуть глобальный список (с лимитом 200 по умолчанию).
+- Юнит-тест: `TestListWorktrees_GlobalList_ReturnsRecentFirst` + `TestListWorktrees_FilterByState`.
+- Frontend: дополнить `WorktreesRepository.list()` опц. `state` фильтром в UI (chip-фильтр сверху экрана).
+
+**Security: admin-only без task_id** *(добавлено code review 2026-05-15)*.
+Глобальный список worktrees раскрывает: какие задачи активно выполняются прямо сейчас, имена веток (потенциально содержат бизнес-контекст), таймлайн allocation'ов. Это **чувствительная инфо для дебага**, не публичная.
+
+- `internal/server/server.go`: маршрут `GET /worktrees` без `task_id` должен идти через `AdminOnlyMiddleware()` (как `/llm`, `/prompts`, `/workflows`).
+- Если `task_id` указан и пользователь — owner task'а, доступ через стандартный authMW. Логика split'а — в handler: проверить query, если no task_id → require admin role, иначе → require task ownership.
+- Юнит-тест: `TestListWorktrees_NoTaskID_NonAdmin_Returns403` + `TestListWorktrees_OwnTaskID_NonAdmin_Returns200`.
+
+**Performance: индекс на allocated_at** *(добавлено code review 2026-05-15)*.
+`ORDER BY allocated_at DESC` без индекса → Full Table Scan при росте таблицы (~5-10K записей при активной разработке за полгода).
+
+- Проверить миграцию 036 (`create_worktrees`): уже создан ли b-tree индекс на `allocated_at`?
+- Если нет — миграция 042: `CREATE INDEX idx_worktrees_state_allocated ON worktrees(state, allocated_at DESC)`. Композит, потому что в 90% запросов идёт фильтр `state IN (...)` + сортировка.
+- EXPLAIN ANALYZE на 10K-record fixture: убедиться что план использует Index Scan, не Seq Scan.
+
+**Why.** Worktrees debug screen без global list бесполезен — оператор не знает task_id наперёд.
+
+#### 6.3. Release worktree кнопка (manual unstick)
+**Проблема.** Worktrees могут залипать в `state='in_use'` если sandbox-процесс упал между Step'ами. l10n-строки `worktreesReleaseButton`/`worktreesReleasedSnackbar` уже есть в `app_en.arb`/`app_ru.arb`, но action не подключён.
+
+**Что сделать.**
+- Backend: `POST /worktrees/:id/release` → `WorktreeManager.Release(ctx, id)` (метод существует, идемпотентен). Auth: admin-only. Audit-log с user_id.
+- Service-сентинели: `ErrWorktreeAlreadyReleased` → 409, `ErrWorktreeNotFound` → 404.
+- Frontend: `WorktreesRepository.release(id)` + IconButton(Icons.cleaning_services) в `_WorktreeTile`. Confirmation-dialog с предупреждением "git worktree remove --force произойдёт прямо сейчас".
+- Тест: интеграционный `TestPGIntegration_WorktreeManualRelease`.
+
+**Security: command/flag/path injection** *(добавлено code review 2026-05-15)*.
+`git worktree remove --force` запускается ровно тогда, когда оператор жмёт кнопку — это external trigger, не internal cron. Хотя сам путь формируется кодом (не приходит из API), парадигма безопасности проекта обязывает применять защиту defence-in-depth:
+
+- `WorktreeManager.Release(ctx, wt)` использует **только** `exec.CommandContext(ctx, "git", "worktree", "remove", "--force", "--", path)` — массив аргументов, никакого `fmt.Sprintf("git ... %s", path)` / `bash -c`.
+- `path` вычисляется внутри Release через `ComputePath(taskID, wtID)` от типизированных `uuid.UUID` (как в `Allocate`). НЕ читать `path` из БД — мы его не храним (Sprint 1 v4 hardening).
+- Defence-in-depth: `path := filepath.Clean(path); if !strings.HasPrefix(path+sep, root+sep) { return ErrInvalidPath }` — повторить тот же guard, что в `Manager.Remove` ([worktree_manager.go:510-521 spec](docs/orchestration-v2-plan.md)).
+- Юнит-тест: `TestWorktreeManager_Release_PathOutsideRoot_Rejected` (если каким-то образом подменили вычислитель пути) + `TestWorktreeManager_Release_FlagInjection_Rejected` (через моки `exec.Cmd.Args`, проверить что `--` присутствует и ID-формы безопасны).
+- Audit-log: `slog.InfoContext(ctx, "worktree manually released", "worktree_id", wt.ID, "task_id", wt.TaskID, "user_id", userID, "user_role", userRole)`. Path и branch_name **не** логируем (внутренний нейминг, не нужно в Kibana).
+
+**Why.** Оператор должен иметь способ runaway-fix без `psql UPDATE worktrees SET state='released'`. Безопасность важнее, потому что путь к git-worktree — это runtime-side-effect, любой shell-escape → произвольное удаление файлов под uid backend-процесса.
+
+#### 6.4. Full artifact viewer (с content)
+**Проблема.** Backend `GET /tasks/:id/artifacts/:artifactId` отдаёт полное `content` (включая `code_diff` patch'и, `merged_code` SHA, `test_result.failures[]`), но `OrchestrationV2Repository.listArtifacts()` на фронте возвращает только metadata, и UI-метода для просмотра одного артефакта нет.
+
+**Что сделать.**
+- `OrchestrationV2Repository.getArtifact(taskId, artifactId)` → `Artifact` с заполненным `content`.
+- Provider `artifactDetailProvider.family<Artifact, (String, String)>`.
+- IconButton(Icons.open_in_new) в `_ArtifactTile` → открывает диалог с pretty-printed JSON (используй `JsonEncoder.withIndent('  ')`).
+- Для `kind == 'code_diff'` — рендерить через существующий `DiffViewer` (есть в `shared/widgets/diff_viewer.dart`).
+- Для `kind == 'review'` — табличка `decision`/`issues[]`/`summary`.
+- Для `kind == 'test_result'` — `passed/failed/skipped/duration` сверху + `failures[]` expandable.
+
+**Performance: lazy rendering и truncation** *(добавлено code review 2026-05-15)*.
+Агенты регулярно генерят `code_diff` на 5000-15000 строк. Если builder отрендерит всё разом в `Column` / `SelectableText` — UI thread зависнет на сотни ms, на слабых клиентах — секунды.
+
+- `DiffViewer` **обязан** использовать `ListView.builder` с per-line виджетом (не `Column`/`Wrap` всего диффа). Высота строки фиксирована → дешёвый `itemExtent` или `prototypeItem` для viewport-вычислений без layout.
+- При `content.length > 50000` chars (для JSON-полей) — показывать первые 50K + кнопку **"Show full (N KB)"**, по нажатию подгружать в отдельный полноэкранный диалог.
+- Для `test_result.failures[]` если массив >50 элементов — пагинация по 20 (`PageController` или просто limit + "Show next 20").
+- Для огромного JSON `merged_code` — кнопка **"Copy full content"** в clipboard через `Clipboard.setData`, тут же snackbar "Copied N bytes". Не пытаться рендерить.
+- Юнит-тест: `TestDiffViewer_LargeDiff_DoesNotBuildAllTilesAtOnce` (golden + `find.byType(LineTile).evaluate().length < 100` при `pumpAndSettle()` на 5000-line diff).
+
+**Why.** DAG-вид сейчас показывает только summary — невозможно проверить что developer-агент реально написал, что reviewer одобрил. Lazy rendering — обязательно, иначе viewer становится непригоден на больших артефактах (а на маленьких overhead на ListView.builder копеечный).
+
+#### 6.5. Custom timeout UI
+**Проблема.** Поле `customTimeout` есть в `CreateTaskRequest` Dart-модели, но в проекте задачи создаются из chat-conversation, отдельной "create task" формы нет. l10n-строки `tasksCustomTimeoutLabel`/`tasksCustomTimeoutHelper`/`tasksCustomTimeoutInvalid` уже подготовлены.
+
+**Что сделать (выбрать вариант).**
+- Вариант A: добавить inline expandable "Advanced" в `chat_screen.dart` рядом с input bar — текст-поле "Custom timeout (4h)" + tooltip с правилами парсинга.
+- Вариант B: на `task_detail_screen.dart` добавить редактируемое поле "Timeout" в header'е (PATCH `/tasks/:id` с `custom_timeout`). Бэкенд-эндпоинт `UpdateTask` уже принимает поле через DTO (после доработки в Sprint 5F).
+- Валидация на клиенте: regex `^\d+(h|m|s)(\d+(m|s))?$`. Bad input → показать `tasksCustomTimeoutInvalid`.
+
+**Security: strict server-side bounds** *(добавлено code review 2026-05-15)*.
+Клиентская regex — first line of defence. Backend **обязан** проверить bounds, потому что:
+- `999999999h` → `time.ParseDuration` вернёт ошибку (int64 overflow), но `9223372036s` (≈292 года) — нет, и orchestrator с таким timeout эффективно никогда не падёт в `state='failed'`.
+- `0s` → workers сразу видят `ctx.Err()`, ретраят, через `max_attempts=3` упадёт в needs_human, но успеет сжечь сэндбокс-слоты и LLM-токены.
+
+- В `task_service.go::Create` (и `Update`) после `time.ParseDuration(*req.CustomTimeout)`:
+  ```go
+  const (
+      minCustomTimeout = 1 * time.Minute
+      maxCustomTimeout = 72 * time.Hour
+  )
+  if d < minCustomTimeout || d > maxCustomTimeout {
+      return ErrTaskInvalidTimeout
+  }
+  ```
+- `ErrTaskInvalidTimeout` маппится handler'ом в **HTTP 400** с error_code `invalid_timeout` и человекочитаемым messsage "custom_timeout must be in range 1m..72h".
+- Юнит-тесты: `TestCreate_RejectsTimeoutBelowMin`, `TestCreate_RejectsTimeoutAboveMax`, `TestCreate_AcceptsBoundaryValues`.
+- Frontend: те же bounds как helper-message в InputDecoration ("Min 1m, max 72h"); если backend вернул 400 — показать message из ответа в form field error, не дублировать клиентскую regex-ошибку.
+
+**Why.** Без UI поле бесполезно — никто не может задать override 4h дефолта. Без server-side bounds — мы доверяем клиенту в безопасности (нельзя), что нарушает Правило 9 из docs/rules/main.md.
+
+#### 6.6. Навигация к v2 admin-экранам
+**Проблема.** `/admin/agents-v2` и `/admin/worktrees` зарегистрированы в `app_router.dart`, но нигде нет ссылки. Пользователь должен набирать URL вручную.
+
+**Что сделать.**
+- В существующем admin-меню/сайдбаре (нужно найти где админ-секция отображается — вероятно в `settings_screen.dart` или `dashboard_screen.dart`) добавить две записи:
+  - "Agents (v2)" → `/admin/agents-v2`
+  - "Worktrees (debug)" → `/admin/worktrees`
+- Иконки: `Icons.psychology` для агентов, `Icons.account_tree` для worktrees.
+- Visibility — admin-only (через role check, как другие admin-маршруты).
+
+**Why.** Discovery: без записи в навигации экран не существует для конечного пользователя.
+
+#### 6.7. Widget-тесты на новые экраны
+**Проблема.** Правило `docs/rules/frontend.md` требует тесты на новые экраны. Sprint 5F добавил 7 файлов без тестов.
+
+**Что сделать (минимум).**
+- `test/features/admin/agents_v2/presentation/screens/agents_v2_list_screen_test.dart` — golden + 3 кейса: empty / data / error через `agentsV2RepositoryProvider.overrideWith(MockRepo)`.
+- `test/features/admin/agents_v2/presentation/screens/agent_v2_detail_screen_test.dart` — submit valid form, error handling, hidden secret field.
+- `test/features/admin/worktrees_v2/presentation/screens/worktrees_list_screen_test.dart` — empty / data / refresh.
+- `test/features/tasks/presentation/widgets/artifacts_dag_section_test.dart` — depends_on rendering + group ordering.
+- `test/features/tasks/presentation/widgets/router_timeline_section_test.dart` — outcome chip / multi-agent decisions.
+
+**Compliance: freezed pattern** *(добавлено code review 2026-05-15)*.
+Сейчас новые модели (`AgentV2`, `Artifact`, `RouterDecision`, `WorktreeV2`) написаны как `@immutable class ... { ... }` — не freezed. Если в Sprint 6 для viewer'а (6.4) или для test-fixture'ов потребуются новые модели — использовать freezed строго в форме `abstract class ModelName with _$ModelName` (правило проекта, см. CLAUDE.md / frontend.mdc).
+
+- Если решим мигрировать существующие 4 модели на freezed — это **отдельный** atomic-refactor PR с прогоном `dart run build_runner build --delete-conflicting-outputs`. Не смешивать с виджет-тестами.
+- Для виджет-тестов достаточно простых fixture-builders в `test/_fixtures/` — без freezed.
+
+**Why.** Регрессии через `flutter analyze` не ловятся; UI ломается при изменении l10n keys. Freezed-pattern важен потому что без `abstract class` build_runner молча генерит broken code, CI падает не на коммите модели, а на следующем диффе.
+
+#### 6.8. Backend integration tests на CI
+**Проблема.** `go test -tags integration ./internal/service/...` требует Docker и сейчас прогоняется только локально. DoD §9 требует "race detector чистый" — это нужно проверять в CI.
+
+**Что сделать.**
+- В существующем CI workflow (`.github/workflows/*.yml` — нужно найти) добавить job `integration-tests`:
+  - Service container или явный `docker-compose up -d yugabytedb` на YugabyteDB (см. `compose.yml` в репо), wait-for-port `5433` через healthcheck (`pg_isready` или netcat-loop ≤30s).
+  - НЕ "просто Docker есть на ubuntu-latest" — testcontainers сами запустят временный postgres, но: (1) `compose.yml` использует YugabyteDB, и мы хотим E2E на нашей реальной БД, не на минимальном postgres-моке; (2) часть тестов в `pkg/gitprovider`, `internal/sandbox`, `internal/agent` тоже под тегом `integration` и требуют реальных ресурсов (git, docker для sandbox).
+  - Шаг: `cd backend && go test -tags integration -race -timeout 600s ./...` (**`./...`, а не `./internal/service/...`** — Правило 5 backend.mdc: интеграционные тесты живут в repository, sandbox, gitprovider слоях тоже).
+  - Дополнительно — `golangci-lint run` с `.golangci.yml` (правило `forbidigo: slog\.Default` уже там, добавить static-grep на `exec.Command(.*git.*)` без `--` separator).
+- Cache go modules + docker images через `actions/cache` (с key из `go.sum`).
+- Параллелизация: split на `unit-tests` (`go test -short ./...`) + `integration-tests` (`-tags integration -race ./...`) — разные jobs, runner ждёт оба перед merge.
+
+**Why.** Без CI новый PR может сломать integration-тесты, никто не заметит. Без правильного scope (`./...`) мы пропустим repository-уровень — например, regression в `task_event_repository.ClaimNext` с `FOR UPDATE SKIP LOCKED` не словится.
+
+#### 6.9. Документация
+**Проблема.** `docs/rules/main.md` и `docs/rules/frontend.md` не обновлены под v2 (DoD §9 / Sprint 5 пункт).
+
+**Что сделать.**
+- `docs/rules/main.md` — секция "Orchestration v2 (Sprint 17)" со ссылкой на этот план + ключевыми инвариантами:
+  - flow=данные, не switch'и в Go
+  - артефакты идут через reviewer
+  - `--` separator во всех git-вызовах
+  - secrets только через `agent_secrets` (AES-GCM), не в `sandbox_settings`
+- `docs/rules/backend.md` — добавить **обязательный** пункт: "После любых правок в `internal/handler/dto/*.go` или JSON-теге существующих handler'ов прогнать `make swagger` и закоммитить результат в `backend/docs/`. PR без обновлённой swagger.{json,yaml} не мерджится". Это критично после 6.2 (новые worktree-фильтры) и 6.5 (custom_timeout bounds в `UpdateTaskRequest`).
+- `docs/rules/frontend.md` — секция "Orchestration v2 фичи":
+  - Agents Management → `frontend/lib/features/admin/agents_v2/`
+  - Worktrees debug → `frontend/lib/features/admin/worktrees_v2/`
+  - Task Detail v2 sections — `frontend/lib/features/tasks/presentation/widgets/`
+  - **Правило**: для новых v2-виджетов используй `requireAppLocalizations(context, where: '<WidgetName>')`, не `AppLocalizations.of(context)!`.
+  - **Правило**: freezed-модели всегда в форме `abstract class ModelName with _$ModelName` (см. 6.7 compliance note).
+
+**Why.** Без актуальной документации новые контрибьюторы (включая агентов в этом самом проекте 🙂) будут писать по старым правилам. Swagger out-of-sync — частая регрессия при добавлении полей в DTO.
+
+#### 6.10. (Nice-to-have) Pause/Resume для v2
+**Проблема.** Сейчас pause/resume не имеют v2-семантики. Cancel перешёл в v2, pause/resume — нет.
+
+**Что сделать (если решим оставить эти операции).**
+- Добавить `state='paused'` в `tasks.state` CHECK constraint (миграция 042).
+- В `task_service.allowedTransitions`: `active → paused`, `paused → active|cancelled`.
+- Pause: `tasks.cancel_requested` НЕ выставляем; вместо этого ставим `paused`. Worker'ы при pickup проверяют `state == 'active'` перед началом Step.
+- В UI кнопки Pause/Resume переподключить на новые сентинели.
+
+**Why nice-to-have, не must.** Cancel + custom_timeout уже покрывают main use case ("я передумал" / "слишком долго работает"). Pause полезен только при дорогих LLM-вызовах ("дай я гляну до того как продолжать") — добавим если будет реальный запрос.
 
 ---
 
@@ -735,40 +950,41 @@ In-flight jobs:
 **Legenda:** ✅ — выполнено и протестировано в Sprint 1-4. ⏸️ — отложено в Sprint 5 с явной причиной (см. блок "Отложено в Sprint 5" в §7). ⬜ — не начато.
 
 **Функциональные:**
-- ⏸️ Миграции up + down на чистой БД — миграции написаны (031..040); реальный up/down/up прогон требует поднятого Yugabyte в CI ⇒ Sprint 5 testcontainers.
+- ✅ Миграции up на чистой БД — `goose up` 001..040 прогон через testcontainers, миграция 038 fix включена.
 - ✅ Unit-тесты Router/Dispatcher (галлюцинации + параллельные decision'ы) — 24 теста в `router_service_test.go` + 16 component-сценариев в `orchestration_scenarios_test.go`.
-- ⏸️ **Integration tests с реальной БД**: sequential, parallel, DAG, cancel, restart, hallucination. Покрытие **component-уровня** в Sprint 4 (см. ниже); **postgres-integration** через testcontainers — Sprint 5.
+- ✅ **Integration tests с реальной БД** (`backend/internal/service/orchestrator_pg_integration_test.go`, build tag `integration`):
   - ✅ Sequential happy path — `TestScenario_Sequential_PlanReviewCodeReviewTest`
   - ✅ Parallel 2 dev + merger — `TestScenario_Parallel_TwoDevsThenMerger`
   - ✅ Parallel 3 dev + 3 review + merger + tester — `TestScenario_Parallel_ThreeDevsThreeReviewsMergerTester`
   - ✅ Hallucination recovery — `TestScenario_HallucinationRecovery_UnknownAgent`
   - ✅ Hallucination → needs_human fallback — `TestScenario_HallucinationFallback_NeedsHuman`
-  - ⏸️ DAG с `depends_on` — требует real-БД для state-loader (Router видит DAG через artifact metadata + in-flight events; полная цепочка тестируется только с postgres)
-  - ⏸️ Cancel mid-flight — требует multi-process orchestration через testcontainers
-  - ⏸️ Restart mid-task — требует kill процесса + recovery после старта воркеров
-- ⏸️ Race detector (`go test -race`) чистый — unit-тесты чистые; нужен полный run на CI с testcontainers.
-- ⏸️ Test: переполнение `max_steps_per_task` → `needs_human` — логика реализована в `Orchestrator.Step`, тест требует real-БД.
-- ⏸️ Test: рестарт бэкенда — Sprint 5.
+  - ✅ DAG с `depends_on` — `TestPGIntegration_DAG_DependsOn` (postgres + scripted Router)
+  - ✅ Cancel mid-flight — `TestPGIntegration_CancelMidFlight` (RequestCancel между Step'ами, проверка cancelled-state + no new agent_jobs)
+  - ✅ Restart mid-task — `TestPGIntegration_RestartMidTask` (kill через закрытие пула, recovery через `ReleaseStuckLocks`)
+- ✅ Race detector (`go test -tags integration -race ./internal/service/...`) чистый, 15.9с в Docker.
+- ✅ Test: переполнение `max_steps_per_task` → `needs_human` — `TestPGIntegration_MaxStepsPerTask_NeedsHuman` (limit=2, 4 Step'а, последний — no-op).
+- ⏸️ Test: рестарт бэкенда (полный E2E с реальными воркерами) — частично покрыто `RestartMidTask`; полный multi-process сценарий — Sprint 6.8 (CI).
 - ✅ Test: 2 одновременных sandbox в одном репо — `TestWorktreeManager_AllocateAndRelease_HappyPath` (real `git`).
 - ✅ Test: merger контракт — `TestScenario_MergerOutputContract` (parser end-to-end через `ParseMergerOutput`).
 - ✅ Старые файлы удалены — 10 файлов (~3000 строк) включая `orchestrator_pipeline.go`, `orchestrator_service.go`, `result_processor*.go`.
-- ⏸️ `make swagger` чистый, `make test-all` зелёный — Swagger обновится в Sprint 5 при добавлении MCP/HTTP-эндпоинтов; `make test-all` зелёный для `-short` (real-DB тесты с тегом `integration` — Sprint 5).
-- ⏸️ Frontend: Agents Management UI, cancel button, DAG-view — Sprint 5.
+- ✅ `make swagger` чистый — перегенерирован 2026-05-15 после добавления `OrchestrationV2Handler` + `CustomTimeout` DTO.
+- ✅ Frontend: Agents Management UI, Worktrees debug, DAG-view, Router timeline (см. Sprint 5F). Cancel button — уже работал. custom_timeout — поле в Dart-модели + backend DTO (UI-форма — Sprint 6.5).
 - ✅ Retention `router_decisions` 30 дней — `RetentionService.RunOnceRouterDecisions` + goroutine `Run` в main.go.
 - ✅ Retention worktrees 1 сутки после release — `RetentionService.RunOnceWorktrees` + защита prefix-check в CleanupExpired (OR-условие, не AND).
-- ⏸️ `docs/rules/main.md` обновлён — Sprint 5 (вместе с frontend rules).
+- ⏸️ `docs/rules/main.md` обновлён — Sprint 6.9.
 
 **Безопасность (v4):**
 - ✅ **Git injection (code)**: WorktreeManager использует `--` separator во всех `git worktree add/remove`. Branch_validator отвергает ведущий `-`/`.`, control-chars, path-traversal, reserved refs, reflog-syntax.
-- ⏸️ Git injection static-grep lint rule в CI — Sprint 5 CI setup.
+- ⏸️ Git injection static-grep lint rule в CI — Sprint 6.8 (CI setup).
 - ✅ **Git injection test**: `TestValidateBaseBranch_RejectsFlagInjection` + `TestWorktreeManager_Allocate_RejectsUnsafeBaseBranch` (6 adversarial кейсов, включая `-h`, `--upload-pack=evil`, `../etc/passwd`).
 - ✅ **No raw LLM в stdout/stderr (canary-тест)**: `TestDecide_DoesNotLeakRawToLogs`, `TestDecide_DoesNotLeakErrErrorToLogs`, `TestSaveArtifact_LeakCanaryNotLogged`, `TestScenario_SecurityCanary_EndToEnd` — все с уникальными canary-токенами, проверка через grep буфера логов.
-- ⏸️ Cancel race test (postgres NOTIFY)— Sprint 5; race-free pattern реализован в `AgentWorker.processOne` (Subscribe → SELECT → start), документирован.
-- ⏸️ Lock collision test (1000 коллизирующих UUID) — заменён на `SELECT FOR UPDATE NOWAIT` (Yugabyte-совместимый); тест требует real БД.
+- ✅ Cancel race test — `TestPGIntegration_CancelMidFlight` (`RequestCancel` → Step проверяет `cancel_requested`, Router не вызывается, agent_jobs не enqueue'ятся).
+- ⏸️ Lock collision test (1000 коллизирующих UUID) — заменён на `SELECT FOR UPDATE NOWAIT` (Yugabyte-совместимый). Базовая семантика покрыта `TestPGIntegration_OrchestratorStep_DoneOutcome`; высоконагруженный stress-test — Sprint 6.8 (CI).
 - ✅ **Path traversal**: WorktreeManager не хранит `path` в БД, computes от типизированных UUID. `CleanupExpired` имеет defence-in-depth OR-condition: `!isInsideRoot || isRootItself` — отказ как при выходе за корень, так и при равенстве корню (защита от catastrophic rm-rf root).
 - ✅ **Secrets leak test (TestResult.raw_output_truncated)**: `TestScrubTestResultRawOutput` — `ScrubSecrets` (regex-patterns на api_key/token/password/bearer/github PAT) применяется перед записью в `artifact.content`.
 
 **Соответствие конвенциям проекта:**
-- ⏸️ CLAUDE.md / `docs/rules/backend.md` обновлены — Sprint 5.
+- 🟡 CLAUDE.md / `docs/rules/backend.md` обновлены частично (backend §2.3 — 5 правил Sprint 17). `docs/rules/main.md` + `frontend.md` — Sprint 6.9.
 - ✅ `internal/logging/redact.go` обёртка применена в `RouterService`, `AgentWorker`, `Orchestrator`, `WorktreeManager`.
-- ⏸️ Lint-правило "no `slog.Default()` в orchestrator files" — Sprint 5 CI setup.
+- 🟡 Lint-правило "no `slog.Default()` в orchestrator files" — `.golangci.yml` написан (Sprint 5E), CI workflow прогон — Sprint 6.8.
+- ✅ Frontend l10n helper: новые v2-виджеты используют `requireAppLocalizations(context, where: '<WidgetName>')` вместо `AppLocalizations.of(context)!` (см. Sprint 5F.21 commit 2026-05-15).

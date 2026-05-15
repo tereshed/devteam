@@ -154,16 +154,16 @@ void main() {
       expect(st.error, isA<TaskDetailProjectMismatchException>());
     });
 
-    test('pauseTask sets lifecycleMutationInFlight until success then clears', () async {
+    test('cancelTask sets lifecycleMutationInFlight until success then clears', () async {
       stubList();
       when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async => task(status: 'planning'));
+          .thenAnswer((_) async => task(status: 'active'));
       stubMessages(
         const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
       );
 
       final completer = Completer<TaskModel>();
-      when(mockRepo.pauseTask(tid, cancelToken: anyNamed('cancelToken')))
+      when(mockRepo.cancelTask(tid, cancelToken: anyNamed('cancelToken')))
           .thenAnswer((_) => completer.future);
 
       listenKeepAlive();
@@ -175,42 +175,42 @@ void main() {
           container.read(taskDetailControllerProvider(projectId: pid, taskId: tid)).requireValue;
       expect(before.lifecycleMutationInFlight, isNull);
 
-      final fut = ctrl.pauseTask();
+      final fut = ctrl.cancelTask();
       final during =
           container.read(taskDetailControllerProvider(projectId: pid, taskId: tid)).requireValue;
-      expect(during.lifecycleMutationInFlight, TaskLifecycleMutation.pause);
+      expect(during.lifecycleMutationInFlight, TaskLifecycleMutation.cancel);
 
-      completer.complete(task(status: 'paused', updatedAt: DateTime.utc(2026, 1, 3)));
+      completer.complete(task(status: 'cancelled', updatedAt: DateTime.utc(2026, 1, 3)));
       final o = await fut;
       expect(o, TaskMutationOutcome.completed);
 
       final after =
           container.read(taskDetailControllerProvider(projectId: pid, taskId: tid)).requireValue;
       expect(after.lifecycleMutationInFlight, isNull);
-      expect(after.task?.status, 'paused');
+      expect(after.task?.status, 'cancelled');
     });
 
-    test('pauseTask repo throws → AsyncError с предыдущими данными (hasValue+hasError)', () async {
+    test('cancelTask repo throws → AsyncError с предыдущими данными (hasValue+hasError)', () async {
       stubList();
       when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async => task(status: 'planning'));
+          .thenAnswer((_) async => task(status: 'active'));
       stubMessages(
         const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
       );
-      when(mockRepo.pauseTask(tid, cancelToken: anyNamed('cancelToken')))
-          .thenThrow(Exception('pause failed'));
+      when(mockRepo.cancelTask(tid, cancelToken: anyNamed('cancelToken')))
+          .thenThrow(Exception('cancel failed'));
 
       listenKeepAlive();
       final ctrl =
           container.read(taskDetailControllerProvider(projectId: pid, taskId: tid).notifier);
       await waitDetail();
 
-      await expectLater(ctrl.pauseTask(), throwsException);
+      await expectLater(ctrl.cancelTask(), throwsException);
 
       final st = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid));
       expect(st.hasError, isTrue);
       expect(st.hasValue, isTrue);
-      expect(st.requireValue.task?.status, 'planning');
+      expect(st.requireValue.task?.status, 'active');
     });
 
     test('refresh: после успешной загрузки getTask падает — нет вечного loading ленты', () async {
@@ -240,19 +240,19 @@ void main() {
     test('_patchState: правки доходят при AsyncError+copyWithPrevious', () async {
       stubList();
       when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async => task(status: 'planning'));
+          .thenAnswer((_) async => task(status: 'active'));
       stubMessages(
         const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
       );
-      when(mockRepo.pauseTask(tid, cancelToken: anyNamed('cancelToken')))
-          .thenThrow(Exception('pause failed'));
+      when(mockRepo.cancelTask(tid, cancelToken: anyNamed('cancelToken')))
+          .thenThrow(Exception('cancel failed'));
 
       listenKeepAlive();
       final ctrl =
           container.read(taskDetailControllerProvider(projectId: pid, taskId: tid).notifier);
       await waitDetail();
 
-      await expectLater(ctrl.pauseTask(), throwsException);
+      await expectLater(ctrl.cancelTask(), throwsException);
 
       expect(
         container.read(taskDetailControllerProvider(projectId: pid, taskId: tid)).requireValue
@@ -268,16 +268,16 @@ void main() {
       expect(after.requireValue.realtimeMutationBlocked, isTrue);
     });
 
-    test('pauseTask in flight: refresh затем ошибка pause — не AsyncError, без rethrow', () async {
+    test('cancelTask in flight: refresh затем ошибка cancel — не AsyncError, без rethrow', () async {
       stubList();
       when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async => task(status: 'planning'));
+          .thenAnswer((_) async => task(status: 'active'));
       stubMessages(
         const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
       );
 
       final completer = Completer<TaskModel>();
-      when(mockRepo.pauseTask(tid, cancelToken: anyNamed('cancelToken')))
+      when(mockRepo.cancelTask(tid, cancelToken: anyNamed('cancelToken')))
           .thenAnswer((_) => completer.future);
 
       listenKeepAlive();
@@ -285,21 +285,55 @@ void main() {
           container.read(taskDetailControllerProvider(projectId: pid, taskId: tid).notifier);
       await waitDetail();
 
-      final pauseFut = ctrl.pauseTask();
+      final cancelFut = ctrl.cancelTask();
       await Future<void>.delayed(Duration.zero);
 
       await ctrl.refresh();
 
       completer.completeError(Exception('stale net'));
-      final o = await pauseFut;
+      final o = await cancelFut;
       expect(o, TaskMutationOutcome.completed);
 
       final st = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid));
       expect(st.hasError, isFalse);
-      expect(st.requireValue.task?.status, 'planning');
+      expect(st.requireValue.task?.status, 'active');
     });
 
-    test('pauseTask blockedByRealtime does not call repo', () async {
+    test('cancelTask race: 409 task_already_terminal → alreadyTerminal, без AsyncError', () async {
+      stubList();
+      when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
+          .thenAnswer((_) async => task(status: 'active'));
+      stubMessages(
+        const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
+      );
+
+      listenKeepAlive();
+      final ctrl =
+          container.read(taskDetailControllerProvider(projectId: pid, taskId: tid).notifier);
+      await waitDetail();
+
+      // Первый вызов cancelTask: backend ответил 409 task_already_terminal.
+      // После рекосиляции через _reloadTaskReconcileFromServer getTask вернёт уже-done.
+      when(mockRepo.cancelTask(tid, cancelToken: anyNamed('cancelToken')))
+          .thenThrow(TaskAlreadyTerminalException('task is already in terminal state'));
+      when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
+          .thenAnswer((_) async => task(status: 'done', updatedAt: DateTime.utc(2026, 1, 5)));
+
+      final o = await ctrl.cancelTask();
+      expect(o, TaskMutationOutcome.alreadyTerminal);
+
+      // Дать reconcile-future отработать.
+      await Future<void>.delayed(Duration.zero);
+
+      final st = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid));
+      expect(st.hasError, isFalse,
+          reason: 'race cancel should NOT escalate to AsyncError (no red snack)');
+      expect(st.requireValue.task?.status, 'done',
+          reason: 'controller must reconcile state from server after 409');
+      expect(st.requireValue.lifecycleMutationInFlight, isNull);
+    });
+
+    test('cancelTask blockedByRealtime does not call repo', () async {
       stubList();
       when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
           .thenAnswer((_) async => task());
@@ -313,9 +347,9 @@ void main() {
       await waitDetail();
 
       ctrl.setRealtimeMutationBlocked(true);
-      final o = await ctrl.pauseTask();
+      final o = await ctrl.cancelTask();
       expect(o, TaskMutationOutcome.blockedByRealtime);
-      verifyNever(mockRepo.pauseTask(any, cancelToken: anyNamed('cancelToken')));
+      verifyNever(mockRepo.cancelTask(any, cancelToken: anyNamed('cancelToken')));
     });
 
     test('correctTask empty trim → validationFailed before realtime check', () async {
@@ -445,7 +479,7 @@ void main() {
       expect(sub.title, 'sub');
     });
 
-    test('pauseTask when AsyncError → notReady', () async {
+    test('cancelTask when AsyncError → notReady', () async {
       stubList();
       when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
           .thenAnswer((_) async => task(projectIdOverride: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'));
@@ -463,9 +497,9 @@ void main() {
         isTrue,
       );
 
-      final o = await ctrl.pauseTask();
+      final o = await ctrl.cancelTask();
       expect(o, TaskMutationOutcome.notReady);
-      verifyNever(mockRepo.pauseTask(any, cancelToken: anyNamed('cancelToken')));
+      verifyNever(mockRepo.cancelTask(any, cancelToken: anyNamed('cancelToken')));
     });
 
     test('WS previousStatus mismatch reloads task via getTask without extra messages fetch', () async {

@@ -44,7 +44,7 @@ TaskModel _minimalTask({
   required String id,
   required String projectId,
   String title = 'Hello Task',
-  String status = 'pending',
+  String status = 'active',
   List<TaskSummaryModel> subTasks = const [],
 }) {
   return TaskModel(
@@ -66,17 +66,15 @@ TaskModel _minimalTask({
 class _CountingDetailController extends TaskDetailController {
   _CountingDetailController(
     this._seed, {
-    this.pauseResult = TaskMutationOutcome.completed,
+    this.cancelResult = TaskMutationOutcome.completed,
     this.trackLoadMore = false,
   });
 
   final TaskDetailState _seed;
-  final TaskMutationOutcome pauseResult;
+  final TaskMutationOutcome cancelResult;
   final bool trackLoadMore;
 
-  int pauseCalls = 0;
   int cancelCalls = 0;
-  int resumeCalls = 0;
   int loadMoreCalls = 0;
 
   @override
@@ -105,21 +103,9 @@ class _CountingDetailController extends TaskDetailController {
   }
 
   @override
-  Future<TaskMutationOutcome> pauseTask() async {
-    pauseCalls++;
-    return pauseResult;
-  }
-
-  @override
   Future<TaskMutationOutcome> cancelTask() async {
     cancelCalls++;
-    return TaskMutationOutcome.completed;
-  }
-
-  @override
-  Future<TaskMutationOutcome> resumeTask() async {
-    resumeCalls++;
-    return TaskMutationOutcome.completed;
+    return cancelResult;
   }
 }
 
@@ -181,31 +167,6 @@ Finder _lifecycleButtonForLabel(String label) {
   return find.ancestor(
     of: textInStrip,
     matching: find.bySubtype<ButtonStyleButton>(),
-  );
-}
-
-void _expectProgressOnFilledLabel(
-  WidgetTester tester, {
-  required String onLabel,
-  required String notOnLabel,
-}) {
-  final onF = _lifecycleButtonForLabel(onLabel);
-  final offF = _lifecycleButtonForLabel(notOnLabel);
-  expect(onF, findsOneWidget);
-  expect(offF, findsOneWidget);
-  expect(
-    find.descendant(
-      of: onF,
-      matching: find.byType(CircularProgressIndicator),
-    ),
-    findsOneWidget,
-  );
-  expect(
-    find.descendant(
-      of: offF,
-      matching: find.byType(CircularProgressIndicator),
-    ),
-    findsNothing,
   );
 }
 
@@ -511,7 +472,7 @@ void main() {
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'planning',
+        status: 'active',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -525,19 +486,12 @@ void main() {
 
     final l10n = AppLocalizationsEn();
     expect(find.text(l10n.taskDetailRealtimeMutationBlocked), findsOneWidget);
-    final pause = tester.widget<IconButton>(
-      find.ancestor(
-        of: find.byTooltip(l10n.taskActionPause),
-        matching: find.byType(IconButton),
-      ),
-    );
     final cancel = tester.widget<IconButton>(
       find.ancestor(
         of: find.byTooltip(l10n.taskActionCancel),
         matching: find.byType(IconButton),
       ),
     );
-    expect(pause.onPressed, isNull);
     expect(cancel.onPressed, isNull);
   });
 
@@ -616,14 +570,12 @@ void main() {
     expect(find.textContaining('sk-'), findsNothing);
   });
 
-  testWidgets('12.8 planning wide: Pause и Cancel в AppBar, без Resume', (
-    tester,
-  ) async {
+  testWidgets('active wide: только Cancel в AppBar', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'planning',
+        status: 'active',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -634,17 +586,17 @@ void main() {
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
-    expect(find.byTooltip(l10n.taskActionPause), findsOneWidget);
     expect(find.byTooltip(l10n.taskActionCancel), findsOneWidget);
+    expect(find.byTooltip(l10n.taskActionPause), findsNothing);
     expect(find.byTooltip(l10n.taskActionResume), findsNothing);
   });
 
-  testWidgets('12.8 paused narrow: только Resume в теле', (tester) async {
+  testWidgets('needs_human narrow: Cancel доступен', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'paused',
+        status: 'needs_human',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -656,35 +608,36 @@ void main() {
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
-    expect(find.text(l10n.taskActionResume), findsOneWidget);
+    expect(find.text(l10n.taskActionCancel), findsOneWidget);
     expect(find.text(l10n.taskActionPause), findsNothing);
-    expect(find.text(l10n.taskActionCancel), findsNothing);
+    expect(find.text(l10n.taskActionResume), findsNothing);
   });
 
-  testWidgets('12.8 paused narrow: tap Resume вызывает resumeTask', (tester) async {
+  testWidgets('done: панель lifecycle отсутствует', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'paused',
+        status: 'done',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
-    final tracking = _CountingDetailController(seed);
     await _pumpDetail(
       tester,
       logicalSize: const Size(400, 800),
-      detailController: () => tracking,
+      detailController: () => _CountingDetailController(seed),
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
-    await tester.tap(find.text(l10n.taskActionResume));
-    await tester.pumpAndSettle();
-    expect(tracking.resumeCalls, 1);
+    expect(find.text(l10n.taskActionPause), findsNothing);
+    expect(find.text(l10n.taskActionCancel), findsNothing);
+    expect(find.text(l10n.taskActionResume), findsNothing);
   });
 
-  testWidgets('12.8 failed narrow: Resume как для paused', (tester) async {
+  testWidgets('failed: панель lifecycle отсутствует (терминальный state)', (
+    tester,
+  ) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
@@ -701,16 +654,17 @@ void main() {
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
-    expect(find.text(l10n.taskActionResume), findsOneWidget);
     expect(find.text(l10n.taskActionPause), findsNothing);
+    expect(find.text(l10n.taskActionCancel), findsNothing);
+    expect(find.text(l10n.taskActionResume), findsNothing);
   });
 
-  testWidgets('12.8 completed: панель lifecycle отсутствует', (tester) async {
+  testWidgets('cancelled: панель lifecycle отсутствует', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'completed',
+        status: 'cancelled',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -722,9 +676,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
-    expect(find.text(l10n.taskActionPause), findsNothing);
     expect(find.text(l10n.taskActionCancel), findsNothing);
-    expect(find.text(l10n.taskActionResume), findsNothing);
   });
 
   testWidgets('12.8 неизвестный статус: панель lifecycle отсутствует', (
@@ -751,188 +703,38 @@ void main() {
     expect(find.text(l10n.taskActionResume), findsNothing);
   });
 
-  testWidgets('12.8 pending narrow: только Cancel', (tester) async {
-    final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'pending'),
-      isLoadingTask: false,
-      isLoadingMessages: false,
-    );
-    await _pumpDetail(
-      tester,
-      logicalSize: const Size(400, 800),
-      detailController: () => _CountingDetailController(seed),
-    );
-    await tester.pumpAndSettle();
-    final l10n = AppLocalizationsEn();
-    expect(find.text(l10n.taskActionCancel), findsOneWidget);
-    expect(find.text(l10n.taskActionPause), findsNothing);
-  });
-
-  testWidgets('12.8 blockedByRealtime: SnackBar при Pause', (tester) async {
+  testWidgets('blockedByRealtime: SnackBar при Cancel', (tester) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'planning',
+        status: 'active',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
     final stub = _CountingDetailController(
       seed,
-      pauseResult: TaskMutationOutcome.blockedByRealtime,
+      cancelResult: TaskMutationOutcome.blockedByRealtime,
     );
     await _pumpDetail(tester, detailController: () => stub);
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
-    await tester.tap(find.byTooltip(l10n.taskActionPause));
+    await tester.tap(find.byTooltip(l10n.taskActionCancel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(l10n.taskActionConfirm));
     await tester.pumpAndSettle();
     expect(find.text(l10n.taskActionBlockedByRealtimeSnack), findsOneWidget);
   });
 
-  testWidgets(
-    '12.8 pause repo throws: SnackBar + Retry, карточка без полноэкранной ошибки',
-    (tester) async {
-      final mockRepo = MockTaskRepository();
-      when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
-          .thenAnswer(
-        (_) async => _minimalTask(
-          id: _kTid,
-          projectId: kTaskFixtureProjectId,
-          title: 'Hello Task',
-          status: 'planning',
-        ),
-      );
-      when(
-        mockRepo.listTaskMessages(
-          _kTid,
-          messageType: anyNamed('messageType'),
-          senderType: anyNamed('senderType'),
-          limit: anyNamed('limit'),
-          offset: anyNamed('offset'),
-          cancelToken: anyNamed('cancelToken'),
-        ),
-      ).thenAnswer(
-        (_) async => const TaskMessageListResponse(
-          messages: [],
-          total: 0,
-          limit: 50,
-          offset: 0,
-        ),
-      );
-      when(mockRepo.pauseTask(_kTid, cancelToken: anyNamed('cancelToken')))
-          .thenThrow(Exception('pause failed'));
-
-      await _pumpDetail(
-        tester,
-        logicalSize: const Size(400, 800),
-        overrides: [
-          taskRepositoryProvider.overrideWithValue(mockRepo),
-        ],
-      );
-      await tester.pumpAndSettle();
-      final l10n = AppLocalizationsEn();
-
-      expect(find.text('Hello Task'), findsWidgets);
-      expect(find.text(l10n.taskDetailBackToList), findsNothing);
-
-      await tester.tap(find.text(l10n.taskActionPause));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-
-      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
-      expect(find.text(l10n.retry), findsOneWidget);
-      expect(find.text('Hello Task'), findsWidgets);
-      expect(find.text(l10n.taskDetailBackToList), findsNothing);
-    },
-  );
-
-  testWidgets(
-    '12.8 pause fail: WS-патчи с тем же error не дублируют snack',
-    (tester) async {
-      final mockRepo = MockTaskRepository();
-      when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
-          .thenAnswer(
-        (_) async => _minimalTask(
-          id: _kTid,
-          projectId: kTaskFixtureProjectId,
-          title: 'Hello Task',
-          status: 'planning',
-        ),
-      );
-      when(
-        mockRepo.listTaskMessages(
-          _kTid,
-          messageType: anyNamed('messageType'),
-          senderType: anyNamed('senderType'),
-          limit: anyNamed('limit'),
-          offset: anyNamed('offset'),
-          cancelToken: anyNamed('cancelToken'),
-        ),
-      ).thenAnswer(
-        (_) async => const TaskMessageListResponse(
-          messages: [],
-          total: 0,
-          limit: 50,
-          offset: 0,
-        ),
-      );
-      when(mockRepo.pauseTask(_kTid, cancelToken: anyNamed('cancelToken')))
-          .thenThrow(Exception('pause failed'));
-
-      await _pumpDetail(
-        tester,
-        logicalSize: const Size(400, 800),
-        overrides: [
-          taskRepositoryProvider.overrideWithValue(mockRepo),
-        ],
-      );
-      await tester.pumpAndSettle();
-      final l10n = AppLocalizationsEn();
-
-      await tester.tap(find.text(l10n.taskActionPause));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-
-      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
-
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(TaskDetailScreen)),
-      );
-      final notifier = container.read(
-        taskDetailControllerProvider(projectId: kTaskFixtureProjectId, taskId: _kTid).notifier,
-      );
-
-      notifier.applyWsTaskMessage(
-        WsTaskMessageEvent(
-          ts: DateTime.utc(2026, 5, 9),
-          v: 1,
-          projectId: kTaskFixtureProjectId,
-          taskId: _kTid,
-          messageId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          senderType: 'agent',
-          senderId: kTaskFixtureUserId,
-          messageType: 'instruction',
-          content: 'ws',
-        ),
-      );
-      await tester.pump();
-      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
-
-      notifier.applyRealtimeFailure(const WsServiceFailure.transient());
-      await tester.pump();
-      expect(find.text(l10n.taskErrorGeneric), findsOneWidget);
-    },
-  );
-
-  testWidgets('12.8 отмена: dismiss диалога не вызывает cancelTask', (
+  testWidgets('отмена: dismiss диалога не вызывает cancelTask', (
     tester,
   ) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'planning',
+        status: 'active',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -952,14 +754,14 @@ void main() {
     expect(tracking.cancelCalls, 0);
   });
 
-  testWidgets('12.8 отмена: подтверждение вызывает cancelTask один раз', (
+  testWidgets('отмена: подтверждение вызывает cancelTask один раз', (
     tester,
   ) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'planning',
+        status: 'active',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -979,39 +781,14 @@ void main() {
     expect(tracking.cancelCalls, 1);
   });
 
-  testWidgets('12.8 inflight pause: Cancel отключён', (tester) async {
-    final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(
-        id: _kTid,
-        projectId: kTaskFixtureProjectId,
-        status: 'planning',
-      ),
-      isLoadingTask: false,
-      isLoadingMessages: false,
-      lifecycleMutationInFlight: TaskLifecycleMutation.pause,
-    );
-    final tracking = _CountingDetailController(seed);
-    await _pumpDetail(
-      tester,
-      logicalSize: const Size(400, 800),
-      detailController: () => tracking,
-    );
-    await tester.pump();
-    final l10n = AppLocalizationsEn();
-    await tester.tap(find.text(l10n.taskActionCancel));
-    await tester.pump();
-    expect(tracking.cancelCalls, 0);
-    expect(find.byType(AlertDialog), findsNothing);
-  });
-
-  testWidgets('12.8 inflight cancel: Pause отключён, индикатор на Cancel (narrow)', (
+  testWidgets('inflight cancel narrow: индикатор на Cancel, повторный tap игнорируется', (
     tester,
   ) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'planning',
+        status: 'active',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -1023,64 +800,31 @@ void main() {
       logicalSize: const Size(400, 800),
       detailController: () => tracking,
     );
-    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
     final l10n = AppLocalizationsEn();
-    expect(find.text(l10n.taskActionPause), findsOneWidget);
     expect(find.text(l10n.taskActionCancel), findsOneWidget);
-    _expectProgressOnFilledLabel(
-      tester,
-      onLabel: l10n.taskActionCancel,
-      notOnLabel: l10n.taskActionPause,
-    );
-    await tester.tap(find.text(l10n.taskActionPause));
-    await tester.pump();
-    expect(tracking.pauseCalls, 0);
-  });
-
-  testWidgets('12.8 inflight resume: кнопка отключена с индикатором (narrow, paused)', (
-    tester,
-  ) async {
-    final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(
-        id: _kTid,
-        projectId: kTaskFixtureProjectId,
-        status: 'paused',
-      ),
-      isLoadingTask: false,
-      isLoadingMessages: false,
-      lifecycleMutationInFlight: TaskLifecycleMutation.resume,
-    );
-    final tracking = _CountingDetailController(seed);
-    await _pumpDetail(
-      tester,
-      logicalSize: const Size(400, 800),
-      detailController: () => tracking,
-    );
-    await tester.pump();
-    final l10n = AppLocalizationsEn();
-    expect(find.text(l10n.taskActionResume), findsOneWidget);
-    final resumeF = _lifecycleButtonForLabel(l10n.taskActionResume);
-    expect(resumeF, findsOneWidget);
+    final cancelF = _lifecycleButtonForLabel(l10n.taskActionCancel);
     expect(
       find.descendant(
-        of: resumeF,
+        of: cancelF,
         matching: find.byType(CircularProgressIndicator),
       ),
-      findsOneWidget,
+      findsAtLeastNWidgets(1),
     );
-    await tester.tap(find.text(l10n.taskActionResume));
-    await tester.pump();
-    expect(tracking.resumeCalls, 0);
+    await tester.tap(find.text(l10n.taskActionCancel));
+    await tester.pump(const Duration(seconds: 2));
+    expect(tracking.cancelCalls, 0);
+    expect(find.byType(AlertDialog), findsNothing);
   });
 
-  testWidgets('12.8 inflight cancel wide: Pause отключён, индикатор на Cancel в AppBar', (
+  testWidgets('inflight cancel wide: индикатор на Cancel в AppBar, повторный tap игнорируется', (
     tester,
   ) async {
     final seed = TaskDetailState.initial().copyWith(
       task: _minimalTask(
         id: _kTid,
         projectId: kTaskFixtureProjectId,
-        status: 'planning',
+        status: 'active',
       ),
       isLoadingTask: false,
       isLoadingMessages: false,
@@ -1088,120 +832,30 @@ void main() {
     );
     final tracking = _CountingDetailController(seed);
     await _pumpDetail(tester, detailController: () => tracking);
-    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    final l10n = AppLocalizationsEn();
     final appBar = find.byType(AppBar);
-    final pauseIconInBar = find.descendant(
+    final cancelTooltip = find.descendant(
       of: appBar,
-      matching: find.byIcon(Icons.pause),
+      matching: find.byTooltip(l10n.taskActionCancel),
     );
-    final pauseIconButton = find.ancestor(
-      of: pauseIconInBar,
+    expect(cancelTooltip, findsOneWidget);
+    final cancelIconButton = find.ancestor(
+      of: cancelTooltip,
       matching: find.byType(IconButton),
     );
-    expect(pauseIconInBar, findsOneWidget);
-    expect(tester.widget<IconButton>(pauseIconButton).onPressed, isNull);
+    expect(cancelIconButton, findsOneWidget);
+    expect(tester.widget<IconButton>(cancelIconButton).onPressed, isNull);
     expect(
       find.descendant(
         of: appBar,
         matching: find.byType(CircularProgressIndicator),
       ),
-      findsOneWidget,
+      findsAtLeastNWidgets(1),
     );
-    await tester.tap(pauseIconButton);
-    await tester.pump();
-    expect(tracking.pauseCalls, 0);
-  });
-
-  testWidgets('12.8 двойной tap Pause: один вызов API', (tester) async {
-    final mockRepo = MockTaskRepository();
-    var pauseCalls = 0;
-    when(mockRepo.getTask(_kTid, cancelToken: anyNamed('cancelToken')))
-        .thenAnswer(
-      (_) async => _minimalTask(
-        id: _kTid,
-        projectId: kTaskFixtureProjectId,
-        status: 'planning',
-      ),
-    );
-    when(
-      mockRepo.listTaskMessages(
-        _kTid,
-        messageType: anyNamed('messageType'),
-        senderType: anyNamed('senderType'),
-        limit: anyNamed('limit'),
-        offset: anyNamed('offset'),
-        cancelToken: anyNamed('cancelToken'),
-      ),
-    ).thenAnswer(
-      (_) async => const TaskMessageListResponse(
-        messages: [],
-        total: 0,
-        limit: 50,
-        offset: 0,
-      ),
-    );
-    when(mockRepo.pauseTask(_kTid, cancelToken: anyNamed('cancelToken')))
-        .thenAnswer((_) async {
-      pauseCalls++;
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      return _minimalTask(
-        id: _kTid,
-        projectId: kTaskFixtureProjectId,
-        status: 'paused',
-      );
-    });
-
-    final listSeed = TaskListState(
-      filter: TaskListFilter.defaults(),
-      items: const [],
-      total: 0,
-      offset: 0,
-      isLoadingInitial: false,
-    );
-
-    await _pumpDetail(
-      tester,
-      logicalSize: const Size(400, 800),
-      overrides: [
-        taskListControllerProvider.overrideWith(
-          () => _StubTaskListForDetail(listSeed),
-        ),
-        taskRepositoryProvider.overrideWithValue(mockRepo),
-      ],
-    );
-    await tester.pumpAndSettle();
-
-    final l10n = AppLocalizationsEn();
-    await tester.tap(find.text(l10n.taskActionPause));
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.tap(find.text(l10n.taskActionPause));
-    await tester.pump();
-    expect(pauseCalls, 1);
-    await tester.pump(const Duration(milliseconds: 600));
-  });
-
-  testWidgets('12.10 pending narrow: Cancel и подтверждение в диалоге', (
-    tester,
-  ) async {
-    final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'pending'),
-      isLoadingTask: false,
-      isLoadingMessages: false,
-    );
-    final tracking = _CountingDetailController(seed);
-    await _pumpDetail(
-      tester,
-      logicalSize: const Size(400, 800),
-      detailController: () => tracking,
-    );
-    await tester.pumpAndSettle();
-    final l10n = AppLocalizationsEn();
-    await tester.tap(find.text(l10n.taskActionCancel));
-    await tester.pumpAndSettle();
-    expect(find.text(l10n.taskActionCancelConfirmTitle), findsOneWidget);
-    await tester.tap(find.text(l10n.taskActionConfirm));
-    await tester.pumpAndSettle();
-    expect(tracking.cancelCalls, 1);
+    await tester.tap(cancelIconButton);
+    await tester.pump(const Duration(seconds: 2));
+    expect(tracking.cancelCalls, 0);
   });
 
   testWidgets('12.10 applyWsTaskStatus на карточке из stub', (tester) async {
@@ -1245,7 +899,7 @@ void main() {
     tester,
   ) async {
     final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'completed'),
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'done'),
       isLoadingTask: false,
       isLoadingMessages: false,
       messages: const [],
@@ -1281,11 +935,11 @@ void main() {
     expect(find.text('Fixture WS message positive'), findsOneWidget);
   });
 
-  testWidgets('12.10 in_progress wide: Pause тап вызывает pauseTask', (
+  testWidgets('active wide: Cancel тап вызывает cancelTask', (
     tester,
   ) async {
     final seed = TaskDetailState.initial().copyWith(
-      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'in_progress'),
+      task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'active'),
       isLoadingTask: false,
       isLoadingMessages: false,
     );
@@ -1293,9 +947,11 @@ void main() {
     await _pumpDetail(tester, detailController: () => tracking);
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsEn();
-    await tester.tap(find.byTooltip(l10n.taskActionPause));
+    await tester.tap(find.byTooltip(l10n.taskActionCancel));
     await tester.pumpAndSettle();
-    expect(tracking.pauseCalls, 1);
+    await tester.tap(find.text(l10n.taskActionConfirm));
+    await tester.pumpAndSettle();
+    expect(tracking.cancelCalls, 1);
   });
 
   testWidgets('12.10 RU-smoke: секция описания при загрузке из repo', (

@@ -20,6 +20,9 @@ type CreateTaskRequest struct {
 	// (Developer/Tester c claude-code) использует при clone в контейнере.
 	// Без него orchestrator не сможет дойти до in_progress→review.
 	BranchName *string `json:"branch_name"`
+	// CustomTimeout — per-task override task_timeout (формат time.ParseDuration:
+	// "4h", "90m", "1h30m"). Если пуст — используется глобальный default.
+	CustomTimeout *string `json:"custom_timeout,omitempty"`
 }
 
 // ListTasksRequest фильтры и пагинация списка задач проекта.
@@ -102,6 +105,7 @@ type TaskResponse struct {
 	Result        *string        `json:"result,omitempty"`
 	Artifacts     datatypes.JSON `json:"artifacts" swaggertype:"string"`
 	BranchName    *string        `json:"branch_name,omitempty"`
+	CustomTimeout *string        `json:"custom_timeout,omitempty"`
 	ErrorMessage  *string        `json:"error_message,omitempty"`
 	SubTasks      []TaskSummary  `json:"sub_tasks,omitempty"`
 	MessageCount  *int64         `json:"message_count,omitempty"`
@@ -201,6 +205,11 @@ func ToTaskResponse(t *models.Task) TaskResponse {
 	for i := range t.SubTasks {
 		sub = append(sub, ToTaskSummary(&t.SubTasks[i]))
 	}
+	var customTimeout *string
+	if t.CustomTimeout != nil {
+		s := t.CustomTimeout.Duration().String()
+		customTimeout = &s
+	}
 	return TaskResponse{
 		ID:            t.ID.String(),
 		ProjectID:     t.ProjectID.String(),
@@ -216,6 +225,7 @@ func ToTaskResponse(t *models.Task) TaskResponse {
 		Result:        t.Result,
 		Artifacts:     t.Artifacts,
 		BranchName:    t.BranchName,
+		CustomTimeout: customTimeout,
 		ErrorMessage:  t.ErrorMessage,
 		SubTasks:      sub,
 		StartedAt:     t.StartedAt,

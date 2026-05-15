@@ -14,6 +14,22 @@ import (
 // ErrWorktreeNotFound — sentinel.
 var ErrWorktreeNotFound = errors.New("worktree not found")
 
+// WorktreeListDefaultLimit — дефолтный лимит для List() без явного limit'а.
+// 200 — компромисс: достаточно для глобального debug-экрана, но не дёргает БД миллионами строк.
+const WorktreeListDefaultLimit = 200
+
+// WorktreeFilter — фильтры для List().
+//
+// Все поля опциональны. Сортировка фиксирована: allocated_at DESC (последние allocate'ы первыми).
+// State валидируется на handler-слое; Repository пропускает значение в SQL как есть, но
+// проверяет IsValid() ради защиты от опечаток в вызывающем коде.
+type WorktreeFilter struct {
+	TaskID *uuid.UUID
+	State  *models.WorktreeState
+	Limit  int // если ≤ 0 — берётся WorktreeListDefaultLimit
+	Offset int // если < 0 — игнорируется (трактуется как 0)
+}
+
 // WorktreeRepository — учёт git worktree'ев для параллельных sandbox-агентов.
 //
 // БЕЗОПАСНОСТЬ: путь к worktree НЕ хранится в БД — он вычисляется
@@ -25,6 +41,13 @@ type WorktreeRepository interface {
 
 	// ListByTaskID — все worktree'ы задачи (для UI и cancel cleanup).
 	ListByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.Worktree, error)
+
+	// List — глобальный список worktree'ев с опциональными фильтрами.
+	// Сортировка: allocated_at DESC (план запроса опирается на индекс
+	// idx_worktrees_allocated_at, см. migration 041; left-prefix трюк с
+	// (state, allocated_at) намеренно отвергнут — он не сработал бы для
+	// дефолтного запроса без state-фильтра).
+	List(ctx context.Context, filter WorktreeFilter) ([]models.Worktree, error)
 
 	// UpdateState — атомарно меняет state + released_at (последний выставляется при state='released').
 	// Возвращает ErrWorktreeNotFound если запись не существует.
@@ -74,6 +97,33 @@ func (r *worktreeRepository) GetByID(ctx context.Context, id uuid.UUID) (*models
 		return nil, fmt.Errorf("failed to get worktree %s: %w", id, err)
 	}
 	return &w, nil
+}
+
+func (r *worktreeRepository) List(ctx context.Context, filter WorktreeFilter) ([]models.Worktree, error) {
+	q := r.db.WithContext(ctx).Model(&models.Worktree{})
+	if filter.TaskID != nil {
+		q = q.Where("task_id = ?", *filter.TaskID)
+	}
+	if filter.State != nil {
+		if !filter.State.IsValid() {
+			return nil, fmt.Errorf("invalid worktree state filter: %q", *filter.State)
+		}
+		q = q.Where("state = ?", *filter.State)
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = WorktreeListDefaultLimit
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	var ws []models.Worktree
+	err := q.Order("allocated_at DESC").Limit(limit).Offset(offset).Find(&ws).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+	}
+	return ws, nil
 }
 
 func (r *worktreeRepository) ListByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.Worktree, error) {

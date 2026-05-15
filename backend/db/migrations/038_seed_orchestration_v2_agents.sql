@@ -40,6 +40,23 @@
 -- ВАЖНО: для llm-агентов code_backend ОБЯЗАН быть NULL, model ОБЯЗАН быть задан
 -- (CHECK chk_agents_kind_requirements из миграции 031). И наоборот для sandbox.
 
+-- Sprint 17 fix: миграция 016 дропнула глобальный UNIQUE(name) (теперь только
+-- partial index `idx_agents_team_name` для team_id IS NOT NULL). Для системных
+-- агентов (team_id IS NULL) нужен parallel partial unique, иначе ON CONFLICT
+-- ниже не найдёт arbiter. Создаём индекс ДО INSERT, идемпотентно.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_global_name
+    ON agents(name) WHERE team_id IS NULL;
+
+-- Sprint 17 fix: расширяем chk_agents_role (миграция 016 ограничивала набор
+-- legacy-ролями). Orchestration v2 добавляет router/decomposer/merger.
+ALTER TABLE agents DROP CONSTRAINT IF EXISTS chk_agents_role;
+ALTER TABLE agents ADD CONSTRAINT chk_agents_role
+    CHECK (role IN (
+        'worker', 'supervisor', 'orchestrator', 'planner',
+        'developer', 'reviewer', 'tester', 'devops',
+        'router', 'decomposer', 'merger'
+    ));
+
 INSERT INTO agents (
     name, role, execution_kind,
     model, code_backend, provider_kind,
@@ -144,7 +161,10 @@ INSERT INTO agents (
     '{"env_secret_keys": ["ANTHROPIC_API_KEY"]}'::jsonb,
     true, true
 )
-ON CONFLICT (name) DO NOTHING;
+-- WHERE-clause обязателен: говорит postgres использовать partial unique index
+-- `idx_agents_global_name` (созданный выше) как arbiter. Без неё PG требует
+-- неусечённого UNIQUE(name), который дропнут в миграции 016.
+ON CONFLICT (name) WHERE team_id IS NULL DO NOTHING;
 
 -- +goose StatementEnd
 

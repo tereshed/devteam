@@ -85,6 +85,13 @@ func (m *mockTaskRepository) GetByID(ctx context.Context, id uuid.UUID) (*models
 	}
 	return args.Get(0).(*models.Task), args.Error(1)
 }
+func (m *mockTaskRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Task, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
 func (m *mockTaskRepository) List(ctx context.Context, filter repository.TaskFilter) ([]models.Task, int64, error) {
 	args := m.Called(ctx, filter)
 	var list []models.Task
@@ -317,7 +324,7 @@ func TestTaskEvents_Cancel(t *testing.T) {
 	ctx := context.Background()
 
 	task := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive, UpdatedAt: time.Now()}
-	tr.On("GetByID", ctx, tsTaskID).Return(task, nil).Once()
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(task, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
 	tr.On("Update", ctx, mock.Anything, models.TaskStateActive, mock.Anything).Return(nil)
@@ -724,7 +731,7 @@ func TestTaskCancel_Success(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
 	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
-	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
 		return tk.State == models.TaskStateCancelled && tk.CompletedAt != nil
@@ -737,11 +744,23 @@ func TestTaskCancel_Success(t *testing.T) {
 func TestTaskCancel_FromTerminal(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	tr.On("GetByID", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateDone}, nil)
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(&models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateDone}, nil)
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 
 	_, err := svc.Cancel(ctx, tsUserID, models.RoleUser, tsTaskID)
-	assert.ErrorIs(t, err, ErrTaskInvalidTransition)
+	assert.ErrorIs(t, err, ErrTaskAlreadyTerminal)
+}
+
+// Race-условие: между чтением state'а на фронте и POST /cancel воркер успел залочить
+// строку для финализации (SELECT FOR UPDATE NOWAIT внутри Orchestrator). Cancel должен
+// вернуть ErrTaskAlreadyTerminal (→ HTTP 409), не 500.
+func TestTaskCancel_RowLocked_ReturnsAlreadyTerminal(t *testing.T) {
+	tr, _, _, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	tr.On("GetByIDForUpdate", ctx, tsTaskID).Return(nil, repository.ErrTaskLocked)
+
+	_, err := svc.Cancel(ctx, tsUserID, models.RoleUser, tsTaskID)
+	assert.ErrorIs(t, err, ErrTaskAlreadyTerminal)
 }
 
 func TestTaskResume_FromPaused(t *testing.T) {

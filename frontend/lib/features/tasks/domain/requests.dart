@@ -131,6 +131,9 @@ abstract class CreateTaskRequest with _$CreateTaskRequest {
     @JsonKey(name: 'parent_task_id') String? parentTaskId,
     @JsonKey(name: 'assigned_agent_id') String? assignedAgentId,
     @Default(<String, dynamic>{}) Map<String, dynamic> context,
+    // Orchestration v2 / Sprint 17 — override 4h orchestrator timeout per-task.
+    // Формат поддерживаемый бэкендом: Go time.Duration string ("4h", "90m", "1h30m").
+    @JsonKey(name: 'custom_timeout') String? customTimeout,
   }) = _CreateTaskRequest;
 
   factory CreateTaskRequest.fromJson(Map<String, dynamic> json) =>

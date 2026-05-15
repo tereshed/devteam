@@ -580,6 +580,15 @@ func main() {
 
 		// Sprint 17 / Sprint 5F.3 — HTTP API для v2 admin (Frontend Agents Management).
 		AgentV2Handler: handler.NewAgentV2Handler(agentSvcV2),
+
+		// Sprint 17 / Orchestration v2 — read-only API для UI (DAG / Router timeline / Worktrees).
+		// taskService нужен ListWorktrees'у для task-ownership check'а (см. Sprint 17 / 6.2).
+		OrchestrationV2Handler: handler.NewOrchestrationV2Handler(
+			artifactRepoV2,
+			routerDecisionRepoV2,
+			worktreeRepoV2,
+			taskService,
+		),
 	})
 
 	go func() {

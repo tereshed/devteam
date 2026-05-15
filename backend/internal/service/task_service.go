@@ -31,11 +31,16 @@ var (
 	ErrTaskInvalidStatus      = errors.New("invalid task status")
 	ErrTaskInvalidTransition  = errors.New("invalid status transition")
 	ErrTaskTerminalStatus     = errors.New("task is in terminal status")
+	// ErrTaskAlreadyTerminal — race condition при Cancel: задача уже завершилась
+	// (done/failed/cancelled) или её прямо сейчас финализирует другой процесс.
+	// Маппится в HTTP 409 Conflict с error_code task_already_terminal.
+	ErrTaskAlreadyTerminal = errors.New("task is already in terminal state")
 	ErrTaskConcurrentUpdate   = errors.New("task was modified concurrently, please retry")
 	ErrTaskParentNotFound     = errors.New("parent task not found")
 	ErrAgentNotInTeam         = errors.New("agent does not belong to project team")
 	ErrTaskMessageNotFound    = errors.New("task message not found")
 	ErrTaskMessageInvalidType = errors.New("invalid message type")
+	ErrTaskInvalidTimeout     = errors.New("invalid custom_timeout (expected duration like '4h', '90m', '1h30m')")
 )
 
 const (
@@ -484,6 +489,18 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 	if len(ctxJSON) == 0 {
 		ctxJSON = datatypes.JSON([]byte("{}"))
 	}
+	// CustomTimeout — per-task override task_timeout. Парсим строку в Duration
+	// через стандартный time.ParseDuration ("4h", "90m", "1h30m").
+	// Невалидный формат → 400 (ErrTaskInvalidTimeout).
+	var customTimeout *models.IntervalDuration
+	if req.CustomTimeout != nil && *req.CustomTimeout != "" {
+		d, parseErr := time.ParseDuration(*req.CustomTimeout)
+		if parseErr != nil || d <= 0 {
+			return nil, ErrTaskInvalidTimeout
+		}
+		iv := models.IntervalDuration(d)
+		customTimeout = &iv
+	}
 	task := &models.Task{
 		ProjectID:     projectID,
 		Title:         strings.TrimSpace(req.Title),
@@ -495,6 +512,7 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		Context:       ctxJSON,
 		Artifacts:     datatypes.JSON([]byte("{}")),
 		BranchName:    req.BranchName,
+		CustomTimeout: customTimeout,
 	}
 
 	var created *models.Task
@@ -705,17 +723,28 @@ func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole mode
 func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevState models.TaskState
+		prevState  models.TaskState
 		occurredAt time.Time
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		task, err := s.taskRepo.GetByID(txCtx, taskID)
+		// SELECT ... FOR UPDATE NOWAIT — защита от race condition cancel-vs-finalization.
+		// Если строку прямо сейчас держит worker (финализирует задачу) — NOWAIT даст 55P03;
+		// трактуем как «задача уже завершается», возвращаем ErrTaskAlreadyTerminal (HTTP 409).
+		task, err := s.taskRepo.GetByIDForUpdate(txCtx, taskID)
 		if err != nil {
+			if errors.Is(err, repository.ErrTaskLocked) {
+				return ErrTaskAlreadyTerminal
+			}
 			return mapTaskRepoErr(err)
 		}
 		if err := s.checkTaskAccess(txCtx, userID, userRole, task); err != nil {
 			return err
+		}
+		// После lock state не изменится до COMMIT — но если он уже terminal,
+		// этот же 409 сигнализирует фронту что cancel опоздал.
+		if isTerminalTaskState(task.State) {
+			return ErrTaskAlreadyTerminal
 		}
 		expectedStatus := task.State
 		expectedUpdatedAt := task.UpdatedAt

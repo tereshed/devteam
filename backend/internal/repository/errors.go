@@ -25,6 +25,8 @@ var (
 	// Ошибки Task
 	ErrTaskNotFound         = errors.New("task not found")
 	ErrTaskConcurrentUpdate = errors.New("task was modified concurrently, please retry")
+	// ErrTaskLocked — строка tasks уже залочена другой транзакцией (SELECT FOR UPDATE NOWAIT, SQLSTATE 55P03).
+	ErrTaskLocked = errors.New("task row is locked by another transaction")
 
 	// Ошибки LLMProvider (Sprint 15.10)
 	ErrLLMProviderNotFound   = errors.New("llm provider not found")

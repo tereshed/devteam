@@ -111,6 +111,20 @@ class TaskConflictException extends TaskRepositoryException {
   int get hashCode => Object.hash(runtimeType, message, apiErrorCode);
 }
 
+/// Race condition при Cancel: задача уже завершилась (done/failed/cancelled)
+/// или прямо сейчас финализируется другим процессом (row locked).
+///
+/// Backend возвращает 409 с `error_code == 'task_already_terminal'`. Контроллер
+/// должен НЕ показывать красный snack — это не ошибка, просто cancel опоздал.
+/// Вместо этого: invalidate provider (получим свежий state из БД) + info-toast.
+@immutable
+class TaskAlreadyTerminalException extends TaskConflictException {
+  TaskAlreadyTerminalException(
+    super.detail, {
+    super.originalError,
+  }) : super(apiErrorCode: 'task_already_terminal');
+}
+
 /// Невозможно обработать запрос (422).
 ///
 /// [apiErrorCode] — стабильное поле `error` из JSON (часто `unprocessable`), если есть.
