@@ -195,6 +195,7 @@ class _AgentV2DetailScreenState extends ConsumerState<AgentV2DetailScreen> {
                 Row(
                   children: [
                     FilledButton.icon(
+                      key: const Key('agent_v2_detail_save_button'),
                       onPressed: _saving ? null : () => _save(agent),
                       icon: _saving
                           ? const SizedBox(
@@ -207,6 +208,7 @@ class _AgentV2DetailScreenState extends ConsumerState<AgentV2DetailScreen> {
                     ),
                     const SizedBox(width: 12),
                     OutlinedButton.icon(
+                      key: const Key('agent_v2_detail_add_secret_button'),
                       onPressed: () => _openSecretDialog(agent),
                       icon: const Icon(Icons.vpn_key),
                       label: Text(l10n.agentsV2AddSecretButton),

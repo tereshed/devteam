@@ -1,7 +1,6 @@
 // @Tags(['widget'])
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/worktrees_v2/data/worktrees_providers.dart';
 import 'package:frontend/features/admin/worktrees_v2/data/worktrees_repository.dart';
@@ -10,6 +9,9 @@ import 'package:frontend/features/admin/worktrees_v2/domain/worktrees_exceptions
 import 'package:frontend/features/admin/worktrees_v2/presentation/screens/worktrees_list_screen.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:mocktail/mocktail.dart';
+
+import '../../../../../_fixtures/orchestration_v2_fixtures.dart';
+import '../../../../../support/widget_test_harness.dart';
 
 // worktrees_list_screen_test.dart — Sprint 17 / 6.3.
 //
@@ -37,24 +39,16 @@ Future<void> _pump(
   WidgetTester tester, {
   required _MockRepo repo,
   required List<WorktreeV2> items,
-}) async {
-  await tester.pumpWidget(
-    ProviderScope(
+}) =>
+    pumpAppWidget(
+      tester,
+      child: const WorktreesListScreen(),
       overrides: [
         worktreesRepositoryProvider.overrideWithValue(repo),
         // Override list-провайдер константой, чтобы избежать реального HTTP.
         worktreesListProvider.overrideWith((_) async => items),
       ],
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const WorktreesListScreen(),
-      ),
-    ),
-  );
-  // List loads from FutureProvider — нужен один pump для перехода loading→data.
-  await tester.pumpAndSettle();
-}
+    );
 
 void main() {
   setUpAll(() {
@@ -192,6 +186,79 @@ void main() {
 
       // SnackBar содержит generic-failure префикс из l10n + детали исключения.
       expect(find.textContaining(l10n.worktreesReleaseFailed), findsOneWidget);
+    });
+  });
+
+  // empty / data / refresh — добавлено в Sprint 17 / 6.7.
+  //
+  // Параллельно с release-flow выше проверяем три состояния FutureProvider'а
+  // и поведение refresh-кнопки.
+  group('WorktreesListScreen — list states', () {
+    testWidgets('empty: показывает worktreesEmpty', (tester) async {
+      await _pump(tester, repo: _MockRepo(), items: const []);
+
+      final BuildContext ctx =
+          tester.element(find.byType(WorktreesListScreen));
+      final l10n = AppLocalizations.of(ctx)!;
+      expect(find.text(l10n.worktreesEmpty), findsOneWidget);
+      // Никаких tile'ов.
+      expect(find.byType(ListTile), findsNothing);
+      // Filter-bar по-прежнему виден — даже без данных оператор может выбрать
+      // фильтр и попробовать другой state.
+      expect(find.byType(ChoiceChip), findsNWidgets(4));
+    });
+
+    testWidgets('data: рендерит N tile с состоянием в chip', (tester) async {
+      final items = [
+        fxWorktree(
+          id: '11111111-1111-1111-1111-111111111111',
+          state: 'allocated',
+          branchName: 'task-1-wt-A',
+        ),
+        fxWorktree(
+          id: '22222222-2222-2222-2222-222222222222',
+          state: 'in_use',
+          branchName: 'task-2-wt-B',
+        ),
+        fxWorktree(
+          id: '33333333-3333-3333-3333-333333333333',
+          state: 'released',
+          branchName: 'task-3-wt-C',
+          releasedAt: DateTime.utc(2026, 5, 15, 14),
+        ),
+      ];
+      await _pump(tester, repo: _MockRepo(), items: items);
+
+      expect(find.byType(ListTile), findsNWidgets(3));
+      expect(find.text('task-1-wt-A'), findsOneWidget);
+      expect(find.text('task-2-wt-B'), findsOneWidget);
+      expect(find.text('task-3-wt-C'), findsOneWidget);
+      // Chip для каждого state.
+      expect(find.widgetWithText(Chip, 'allocated'), findsOneWidget);
+      expect(find.widgetWithText(Chip, 'in_use'), findsOneWidget);
+      expect(find.widgetWithText(Chip, 'released'), findsOneWidget);
+    });
+
+    testWidgets('refresh AppBar-кнопка инвалидирует провайдер', (tester) async {
+      final repo = _MockRepo();
+      var callCount = 0;
+      when(() => repo.list(state: any(named: 'state'))).thenAnswer((_) async {
+        callCount++;
+        return [fxWorktree()];
+      });
+
+      await pumpAppWidget(
+        tester,
+        child: const WorktreesListScreen(),
+        overrides: [
+          worktreesRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
+      expect(callCount, 1);
+
+      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.pumpAndSettle();
+      expect(callCount, 2);
     });
   });
 }

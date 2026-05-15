@@ -100,6 +100,7 @@ class _AgentV2SecretDialogState extends ConsumerState<AgentV2SecretDialog> {
           child: Text(l10n.commonCancel),
         ),
         FilledButton(
+          key: const Key('agent_v2_secret_dialog_save_button'),
           onPressed: _saving ? null : _submit,
           child: _saving
               ? const SizedBox(
