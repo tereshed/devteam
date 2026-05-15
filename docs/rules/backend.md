@@ -311,14 +311,47 @@ func (h *AuthHandler) Me(c *gin.Context) {
 ### 6.5. Регенерация документации
 
 После **ЛЮБЫХ** изменений в:
-  * Структурах DTO (`dto` пакет)
-  * Аннотациях хендлеров
+  * Структурах DTO (`dto` пакет) — добавление/удаление полей, изменение типов, **изменение JSON-тегов** существующих полей
+  * Аннотациях хендлеров (`@Param`, `@Success`, `@Failure`, `@Router`, `@Tags`, `@Security`)
   * Новых эндпоинтах
+  * JSON-тегах любых моделей, попадающих в response/request DTO
 
 **ОБЯЗАТЕЛЬНО** выполнить:
 ```bash
 make swagger
 ```
+
+### 6.5.1. Swagger commit gate (СТРОГО, не обходить)
+
+> **Любой PR, который правит `internal/handler/dto/*.go` или JSON-теги существующих
+> handler-структур, ОБЯЗАН включать обновлённые `backend/docs/swagger.json` и
+> `backend/docs/swagger.yaml` в том же коммите. PR без них не мерджится.**
+
+**Почему это критично:**
+  * Фронтенд генерирует Dio-клиенты по `swagger.json` — рассинхрон ломает контракт
+    бесшумно (поле есть в Go, но в OpenAPI его нет → фронт его не видит и тихо теряет данные).
+  * Внешние LLM-клиенты (Cursor, Claude Desktop) используют MCP `prompt_get`/Swagger
+    для понимания формы API — stale swagger выливается в галлюцинации параметров.
+  * Регрессии из-за stale swagger ловятся **только** через `make swagger && git diff --exit-code`
+    в CI; диффа на review не будет, если ты сам не обновил docs.
+
+**Особо триггерные точки (Sprint 17):**
+  * **Task 6.2** добавляет worktree-фильтры в admin DTO → обязательный `make swagger`.
+  * **Task 6.5** ввёл `custom_timeout_seconds` bounds в `UpdateTaskRequest` →
+    swagger обновлён, не откатывать руками.
+  * Любая новая v2-ручка (`/admin/agents`, `/admin/worktrees`, `/tasks/:id/artifacts`,
+    `/tasks/:id/router_decisions`) — pre-commit: `make swagger` + `git add backend/docs/`.
+
+**Проверочная последовательность перед `git commit`:**
+```bash
+make swagger
+git status backend/docs/
+git diff --stat backend/docs/swagger.json backend/docs/swagger.yaml
+git add backend/docs/swagger.json backend/docs/swagger.yaml
+```
+
+Если `git diff` пуст после `make swagger` — значит DTO не менялся снаружи, всё ок.
+Если непуст и ты **не** добавил эти файлы в коммит — это баг ревью.
 
 ### 6.6. Swagger UI
 

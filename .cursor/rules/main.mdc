@@ -69,7 +69,7 @@ alwaysApply: true
 |:---|:---|:---|
 | `id` | UUID | |
 | `name` | string | Имя агента |
-| `role` | enum | `orchestrator` / `planner` / `developer` / `reviewer` / `tester` / `devops` / `worker` / `supervisor` |
+| `role` | enum (`chk_agents_role`) | `router` / `planner` / `decomposer` / `developer` / `reviewer` / `tester` / `merger` / `devops` / `orchestrator` / `worker` / `supervisor`. Канон Orchestration v2 — первые 7; `orchestrator/worker/supervisor` остаются для совместимости со старыми сидами. Расширение enum'а — через goose-миграцию `chk_agents_role`. |
 | `team_id` | UUID | FK на Team (nullable) |
 | `model` | string | LLM модель (`claude-sonnet-4-20250514`, `gpt-4o`, `gemini-2.5-pro`) |
 | `prompt_id` | UUID | FK на Prompt (системный промпт) |
@@ -163,26 +163,45 @@ UNIQUE constraint: `(project_id, name)`
 | `created_at` | timestamp | |
 | `updated_at` | timestamp | |
 
-**Статусы задачи:**
+**Состояния задачи (`tasks.state`, Orchestration v2):**
+
+С Sprint 5 (Orchestration v2) пайплайн больше не зашит в Go state-machine —
+маршрутизацией управляет LLM-агент `router` (см. §2.3 / §3.1). Поэтому на уровне
+`tasks` хранятся **только 5 высокоуровневых терминальных/жизненных состояний**,
+а реальный "этап" восстанавливается по `task_events` / `router_decisions` /
+`task_artifacts`.
 
 ```
-pending → planning → in_progress → review → testing → completed
-                 ↘ failed    ↗ changes_requested ↗      ↘ failed
-                   cancelled (пользователь остановил)
+              ┌─────────────► done
+              │
+   active ────┼─────────────► failed
+              │
+              ├─────────────► cancelled       (отменена пользователем)
+              │
+              └─────────────► needs_human     (требует ручного решения)
 ```
 
-| Статус | Описание |
+| Состояние | Описание |
 |:---|:---|
-| `pending` | Создана, ожидает назначения |
-| `planning` | Планировщик декомпозирует задачу |
-| `in_progress` | Разработчик пишет код |
-| `review` | Ревьюер проверяет код |
-| `changes_requested` | Ревьюер запросил изменения → возврат разработчику |
-| `testing` | Тестировщик проверяет |
-| `completed` | Готово |
-| `failed` | Ошибка (с описанием) |
-| `cancelled` | Отменена пользователем |
-| `paused` | Приостановлена пользователем |
+| `active` | Задача жива: router-цикл планирует/делает/ревьюит/тестит, есть step'ы или agent_jobs in-flight |
+| `done` | Терминальное успешное состояние (reviewer approve + merger завершён) |
+| `failed` | Терминальная ошибка (исчерпан `router_retry_budget`, не-восстановимая ошибка агента или sandbox) |
+| `cancelled` | Пользователь отменил (через `task_cancel_v2`) |
+| `needs_human` | Router не смог принять решение (галлюцинации, исчерпан retry-бюджет, конфликт артефактов) — требуется вмешательство оператора |
+
+**Прогресс по фазам** (что раньше было pending/planning/in_progress/review/testing)
+в v2 **не** хранится колонкой `tasks.status`. Чтобы понять, "где сейчас задача",
+нужно смотреть:
+  * последний `router_decisions.chosen_agents` — кому ушёл следующий шаг,
+  * `task_artifacts` (по `kind`: `plan`, `code_diff`, `review`, `test_report`, …) —
+    что уже произведено,
+  * `task_events` — pending step_req / agent_job.
+
+> **Важно (миграция):** Legacy `TaskStatus` (10 значений pipeline:
+> `pending|planning|in_progress|review|changes_requested|testing|completed|
+> failed|cancelled|paused`) **удалён в Sprint 5**. Если встречаете его в коде,
+> промптах агентов или фронтовых моделях — это баг, требующий миграции
+> на `tasks.state`. См. `docs/orchestration-v2-plan.md`.
 
 ### 2.5. TaskMessage (Сообщения в контексте задачи)
 
@@ -239,54 +258,77 @@ pending → planning → in_progress → review → testing → completed
 
 ## 3. Система AI-агентов
 
-### 3.1. Роли агентов
+### 3.1. Роли агентов (канон Orchestration v2)
 
 | Роль | Назначение | Входные данные | Выходные данные |
 |:---|:---|:---|:---|
-| **Orchestrator** | Принимает запрос, решает кому передать, контролирует поток | Сообщение пользователя / результат задачи | Создание и назначение задач |
-| **Planner** | Анализирует задачу, декомпозирует на подзадачи, определяет порядок | Задача высокого уровня + контекст из векторки | Список подзадач с зависимостями |
-| **Developer** | Пишет код, создаёт ветки, коммитит | Задача + контекст + кодовая база | Код (diff/commit/PR) |
-| **Reviewer** | Ревьюит код, ищет баги, проверяет стиль | Diff/PR + контекст + код проекта | Approve / Changes Requested + комментарии |
-| **Tester** | Пишет и запускает тесты, проверяет работоспособность | Код + задача + тест-план | Результаты тестов (pass/fail + отчёт) |
+| **Router** *(v2, ядро)* | LLM-диспатчер. После каждого шага решает, кому передать управление дальше (один или несколько агентов в `chosen_agents`). **Заменяет hardcoded state-machine оркестратора** — flow=данные. | Текущее состояние задачи: `task_artifacts` (metadata), DAG подзадач, in-flight `agent_jobs`, последние `router_decisions`. | Запись в `router_decisions` с `chosen_agents[]` + `outcome` + `reason`, ставит `step_req`/`agent_job` события в `task_events`. |
+| **Planner** | Анализирует задачу высокого уровня, формирует план шагов | Описание задачи + контекст из векторки | Артефакт `kind=plan` (список шагов + зависимости) |
+| **Decomposer** *(v2)* | Разбивает план на параллелизуемые подзадачи (узлы DAG), назначает им `depends_on` | Артефакт `plan` | Артефакты `kind=subtask` с DAG-связями |
+| **Developer** | Пишет код в worktree-изоляции, коммитит | Подзадача + контекст + кодовая база (worktree) | Артефакт `kind=code_diff` + commit hash + branch name |
+| **Reviewer** *(gate)* | **Единственная инстанция, выносящая вердикт** по любому артефакту (plan / code_diff / test_report). `approve` → router двигает дальше; `request_changes` → router возвращает к автору. | Артефакт + контекст + код проекта | Артефакт `kind=review` с `outcome ∈ {approve, request_changes}` + комментарии |
+| **Tester** | Пишет и запускает тесты в sandbox | Code_diff + задача + тест-план | Артефакт `kind=test_report` (pass/fail + логи) |
+| **Merger** *(v2)* | Сливает approved-ветки подзадач в основную ветку задачи (или открывает PR в upstream) | Approved `code_diff` артефакты + branch names | Финальный commit/merge, артефакт `kind=merge_result` |
 | **DevOps** *(будущее)* | CI/CD, деплой, инфраструктура | Код + конфиг | Деплой статус, URL |
 
-### 3.2. Поток выполнения (Agent Pipeline)
+> **Про legacy `orchestrator`-роль.** В v2 функция "решить, кому передать следующий
+> шаг" вынесена из Go-кода `orchestrator_v2.go` в LLM-агента `router`. Сам
+> `Orchestrator.Step()` в Go остаётся как **транспортный** слой (lock per-task,
+> tx, enqueue events) — но он **не решает**, какой агент пойдёт следующим. Если
+> в старых сидах/промптах вы видите role=`orchestrator` — это либо унаследованная
+> запись (совместимость enum'а), либо место, которое нужно мигрировать на `router`.
 
-```
+### 3.2. Поток выполнения (Agent Pipeline v2)
+
+В Orchestration v2 пайплайн **не линейный, а циклический**. В центре —
+LLM-агент **Router**, который после каждого шага анализирует артефакты
+(`task_artifacts`, DAG подзадач, in-flight `agent_jobs`) и решает, кому
+передать управление дальше. Никаких hardcoded `if phase == ...` в Go —
+переходы между фазами кодируются в промпте router'а и реестре `agents`.
+
+```text
 Пользователь (чат)
-    │
-    ▼
-┌─────────────┐
-│ Orchestrator │ ← Анализирует запрос, определяет тип задачи
-└──────┬──────┘
        │
        ▼
-┌─────────────┐
-│   Planner   │ ← Декомпозирует на подзадачи
-└──────┬──────┘
-       │ (создаёт N задач)
-       ▼
-┌─────────────┐
-│  Developer  │ ← Пишет код (Claude Code / Aider)
-└──────┬──────┘
-       │ (создаёт ветку, коммитит)
-       ▼
-┌─────────────┐
-│  Reviewer   │ ← Проверяет diff
-└──────┬──────┘
-       │
-       ├── Changes Requested → назад к Developer
-       │
-       ▼
-┌─────────────┐
-│   Tester    │ ← Запускает тесты
-└──────┬──────┘
-       │
-       ├── Failed → назад к Developer
-       │
-       ▼
-   Completed → уведомление в чат пользователю
+┌──────────────┐
+│    Router    │ ◄──────────────────────────────────┐
+└──────┬───────┘   (новый шаг после каждого         │
+       │            артефакта / approve / reject)   │
+       │ chosen_agents[]                            │
+       ▼                                            │
+┌──────────────────────────────┐                    │
+│  Planner / Decomposer /      │                    │
+│  Developer / Tester / Merger │ ──(создают         │
+│  (исполнители-продьюсеры)    │    артефакты)──►  │
+└──────────────┬───────────────┘                    │
+               │ kind=plan / code_diff /            │
+               │ test_report / merge_result         │
+               ▼                                    │
+        ┌──────────────┐                            │
+        │   Reviewer   │ ─── approve ───────────────┤
+        │    (gate)    │                            │
+        └──────┬───────┘                            │
+               │                                    │
+               └── request_changes ─────────────────┘
+                  (router возвращает к автору)
+
+   терминал: tasks.state ∈ {done, failed, cancelled, needs_human}
 ```
+
+**Как читать схему:**
+  * **Router** — единственная точка маршрутизации, вызывается на каждом шаге
+    `Orchestrator.Step()`. Может выбрать **несколько** агентов сразу
+    (`chosen_agents[]`) — например, параллельно запустить нескольких Developer'ов
+    по узлам DAG.
+  * **Продьюсеры** (Planner/Decomposer/Developer/Tester/Merger) производят
+    артефакты в `task_artifacts` и не решают, что будет дальше — это работа
+    router'а на следующем шаге.
+  * **Reviewer — единственный gate.** Любой артефакт-продьюсер проходит через
+    Reviewer; результат (`approve` / `request_changes`) router использует,
+    чтобы продвинуться вперёд или вернуться к автору.
+  * **Цикл завершается**, когда router выставляет терминальное состояние
+    `tasks.state` (`done` / `failed` / `needs_human`) или пользователь отменяет
+    задачу (`cancelled`, через `task_cancel_v2`).
 
 ### 3.3. Характеристики агента
 
@@ -723,3 +765,59 @@ type GitProvider interface {
 - [ ] Метрики и аналитика агентов (стоимость, время, качество)
 - [ ] Marketplace скиллов и промптов
 - [ ] Auto-scaling контейнеров (Kubernetes / Docker Swarm)
+
+-----
+
+## Orchestration v2 (Sprint 17 — LLM-driven, flow-as-data)
+
+С 2026-05 архитектура оркестрации задач **полностью переписана** на LLM-driven модель.
+Подробный план: [`docs/orchestration-v2-plan.md`](../orchestration-v2-plan.md).
+
+**Ключевые инварианты (НЕ нарушать в новом коде):**
+
+1. **Flow — это данные, не код.** Никакого hardcoded state-machine в Go.
+   Никаких `switch task.Phase`/`if role == "developer"` поверх роутинга.
+   Маршрутизация между фазами решается LLM-агентом `router` по реестру `agents`
+   из БД + текущим артефактам. Добавление новой роли = `INSERT INTO agents`,
+   правки промптов = `UPDATE agents.system_prompt` (или через UI Agents Management).
+   Если нужна "ветка" логики — это либо новый промпт, либо новый агент в БД,
+   но **не** новая ветка в Go-коде оркестратора.
+
+2. **Артефакты идут через reviewer.** Developer/Planner/Tester складывают
+   результат в `task_artifacts`, и **только** Reviewer-агент решает, годен ли
+   артефакт к следующему шагу (`approve` → router двигает дальше; `request_changes` →
+   router возвращает к автору). Никакого автоматического "developer закончил → сразу
+   merge/PR". Промежуточные артефакты без review — баг.
+
+3. **`--` separator во всех git-вызовах.** После фиксированных флагов и **перед**
+   любыми пользовательскими / LLM-данными (branch name, base ref, путь worktree,
+   автор коммита) **обязан** быть `--`. Это блокирует flag-injection вида
+   `branch="-h"` или `"--upload-pack=evil"`. См. `docs/rules/backend.md` §2.3 п.1.
+
+4. **Event-driven Step.** `Orchestrator.Step` — атомарный шаг, открывается через
+   `task_events` очередь (`step_req`/`agent_job`). `SELECT FOR UPDATE NOWAIT`
+   per-task сериализует step'ы; agent_jobs параллельны по подзадачам через
+   git-worktree-изоляцию.
+
+5. **Secrets — только через `agent_secrets` (AES-GCM).** API-ключи, токены,
+   приватные ключи для агентов **запрещено** класть в `sandbox_settings`,
+   `agents.settings`, env-vars docker-compose или любые plaintext JSONB-поля.
+   Используется таблица `agent_secrets` (зашифровано через `pkg/crypto.AESEncryptor`
+   с AAD = id записи) + MCP-инструменты `agent_set_secret`/`agent_delete_secret`.
+   То же касается `router_decisions.encrypted_raw_response`,
+   `user_llm_credentials.encrypted_key`, `mcp_server_config.*`.
+
+6. **Безопасность по дефолту:** см. `docs/rules/backend.md` §2.3 — redact-обёртка
+   logger'а (никакого `slog.Default()` в orchestrator-файлах), `filepath.Clean` +
+   prefix-check перед `os.RemoveAll`, типизированные `uuid.UUID` вместо строк из БД
+   при построении путей.
+
+**5 высокоуровневых состояний задачи** (`tasks.state`):
+`active` | `done` | `failed` | `cancelled` | `needs_human`.
+Legacy `TaskStatus` (10 значений pipeline) удалён в Sprint 5.
+
+**MCP-инструменты v2:** `agent_list/get/create/update/set_secret/delete_secret`,
+`artifact_list/get`, `router_decision_list`, `worktree_list`, `task_cancel_v2`.
+
+**Фронтенд v2-фичи:** см. `docs/rules/frontend.md` §5 "Orchestration v2 фичи"
+(Agents Management, Worktrees debug, Task Detail v2 sections).

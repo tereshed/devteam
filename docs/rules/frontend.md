@@ -265,3 +265,100 @@ flutter pub run build_runner build --delete-conflicting-outputs
   * **Инструменты:** `integration_test` (предпочтительно) или `patrol`.
 
 -----
+
+## 5\. Orchestration v2 фичи (Sprint 17)
+
+С Sprint 17 во фронтенде появилась v2-надстройка над оркестрацией задач —
+admin-инструменты для управления реестром агентов и отладки worktree, плюс
+обогащённый Task Detail. Полный план backend-части: [`docs/orchestration-v2-plan.md`](../orchestration-v2-plan.md).
+Контекст инвариантов (flow=данные, артефакты через reviewer, `--` separator,
+secrets через `agent_secrets`) — в `docs/rules/main.md` §"Orchestration v2".
+
+### 5.1. Расположение v2-фич
+
+| Фича | Путь |
+|:---|:---|
+| **Agents Management** (CRUD реестра агентов + secrets) | `frontend/lib/features/admin/agents_v2/` |
+| **Worktrees debug** (список активных worktree, метаданные, force-cleanup) | `frontend/lib/features/admin/worktrees_v2/` |
+| **Task Detail v2 sections** (router timeline, artifacts DAG, artifact viewer, custom timeout editor) | `frontend/lib/features/tasks/presentation/widgets/` |
+
+Все новые v2-виджеты, скрины и провайдеры **обязаны** лежать строго в этих
+директориях — не размазывайте логику по `features/admin/` корню или
+`features/tasks/presentation/screens/`. Это нужно, чтобы при будущем выкатывании
+v2 за feature-flag можно было оборачивать целые подпапки одним `if`-ом.
+
+### 5.2. Локализация в v2-виджетах (ОБЯЗАТЕЛЬНО)
+
+В **новых** v2-виджетах используйте только:
+
+```dart
+final l10n = requireAppLocalizations(context, where: 'AgentsListScreen');
+// ...
+Text(l10n.agentsTitle)
+```
+
+Импорт: `package:frontend/core/l10n/require.dart`.
+
+**Запрещено в новом v2-коде:**
+  * `AppLocalizations.of(context)!` — допустимо только в **легаси** до точечной миграции (см. §2.3); в `features/admin/agents_v2/`, `features/admin/worktrees_v2/`, и новых файлах в `features/tasks/presentation/widgets/` это считается багом ревью.
+  * `context.l10n` — extension в проекте не используется.
+  * Хардкод строк `Text("Agents")` — общий запрет из §2.3.
+
+**Параметр `where`:** указывайте имя виджета/экрана (`'AgentsListScreen'`, `'WorktreesDebugTable'`, `'ArtifactViewerDialog'`). Он попадает в текст исключения, если под деревом нет `AppLocalizations.delegate` — без него отладка такой ошибки превращается в гадание.
+
+### 5.3. Freezed-модели в v2 (ОБЯЗАТЕЛЬНО)
+
+Все freezed-модели v2 (`AgentV2`, `WorktreeInfo`, `RouterDecision`, `TaskArtifact`,
+`ArtifactNode` и т.д.) **обязаны** объявляться как `abstract class` с миксином
+`with _$ModelName`:
+
+```dart
+@freezed
+abstract class AgentV2 with _$AgentV2 {
+  const factory AgentV2({
+    required String id,
+    required String role,
+    required String systemPrompt,
+    @Default(<String>[]) List<String> skills,
+  }) = _AgentV2;
+
+  factory AgentV2.fromJson(Map<String, dynamic> json) =>
+      _$AgentV2FromJson(json);
+}
+```
+
+**Не** `class AgentV2 with _$AgentV2` (без `abstract`) — на Freezed 3.x это
+немедленная ошибка компиляции `Missing concrete implementations of 'getter mixin
+_$AgentV2 on Object.id', ...`. Подробности и развёрнутый пример — в §3.1
+("Использование abstract class"). Compliance-замечание из задачи 6.7 указывает
+именно на эту форму как на канон.
+
+После добавления/правки v2-моделей **обязательно**:
+
+```bash
+make frontend-codegen   # build_runner → gen-l10n (порядок критичен, см. §2.3)
+```
+
+И закоммитьте сгенерированные `*.freezed.dart` / `*.g.dart` рядом с исходником —
+без них CI и чистые клоны не соберутся (§2.3, абзац про "Mockito и build_runner артефакты").
+
+### 5.4. API-клиенты v2
+
+Repository-слой v2-фич (`agents_v2/data/`, `worktrees_v2/data/`,
+`tasks/data/orchestration_v2_repository.dart` и т.п.) ходит на новые
+admin-ручки бэкенда (`/admin/agents`, `/admin/worktrees`,
+`/tasks/:id/artifacts`, `/tasks/:id/router_decisions`). При расширении DTO
+на стороне Go бэкенд **обязан** перегенерить swagger (см.
+`docs/rules/backend.md` §6.5.1) — фронтовые Dio-клиенты строятся по
+`backend/docs/swagger.json`, и stale swagger молча ломает контракт.
+
+### 5.5. Чек-лист перед PR с v2-фичей
+
+  * [ ] Виджет лежит в одной из трёх v2-директорий §5.1 (не в корне `features/admin/` или `screens/`)
+  * [ ] Все строки UI через `requireAppLocalizations(context, where: '...')`, ключи добавлены в `app_ru.arb` **и** `app_en.arb`, `make frontend-l10n-check` зелёный
+  * [ ] Все новые модели — `@freezed abstract class ModelName with _$ModelName`, `*.freezed.dart` и `*.g.dart` закоммичены
+  * [ ] `make frontend-codegen` выполнен в правильном порядке (`build_runner` → `gen-l10n`)
+  * [ ] `make frontend-analyze` без warnings
+  * [ ] Юнит-тесты на Notifier/Repository + widget-тест на ключевой экран (см. §4)
+
+-----
