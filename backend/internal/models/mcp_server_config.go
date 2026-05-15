@@ -39,7 +39,7 @@ type MCPServerConfig struct {
 	URL                  string         `gorm:"type:varchar(1024);not null" json:"url"`
 	AuthType             MCPAuthType    `gorm:"type:varchar(50);not null;default:'none'" json:"auth_type"`
 	EncryptedCredentials []byte         `gorm:"type:bytea" json:"-"`
-	Settings             datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
+	Settings             datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings" swaggertype:"object"`
 	IsActive             bool           `gorm:"not null;default:true" json:"is_active"`
 	CreatedAt            time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
 	UpdatedAt            time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
@@ -62,7 +62,7 @@ type AgentMCPBinding struct {
 	AgentID            uuid.UUID      `gorm:"type:uuid;primaryKey" json:"agent_id"`
 	MCPServerConfigID  uuid.UUID      `gorm:"type:uuid;primaryKey" json:"mcp_server_config_id"`
 	MCPServerConfig    *MCPServerConfig `gorm:"foreignKey:MCPServerConfigID" json:"mcp_server_config,omitempty"`
-	Settings           datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
+	Settings           datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings" swaggertype:"object"`
 	CreatedAt          time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
 }
 

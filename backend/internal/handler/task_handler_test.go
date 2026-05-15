@@ -142,7 +142,7 @@ func (m *MockTaskService) Close() error {
 func setupTaskRouter(mockSvc *MockTaskService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewTaskHandler(mockSvc, nil, nil)
+	h := NewTaskHandler(mockSvc, nil, nil, nil)
 
 	authFn := func(c *gin.Context) {
 		c.Set("userID", testProjectUserID)

@@ -62,9 +62,9 @@ type Project struct {
 	GitCredentialsID *uuid.UUID     `gorm:"type:uuid" json:"git_credentials_id"`
 	GitCredential    *GitCredential `gorm:"foreignKey:GitCredentialsID" json:"git_credential,omitempty"`
 	VectorCollection string         `gorm:"type:varchar(255)" json:"vector_collection"`
-	TechStack        datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"tech_stack"`
+	TechStack        datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"tech_stack" swaggertype:"object"`
 	Status           ProjectStatus  `gorm:"type:varchar(50);not null;default:'active'" json:"status"`
-	Settings         datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"settings"`
+	Settings         datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"settings" swaggertype:"object"`
 	UserID           uuid.UUID      `gorm:"type:uuid;not null" json:"user_id"`
 	User             *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	CreatedAt        time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`

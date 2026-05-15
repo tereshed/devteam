@@ -59,7 +59,7 @@ type TaskMessage struct {
 	SenderID    uuid.UUID       `gorm:"type:uuid;not null" json:"sender_id"`
 	Content     string          `gorm:"type:text;not null" json:"content"`
 	MessageType MessageType `gorm:"type:varchar(50);not null" json:"message_type"`
-	Metadata    datatypes.JSON  `gorm:"type:jsonb;not null;default:'{}'" json:"metadata"`
+	Metadata    datatypes.JSON  `gorm:"type:jsonb;not null;default:'{}'" json:"metadata" swaggertype:"object"`
 	CreatedAt   time.Time       `gorm:"type:timestamp with time zone;not null;default:now()" json:"created_at"`
 }
 

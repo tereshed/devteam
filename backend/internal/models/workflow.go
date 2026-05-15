@@ -188,17 +188,17 @@ type Agent struct {
 	Model       *string        `gorm:"type:varchar(255)" json:"model"`
 	PromptID    *uuid.UUID     `gorm:"type:uuid" json:"prompt_id"`
 	Prompt      *Prompt        `gorm:"foreignKey:PromptID" json:"prompt,omitempty"`
-	Skills      datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"skills"`
+	Skills      datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"skills" swaggertype:"object"`
 	CodeBackend *CodeBackend   `gorm:"type:varchar(50)" json:"code_backend"`
-	Settings    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
-	ModelConfig datatypes.JSON `gorm:"type:jsonb" json:"model_config"`
+	Settings    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"settings" swaggertype:"object"`
+	ModelConfig datatypes.JSON `gorm:"type:jsonb" json:"model_config" swaggertype:"object"`
 	// Sprint 15.e2e refactor — kind провайдера: anthropic / anthropic_oauth / deepseek / zhipu / openrouter.
 	// По этому полю SandboxAuthEnvResolver выбирает base_url и user_llm_credentials.
 	// LLMProviderID (системный каталог llm_providers) удалён миграцией 029 — резолвер
 	// использует ProviderKind напрямую, креденшелы хранятся в user_llm_credentials.
 	ProviderKind        *AgentProviderKind `gorm:"type:varchar(32)" json:"provider_kind"`
-	CodeBackendSettings datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"code_backend_settings"`
-	SandboxPermissions  datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions"`
+	CodeBackendSettings datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"code_backend_settings" swaggertype:"object"`
+	SandboxPermissions  datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions" swaggertype:"object"`
 	IsActive            bool           `gorm:"default:true" json:"is_active"`
 	RequiresCodeContext bool           `gorm:"default:false" json:"requires_code_context"`
 
@@ -226,7 +226,7 @@ type Workflow struct {
 	ID            uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	Name          string         `gorm:"uniqueIndex;not null"`
 	Description   string         `gorm:"type:text"`
-	Configuration datatypes.JSON `gorm:"type:jsonb;not null"` // Описание графа
+	Configuration datatypes.JSON `gorm:"type:jsonb;not null" swaggertype:"object"` // Описание графа
 	IsActive      bool           `gorm:"default:true"`
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
@@ -265,7 +265,7 @@ type Execution struct {
 	CurrentStepID string
 	InputData     string         `gorm:"type:text"`
 	OutputData    string         `gorm:"type:text"` // New field for final result
-	Context       datatypes.JSON `gorm:"type:jsonb;default:'{}'"` // Shared memory
+	Context       datatypes.JSON `gorm:"type:jsonb;default:'{}'" swaggertype:"object"` // Shared memory
 	StepCount     int            `gorm:"default:0"`
 	MaxSteps      int            `gorm:"default:20"`
 	ErrorMessage  string         `gorm:"type:text"`

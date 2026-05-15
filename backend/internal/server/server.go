@@ -57,6 +57,9 @@ type Dependencies struct {
 	// Sprint 15.23 — per-agent settings.
 	AgentSettingsHandler *handler.AgentSettingsHandler
 
+	// Sprint 17 / Sprint 5F.3 — CRUD + секреты для реестра агентов v2.
+	AgentV2Handler *handler.AgentV2Handler
+
 	// Sprint 15.B5 — CRUD над llm_providers (admin-only).
 	LLMProviderHandler *handler.LLMProviderHandler
 
@@ -155,6 +158,21 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			{
 				agents.GET("/:id/settings", deps.AgentSettingsHandler.Get)
 				agents.PUT("/:id/settings", deps.AgentSettingsHandler.Update)
+			}
+		}
+
+		// Agents v2 — Sprint 17 / Sprint 5F.3 — CRUD + секреты для реестра агентов v2.
+		// Параллель MCP-инструментам tools_agents_v2.go; используется фронтендом.
+		if deps.AgentV2Handler != nil {
+			agentsV2 := api.Group("/agents")
+			agentsV2.Use(authMW)
+			{
+				agentsV2.GET("", deps.AgentV2Handler.List)
+				agentsV2.GET("/:id", deps.AgentV2Handler.Get)
+				agentsV2.POST("", deps.AgentV2Handler.Create)
+				agentsV2.PUT("/:id", deps.AgentV2Handler.Update)
+				agentsV2.POST("/:id/secrets", deps.AgentV2Handler.SetSecret)
+				agentsV2.DELETE("/secrets/:secret_id", deps.AgentV2Handler.DeleteSecret)
 			}
 		}
 

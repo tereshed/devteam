@@ -12,7 +12,7 @@ type LLMModel struct {
 	Name        string         `gorm:"not null;type:varchar(255)" json:"name"`
 	Description string         `gorm:"type:text" json:"description"`
 	ContextLength int          `gorm:"default:0" json:"context_length"`
-	Architecture  datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"architecture"`
+	Architecture  datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"architecture" swaggertype:"object"`
 
 	// Pricing
 	PricingPrompt     float64 `gorm:"type:numeric(20,10);default:0" json:"pricing_prompt"`

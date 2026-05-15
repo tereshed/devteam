@@ -34,7 +34,7 @@ type AgentSkill struct {
 	AgentID     uuid.UUID        `gorm:"type:uuid;not null;index:idx_agent_skills_agent_id;uniqueIndex:uq_agent_skills_agent_name,priority:1" json:"agent_id"`
 	SkillName   string           `gorm:"type:varchar(255);not null;uniqueIndex:uq_agent_skills_agent_name,priority:2" json:"skill_name"`
 	SkillSource AgentSkillSource `gorm:"type:varchar(16);not null" json:"skill_source"`
-	ConfigJSON  datatypes.JSON   `gorm:"type:jsonb;not null;default:'{}'" json:"config_json"`
+	ConfigJSON  datatypes.JSON   `gorm:"type:jsonb;not null;default:'{}'" json:"config_json" swaggertype:"object"`
 	IsActive    bool             `gorm:"not null;default:true" json:"is_active"`
 	CreatedAt   time.Time        `gorm:"type:timestamp with time zone;not null;default:now()" json:"created_at"`
 	UpdatedAt   time.Time        `gorm:"type:timestamp with time zone;not null;default:now();autoUpdateTime" json:"updated_at"`

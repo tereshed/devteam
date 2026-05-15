@@ -43,7 +43,7 @@ type TaskEvent struct {
 	ID           int64          `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskID       uuid.UUID      `gorm:"type:uuid;not null" json:"task_id"`
 	Kind         TaskEventKind  `gorm:"type:varchar(32);not null" json:"kind"`
-	Payload      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"payload"`
+	Payload      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"payload" swaggertype:"object"`
 	ScheduledAt  time.Time      `gorm:"type:timestamp with time zone;not null;default:now()" json:"scheduled_at"`
 	LockedBy     *string        `gorm:"type:varchar(255)" json:"locked_by,omitempty"`
 	LockedAt     *time.Time     `gorm:"type:timestamp with time zone" json:"locked_at,omitempty"`

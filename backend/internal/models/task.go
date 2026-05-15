@@ -85,9 +85,9 @@ type Task struct {
 	AssignedAgent   *Agent         `gorm:"foreignKey:AssignedAgentID" json:"assigned_agent,omitempty"`
 	CreatedByType   CreatedByType  `gorm:"type:varchar(50);not null" json:"created_by_type"`
 	CreatedByID     uuid.UUID      `gorm:"type:uuid;not null" json:"created_by_id"`
-	Context         datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"context"`
+	Context         datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"context" swaggertype:"object"`
 	Result          *string        `gorm:"type:text" json:"result"`
-	Artifacts       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"artifacts"`
+	Artifacts       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"artifacts" swaggertype:"object"`
 	BranchName      *string        `gorm:"type:varchar(255)" json:"branch_name"`
 	ErrorMessage    *string        `gorm:"type:text" json:"error_message"`
 	StartedAt       *time.Time     `gorm:"type:timestamp with time zone" json:"started_at"`

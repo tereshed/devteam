@@ -55,9 +55,9 @@ type MCPServerRegistry struct {
 	Description string         `gorm:"type:text;not null;default:''" json:"description"`
 	Transport   MCPTransport   `gorm:"type:varchar(16);not null" json:"transport"`
 	Command     string         `gorm:"type:varchar(1024);not null;default:''" json:"command"`
-	Args        datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"args"`
+	Args        datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"args" swaggertype:"object"`
 	URL         string         `gorm:"type:varchar(1024);not null;default:''" json:"url"`
-	EnvTemplate datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"env_template"`
+	EnvTemplate datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"env_template" swaggertype:"object"`
 	Scope       MCPScope       `gorm:"type:varchar(16);not null;default:'global'" json:"scope"`
 	IsActive    bool           `gorm:"not null;default:true" json:"is_active"`
 	CreatedAt   time.Time      `gorm:"type:timestamp with time zone;not null;default:now()" json:"created_at"`

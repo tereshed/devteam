@@ -19,14 +19,18 @@ type TaskHandler struct {
 	service         service.TaskService
 	orchestratorSvc service.TaskOrchestrator
 	controlBus      *service.UserTaskControlBus
+	// Sprint 5F: опциональный v2 lifecycle для cooperative-abort in-flight агентов.
+	// Если nil — Cancel работает только через legacy state-machine.
+	lifecycleV2 *service.TaskLifecycleService
 }
 
-// NewTaskHandler создаёт обработчик задач.
-func NewTaskHandler(svc service.TaskService, orchestratorSvc service.TaskOrchestrator, controlBus *service.UserTaskControlBus) *TaskHandler {
+// NewTaskHandler создаёт обработчик задач. lifecycleV2 опциональный.
+func NewTaskHandler(svc service.TaskService, orchestratorSvc service.TaskOrchestrator, controlBus *service.UserTaskControlBus, lifecycleV2 *service.TaskLifecycleService) *TaskHandler {
 	return &TaskHandler{
 		service:         svc,
 		orchestratorSvc: orchestratorSvc,
 		controlBus:      controlBus,
+		lifecycleV2:     lifecycleV2,
 	}
 }
 
@@ -401,6 +405,22 @@ func (h *TaskHandler) Cancel(c *gin.Context) {
 		return
 	}
 	h.publishTaskControl(ctx, service.UserTaskControlCancel, userID, userRole, taskID)
+
+	// Sprint 5F: дополнительно триггерим v2 cooperative-abort.
+	// Legacy taskService.Cancel уже перевёл state в cancelled (через optimistic UPDATE),
+	// но in-flight v2 AgentWorker'ы про это не знают. RequestCancel выставляет
+	// cancel_requested=true + Redis NOTIFY, чтобы они корректно прервались.
+	// Best-effort: если v2 не настроен или задача уже не active — игнорируем ошибку
+	// (legacy path уже отработал, HTTP-ответ корректный).
+	if h.lifecycleV2 != nil {
+		if err := h.lifecycleV2.RequestCancel(ctx, taskID); err != nil &&
+			!errors.Is(err, service.ErrTaskNotCancellable) {
+			// Логируем (через стандартный slog — handler НЕ orchestrator-файл, redact
+			// не обязателен), но не возвращаем ошибку клиенту.
+			slog.WarnContext(ctx, "v2 lifecycle RequestCancel failed (legacy path succeeded)",
+				"task_id", taskID, "error", err.Error())
+		}
+	}
 	c.JSON(http.StatusOK, dto.ToTaskResponse(task))
 }
 

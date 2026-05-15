@@ -369,6 +369,15 @@ func main() {
 	routerDecisionRepoV2 := repository.NewRouterDecisionRepository(db)
 	worktreeRepoV2 := repository.NewWorktreeRepository(db)
 
+	// V2 AgentService — единый инстанс, переиспользуется и для HTTP-хендлера (Sprint 5F.3),
+	// и для MCP-инструментов (Sprint 5). Сервис stateless, безопасен для шаринга.
+	agentSvcV2 := service.NewAgentService(
+		repository.NewAgentRepository(db),
+		repository.NewAgentSecretRepository(db),
+		encryptor,
+		txManager,
+	)
+
 	// Logger с redact-обёрткой для всех v2-компонентов.
 	v2Logger := slog.New(logging.NewHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
@@ -460,7 +469,7 @@ func main() {
 	projectHandler := handler.NewProjectHandler(projectService)
 	teamHandler := handler.NewTeamHandler(teamService, projectService)
 	toolDefinitionHandler := handler.NewToolDefinitionHandler(toolDefinitionService)
-	taskHandler := handler.NewTaskHandler(taskService, orchestratorService, taskControlBus)
+	taskHandler := handler.NewTaskHandler(taskService, orchestratorService, taskControlBus, v2TaskLifecycle)
 	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, workflowRepo, workflowEngine, webhookPublicBase)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
@@ -568,6 +577,9 @@ func main() {
 		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
 		LLMProviderHandler:    llmProviderHandler,
 		HermesHandler:         handler.NewHermesHandler(),
+
+		// Sprint 17 / Sprint 5F.3 — HTTP API для v2 admin (Frontend Agents Management).
+		AgentV2Handler: handler.NewAgentV2Handler(agentSvcV2),
 	})
 
 	go func() {
@@ -596,12 +608,7 @@ func main() {
 			AgentSkillRepo:        repository.NewAgentSkillRepository(db),
 
 			// Sprint 17 / Sprint 5 — v2 orchestration MCP tools через SERVICE-слой.
-			AgentSvcV2: service.NewAgentService(
-				repository.NewAgentRepository(db),
-				repository.NewAgentSecretRepository(db),
-				encryptor,
-				txManager,
-			),
+			AgentSvcV2: agentSvcV2,
 			OrchestrationQuerySvcV2: service.NewOrchestrationQueryService(
 				artifactRepoV2,
 				routerDecisionRepoV2,

@@ -108,7 +108,7 @@ type ConversationMessage struct {
 	Role           ConversationRole `gorm:"type:varchar(50);not null" json:"role"`
 	Content        string           `gorm:"type:text;not null" json:"content"`
 	LinkedTaskIDs  UUIDSlice        `gorm:"type:uuid[]" json:"linked_task_ids"`
-	Metadata       datatypes.JSON   `gorm:"type:jsonb;not null;default:'{}'" json:"metadata"`
+	Metadata       datatypes.JSON   `gorm:"type:jsonb;not null;default:'{}'" json:"metadata" swaggertype:"object"`
 	CreatedAt      time.Time        `gorm:"type:timestamp with time zone;not null;default:now()" json:"created_at"`
 }
 

@@ -58,7 +58,7 @@ type Artifact struct {
 	ProducerAgent  string         `gorm:"type:varchar(255);not null" json:"producer_agent"`
 	Kind           ArtifactKind   `gorm:"type:varchar(64);not null" json:"kind"`
 	Summary        string         `gorm:"type:varchar(500);not null" json:"summary"`
-	Content        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"content"`
+	Content        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"content" swaggertype:"object"`
 	Status         ArtifactStatus `gorm:"type:varchar(32);not null;default:'ready'" json:"status"`
 	Iteration      int            `gorm:"type:integer;not null;default:0" json:"iteration"`
 	CreatedAt      time.Time      `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`

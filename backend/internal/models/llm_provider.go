@@ -68,7 +68,7 @@ type LLMProvider struct {
 	AuthType             LLMProviderAuthType `gorm:"type:varchar(32);not null;default:'api_key'" json:"auth_type"`
 	CredentialsEncrypted []byte              `gorm:"type:bytea" json:"-"`
 	DefaultModel         string              `gorm:"type:varchar(255);not null;default:''" json:"default_model"`
-	Settings             datatypes.JSON      `gorm:"type:jsonb;not null;default:'{}'" json:"settings"`
+	Settings             datatypes.JSON      `gorm:"type:jsonb;not null;default:'{}'" json:"settings" swaggertype:"object"`
 	Enabled              bool                `gorm:"not null;default:true" json:"enabled"`
 	CreatedAt            time.Time           `gorm:"type:timestamp with time zone;not null;default:now()" json:"created_at"`
 	UpdatedAt            time.Time           `gorm:"type:timestamp with time zone;not null;default:now();autoUpdateTime" json:"updated_at"`
