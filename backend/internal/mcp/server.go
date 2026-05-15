@@ -36,6 +36,10 @@ type Dependencies struct {
 	AgentSvcV2              *service.AgentService
 	OrchestrationQuerySvcV2 *service.OrchestrationQueryService
 	TaskLifecycleV2         *service.TaskLifecycleService
+
+	// Sprint 17 / 6.3 — для destructive worktree_release MCP-инструмента.
+	// nil → инструмент не регистрируется (legacy clone-path: WORKTREES_ROOT не задан).
+	WorktreeMgrV2 *service.WorktreeManager
 }
 
 // NewMCPServer создает MCP-сервер с зарегистрированными инструментами
@@ -65,7 +69,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 		RegisterAgentV2Tools(server, deps.AgentSvcV2)
 	}
 	if deps.OrchestrationQuerySvcV2 != nil {
-		RegisterOrchestrationV2Tools(server, deps.OrchestrationQuerySvcV2, deps.TaskLifecycleV2)
+		RegisterOrchestrationV2Tools(server, deps.OrchestrationQuerySvcV2, deps.TaskLifecycleV2, deps.WorktreeMgrV2)
 	}
 
 	return server

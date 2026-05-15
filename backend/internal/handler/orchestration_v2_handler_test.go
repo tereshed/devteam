@@ -85,9 +85,22 @@ func setupOrchestrationV2Router(
 	userID uuid.UUID,
 	userRole models.UserRole,
 ) *gin.Engine {
+	return setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, nil, userID, userRole)
+}
+
+// setupOrchestrationV2RouterWithMgr — версия для ReleaseWorktree-тестов: позволяет
+// передать реальный WorktreeManager (с тем же mockWorktreeRepo, что и handler).
+// Когда mgr=nil — endpoint /release должен ответить 503 (см. handler).
+func setupOrchestrationV2RouterWithMgr(
+	wtRepo repository.WorktreeRepository,
+	taskSvc service.TaskService,
+	mgr *service.WorktreeManager,
+	userID uuid.UUID,
+	userRole models.UserRole,
+) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewOrchestrationV2Handler(nil, nil, wtRepo, taskSvc)
+	h := NewOrchestrationV2Handler(nil, nil, wtRepo, taskSvc, mgr)
 
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", userID)
@@ -95,7 +108,26 @@ func setupOrchestrationV2Router(
 		c.Next()
 	})
 	r.GET("/worktrees", h.ListWorktrees)
+	r.POST("/worktrees/:id/release", h.ReleaseWorktree)
 	return r
+}
+
+// newTestWorktreeMgr — реальный WorktreeManager поверх wtRepo. RepoRoot/WorktreesRoot —
+// tmpdir'ы, реального git нет: поэтому `git worktree remove` упадёт, но это нормально
+// — handler-тесту важен только маппинг ошибок ReleaseManual в HTTP-коды, а не успешное
+// удаление каталога. UpdateState всё равно вызывается (так задумано в removeAndMarkReleased).
+func newTestWorktreeMgr(t *testing.T, wtRepo repository.WorktreeRepository) *service.WorktreeManager {
+	t.Helper()
+	mgr, err := service.NewWorktreeManager(
+		service.WorktreeManagerConfig{
+			RepoRoot:      t.TempDir(),
+			WorktreesRoot: t.TempDir(),
+		},
+		wtRepo,
+		nil, // logger=nil → discard
+	)
+	require.NoError(t, err)
+	return mgr
 }
 
 func sampleWorktree(id, taskID uuid.UUID, state models.WorktreeState, allocatedAt time.Time) models.Worktree {
@@ -337,4 +369,122 @@ func TestListWorktrees_RepoError_Returns500(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReleaseWorktree — Sprint 17 / 6.3 (manual unstick)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestReleaseWorktree_NonAdmin_Returns403(t *testing.T) {
+	wtRepo := new(mockWorktreeRepo)
+	taskSvc := new(MockTaskService)
+	mgr := newTestWorktreeMgr(t, wtRepo)
+
+	r := setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, mgr, uuid.New(), models.RoleUser)
+	req := httptest.NewRequest(http.MethodPost, "/worktrees/"+uuid.New().String()+"/release", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	// Mgr НЕ должен быть дёрнут — admin-guard работает до ReleaseManual.
+	wtRepo.AssertNotCalled(t, "GetByID", mock.Anything, mock.Anything)
+}
+
+func TestReleaseWorktree_MgrNil_Returns503(t *testing.T) {
+	wtRepo := new(mockWorktreeRepo)
+	taskSvc := new(MockTaskService)
+
+	// mgr=nil имитирует unset WORKTREES_ROOT/REPO_ROOT в проде. Admin должен
+	// получить явный 503, не молчаливый 500.
+	r := setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, nil, uuid.New(), models.RoleAdmin)
+	req := httptest.NewRequest(http.MethodPost, "/worktrees/"+uuid.New().String()+"/release", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	wtRepo.AssertNotCalled(t, "GetByID", mock.Anything, mock.Anything)
+}
+
+func TestReleaseWorktree_BadUUID_Returns400(t *testing.T) {
+	wtRepo := new(mockWorktreeRepo)
+	taskSvc := new(MockTaskService)
+	mgr := newTestWorktreeMgr(t, wtRepo)
+
+	r := setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, mgr, uuid.New(), models.RoleAdmin)
+	req := httptest.NewRequest(http.MethodPost, "/worktrees/not-a-uuid/release", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	wtRepo.AssertNotCalled(t, "GetByID", mock.Anything, mock.Anything)
+}
+
+func TestReleaseWorktree_NotFound_Returns404(t *testing.T) {
+	wtRepo := new(mockWorktreeRepo)
+	taskSvc := new(MockTaskService)
+	mgr := newTestWorktreeMgr(t, wtRepo)
+
+	wtID := uuid.New()
+	wtRepo.On("GetByID", mock.Anything, wtID).Return(nil, repository.ErrWorktreeNotFound)
+
+	r := setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, mgr, uuid.New(), models.RoleAdmin)
+	req := httptest.NewRequest(http.MethodPost, "/worktrees/"+wtID.String()+"/release", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	wtRepo.AssertExpectations(t)
+}
+
+func TestReleaseWorktree_AlreadyReleased_Returns409(t *testing.T) {
+	wtRepo := new(mockWorktreeRepo)
+	taskSvc := new(MockTaskService)
+	mgr := newTestWorktreeMgr(t, wtRepo)
+
+	wtID := uuid.New()
+	taskID := uuid.New()
+	wt := sampleWorktree(wtID, taskID, models.WorktreeStateReleased, time.Now())
+	wtRepo.On("GetByID", mock.Anything, wtID).Return(&wt, nil)
+
+	r := setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, mgr, uuid.New(), models.RoleAdmin)
+	req := httptest.NewRequest(http.MethodPost, "/worktrees/"+wtID.String()+"/release", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	// UpdateState НЕ должен вызываться при already-released.
+	wtRepo.AssertNotCalled(t, "UpdateState", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestReleaseWorktree_HappyPath_Returns200WithReleasedState(t *testing.T) {
+	wtRepo := new(mockWorktreeRepo)
+	taskSvc := new(MockTaskService)
+	mgr := newTestWorktreeMgr(t, wtRepo)
+
+	wtID := uuid.New()
+	taskID := uuid.New()
+	wtBefore := sampleWorktree(wtID, taskID, models.WorktreeStateInUse, time.Now())
+	wtAfter := sampleWorktree(wtID, taskID, models.WorktreeStateReleased, wtBefore.AllocatedAt)
+	releasedAt := time.Now().UTC()
+	wtAfter.ReleasedAt = &releasedAt
+
+	// 1) первичный GetByID — state='in_use'
+	// 2) UpdateState → released (git remove упадёт в tmpdir не-репо, но это нормально:
+	//    removeAndMarkReleased продолжит к UpdateState даже при ошибке git)
+	// 3) повторный GetByID для возврата актуального wt с released_at
+	wtRepo.On("GetByID", mock.Anything, wtID).Return(&wtBefore, nil).Once()
+	wtRepo.On("UpdateState", mock.Anything, wtID, models.WorktreeStateReleased).Return(nil).Once()
+	wtRepo.On("GetByID", mock.Anything, wtID).Return(&wtAfter, nil).Once()
+
+	r := setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, mgr, uuid.New(), models.RoleAdmin)
+	req := httptest.NewRequest(http.MethodPost, "/worktrees/"+wtID.String()+"/release", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, wtID.String(), resp["id"])
+	assert.Equal(t, "released", resp["state"], "response должен отражать новое состояние, чтобы UI обновил tile без refetch")
+	wtRepo.AssertExpectations(t)
 }

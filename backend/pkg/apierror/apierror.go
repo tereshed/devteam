@@ -38,6 +38,10 @@ const (
 	// ErrTaskAlreadyTerminal — race condition при Cancel: задача уже завершена.
 	// HTTP 409, фронт обрабатывает тихо (invalidate + info-toast вместо красного snack).
 	ErrTaskAlreadyTerminal = "task_already_terminal"
+	// ErrFeatureNotConfigured — фича отключена через env (нет WORKTREES_ROOT, OAuth-ключей и т.п.).
+	// HTTP 503. Отдельно от ErrInternalServerError, чтобы фронт мог отличить
+	// "включи в config" от "что-то реально сломалось".
+	ErrFeatureNotConfigured = "feature_not_configured"
 )
 
 // JSON sends a structured error response

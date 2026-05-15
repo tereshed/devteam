@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -310,6 +311,201 @@ func TestWorktreeManager_Release_Idempotent(t *testing.T) {
 	// Release несуществующего — тоже no-op (для cancel-flow по всем worktree'ям задачи).
 	if err := mgr.Release(context.Background(), uuid.New()); err != nil {
 		t.Errorf("release of missing worktree expected no-op nil, got: %v", err)
+	}
+}
+
+// TestWorktreeManager_AssertPathInsideRoot — defence-in-depth helper-функция
+// должна REJECT'ить пути вне корня и пути равные корню. Этот хелпер также
+// используется внутри Release/ReleaseManual, поэтому unit-тест на нём = unit-тест
+// на guard-условии "PathOutsideRoot_Rejected" из плана §6.3.
+func TestWorktreeManager_AssertPathInsideRoot(t *testing.T) {
+	root := "/var/lib/devteam/worktrees"
+	// Каждый кейс — pair (path, wantOK). wantOK==false означает что мы ждём
+	// ErrWorktreeInvalidPath (нельзя пускать git remove --force на эту строку).
+	cases := []struct {
+		name   string
+		path   string
+		wantOK bool
+	}{
+		// HAPPY: корректный путь под корнем.
+		{"happy/uuid_subdir", root + "/abcd", true},
+		{"happy/nested", root + "/task-1/wt-2", true},
+
+		// REJECT: путь == корень (catastrophic, RemoveAll бы снёс всё).
+		{"reject/equals_root", root, false},
+		{"reject/equals_root_with_slash", root + "/", false},
+
+		// REJECT: путь выше корня через ".." (Clean раскроет, защита всё равно сработает).
+		{"reject/parent_traversal", root + "/../etc", false},
+		{"reject/sibling_dir", "/var/lib/devteam/secrets", false},
+		{"reject/abs_outside", "/etc/passwd", false},
+
+		// REJECT: empty path — Clean даст "." (явно вне корня).
+		{"reject/empty", "", false},
+
+		// REJECT: префикс совпадает по подстроке, но это другой каталог.
+		// Без `+ "/"` в HasPrefix мы бы пропустили "/var/lib/devteam/worktreesEvil".
+		{"reject/prefix_substring_attack", root + "Evil/x", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := assertPathInsideRoot(tc.path, root)
+			if tc.wantOK && err != nil {
+				t.Errorf("expected OK for %q, got: %v", tc.path, err)
+			}
+			if !tc.wantOK {
+				if err == nil {
+					t.Errorf("expected REJECT for %q, got nil", tc.path)
+				} else if !errors.Is(err, ErrWorktreeInvalidPath) {
+					t.Errorf("expected ErrWorktreeInvalidPath for %q, got: %v", tc.path, err)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildGitWorktreeRemoveArgs_HasSeparatorAfterFlags — guards the project-wide
+// invariant: `git worktree remove` argv должен иметь форму
+// `-C <root> worktree remove --force -- <path>`. Без `--` adversarial path вида
+// `--upload-pack=evil` мог бы быть прочитан git'ом как флаг.
+//
+// На практике path вычисляется в Go из uuid.UUID и не может стать флагом (UUID
+// не начинается с `-`), но регрессию "кто-то заменил on `git worktree remove %s`
+// через fmt.Sprintf или bash -c" статический анализ не поймает — этот тест поймает.
+func TestBuildGitWorktreeRemoveArgs_HasSeparatorAfterFlags(t *testing.T) {
+	args := buildGitWorktreeRemoveArgs("/var/repo", "/var/wt/abc")
+
+	// Сепаратор `--` обязан присутствовать ровно один раз и стоять ПЕРЕД path.
+	sepIdx := -1
+	for i, a := range args {
+		if a == "--" {
+			if sepIdx != -1 {
+				t.Fatalf("expected exactly one `--` separator, found duplicate at %d (first at %d)", i, sepIdx)
+			}
+			sepIdx = i
+		}
+	}
+	if sepIdx == -1 {
+		t.Fatalf("expected `--` separator in args, got: %v", args)
+	}
+	if args[len(args)-1] != "/var/wt/abc" {
+		t.Errorf("expected path as last arg, got args=%v", args)
+	}
+	if sepIdx != len(args)-2 {
+		t.Errorf("expected `--` immediately before path, got args=%v (sep at %d, len=%d)", args, sepIdx, len(args))
+	}
+
+	// Все флаги (--force) должны быть СТРОГО ДО сепаратора. Если когда-нибудь
+	// добавится новый флаг ПОСЛЕ `--`, git его не распознает И этот тест упадёт.
+	for i, a := range args[:sepIdx] {
+		if i > 1 && len(a) > 1 && a[0] == '-' && a != "--force" && a != "-C" {
+			t.Errorf("unexpected flag-like arg before separator: %q (full args=%v)", a, args)
+		}
+	}
+
+	// На случай если кто-то решит добавить опасные флаги типа --upload-pack —
+	// явная denylist-проверка делает intent теста очевидным при чтении.
+	dangerous := []string{"--upload-pack", "--exec", "--receive-pack"}
+	for _, a := range args {
+		for _, d := range dangerous {
+			if strings.HasPrefix(a, d) {
+				t.Errorf("dangerous flag %q must never appear in worktree remove args, got: %v", a, args)
+			}
+		}
+	}
+}
+
+// TestBuildGitWorktreeRemoveArgs_AdversarialPath_NotInterpretedAsFlag — даже
+// когда path выглядит как флаг (`--upload-pack=evil`), он стоит ПОСЛЕ `--` и
+// git разберёт его как позиционный аргумент.
+func TestBuildGitWorktreeRemoveArgs_AdversarialPath_NotInterpretedAsFlag(t *testing.T) {
+	// На практике ComputePath никогда не вернёт такую строку — UUID-формат
+	// фиксирован. Но guard обязан работать гипотетически: тест проверяет именно
+	// конструктор аргументов.
+	args := buildGitWorktreeRemoveArgs("/var/repo", "--upload-pack=evil")
+
+	// Path — последний элемент.
+	if args[len(args)-1] != "--upload-pack=evil" {
+		t.Errorf("path should be last positional arg even when it looks like a flag, got: %v", args)
+	}
+	// Перед ним — `--`.
+	if args[len(args)-2] != "--" {
+		t.Errorf("expected `--` immediately before adversarial path, got: %v", args)
+	}
+}
+
+// TestWorktreeManager_ReleaseManual_NotFound — ReleaseManual для несуществующего
+// worktree возвращает repository.ErrWorktreeNotFound (handler → 404). В отличие
+// от обычного Release, который trеатит "missing" как no-op (для cancel-flow).
+func TestWorktreeManager_ReleaseManual_NotFound(t *testing.T) {
+	tmpRepo := t.TempDir()
+	tmpRoot := t.TempDir()
+	mgr, err := NewWorktreeManager(WorktreeManagerConfig{RepoRoot: tmpRepo, WorktreesRoot: tmpRoot},
+		newMemWorktreeRepo(), discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = mgr.ReleaseManual(context.Background(), uuid.New(), uuid.New(), "admin")
+	if !errors.Is(err, repository.ErrWorktreeNotFound) {
+		t.Errorf("expected ErrWorktreeNotFound, got: %v", err)
+	}
+}
+
+// TestWorktreeManager_ReleaseManual_AlreadyReleased — повторный manual-release
+// возвращает ErrWorktreeAlreadyReleased (handler → 409). Это ОТЛИЧИЕ от обычного
+// Release (который no-op для идемпотентности cancel-flow): manual-кнопка должна
+// сообщить оператору "ничего не сделалось, уже целевое состояние".
+func TestWorktreeManager_ReleaseManual_AlreadyReleased(t *testing.T) {
+	tmpRepo := t.TempDir()
+	tmpRoot := t.TempDir()
+	repo := newMemWorktreeRepo()
+	mgr, err := NewWorktreeManager(WorktreeManagerConfig{RepoRoot: tmpRepo, WorktreesRoot: tmpRoot},
+		repo, discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt := &models.Worktree{TaskID: uuid.New(), BaseBranch: "main", State: models.WorktreeStateReleased}
+	if err := repo.Create(context.Background(), wt); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = mgr.ReleaseManual(context.Background(), wt.ID, uuid.New(), "admin")
+	if !errors.Is(err, ErrWorktreeAlreadyReleased) {
+		t.Errorf("expected ErrWorktreeAlreadyReleased, got: %v", err)
+	}
+}
+
+// TestWorktreeManager_ReleaseManual_HappyPath_NoGitRepo — ReleaseManual должен
+// успешно перевести state в released даже если git упал (нет репо). Это важная
+// гарантия: оператор нажал кнопку именно потому что worktree залип; consistency
+// БД-стейта важнее консистентности файловой системы.
+func TestWorktreeManager_ReleaseManual_HappyPath_NoGitRepo(t *testing.T) {
+	tmpRepo := t.TempDir() // не git-репо
+	tmpRoot := t.TempDir()
+	repo := newMemWorktreeRepo()
+	mgr, err := NewWorktreeManager(WorktreeManagerConfig{RepoRoot: tmpRepo, WorktreesRoot: tmpRoot},
+		repo, discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt := &models.Worktree{TaskID: uuid.New(), BaseBranch: "main", State: models.WorktreeStateInUse}
+	if err := repo.Create(context.Background(), wt); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := mgr.ReleaseManual(context.Background(), wt.ID, uuid.New(), "admin")
+	if err != nil {
+		t.Fatalf("ReleaseManual: %v", err)
+	}
+	if updated.State != models.WorktreeStateReleased {
+		t.Errorf("expected state=released, got %q", updated.State)
+	}
+	// Запись в БД тоже released.
+	got, _ := repo.GetByID(context.Background(), wt.ID)
+	if got.State != models.WorktreeStateReleased {
+		t.Errorf("DB state expected released, got %q", got.State)
 	}
 }
 

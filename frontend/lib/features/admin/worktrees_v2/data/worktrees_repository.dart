@@ -27,12 +27,31 @@ class WorktreesRepository {
         originalError: err,
         apiErrorCode: code,
       ),
-      on409: null,
-      onOtherHttp: (msg, err, code, status) => WorktreesApiException(
+      on409: (msg, err, code) => WorktreesConflictException(
         msg,
-        statusCode: status,
         originalError: err,
+        apiErrorCode: code,
       ),
+      onOtherHttp: (msg, err, code, status) {
+        // 503 + apiErrorCode == "feature_not_configured" — backend без
+        // WORKTREES_ROOT/REPO_ROOT (legacy clone-path). UI показывает
+        // конкретное сообщение, а не generic "что-то сломалось".
+        // Любой другой 503 (например прокси/балансер свалились) → generic
+        // WorktreesApiException, чтобы оператор увидел raw status и пошёл
+        // в логи backend'а.
+        if (status == 503 && code == 'feature_not_configured') {
+          return WorktreesNotConfiguredException(
+            msg,
+            originalError: err,
+            apiErrorCode: code,
+          );
+        }
+        return WorktreesApiException(
+          msg,
+          statusCode: status,
+          originalError: err,
+        );
+      },
     );
   }
 
@@ -59,6 +78,33 @@ class WorktreesRepository {
           .whereType<Map<String, dynamic>>()
           .map(WorktreeV2.fromJson)
           .toList(growable: false);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// Sprint 17 / 6.3 — manual unstick. Вызывает POST /worktrees/{id}/release.
+  ///
+  /// Backend admin-only; маппинг ошибок:
+  ///   - 404 → [WorktreesNotFoundException]
+  ///   - 409 → [WorktreesConflictException] (worktree уже released — info-toast)
+  ///   - 403 → [WorktreesForbiddenException] (не admin)
+  ///
+  /// Возвращает обновлённую модель worktree (state='released'). Caller должен
+  /// инвалидировать список, чтобы не отображать stale-стейт соседних строк.
+  Future<WorktreeV2> release(String id, {CancelToken? cancelToken}) async {
+    try {
+      final response = await _dio.post(
+        '/worktrees/$id/release',
+        cancelToken: cancelToken,
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return WorktreeV2.fromJson(data);
+      }
+      throw WorktreesApiException(
+        'Unexpected release response shape: ${data.runtimeType}',
+      );
     } on DioException catch (e) {
       throw _mapError(e);
     }

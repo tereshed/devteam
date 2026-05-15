@@ -32,6 +32,16 @@ import (
 //     ведущем '-' или '.' — защита от git flag injection).
 //   5. CleanupExpired перед os.RemoveAll делает filepath.Clean + prefix-check,
 //      чтобы даже при ошибке в коде путь не вышел за WorktreesRoot.
+//
+// Политика логирования (Sprint 17 / 6.3 review):
+//   - В Kibana и observability НЕ светим внутренний нейминг: ни branch_name
+//     (детерминированно вычислимый из task_id+worktree_id), ни абсолютный
+//     путь к каталогу worktree. По task_id + worktree_id оператор всегда может
+//     восстановить branch_name локально через MakeWorktreeBranchName.
+//   - Это политика для ВСЕХ логов в этом файле, не только для manual-audit:
+//     при инцидент-разборе достаточно ID-пары; экспортировать имя ветки в
+//     centralized logging означает раскрыть internal scheme'у в Kibana, где
+//     к ней получают доступ роли с broader-чем-БД scope'ом.
 
 // WorktreeManagerConfig — конфигурация менеджера.
 type WorktreeManagerConfig struct {
@@ -68,6 +78,18 @@ func (c WorktreeManagerConfig) Validate() error {
 
 // ErrWorktreeStateConflict — попытка release/markInUse worktree в неподходящем стейте.
 var ErrWorktreeStateConflict = errors.New("worktree in unexpected state")
+
+// ErrWorktreeAlreadyReleased — manual-release вызван для worktree который уже released.
+// В отличие от Release (идемпотентен для cancel-flow), ReleaseManual возвращает эту
+// ошибку, чтобы handler ответил 409 — оператору важно знать что кнопка не сработала
+// потому что состояние уже целевое, а не из-за бага.
+var ErrWorktreeAlreadyReleased = errors.New("worktree already released")
+
+// ErrWorktreeInvalidPath — defence-in-depth: вычисленный путь к worktree вышел за
+// WorktreesRoot. На практике невозможно (ComputePath строится от типизированных UUID),
+// но если когда-нибудь будет — `git worktree remove --force --` под uid backend'а
+// смог бы снести произвольные файлы. Лучше упасть раньше.
+var ErrWorktreeInvalidPath = errors.New("worktree path outside root")
 
 // WorktreeManager — основной API изоляции git worktree'ев.
 type WorktreeManager struct {
@@ -149,8 +171,11 @@ func (m *WorktreeManager) Allocate(ctx context.Context, taskID, subtaskID uuid.U
 		return nil, fmt.Errorf("worktree allocate: git worktree add: %w (output: %s)", err, truncate(string(out), 256))
 	}
 
+	// branch_name НЕ логируем (см. "Политика логирования" в godoc файла).
+	// base_branch — оставляем: это вход от пользователя/LLM, нужен для дебага
+	// "почему агент пошёл от не той ветки".
 	m.logger.InfoContext(ctx, "worktree allocated",
-		"task_id", taskID, "worktree_id", wt.ID, "branch", wt.BranchName, "base", baseBranch)
+		"task_id", taskID, "worktree_id", wt.ID, "base", baseBranch)
 	return wt, nil
 }
 
@@ -182,30 +207,140 @@ func (m *WorktreeManager) Release(ctx context.Context, worktreeID uuid.UUID) err
 	if wt.State == models.WorktreeStateReleased {
 		return nil // идемпотентность
 	}
+	return m.removeAndMarkReleased(ctx, wt)
+}
 
+// ReleaseManual — вариант Release для ручного "unstick" из admin UI (Sprint 17 / 6.3).
+//
+// Отличия от Release:
+//   - НЕ идемпотентен: повторный вызов на released worktree возвращает
+//     ErrWorktreeAlreadyReleased (handler отвечает 409). Operator должен знать что
+//     кнопка не сработала именно из-за уже-целевого состояния, а не из-за бага.
+//   - Возвращает repository.ErrWorktreeNotFound если worktree не существует
+//     (handler → 404), а не nil как Release.
+//   - Audit-log включает userID/userRole триггера. path и branch_name НЕ логируются
+//     (внутренний нейминг, в Kibana не нужно).
+//
+// Безопасность (см. §6.3 docs/orchestration-v2-plan.md): команда строится
+// исключительно через массив exec.CommandContext + `--` separator; путь вычисляется
+// из типизированных uuid.UUID в Go (НЕ читается из БД-строки) и проверяется на
+// принадлежность WorktreesRoot до запуска git.
+func (m *WorktreeManager) ReleaseManual(ctx context.Context, worktreeID uuid.UUID, userID uuid.UUID, userRole string) (*models.Worktree, error) {
+	wt, err := m.repo.GetByID(ctx, worktreeID)
+	if err != nil {
+		if errors.Is(err, repository.ErrWorktreeNotFound) {
+			return nil, err // 404 на handler-слое
+		}
+		return nil, fmt.Errorf("worktree release_manual: load: %w", err)
+	}
+	if wt.State == models.WorktreeStateReleased {
+		return nil, ErrWorktreeAlreadyReleased
+	}
+
+	if err := m.removeAndMarkReleased(ctx, wt); err != nil {
+		return nil, err
+	}
+
+	// Audit-log. Нужен в Kibana для разбора инцидентов "почему worktree исчез
+	// посреди работы" — кто и когда нажал кнопку. Никаких PII/секретов.
+	m.logger.InfoContext(ctx, "worktree manually released",
+		"worktree_id", wt.ID,
+		"task_id", wt.TaskID,
+		"user_id", userID,
+		"user_role", userRole,
+	)
+
+	// Re-fetch чтобы вернуть released_at, который выставила репа в UpdateState.
+	// Если по какой-то причине запись пропала между UpdateState и Get — отдаём
+	// in-memory копию с обновлённым state'ом (best-effort, не падаем).
+	updated, err := m.repo.GetByID(ctx, worktreeID)
+	if err != nil {
+		wt.State = models.WorktreeStateReleased
+		return wt, nil
+	}
+	return updated, nil
+}
+
+// removeAndMarkReleased — общая часть Release / ReleaseManual: defence-in-depth path
+// validation → `git worktree remove --force --` → UpdateState(released).
+//
+// Все callers полагаются на то, что метод НЕ возвращает ошибку если git упал
+// (worktree-каталог мог быть удалён вручную, ветка пропасть и т.п.) — state=released
+// важнее, retention cron подберёт остатки. Ошибки возвращаются только для
+// (a) UpdateState и (b) явного ErrWorktreeInvalidPath (defence-in-depth).
+func (m *WorktreeManager) removeAndMarkReleased(ctx context.Context, wt *models.Worktree) error {
 	path, err := wt.ComputePath(m.cfg.WorktreesRoot)
 	if err != nil {
 		return fmt.Errorf("worktree release: compute path: %w", err)
 	}
+	if err := assertPathInsideRoot(path, m.cfg.WorktreesRoot); err != nil {
+		// CRITICAL: не запускаем git если путь вышел за корень. На практике невозможно
+		// (ComputePath из uuid.UUID), но если когда-нибудь будет — git worktree remove
+		// --force --  под uid backend'а снесёт реальные файлы.
+		m.logger.ErrorContext(ctx, "worktree release: REFUSING git remove (path outside root)",
+			"worktree_id", wt.ID, "error", err.Error())
+		return err
+	}
 
-	// git worktree remove тоже с `--` для единообразия (path вычислен нами,
-	// но привычка экранировать перед позиционными аргументами — полезная).
-	cmd := exec.CommandContext(ctx, "git", "-C", m.cfg.RepoRoot,
-		"worktree", "remove", "--force", "--", path)
+	// args строятся через buildGitWorktreeRemoveArgs (отдельный helper, чтобы
+	// инвариант "флаги перед --, путь после --" был unit-тестируемым: см.
+	// TestBuildGitWorktreeRemoveArgs_HasSeparatorAfterFlags).
+	args := buildGitWorktreeRemoveArgs(m.cfg.RepoRoot, path)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Не критичная ошибка — мог уже быть удалён вручную, или ветки нет. Логируем
 		// и продолжаем: state=released важнее консистентности файловой системы
 		// (cleanup-cron всё равно подберёт остатки).
 		m.logger.WarnContext(ctx, "git worktree remove failed (continuing to mark released)",
-			"worktree_id", worktreeID, "error", err.Error(),
+			"worktree_id", wt.ID, "error", err.Error(),
 			"git_output", truncate(string(out), 1024))
 	}
 
-	if err := m.repo.UpdateState(ctx, worktreeID, models.WorktreeStateReleased); err != nil {
+	if err := m.repo.UpdateState(ctx, wt.ID, models.WorktreeStateReleased); err != nil {
 		return fmt.Errorf("worktree release: update state: %w", err)
 	}
 
-	m.logger.InfoContext(ctx, "worktree released", "worktree_id", worktreeID, "branch", wt.BranchName)
+	// branch_name НЕ логируем (см. "Политика логирования" в godoc файла).
+	m.logger.InfoContext(ctx, "worktree released", "worktree_id", wt.ID, "task_id", wt.TaskID)
+	return nil
+}
+
+// buildGitWorktreeRemoveArgs — строит argv для `git worktree remove`. Вынесено в
+// helper исключительно ради unit-тестирования инварианта "argv-форма + `--`":
+// регрессию вида "кто-то поменял на bash -c / fmt.Sprintf, потерял `--`,
+// добавил --upload-pack" статический анализ не поймает, а тест на форму args —
+// поймает. Helper не зависит от состояния менеджера.
+//
+// Контракт: возвращаемый срез ВСЕГДА содержит `--` ровно один раз, ПЕРЕД path.
+// path всегда последний элемент. Все флаги (--force) — ДО `--`. Если изменишь —
+// сломай тест намеренно, не молча.
+func buildGitWorktreeRemoveArgs(repoRoot, path string) []string {
+	return []string{
+		"-C", repoRoot,
+		"worktree", "remove",
+		"--force",
+		"--",
+		path,
+	}
+}
+
+// assertPathInsideRoot — defence-in-depth проверка: filepath.Clean(path) должен
+// быть строго ВНУТРИ root (не равен корню, не выше). Возвращает ErrWorktreeInvalidPath
+// если что-то не так. Используется в Release/ReleaseManual и CleanupExpired.
+//
+// Ровно та же логика, что в CleanupExpired (внутри файла) — выделена в helper, чтобы
+// (a) не дублировать защиту в двух местах, (b) можно было unit-тестировать на
+// adversarial-входах напрямую.
+func assertPathInsideRoot(path, root string) error {
+	clean := filepath.Clean(path)
+	rootClean := filepath.Clean(root)
+	rootPrefix := rootClean + string(filepath.Separator)
+	if clean == rootClean {
+		return fmt.Errorf("%w: path equals root %q", ErrWorktreeInvalidPath, rootClean)
+	}
+	if !strings.HasPrefix(clean+string(filepath.Separator), rootPrefix) {
+		return fmt.Errorf("%w: %q not inside %q", ErrWorktreeInvalidPath, clean, rootClean)
+	}
 	return nil
 }
 
@@ -222,9 +357,6 @@ func (m *WorktreeManager) CleanupExpired(ctx context.Context, cutoff time.Time) 
 		return 0, fmt.Errorf("worktree cleanup: list expired: %w", err)
 	}
 
-	rootClean := filepath.Clean(m.cfg.WorktreesRoot)
-	rootPrefix := rootClean + string(filepath.Separator)
-
 	cleaned := 0
 	for i := range expired {
 		wt := &expired[i]
@@ -237,19 +369,13 @@ func (m *WorktreeManager) CleanupExpired(ctx context.Context, cutoff time.Time) 
 		}
 		clean := filepath.Clean(path)
 
-		// Defence-in-depth: ОТКАЗЫВАЕМ если ХОТЯ БЫ ОДНО:
-		//   (a) путь не лежит строго ВНУТРИ WorktreesRoot (HasPrefix==false), ИЛИ
-		//   (b) путь РАВЕН самому корню (тогда RemoveAll снёс бы все worktree'ы всех задач).
-		// Используем OR — не AND. Иначе при clean==rootClean (например, повреждённые UUID
-		// дают пустую составляющую и filepath.Join схлопывает путь в корень) условие
-		// `clean != rootClean` даёт false, мы пропускаем continue и RemoveAll(rootClean)
-		// удаляет ВСЁ. Это catastrophic data loss.
-		isInsideRoot := strings.HasPrefix(clean+string(filepath.Separator), rootPrefix)
-		isRootItself := clean == rootClean
-		if !isInsideRoot || isRootItself {
+		// Defence-in-depth: REFUSE если путь равен корню или вышел за него.
+		// Без этой проверки повреждённые UUID, схлопывающие filepath.Join к корню,
+		// привели бы к RemoveAll(WorktreesRoot) — catastrophic data loss всех
+		// worktree'ев всех задач.
+		if err := assertPathInsideRoot(clean, m.cfg.WorktreesRoot); err != nil {
 			m.logger.ErrorContext(ctx, "worktree cleanup: REFUSING to remove unsafe path",
-				"worktree_id", wt.ID, "path", clean, "root", rootClean,
-				"is_inside_root", isInsideRoot, "is_root_itself", isRootItself)
+				"worktree_id", wt.ID, "path", clean, "error", err.Error())
 			continue
 		}
 

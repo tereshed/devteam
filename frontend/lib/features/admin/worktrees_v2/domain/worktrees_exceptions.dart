@@ -43,6 +43,35 @@ class WorktreesNotFoundException extends WorktreesRepositoryException {
   }) : super('Not found: $detail', originalError: originalError);
 }
 
+/// 409 Conflict — manual release вызван для worktree который уже released.
+/// UI показывает info-snackbar и просто инвалидирует список (target state уже
+/// достигнут), не красный error-toast.
+@immutable
+class WorktreesConflictException extends WorktreesRepositoryException {
+  final String? apiErrorCode;
+
+  WorktreesConflictException(
+    String detail, {
+    Object? originalError,
+    this.apiErrorCode,
+  }) : super('Conflict: $detail', originalError: originalError);
+}
+
+/// 503 Service Unavailable + apiErrorCode == "feature_not_configured" —
+/// backend выставлен без WORKTREES_ROOT/REPO_ROOT (legacy clone-path).
+/// UI показывает специфичное сообщение "включите фичу в настройках сервера",
+/// а не generic "что-то сломалось" — оператор должен сразу понять root cause.
+@immutable
+class WorktreesNotConfiguredException extends WorktreesRepositoryException {
+  final String? apiErrorCode;
+
+  WorktreesNotConfiguredException(
+    String detail, {
+    Object? originalError,
+    this.apiErrorCode,
+  }) : super('Feature not configured: $detail', originalError: originalError);
+}
+
 @immutable
 class WorktreesApiException extends WorktreesRepositoryException {
   final int? statusCode;

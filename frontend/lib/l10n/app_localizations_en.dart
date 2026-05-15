@@ -1460,6 +1460,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get worktreesReleasedSnackbar => 'Worktree released.';
 
   @override
+  String get worktreesReleaseDialogTitle => 'Force release worktree?';
+
+  @override
+  String get worktreesReleaseDialogBody =>
+      'git worktree remove --force will run right now. The agent (if any) will lose its working directory and uncommitted changes.';
+
+  @override
+  String get worktreesReleaseAlreadyReleased =>
+      'Worktree was already released.';
+
+  @override
+  String get worktreesReleaseFailed => 'Failed to release worktree.';
+
+  @override
+  String get worktreesReleaseNotConfigured =>
+      'Worktree manager is not configured on the server (WORKTREES_ROOT / REPO_ROOT unset). Ask an operator to enable the feature.';
+
+  @override
   String get worktreesFilterAll => 'All';
 
   @override

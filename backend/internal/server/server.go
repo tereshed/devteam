@@ -257,6 +257,11 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			worktrees.Use(authMW)
 			{
 				worktrees.GET("", deps.OrchestrationV2Handler.ListWorktrees)
+				// Sprint 17 / 6.3 — manual unstick. Admin-only гард внутри handler'а
+				// (а не через AdminOnlyMiddleware), чтобы 401 имел приоритет над 403:
+				// с middleware'м неавторизованный пользователь видел бы "forbidden"
+				// вместо "unauthorized", и фронт по 403 не вышибал бы login flow.
+				worktrees.POST("/:id/release", deps.OrchestrationV2Handler.ReleaseWorktree)
 			}
 		}
 

@@ -2840,6 +2840,36 @@ abstract class AppLocalizations {
   /// **'Worktree освобождён.'**
   String get worktreesReleasedSnackbar;
 
+  /// No description provided for @worktreesReleaseDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Принудительно освободить worktree?'**
+  String get worktreesReleaseDialogTitle;
+
+  /// No description provided for @worktreesReleaseDialogBody.
+  ///
+  /// In ru, this message translates to:
+  /// **'git worktree remove --force произойдёт прямо сейчас. Агент (если работает) потеряет рабочий каталог и незакоммиченные изменения.'**
+  String get worktreesReleaseDialogBody;
+
+  /// No description provided for @worktreesReleaseAlreadyReleased.
+  ///
+  /// In ru, this message translates to:
+  /// **'Worktree уже был освобождён.'**
+  String get worktreesReleaseAlreadyReleased;
+
+  /// No description provided for @worktreesReleaseFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось освободить worktree.'**
+  String get worktreesReleaseFailed;
+
+  /// No description provided for @worktreesReleaseNotConfigured.
+  ///
+  /// In ru, this message translates to:
+  /// **'Worktree manager не сконфигурирован на сервере (WORKTREES_ROOT / REPO_ROOT не заданы). Попросите оператора включить фичу.'**
+  String get worktreesReleaseNotConfigured;
+
   /// No description provided for @worktreesFilterAll.
   ///
   /// In ru, this message translates to:

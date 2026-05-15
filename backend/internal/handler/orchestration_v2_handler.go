@@ -38,11 +38,16 @@ import (
 // (Sprint 17 / 6.2): глобальный список (без task_id) — admin-only, а вариант
 // с task_id допускается обычному пользователю при владении задачей. Логика
 // split'а живёт в самом handler'е, поэтому маршрут навешан под общий authMW.
+//
+// worktreeMgr — опциональный (nil если WORKTREES_ROOT/REPO_ROOT не заданы).
+// Используется в ReleaseWorktree (Sprint 17 / 6.3); если nil — endpoint отвечает
+// 503 Service Unavailable, чтобы admin понимал почему кнопка не работает.
 type OrchestrationV2Handler struct {
 	artifactRepo repository.ArtifactRepository
 	decisionRepo repository.RouterDecisionRepository
 	worktreeRepo repository.WorktreeRepository
 	taskSvc      service.TaskService
+	worktreeMgr  *service.WorktreeManager
 }
 
 // NewOrchestrationV2Handler — конструктор.
@@ -51,12 +56,14 @@ func NewOrchestrationV2Handler(
 	decisionRepo repository.RouterDecisionRepository,
 	worktreeRepo repository.WorktreeRepository,
 	taskSvc service.TaskService,
+	worktreeMgr *service.WorktreeManager,
 ) *OrchestrationV2Handler {
 	return &OrchestrationV2Handler{
 		artifactRepo: artifactRepo,
 		decisionRepo: decisionRepo,
 		worktreeRepo: worktreeRepo,
 		taskSvc:      taskSvc,
+		worktreeMgr:  worktreeMgr,
 	}
 }
 
@@ -326,6 +333,75 @@ func (h *OrchestrationV2Handler) ListWorktrees(c *gin.Context) {
 		"items": out,
 		"total": len(out),
 	})
+}
+
+// ReleaseWorktree выполняет ручной "unstick" worktree (Sprint 17 / 6.3).
+//
+// Use-case: Worktree залип в state='in_use' потому что sandbox-процесс упал
+// между Step'ами (без шанса вызвать Release из cancel-флоу). Без этой кнопки
+// единственная альтернатива — `psql UPDATE worktrees SET state='released'`,
+// что а) роняет файлы worktree сиротами и б) требует доступа к БД в проде.
+//
+// Access policy: admin-only (action разрушительный, защищаем от случайного
+// клика обычного пользователя который случайно попал на /worktrees-debug экран).
+//
+// Маппинг ошибок service-слоя:
+//   - repository.ErrWorktreeNotFound       → 404
+//   - service.ErrWorktreeAlreadyReleased   → 409 (operator info)
+//   - service.ErrWorktreeInvalidPath       → 500 (defence-in-depth сработал — серьёзный баг)
+//
+// @Summary Manually release a worktree (admin)
+// @Description Принудительно выполняет git worktree remove --force и помечает запись released. Admin-only. Idempotent NOT — повторный вызов на released worktree возвращает 409.
+// @Tags orchestration-v2
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Worktree UUID"
+// @Success 200 {object} worktreeResponse
+// @Failure 400 {object} apierror.ErrorResponse "invalid uuid"
+// @Failure 403 {object} apierror.ErrorResponse "admin-only"
+// @Failure 404 {object} apierror.ErrorResponse "worktree not found"
+// @Failure 409 {object} apierror.ErrorResponse "worktree already released"
+// @Failure 503 {object} apierror.ErrorResponse "worktree manager not configured"
+// @Router /worktrees/{id}/release [post]
+func (h *OrchestrationV2Handler) ReleaseWorktree(c *gin.Context) {
+	userID, userRole, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+	if userRole != models.RoleAdmin {
+		apierror.JSON(c, http.StatusForbidden, apierror.ErrForbidden, "manual worktree release requires admin role")
+		return
+	}
+	if h.worktreeMgr == nil {
+		// WORKTREES_ROOT/REPO_ROOT не заданы (legacy clone path). Admin должен видеть
+		// явную причину — отдельный код `feature_not_configured` позволяет фронту
+		// отличить "включи в config" от "что-то реально упало".
+		apierror.JSON(c, http.StatusServiceUnavailable, apierror.ErrFeatureNotConfigured,
+			"worktree manager is not configured (WORKTREES_ROOT/REPO_ROOT unset)")
+		return
+	}
+
+	worktreeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid worktree id")
+		return
+	}
+
+	wt, err := h.worktreeMgr.ReleaseManual(c.Request.Context(), worktreeID, userID, string(userRole))
+	if err != nil {
+		switch {
+		case errors.Is(err, repository.ErrWorktreeNotFound):
+			apierror.JSON(c, http.StatusNotFound, apierror.ErrNotFound, "worktree not found")
+		case errors.Is(err, service.ErrWorktreeAlreadyReleased):
+			apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, "worktree already released")
+		default:
+			apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
+		}
+		return
+	}
+
+	// Возвращаем актуальное состояние, чтобы UI мог обновить tile без отдельного refetch.
+	c.JSON(http.StatusOK, toWorktreeResponse(wt))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

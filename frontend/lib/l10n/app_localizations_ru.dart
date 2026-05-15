@@ -1465,6 +1465,24 @@ class AppLocalizationsRu extends AppLocalizations {
   String get worktreesReleasedSnackbar => 'Worktree освобождён.';
 
   @override
+  String get worktreesReleaseDialogTitle =>
+      'Принудительно освободить worktree?';
+
+  @override
+  String get worktreesReleaseDialogBody =>
+      'git worktree remove --force произойдёт прямо сейчас. Агент (если работает) потеряет рабочий каталог и незакоммиченные изменения.';
+
+  @override
+  String get worktreesReleaseAlreadyReleased => 'Worktree уже был освобождён.';
+
+  @override
+  String get worktreesReleaseFailed => 'Не удалось освободить worktree.';
+
+  @override
+  String get worktreesReleaseNotConfigured =>
+      'Worktree manager не сконфигурирован на сервере (WORKTREES_ROOT / REPO_ROOT не заданы). Попросите оператора включить фичу.';
+
+  @override
   String get worktreesFilterAll => 'Все';
 
   @override

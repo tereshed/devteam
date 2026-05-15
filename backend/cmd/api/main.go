@@ -581,13 +581,15 @@ func main() {
 		// Sprint 17 / Sprint 5F.3 — HTTP API для v2 admin (Frontend Agents Management).
 		AgentV2Handler: handler.NewAgentV2Handler(agentSvcV2),
 
-		// Sprint 17 / Orchestration v2 — read-only API для UI (DAG / Router timeline / Worktrees).
+		// Sprint 17 / Orchestration v2 — read-only API + manual unstick (POST /worktrees/:id/release).
 		// taskService нужен ListWorktrees'у для task-ownership check'а (см. Sprint 17 / 6.2).
+		// v2WorktreeMgr опционален — без него ReleaseWorktree отвечает 503 (см. 6.3).
 		OrchestrationV2Handler: handler.NewOrchestrationV2Handler(
 			artifactRepoV2,
 			routerDecisionRepoV2,
 			worktreeRepoV2,
 			taskService,
+			v2WorktreeMgr,
 		),
 	})
 
@@ -624,6 +626,10 @@ func main() {
 				worktreeRepoV2,
 			),
 			TaskLifecycleV2: v2TaskLifecycle,
+
+			// Sprint 17 / 6.3 — destructive worktree_release MCP tool. nil → tool не регистрируется
+			// (legacy clone-path: WORKTREES_ROOT не задан).
+			WorktreeMgrV2: v2WorktreeMgr,
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)
