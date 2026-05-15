@@ -15,6 +15,7 @@ import 'package:frontend/features/tasks/presentation/utils/task_message_metadata
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/features/tasks/presentation/widgets/artifacts_dag_section.dart';
 import 'package:frontend/features/tasks/presentation/widgets/router_timeline_section.dart';
+import 'package:frontend/features/tasks/presentation/widgets/task_timeout_editor.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/shared/widgets/diff_viewer.dart';
 import 'package:go_router/go_router.dart';
@@ -535,6 +536,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         ..._realtimeSlivers(context, l10n, data),
         SliverToBoxAdapter(
           child: _TaskHeaderSection(
+            projectId: widget.projectId,
+            taskId: widget.taskId,
             l10n: l10n,
             data: data,
           ),
@@ -935,17 +938,21 @@ class _DeletedOrMismatchBody extends StatelessWidget {
   }
 }
 
-class _TaskHeaderSection extends StatelessWidget {
+class _TaskHeaderSection extends ConsumerWidget {
   const _TaskHeaderSection({
+    required this.projectId,
+    required this.taskId,
     required this.l10n,
     required this.data,
   });
 
+  final String projectId;
+  final String taskId;
   final AppLocalizations l10n;
   final TaskDetailState data;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final task = data.task;
     if (task == null && data.isLoadingTask) {
       return const Padding(
@@ -960,6 +967,10 @@ class _TaskHeaderSection extends StatelessWidget {
     final stTone = taskStatusTone(task.status);
     final prTone = taskPriorityTone(task.priority);
     final agent = task.assignedAgent;
+    final hasOverride =
+        task.customTimeout != null && task.customTimeout!.isNotEmpty;
+    final timeoutDisabled = data.realtimeMutationBlocked ||
+        data.lifecycleMutationInFlight != null;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -981,6 +992,35 @@ class _TaskHeaderSection extends StatelessWidget {
                 label: Text(taskPriorityLabel(l10n, task.priority)),
                 backgroundColor: taskPriorityChipBackground(scheme, prTone),
                 labelStyle: TextStyle(color: taskPriorityChipForeground(scheme, prTone)),
+              ),
+              InputChip(
+                avatar: Icon(
+                  hasOverride ? Icons.timer : Icons.timer_outlined,
+                  size: 18,
+                ),
+                label: Text(
+                  hasOverride
+                      ? '${l10n.tasksCustomTimeoutSectionTitle}: ${task.customTimeout}'
+                      : '${l10n.tasksCustomTimeoutSectionTitle}: ${l10n.tasksCustomTimeoutNone}',
+                ),
+                backgroundColor: hasOverride
+                    ? scheme.secondaryContainer
+                    : scheme.surfaceContainerHighest,
+                labelStyle: TextStyle(
+                  color: hasOverride
+                      ? scheme.onSecondaryContainer
+                      : scheme.onSurfaceVariant,
+                ),
+                tooltip: l10n.tasksCustomTimeoutEdit,
+                onPressed: timeoutDisabled
+                    ? null
+                    : () => unawaited(showTaskTimeoutDialog(
+                          context: context,
+                          ref: ref,
+                          projectId: projectId,
+                          taskId: taskId,
+                          currentValue: task.customTimeout,
+                        )),
               ),
             ],
           ),

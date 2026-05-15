@@ -86,7 +86,7 @@ func writeTaskServiceError(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrTaskInvalidStatus):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTaskInvalidTimeout):
-		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrInvalidTimeout, err.Error())
 	case errors.Is(err, service.ErrTaskMessageInvalidType):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrUserCorrectionTooLarge), errors.Is(err, service.ErrUserCorrectionInvalidUTF8),

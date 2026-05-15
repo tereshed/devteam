@@ -2783,7 +2783,7 @@ abstract class AppLocalizations {
   /// No description provided for @tasksCustomTimeoutHelper.
   ///
   /// In ru, this message translates to:
-  /// **'Переопределяет дефолтные 4 часа оркестрации для этой задачи.'**
+  /// **'Переопределяет дефолтные 4 часа оркестрации. Мин 1m, макс 72h.'**
   String get tasksCustomTimeoutHelper;
 
   /// No description provided for @tasksCustomTimeoutInvalid.
@@ -2791,6 +2791,60 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Некорректный формат. Используйте Nh / Nm / Ns.'**
   String get tasksCustomTimeoutInvalid;
+
+  /// No description provided for @tasksCustomTimeoutSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Таймаут'**
+  String get tasksCustomTimeoutSectionTitle;
+
+  /// No description provided for @tasksCustomTimeoutNone.
+  ///
+  /// In ru, this message translates to:
+  /// **'По умолчанию (4h)'**
+  String get tasksCustomTimeoutNone;
+
+  /// No description provided for @tasksCustomTimeoutEdit.
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменить'**
+  String get tasksCustomTimeoutEdit;
+
+  /// No description provided for @tasksCustomTimeoutSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get tasksCustomTimeoutSave;
+
+  /// No description provided for @tasksCustomTimeoutClear.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сбросить к дефолту'**
+  String get tasksCustomTimeoutClear;
+
+  /// No description provided for @tasksCustomTimeoutClearDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сбросить таймаут?'**
+  String get tasksCustomTimeoutClearDialogTitle;
+
+  /// No description provided for @tasksCustomTimeoutClearDialogBody.
+  ///
+  /// In ru, this message translates to:
+  /// **'Оркестратор откатится к глобальным 4 часам по умолчанию для этой задачи.'**
+  String get tasksCustomTimeoutClearDialogBody;
+
+  /// No description provided for @tasksCustomTimeoutSavedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Таймаут обновлён.'**
+  String get tasksCustomTimeoutSavedSnack;
+
+  /// No description provided for @tasksCustomTimeoutClearedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Таймаут сброшен к дефолту.'**
+  String get tasksCustomTimeoutClearedSnack;
 
   /// No description provided for @worktreesTitle.
   ///

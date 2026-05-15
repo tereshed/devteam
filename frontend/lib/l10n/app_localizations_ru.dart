@@ -1434,11 +1434,39 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get tasksCustomTimeoutHelper =>
-      'Переопределяет дефолтные 4 часа оркестрации для этой задачи.';
+      'Переопределяет дефолтные 4 часа оркестрации. Мин 1m, макс 72h.';
 
   @override
   String get tasksCustomTimeoutInvalid =>
       'Некорректный формат. Используйте Nh / Nm / Ns.';
+
+  @override
+  String get tasksCustomTimeoutSectionTitle => 'Таймаут';
+
+  @override
+  String get tasksCustomTimeoutNone => 'По умолчанию (4h)';
+
+  @override
+  String get tasksCustomTimeoutEdit => 'Изменить';
+
+  @override
+  String get tasksCustomTimeoutSave => 'Сохранить';
+
+  @override
+  String get tasksCustomTimeoutClear => 'Сбросить к дефолту';
+
+  @override
+  String get tasksCustomTimeoutClearDialogTitle => 'Сбросить таймаут?';
+
+  @override
+  String get tasksCustomTimeoutClearDialogBody =>
+      'Оркестратор откатится к глобальным 4 часам по умолчанию для этой задачи.';
+
+  @override
+  String get tasksCustomTimeoutSavedSnack => 'Таймаут обновлён.';
+
+  @override
+  String get tasksCustomTimeoutClearedSnack => 'Таймаут сброшен к дефолту.';
 
   @override
   String get worktreesTitle => 'Worktrees (отладка)';

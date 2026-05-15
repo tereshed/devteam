@@ -57,6 +57,10 @@ type UpdateTaskRequest struct {
 	AssignedAgentID    *uuid.UUID `json:"assigned_agent_id"`
 	ClearAssignedAgent bool       `json:"clear_assigned_agent"`
 	BranchName         *string    `json:"branch_name"`
+	// CustomTimeout — per-task override task_timeout. Передача "" сбрасывает
+	// override (возвращает к глобальному default). Формат time.ParseDuration
+	// ("4h", "90m", "1h30m"), bounds: 1m..72h.
+	CustomTimeout *string `json:"custom_timeout,omitempty"`
 }
 
 // CreateTaskMessageRequest сообщение в контексте задачи.

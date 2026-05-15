@@ -1430,10 +1430,38 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tasksCustomTimeoutHelper =>
-      'Overrides the default 4h orchestration timeout for this task.';
+      'Overrides the default 4h orchestration timeout. Min 1m, max 72h.';
 
   @override
   String get tasksCustomTimeoutInvalid => 'Invalid duration. Use Nh / Nm / Ns.';
+
+  @override
+  String get tasksCustomTimeoutSectionTitle => 'Timeout';
+
+  @override
+  String get tasksCustomTimeoutNone => 'Default (4h)';
+
+  @override
+  String get tasksCustomTimeoutEdit => 'Edit';
+
+  @override
+  String get tasksCustomTimeoutSave => 'Save';
+
+  @override
+  String get tasksCustomTimeoutClear => 'Reset to default';
+
+  @override
+  String get tasksCustomTimeoutClearDialogTitle => 'Reset timeout?';
+
+  @override
+  String get tasksCustomTimeoutClearDialogBody =>
+      'The orchestrator will fall back to the global 4h default for this task.';
+
+  @override
+  String get tasksCustomTimeoutSavedSnack => 'Timeout updated.';
+
+  @override
+  String get tasksCustomTimeoutClearedSnack => 'Timeout reset to default.';
 
   @override
   String get worktreesTitle => 'Worktrees (debug)';

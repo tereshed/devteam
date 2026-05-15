@@ -896,6 +896,135 @@ func TestTaskDelete_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, ErrTaskNotFound)
 }
 
+// --- custom_timeout server-side bounds (orchestration-v2-plan.md §6.5) ---
+
+func strPtr(s string) *string { return &s }
+
+func TestTaskCreate_RejectsTimeoutBelowMin(t *testing.T) {
+	_, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+
+	for _, raw := range []string{"0s", "30s", "59s"} {
+		_, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID,
+			dto.CreateTaskRequest{Title: "x", CustomTimeout: strPtr(raw)})
+		assert.ErrorIs(t, err, ErrTaskInvalidTimeout, "raw=%q", raw)
+	}
+}
+
+func TestTaskCreate_RejectsTimeoutAboveMax(t *testing.T) {
+	_, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+
+	for _, raw := range []string{"73h", "168h", "9223372036s"} {
+		_, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID,
+			dto.CreateTaskRequest{Title: "x", CustomTimeout: strPtr(raw)})
+		assert.ErrorIs(t, err, ErrTaskInvalidTimeout, "raw=%q", raw)
+	}
+}
+
+func TestTaskCreate_RejectsTimeoutMalformed(t *testing.T) {
+	_, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+
+	for _, raw := range []string{"abc", "4 hours", "-1h"} {
+		_, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID,
+			dto.CreateTaskRequest{Title: "x", CustomTimeout: strPtr(raw)})
+		assert.ErrorIs(t, err, ErrTaskInvalidTimeout, "raw=%q", raw)
+	}
+}
+
+func TestTaskCreate_AcceptsBoundaryValues(t *testing.T) {
+	for _, raw := range []string{"1m", "4h", "72h"} {
+		tr, _, ps, _, _, svc := newTaskServiceHarness()
+		ctx := context.Background()
+		ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+		tr.On("Create", ctx, mock.MatchedBy(func(tk *models.Task) bool {
+			return tk.CustomTimeout != nil && tk.CustomTimeout.Duration() > 0
+		})).Run(func(args mock.Arguments) {
+			args.Get(1).(*models.Task).ID = tsTaskID
+		}).Return(nil)
+
+		_, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID,
+			dto.CreateTaskRequest{Title: "x", CustomTimeout: strPtr(raw)})
+		require.NoError(t, err, "raw=%q", raw)
+	}
+}
+
+func TestTaskCreate_EmptyTimeoutIsNoOverride(t *testing.T) {
+	tr, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+	tr.On("Create", ctx, mock.MatchedBy(func(tk *models.Task) bool {
+		return tk.CustomTimeout == nil
+	})).Run(func(args mock.Arguments) {
+		args.Get(1).(*models.Task).ID = tsTaskID
+	}).Return(nil)
+
+	_, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID,
+		dto.CreateTaskRequest{Title: "x", CustomTimeout: strPtr("")})
+	require.NoError(t, err)
+}
+
+func TestTaskUpdate_RejectsTimeoutBelowMin(t *testing.T) {
+	tr, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
+	tr.On("GetByID", ctx, tsTaskID).Return(base, nil)
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+
+	_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID,
+		dto.UpdateTaskRequest{CustomTimeout: strPtr("30s")})
+	assert.ErrorIs(t, err, ErrTaskInvalidTimeout)
+}
+
+func TestTaskUpdate_RejectsTimeoutAboveMax(t *testing.T) {
+	tr, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
+	tr.On("GetByID", ctx, tsTaskID).Return(base, nil)
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+
+	_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID,
+		dto.UpdateTaskRequest{CustomTimeout: strPtr("100h")})
+	assert.ErrorIs(t, err, ErrTaskInvalidTimeout)
+}
+
+func TestTaskUpdate_AcceptsBoundaryValues(t *testing.T) {
+	for _, raw := range []string{"1m", "4h", "72h"} {
+		tr, _, ps, _, _, svc := newTaskServiceHarness()
+		ctx := context.Background()
+		base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive}
+		tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
+		ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+		tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
+			return tk.CustomTimeout != nil && tk.CustomTimeout.Duration() > 0
+		}), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
+
+		_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID,
+			dto.UpdateTaskRequest{CustomTimeout: strPtr(raw)})
+		require.NoError(t, err, "raw=%q", raw)
+	}
+}
+
+func TestTaskUpdate_EmptyTimeoutClearsOverride(t *testing.T) {
+	tr, _, ps, _, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	prev := models.IntervalDuration(2 * time.Hour)
+	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive, CustomTimeout: &prev}
+	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
+		return tk.CustomTimeout == nil
+	}), models.TaskStateActive, mock.AnythingOfType("time.Time")).Return(nil)
+
+	_, err := svc.Update(ctx, tsUserID, models.RoleUser, tsTaskID,
+		dto.UpdateTaskRequest{CustomTimeout: strPtr("")})
+	require.NoError(t, err)
+}
+
 func TestTaskCreate_ParentWrongProject(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()

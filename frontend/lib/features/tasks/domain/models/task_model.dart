@@ -154,6 +154,12 @@ abstract class TaskModel with _$TaskModel {
     @JsonKey(name: 'branch_name')
     String? branchName,
 
+    /// Per-task override orchestrator timeout (Sprint 17 §6.5).
+    /// На wire — строка Go time.Duration ("4h", "90m", "1h30m"); если override
+    /// не задан, бэкенд возвращает ключ без значения (omitempty) → null.
+    @JsonKey(name: 'custom_timeout')
+    String? customTimeout,
+
     /// Доменное сообщение об ошибке задачи (например, при status=`failed`).
     /// НЕ путать с телом HTTP-ошибки: разбор 4xx/5xx — в `dio_api_error.dart`.
     @JsonKey(name: 'error_message')

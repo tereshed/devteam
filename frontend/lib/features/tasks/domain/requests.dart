@@ -159,6 +159,11 @@ abstract class UpdateTaskRequest with _$UpdateTaskRequest {
     @Default(false)
     bool clearAssignedAgent,
     @JsonKey(name: 'branch_name') String? branchName,
+
+    /// Per-task override orchestrator timeout (Sprint 17 §6.5). Формат Go
+    /// time.Duration ("4h", "90m", "1h30m"); bounds 1m..72h на бэкенде.
+    /// Пустая строка "" — сбросить override.
+    @JsonKey(name: 'custom_timeout') String? customTimeout,
   }) = _UpdateTaskRequest;
 
   factory UpdateTaskRequest.fromJson(Map<String, dynamic> json) =>

@@ -40,14 +40,40 @@ var (
 	ErrAgentNotInTeam         = errors.New("agent does not belong to project team")
 	ErrTaskMessageNotFound    = errors.New("task message not found")
 	ErrTaskMessageInvalidType = errors.New("invalid message type")
-	ErrTaskInvalidTimeout     = errors.New("invalid custom_timeout (expected duration like '4h', '90m', '1h30m')")
+	ErrTaskInvalidTimeout     = errors.New("custom_timeout must be in range 1m..72h")
 )
 
 const (
 	taskServiceDefaultLimit = 50
 	taskServiceMaxLimit     = 200
 	taskTitleMaxLen         = 500
+
+	// minCustomTimeout / maxCustomTimeout — server-side bounds для per-task
+	// override task_timeout (см. orchestration-v2-plan.md §6.5). Меньше 1m → DoS
+	// через мгновенный ctx.Err() в каждом step'е (сжигает sandbox-слоты + LLM-
+	// токены до needs_human). Больше 72h → orchestrator практически никогда
+	// не упадёт в failed; верхняя граница пресекает int64-overflow в духе
+	// `9223372036s` (≈292 года), который time.ParseDuration принимает как валидное.
+	minCustomTimeout = 1 * time.Minute
+	maxCustomTimeout = 72 * time.Hour
 )
+
+// parseCustomTimeout валидирует и парсит строку custom_timeout. Возвращает nil без
+// ошибки если строка пуста (поле опциональное). Формат — стандартный time.ParseDuration.
+func parseCustomTimeout(s string) (*models.IntervalDuration, error) {
+	if s == "" {
+		return nil, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return nil, ErrTaskInvalidTimeout
+	}
+	if d < minCustomTimeout || d > maxCustomTimeout {
+		return nil, ErrTaskInvalidTimeout
+	}
+	iv := models.IntervalDuration(d)
+	return &iv, nil
+}
 
 // allowedTransitions — Sprint 17 / Orchestration v2: упрощённый state-machine 5 состояний.
 // Прежняя 10-значная pipeline-таблица (pending|planning|in_progress|review|...) сводится
@@ -489,17 +515,16 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 	if len(ctxJSON) == 0 {
 		ctxJSON = datatypes.JSON([]byte("{}"))
 	}
-	// CustomTimeout — per-task override task_timeout. Парсим строку в Duration
-	// через стандартный time.ParseDuration ("4h", "90m", "1h30m").
-	// Невалидный формат → 400 (ErrTaskInvalidTimeout).
+	// CustomTimeout — per-task override task_timeout. Бэкенд-обязанность —
+	// проверять bounds (см. parseCustomTimeout): клиентскому regex'у нельзя
+	// доверять как единственному гарду.
 	var customTimeout *models.IntervalDuration
-	if req.CustomTimeout != nil && *req.CustomTimeout != "" {
-		d, parseErr := time.ParseDuration(*req.CustomTimeout)
-		if parseErr != nil || d <= 0 {
-			return nil, ErrTaskInvalidTimeout
+	if req.CustomTimeout != nil {
+		ct, parseErr := parseCustomTimeout(*req.CustomTimeout)
+		if parseErr != nil {
+			return nil, parseErr
 		}
-		iv := models.IntervalDuration(d)
-		customTimeout = &iv
+		customTimeout = ct
 	}
 	task := &models.Task{
 		ProjectID:     projectID,
@@ -622,6 +647,17 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 		}
 		if req.BranchName != nil {
 			task.BranchName = req.BranchName
+		}
+		if req.CustomTimeout != nil {
+			if *req.CustomTimeout == "" {
+				task.CustomTimeout = nil
+			} else {
+				ct, parseErr := parseCustomTimeout(*req.CustomTimeout)
+				if parseErr != nil {
+					return parseErr
+				}
+				task.CustomTimeout = ct
+			}
 		}
 		if req.Status != nil {
 			newState, err := parseTaskState(*req.Status)

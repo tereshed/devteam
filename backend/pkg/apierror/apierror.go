@@ -42,6 +42,9 @@ const (
 	// HTTP 503. Отдельно от ErrInternalServerError, чтобы фронт мог отличить
 	// "включи в config" от "что-то реально сломалось".
 	ErrFeatureNotConfigured = "feature_not_configured"
+	// ErrInvalidTimeout — custom_timeout out of bounds (orchestration-v2-plan.md §6.5).
+	// HTTP 400, фронт показывает message из ответа в form field error.
+	ErrInvalidTimeout = "invalid_timeout"
 )
 
 // JSON sends a structured error response
