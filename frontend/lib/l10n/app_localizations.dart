@@ -242,6 +242,18 @@ abstract class AppLocalizations {
   /// **'Логи LLM (Админ)'**
   String get dashboardAdminViewLlmLogs;
 
+  /// 6.6 кнопка на dashboard: админ — Agents v2 (/admin/agents-v2)
+  ///
+  /// In ru, this message translates to:
+  /// **'Агенты (v2)'**
+  String get dashboardAdminAgentsV2;
+
+  /// 6.6 кнопка на dashboard: админ — Worktrees debug (/admin/worktrees)
+  ///
+  /// In ru, this message translates to:
+  /// **'Worktrees (debug)'**
+  String get dashboardAdminWorktrees;
+
   /// Заголовок экрана профиля
   ///
   /// In ru, this message translates to:

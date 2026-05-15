@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/routing/admin_guard.dart';
 import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/core/routing/auth_guard.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
@@ -8,10 +9,10 @@ import 'package:frontend/features/admin/agents_v2/presentation/screens/agent_v2_
 import 'package:frontend/features/admin/agents_v2/presentation/screens/agents_v2_list_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompt_edit_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompts_list_screen.dart';
-import 'package:frontend/features/admin/worktrees_v2/presentation/screens/worktrees_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/execution_detail_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/executions_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/workflows_list_screen.dart';
+import 'package:frontend/features/admin/worktrees_v2/presentation/screens/worktrees_list_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/api_keys_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/dashboard_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/login_screen.dart';
@@ -157,12 +158,12 @@ class AppRouter {
         ],
       ),
 
-      // Admin Routes (в реальном проекте нужен отдельный adminGuard)
+      // Admin Routes — доступ только для role == 'admin' (см. [adminGuard]).
       // Agents v2 — реестр LLM/sandbox-агентов (Orchestration v2 / Sprint 17).
       GoRoute(
         path: '/admin/agents-v2',
         name: 'admin_agents_v2',
-        redirect: authGuard,
+        redirect: adminGuard,
         pageBuilder: (context, state) => MaterialPage(
           key: state.pageKey,
           child: const AgentsV2ListScreen(),
@@ -171,6 +172,7 @@ class AppRouter {
           GoRoute(
             path: ':id',
             name: 'admin_agents_v2_detail',
+            redirect: adminGuard,
             pageBuilder: (context, state) {
               final id = state.pathParameters['id']!;
               return MaterialPage(
@@ -185,7 +187,7 @@ class AppRouter {
       GoRoute(
         path: '/admin/worktrees',
         name: 'admin_worktrees',
-        redirect: authGuard,
+        redirect: adminGuard,
         pageBuilder: (context, state) => MaterialPage(
           key: state.pageKey,
           child: const WorktreesListScreen(),
@@ -194,13 +196,14 @@ class AppRouter {
       GoRoute(
         path: '/admin/prompts',
         name: 'admin_prompts',
-        redirect: authGuard,
+        redirect: adminGuard,
         pageBuilder: (context, state) =>
             MaterialPage(key: state.pageKey, child: const PromptsListScreen()),
         routes: [
           GoRoute(
             path: ':id',
             name: 'admin_prompts_detail',
+            redirect: adminGuard,
             pageBuilder: (context, state) {
               final id = state.pathParameters['id']!;
               return MaterialPage(
@@ -214,7 +217,7 @@ class AppRouter {
       GoRoute(
         path: '/admin/workflows',
         name: 'admin_workflows',
-        redirect: authGuard,
+        redirect: adminGuard,
         pageBuilder: (context, state) => MaterialPage(
           key: state.pageKey,
           child: const WorkflowsListScreen(),
@@ -223,7 +226,7 @@ class AppRouter {
       GoRoute(
         path: '/admin/executions',
         name: 'admin_executions',
-        redirect: authGuard,
+        redirect: adminGuard,
         pageBuilder: (context, state) => MaterialPage(
           key: state.pageKey,
           child: const ExecutionsListScreen(),
@@ -232,6 +235,7 @@ class AppRouter {
           GoRoute(
             path: ':id',
             name: 'admin_execution_detail',
+            redirect: adminGuard,
             pageBuilder: (context, state) {
               final id = state.pathParameters['id']!;
               return MaterialPage(

@@ -83,6 +83,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardAdminViewLlmLogs => 'View LLM Logs (Admin)';
 
   @override
+  String get dashboardAdminAgentsV2 => 'Agents (v2)';
+
+  @override
+  String get dashboardAdminWorktrees => 'Worktrees (debug)';
+
+  @override
   String get profile => 'Profile';
 
   @override

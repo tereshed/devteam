@@ -31,6 +31,14 @@
   "dashboardAdminManagePrompts": "Manage Prompts (Admin)",
   "dashboardAdminManageWorkflows": "Manage Workflows (Admin)",
   "dashboardAdminViewLlmLogs": "View LLM Logs (Admin)",
+  "dashboardAdminAgentsV2": "Agents (v2)",
+  "@dashboardAdminAgentsV2": {
+    "description": "6.6 dashboard admin button: opens /admin/agents-v2"
+  },
+  "dashboardAdminWorktrees": "Worktrees (debug)",
+  "@dashboardAdminWorktrees": {
+    "description": "6.6 dashboard admin button: opens /admin/worktrees"
+  },
   "profile": "Profile",
   "userInfo": "User Information",
   "role": "Role",

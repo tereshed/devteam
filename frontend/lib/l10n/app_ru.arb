@@ -121,7 +121,15 @@
   "@dashboardAdminViewLlmLogs": {
     "description": "13.6 кнопка на dashboard: админ — журнал LLM"
   },
-  
+  "dashboardAdminAgentsV2": "Агенты (v2)",
+  "@dashboardAdminAgentsV2": {
+    "description": "6.6 кнопка на dashboard: админ — Agents v2 (/admin/agents-v2)"
+  },
+  "dashboardAdminWorktrees": "Worktrees (debug)",
+  "@dashboardAdminWorktrees": {
+    "description": "6.6 кнопка на dashboard: админ — Worktrees debug (/admin/worktrees)"
+  },
+
   "profile": "Профиль",
   "@profile": {
     "description": "Заголовок экрана профиля"

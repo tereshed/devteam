@@ -91,49 +91,30 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                       if (user.role == 'admin') ...[
                         SizedBox(height: Spacing.medium(context)),
-                        ElevatedButton.icon(
-                          onPressed: () => context.go('/admin/prompts'),
-                          icon: const Icon(Icons.settings_system_daydream),
-                          label: Text(l10n.dashboardAdminManagePrompts),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.secondaryContainer,
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSecondaryContainer,
-                            padding: Spacing.buttonPadding(context),
-                          ),
+                        _AdminMenuButton(
+                          label: l10n.dashboardAdminManagePrompts,
+                          icon: Icons.settings_system_daydream,
+                          route: '/admin/prompts',
                         ),
-                        SizedBox(height: Spacing.small(context)),
-                        ElevatedButton.icon(
-                          onPressed: () => context.go('/admin/workflows'),
-                          icon: const Icon(Icons.play_circle_outline),
-                          label: Text(l10n.dashboardAdminManageWorkflows),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.secondaryContainer,
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSecondaryContainer,
-                            padding: Spacing.buttonPadding(context),
-                          ),
+                        _AdminMenuButton(
+                          label: l10n.dashboardAdminManageWorkflows,
+                          icon: Icons.play_circle_outline,
+                          route: '/admin/workflows',
                         ),
-                        SizedBox(height: Spacing.small(context)),
-                        ElevatedButton.icon(
-                          onPressed: () => context.go('/admin/logs'),
-                          icon: const Icon(Icons.receipt_long),
-                          label: Text(l10n.dashboardAdminViewLlmLogs),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.secondaryContainer,
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSecondaryContainer,
-                            padding: Spacing.buttonPadding(context),
-                          ),
+                        _AdminMenuButton(
+                          label: l10n.dashboardAdminViewLlmLogs,
+                          icon: Icons.receipt_long,
+                          route: '/admin/logs',
+                        ),
+                        _AdminMenuButton(
+                          label: l10n.dashboardAdminAgentsV2,
+                          icon: Icons.psychology,
+                          route: '/admin/agents-v2',
+                        ),
+                        _AdminMenuButton(
+                          label: l10n.dashboardAdminWorktrees,
+                          icon: Icons.account_tree,
+                          route: '/admin/worktrees',
                         ),
                       ],
                     ],
@@ -156,6 +137,35 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminMenuButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final String route;
+
+  const _AdminMenuButton({
+    required this.label,
+    required this.icon,
+    required this.route,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: Spacing.small(context)),
+      child: ElevatedButton.icon(
+        onPressed: () => context.go(route),
+        icon: Icon(icon),
+        label: Text(label),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+          foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
+          padding: Spacing.buttonPadding(context),
         ),
       ),
     );
