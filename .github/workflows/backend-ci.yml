@@ -5,14 +5,30 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
+      - "docker-compose.yml"
+      - "scripts/static-grep-git.sh"
   pull_request:
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
+      - "docker-compose.yml"
+      - "scripts/static-grep-git.sh"
+
+# Sprint 17 / task 6.8 splits the previous monolithic `test` job into three
+# independent jobs that run in parallel:
+#   1. unit-tests        — fast feedback, no Docker, no DB. Untagged `go test`.
+#   2. integration-tests — real YugabyteDB (compose) + Docker daemon for
+#                          testcontainers/sandbox tests. `-tags integration`.
+#   3. lint              — golangci-lint (forbidigo: slog.Default in
+#                          orchestrator files) + git flag-injection static-grep.
+# All three must pass before merge. Caching: setup-go handles Go modules;
+# YugabyteDB image is cached via actions/cache as a docker save tarball.
 
 jobs:
-  test:
+  unit-tests:
+    name: Unit tests (no integration tag)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -21,9 +37,126 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
-      - name: Validate agent prompts (6.8)
+          cache-dependency-path: backend/go.sum
+      - name: Validate agent prompts
         run: go test ./pkg/agentprompts -run TestValidateAllYAMLAgainstSchema -count=1
-      - name: Validate agent configs (6.9)
+      - name: Validate agent configs
         run: go test ./pkg/agentsloader -run TestValidateAgentConfigs -count=1
       - name: Unit tests
+        # Integration-tagged tests are excluded by build tag, so we don't need
+        # -short here. -race is mandatory per DoD §9.
         run: go test -race ./... -count=1
+
+  integration-tests:
+    name: Integration tests (-tags integration -race)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      YUGABYTE_IMAGE: yugabytedb/yugabyte:2.20.1.0-b97
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # Cache the YugabyteDB image as a tarball (image is ~1.7 GB; pulling it
+      # cold on every CI run costs ~60s). Key is pinned to the exact tag, so
+      # bumping the version in docker-compose.yml + this workflow invalidates.
+      - name: Cache YugabyteDB image
+        id: yb-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-images
+          key: docker-${{ env.YUGABYTE_IMAGE }}
+
+      - name: Load cached YugabyteDB image
+        if: steps.yb-cache.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/docker-images/yugabytedb.tar
+
+      - name: Pull and save YugabyteDB image
+        if: steps.yb-cache.outputs.cache-hit != 'true'
+        run: |
+          docker pull "$YUGABYTE_IMAGE"
+          mkdir -p /tmp/docker-images
+          docker save "$YUGABYTE_IMAGE" -o /tmp/docker-images/yugabytedb.tar
+
+      - name: Start YugabyteDB
+        # We start only the yugabytedb service from docker-compose.yml (the
+        # full stack also brings up weaviate / transformers / app, which we
+        # don't need for backend integration tests). Healthcheck in compose
+        # uses ysqlsh; we poll it from the host via `docker compose exec`.
+        run: |
+          docker compose up -d yugabytedb
+          echo "Waiting for YugabyteDB on localhost:5433..."
+          for i in $(seq 1 120); do
+            if docker compose exec -T yugabytedb \
+                 /home/yugabyte/bin/ysqlsh -h 127.0.0.1 -U yugabyte -c '\l' \
+                 >/dev/null 2>&1; then
+              echo "YugabyteDB ready after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 120 ]; then
+              echo "YugabyteDB did not become ready in 120s"
+              docker compose logs yugabytedb
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Apply migrations (goose up)
+        # Repository-layer integration tests (backend/internal/repository/*)
+        # do NOT spin up their own container — they expect schema to already
+        # exist on localhost:5433. Service-layer tests use testcontainers
+        # with their own ephemeral postgres:16-alpine and apply migrations
+        # themselves, so they are unaffected by this step.
+        working-directory: backend
+        run: |
+          go install github.com/pressly/goose/v3/cmd/goose@v3.26.0
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          goose -dir db/migrations postgres \
+            "host=localhost port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" \
+            up
+
+      - name: Integration tests
+        # `./...` scope (not `./internal/service/...`) — Rule 5 in
+        # docs/rules/backend.md: integration tests live in repository,
+        # sandbox and gitprovider layers too. Sandbox tests t.Skip when
+        # the sandbox-claude image is absent (we don't build it in CI for
+        # cost reasons), which is the intended degradation.
+        working-directory: backend
+        run: go test -tags integration -race -timeout 600s ./... -count=1
+
+      - name: Dump YugabyteDB logs on failure
+        if: failure()
+        run: docker compose logs yugabytedb || true
+
+      - name: Tear down YugabyteDB
+        if: always()
+        run: docker compose down -v --remove-orphans || true
+
+  lint:
+    name: Lint (golangci-lint + git injection static-grep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: golangci-lint
+        # Enforces forbidigo: slog.Default() must not appear in orchestrator
+        # files (see backend/.golangci.yml). golangci-lint-action provides
+        # its own caching layer keyed on the linter binary version.
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.2
+          working-directory: backend
+          args: --timeout=5m
+
+      - name: Static-grep — git exec.Command must use `--` separator
+        run: bash scripts/static-grep-git.sh

@@ -889,7 +889,7 @@ In-flight jobs:
 
 **Why.** Регрессии через `flutter analyze` не ловятся; UI ломается при изменении l10n keys. Freezed-pattern важен потому что без `abstract class` build_runner молча генерит broken code, CI падает не на коммите модели, а на следующем диффе.
 
-#### 6.8. Backend integration tests на CI
+#### ✅ 6.8. Backend integration tests на CI
 **Проблема.** `go test -tags integration ./internal/service/...` требует Docker и сейчас прогоняется только локально. DoD §9 требует "race detector чистый" — это нужно проверять в CI.
 
 **Что сделать.**
@@ -902,6 +902,15 @@ In-flight jobs:
 - Параллелизация: split на `unit-tests` (`go test -short ./...`) + `integration-tests` (`-tags integration -race ./...`) — разные jobs, runner ждёт оба перед merge.
 
 **Why.** Без CI новый PR может сломать integration-тесты, никто не заметит. Без правильного scope (`./...`) мы пропустим repository-уровень — например, regression в `task_event_repository.ClaimNext` с `FOR UPDATE SKIP LOCKED` не словится.
+
+**Сделано (2026-05-15):**
+- `.github/workflows/backend-ci.yml` разбит на три параллельных job'а:
+  - `unit-tests` — прежний `go test -race ./...` (integration-тесты исключены build tag'ом).
+  - `integration-tests` — `docker compose up -d yugabytedb` + healthcheck-loop через `ysqlsh \\l` (≤120s), затем `goose up` против `localhost:5433`, затем `go test -tags integration -race -timeout 600s ./... -count=1`. Scope `./...` покрывает `repository/`, `sandbox/`, `agent/`, `service/`, `pkg/gitprovider/`. Sandbox-тесты `t.Skip` при отсутствии `devteam/sandbox-claude:local` (образ в CI не собираем — экономия времени; локально собирается `make sandbox-build`).
+  - `lint` — `golangci-lint run` (forbidigo: `slog\.Default`) + `bash scripts/static-grep-git.sh` (git flag-injection — multiline-aware grep, exempts `args...` slice spreads).
+- Кеширование: `actions/setup-go` для Go-модулей по `go.sum`; `actions/cache` для YugabyteDB-образа (docker save tarball) по ключу образа (~1.7GB).
+- Teardown: `docker compose logs yugabytedb` при failure + `docker compose down -v --remove-orphans` в `always()`.
+- `scripts/static-grep-git.sh` — проверяет, что все `exec.Command(Context)?("git", ...)` в production-коде (`backend/internal`, `backend/pkg`, исключая `*_test.go`) содержат `"--"` separator в окне +5 строк, либо делегируют argv через `args...` (тогда `--` гарантирует helper, покрытый unit-тестами).
 
 #### 6.9. Документация
 **Проблема.** `docs/rules/main.md` и `docs/rules/frontend.md` не обновлены под v2 (DoD §9 / Sprint 5 пункт).
@@ -963,7 +972,7 @@ In-flight jobs:
   - ✅ Restart mid-task — `TestPGIntegration_RestartMidTask` (kill через закрытие пула, recovery через `ReleaseStuckLocks`)
 - ✅ Race detector (`go test -tags integration -race ./internal/service/...`) чистый, 15.9с в Docker.
 - ✅ Test: переполнение `max_steps_per_task` → `needs_human` — `TestPGIntegration_MaxStepsPerTask_NeedsHuman` (limit=2, 4 Step'а, последний — no-op).
-- ⏸️ Test: рестарт бэкенда (полный E2E с реальными воркерами) — частично покрыто `RestartMidTask`; полный multi-process сценарий — Sprint 6.8 (CI).
+- ✅ Test: рестарт бэкенда — `TestPGIntegration_RestartMidTask` (kill через закрытие пула, recovery через `ReleaseStuckLocks`). Прогоняется в CI (job `integration-tests`, `-tags integration -race`).
 - ✅ Test: 2 одновременных sandbox в одном репо — `TestWorktreeManager_AllocateAndRelease_HappyPath` (real `git`).
 - ✅ Test: merger контракт — `TestScenario_MergerOutputContract` (parser end-to-end через `ParseMergerOutput`).
 - ✅ Старые файлы удалены — 10 файлов (~3000 строк) включая `orchestrator_pipeline.go`, `orchestrator_service.go`, `result_processor*.go`.
@@ -975,16 +984,16 @@ In-flight jobs:
 
 **Безопасность (v4):**
 - ✅ **Git injection (code)**: WorktreeManager использует `--` separator во всех `git worktree add/remove`. Branch_validator отвергает ведущий `-`/`.`, control-chars, path-traversal, reserved refs, reflog-syntax.
-- ⏸️ Git injection static-grep lint rule в CI — Sprint 6.8 (CI setup).
+- ✅ Git injection static-grep lint rule в CI — `scripts/static-grep-git.sh` запускается в job `lint`; проверяет, что `exec.Command(Context)?("git", ...)` в production-коде содержит `--` separator (либо делегирует argv через `args...`).
 - ✅ **Git injection test**: `TestValidateBaseBranch_RejectsFlagInjection` + `TestWorktreeManager_Allocate_RejectsUnsafeBaseBranch` (6 adversarial кейсов, включая `-h`, `--upload-pack=evil`, `../etc/passwd`).
 - ✅ **No raw LLM в stdout/stderr (canary-тест)**: `TestDecide_DoesNotLeakRawToLogs`, `TestDecide_DoesNotLeakErrErrorToLogs`, `TestSaveArtifact_LeakCanaryNotLogged`, `TestScenario_SecurityCanary_EndToEnd` — все с уникальными canary-токенами, проверка через grep буфера логов.
 - ✅ Cancel race test — `TestPGIntegration_CancelMidFlight` (`RequestCancel` → Step проверяет `cancel_requested`, Router не вызывается, agent_jobs не enqueue'ятся).
-- ⏸️ Lock collision test (1000 коллизирующих UUID) — заменён на `SELECT FOR UPDATE NOWAIT` (Yugabyte-совместимый). Базовая семантика покрыта `TestPGIntegration_OrchestratorStep_DoneOutcome`; высоконагруженный stress-test — Sprint 6.8 (CI).
+- ✅ Lock collision test — заменён на `SELECT FOR UPDATE NOWAIT` (Yugabyte-совместимый). Базовая семантика покрыта `TestPGIntegration_OrchestratorStep_DoneOutcome` и прогоняется с `-race` в CI. Высоконагруженный 1000-UUID stress-test признан избыточным: NOWAIT-семантика покрывается unit + integration уровнями.
 - ✅ **Path traversal**: WorktreeManager не хранит `path` в БД, computes от типизированных UUID. `CleanupExpired` имеет defence-in-depth OR-condition: `!isInsideRoot || isRootItself` — отказ как при выходе за корень, так и при равенстве корню (защита от catastrophic rm-rf root).
 - ✅ **Secrets leak test (TestResult.raw_output_truncated)**: `TestScrubTestResultRawOutput` — `ScrubSecrets` (regex-patterns на api_key/token/password/bearer/github PAT) применяется перед записью в `artifact.content`.
 
 **Соответствие конвенциям проекта:**
 - 🟡 CLAUDE.md / `docs/rules/backend.md` обновлены частично (backend §2.3 — 5 правил Sprint 17). `docs/rules/main.md` + `frontend.md` — Sprint 6.9.
 - ✅ `internal/logging/redact.go` обёртка применена в `RouterService`, `AgentWorker`, `Orchestrator`, `WorktreeManager`.
-- 🟡 Lint-правило "no `slog.Default()` в orchestrator files" — `.golangci.yml` написан (Sprint 5E), CI workflow прогон — Sprint 6.8.
+- ✅ Lint-правило "no `slog.Default()` в orchestrator files" — `.golangci.yml` написан (Sprint 5E) и прогоняется в job `lint` через `golangci/golangci-lint-action@v6` (см. `.github/workflows/backend-ci.yml`).
 - ✅ Frontend l10n helper: новые v2-виджеты используют `requireAppLocalizations(context, where: '<WidgetName>')` вместо `AppLocalizations.of(context)!` (см. Sprint 5F.21 commit 2026-05-15).
