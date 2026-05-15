@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:frontend/core/api/dio_repository_error_map.dart';
-import 'package:frontend/features/admin/agents_v2/domain/agent_v2_exceptions.dart';
+import 'package:frontend/features/tasks/data/orchestration_v2_exceptions.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
 import 'package:frontend/features/tasks/domain/models/router_decision_model.dart';
 
@@ -17,16 +17,22 @@ class OrchestrationV2Repository {
     return mapDioExceptionForRepository(
       error,
       onCancelled: (msg, err) =>
-          AgentV2CancelledException(msg, originalError: err),
+          OrchestrationV2CancelledException(msg, originalError: err),
       onMissingStatusCode: (msg, err, _) =>
-          AgentV2ApiException(msg, originalError: err),
+          OrchestrationV2ApiException(msg, originalError: err),
       on401: unauthorizedFromDio,
-      on403: (msg, err, code) =>
-          AgentV2ForbiddenException(msg, originalError: err, apiErrorCode: code),
-      on404: (msg, err, code) =>
-          AgentV2NotFoundException(msg, originalError: err, apiErrorCode: code),
+      on403: (msg, err, code) => OrchestrationV2ForbiddenException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
+      on404: (msg, err, code) => OrchestrationV2NotFoundException(
+        msg,
+        originalError: err,
+        apiErrorCode: code,
+      ),
       on409: null,
-      onOtherHttp: (msg, err, code, status) => AgentV2ApiException(
+      onOtherHttp: (msg, err, code, status) => OrchestrationV2ApiException(
         msg,
         statusCode: status,
         originalError: err,
