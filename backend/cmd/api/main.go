@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -748,7 +749,7 @@ func ensureAdmin(ctx context.Context, userRepo repository.UserRepository, cfg co
 // initDatabase инициализирует подключение к базе данных
 func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(gormLogLevelFromEnv()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -769,6 +770,23 @@ func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	}
 
 	return db, nil
+}
+
+// gormLogLevelFromEnv читает GORM_LOG_LEVEL (silent|error|warn|info).
+// По умолчанию warn — заглушает шумный поллинг очередей (task_events),
+// но всё ещё логирует ошибки SQL и медленные запросы (>SlowThreshold).
+// Для отладки запроса можно временно поднять до info.
+func gormLogLevelFromEnv() logger.LogLevel {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("GORM_LOG_LEVEL"))) {
+	case "silent":
+		return logger.Silent
+	case "error":
+		return logger.Error
+	case "info":
+		return logger.Info
+	default:
+		return logger.Warn
+	}
 }
 
 // Sprint 17 / Orchestration v2 — stub удалён. Используется реальный

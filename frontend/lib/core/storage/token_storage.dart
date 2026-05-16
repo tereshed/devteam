@@ -9,6 +9,11 @@ class TokenStorage {
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.first_unlock_this_device,
     ),
+    // macOS: Data Protection Keychain (default) требует команды разработчика
+    // для AppIdentifierPrefix и `keychain-access-groups` entitlement —
+    // под "Sign to Run Locally" падает с errSecMissingEntitlement (-34018).
+    // File-based Keychain работает без entitlements и без настоящей подписи.
+    mOptions: MacOsOptions(useDataProtectionKeyChain: false),
   );
 
   static const String _accessTokenKey = 'access_token';

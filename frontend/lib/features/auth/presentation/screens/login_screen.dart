@@ -43,7 +43,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         if (mounted) {
           context.go('/dashboard');
         }
-      } catch (e) {
+      } catch (e, st) {
+        // ignore: avoid_print
+        print('LOGIN ERROR: $e\n$st');
         if (mounted) {
           final l10n = AppLocalizations.of(context)!;
           var message = l10n.errorUnknown;

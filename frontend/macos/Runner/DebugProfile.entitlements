@@ -2,8 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<!--
+	  Локальная разработка: App Sandbox отключён сознательно.
+
+	  flutter_secure_storage пишет токены в Keychain. Под App Sandbox для
+	  этого нужен entitlement `keychain-access-groups`, который Apple
+	  считает restricted — Xcode принимает его только при подписи реальным
+	  development-сертификатом (Apple ID / Team), а не "Sign to Run Locally".
+	  Чтобы не требовать от каждого разработчика настройки подписи, в
+	  debug-сборке выключаем sandbox — Keychain доступен без entitlement'ов.
+
+	  Release.entitlements оставляет App Sandbox включённым: для прод-сборки
+	  нужно настроить подпись и добавить keychain-access-groups обратно.
+	-->
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.network.server</key>
