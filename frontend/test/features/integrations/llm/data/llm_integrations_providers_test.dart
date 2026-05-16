@@ -16,11 +16,13 @@ class _FakeRepo implements LlmIntegrationsRepository {
     this.apiKeyConnections = const <LlmProviderConnection>[],
     this.claudeStatus =
         const ClaudeCodeIntegrationStatus(connected: false),
+    this.statusGate,
   });
 
   List<LlmProviderConnection> apiKeyConnections;
   ClaudeCodeIntegrationStatus claudeStatus;
   int statusCallCount = 0;
+  Completer<void>? statusGate;
 
   @override
   Future<List<LlmProviderConnection>> fetchApiKeyConnections({
@@ -34,6 +36,9 @@ class _FakeRepo implements LlmIntegrationsRepository {
     cancelToken,
   }) async {
     statusCallCount++;
+    if (statusGate != null) {
+      await statusGate!.future;
+    }
     return claudeStatus;
   }
 
@@ -165,6 +170,61 @@ void main() {
 
       expect(repo.statusCallCount, greaterThan(firstCallCount),
           reason: 'после reconnect должен быть второй GET /status');
+    });
+
+    test('refresh() в полёте не затирает WS-обновление (version-guard, §1 ревью)',
+        () async {
+      // Сценарий: REST вернёт устаревшие "disconnected" данные, но пока он летит,
+      // приходит WS-ивент "connected" для того же провайдера. После завершения
+      // REST стейт должен остаться "connected".
+      final gate = Completer<void>();
+      final repo = _FakeRepo(
+        apiKeyConnections: const <LlmProviderConnection>[],
+        claudeStatus: const ClaudeCodeIntegrationStatus(connected: false),
+        statusGate: gate,
+      );
+      final ws = StreamController<WsClientEvent>.broadcast();
+      addTearDown(ws.close);
+
+      final c = LlmIntegrationsController(
+        repository: repo,
+        wsEvents: ws.stream,
+      );
+      addTearDown(c.dispose);
+
+      // Стартуем refresh (он зависнет на statusGate).
+      final refreshFuture = c.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // Пока REST висит — приходит свежее WS-событие.
+      ws.add(WsClientEvent.server(
+        WsServerEvent.integrationStatus(
+          WsIntegrationStatusEvent(
+            ts: DateTime.utc(2030, 1, 1),
+            v: 1,
+            userId: 'user-1',
+            provider: 'claude_code_oauth',
+            status: WsIntegrationStatus.connected,
+          ),
+        ),
+      ));
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        c.state.connections[LlmIntegrationProvider.claudeCodeOAuth]?.status,
+        LlmProviderConnectionStatus.connected,
+      );
+
+      // Размораживаем REST — он вернёт устаревший "disconnected", но version-
+      // guard внутри refresh() должен это проигнорировать.
+      gate.complete();
+      await refreshFuture;
+
+      expect(
+        c.state.connections[LlmIntegrationProvider.claudeCodeOAuth]?.status,
+        LlmProviderConnectionStatus.connected,
+        reason:
+            'устаревший REST-снимок не должен перезатереть свежий статус из WS',
+      );
     });
 
     test('parse/auth-event без server-event resync не вызывает', () async {

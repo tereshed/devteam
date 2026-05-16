@@ -473,6 +473,49 @@ func TestClaudeCodeAuth_PublishesIntegrationEvent_OnRevoke(t *testing.T) {
 	assert.Equal(t, events.IntegrationStatusDisconnected, ev.Status)
 }
 
+// Review §2: caller отменил ctx между PollDeviceToken и persistToken —
+// токен всё равно должен дойти до БД (context.WithoutCancel внутри сервиса).
+func TestClaudeCodeAuth_CompleteDeviceCode_CallerCtxCancel_DoesNotLoseToken(t *testing.T) {
+	svc, oauth, repo, ch, cleanup := newClaudeCodeAuthSvcWithBus(t)
+	defer cleanup()
+
+	expires := time.Now().Add(time.Hour).UTC()
+	oauth.pollFn = func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+		// Симулируем «провайдер ответил, но не мгновенно»; caller успевает
+		// отменить ctx до того, как мы дойдём до persistToken.
+		time.Sleep(40 * time.Millisecond)
+		return &ClaudeCodeOAuthToken{
+			AccessToken: "a", RefreshToken: "r", TokenType: "Bearer", ExpiresAt: &expires,
+		}, nil
+	}
+	uid := uuid.New()
+	svc = seedDeviceCode(svc, uid, "dc")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.CompleteDeviceCode(ctx, uid, "dc")
+		done <- err
+	}()
+	time.Sleep(10 * time.Millisecond)
+	cancel() // отменяем ровно во время полёта PollDeviceToken
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("CompleteDeviceCode hung")
+	}
+
+	// Подписка должна оказаться в БД (persistToken отработал поверх WithoutCancel).
+	sub, err := repo.GetByUserID(context.Background(), uid)
+	require.NoError(t, err, "subscription must persist even after caller ctx cancel")
+	require.NotNil(t, sub)
+
+	// И событие IntegrationConnectionChanged{connected} опубликовано.
+	ev := waitForIntegrationEvent(t, ch)
+	assert.Equal(t, events.IntegrationStatusConnected, ev.Status)
+}
+
 // 4a.5 case "pending — поллинг не публикует промежуточные события".
 func TestClaudeCodeAuth_DoesNotPublishOnAuthorizationPending(t *testing.T) {
 	svc, oauth, _, ch, cleanup := newClaudeCodeAuthSvcWithBus(t)

@@ -15,6 +15,15 @@ import (
 // ClaudeCodeAuthHandler — OAuth-подписка Claude Code (Sprint 15.12, 15.15).
 // UI Refactoring §4a.5 — 4 явные ветки ошибок (cancel / access_denied / network / invalid_state).
 // UI Refactoring §4a.1 — все логи проходят через redact-handler.
+//
+// MCP-инструмент для /claude-code/auth/* эндпоинтов НЕ создаётся (исключение
+// из `docs/rules/backend.md` §7.1): device-flow требует физического перехода
+// пользователя по URL в браузере и ручного подтверждения в UI Anthropic. У
+// MCP-клиента (агента) нет ни UI-контекста, ни возможности нажать «Authorize»,
+// поэтому инструмент был бы бесполезной обёрткой над URL. Завершение flow
+// фронт получает через WS-событие `IntegrationConnectionChanged` (см. §4a.4) —
+// у этого канала тоже нет MCP-аналога. Пересмотреть, если появится non-device
+// OAuth с поддержкой Anthropic-side approval API.
 type ClaudeCodeAuthHandler struct {
 	svc service.ClaudeCodeAuthService
 	log *slog.Logger

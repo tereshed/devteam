@@ -40,6 +40,21 @@ Plain-text путь отсутствует: в API-слое `service.Encryptor` 
 
 Визуальная проверка (`ysqlsh -c "SELECT provider, length(encrypted_key) FROM user_llm_credentials LIMIT 5;"`) — длина blob = `1 (версия) + 12 (nonce) + len(plain) + 16 (GCM tag)`, явно не похоже на `sk-...`.
 
+**Покрытие по провайдерам (review §4 follow-up).** Все шесть API-key каналов из
+`PatchLlmCredentialsRequest` (`openai`, `anthropic`, `gemini`, `deepseek`, `qwen`,
+`openrouter`) проходят через единый код-путь:
+
+```
+user_llm_credential_service.go
+  setProviderKey  → insertLlmCredentialOrConcurrent  → s.encryptor.Encrypt(plain, AAD)
+                  ↘ updateLlmCredentialWithRefetch → tryEncryptUpdate → s.encryptor.Encrypt(plain, AAD)
+```
+
+`s.encryptor` — тот же `Encryptor`, что используется для `claude_code_subscriptions`
+(сконфигурирован в `cmd/api/main.go`). Ветки plain-text записи нет: репозиторий
+видит только `row.EncryptedKey []byte` (BYTEA NOT NULL), а в API-слое нет
+методов, обходящих сервис. Дыра, упомянутая в review §4, отсутствует.
+
 CRUD по провайдерам — таблица `llm_providers` (миграция 023). Поля:
 
 | Поле | Назначение |

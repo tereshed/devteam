@@ -163,15 +163,22 @@ func (s *claudeCodeAuthService) CompleteDeviceCode(ctx context.Context, userID u
 		}
 		return nil, err
 	}
-	sub, err := s.persistToken(ctx, userID, tok)
+	// Sprint 15.M3 / UI Refactoring review §2: persist через context.WithoutCancel.
+	// Если caller (HTTP-клиент юзера / закрытая вкладка) отменит ctx ровно между
+	// успешным PollDeviceToken и persistToken — device_code уже «сожжён» провайдером,
+	// и без WithoutCancel мы потеряли бы токен (юзеру пришлось бы начинать flow заново).
+	// WithoutCancel сохраняет deadline parent'а, но игнорирует cancel — финальный
+	// INSERT в БД отрабатывает до конца. Симметрично с RefreshOne.
+	persistCtx := context.WithoutCancel(ctx)
+	sub, err := s.persistToken(persistCtx, userID, tok)
 	if err != nil {
-		s.publishStatus(ctx, userID, events.IntegrationStatusError, ReasonInternalError, nil, nil)
+		s.publishStatus(persistCtx, userID, events.IntegrationStatusError, ReasonInternalError, nil, nil)
 		return nil, err
 	}
 	// Поток успешно завершён — освобождаем device_code, чтобы повторный POST вернул mismatch (не reuse).
 	s.deviceCodes.Delete(deviceCode)
 	now := time.Now().UTC()
-	s.publishStatus(ctx, userID, events.IntegrationStatusConnected, "", &now, sub.ExpiresAt)
+	s.publishStatus(persistCtx, userID, events.IntegrationStatusConnected, "", &now, sub.ExpiresAt)
 	return toStatus(sub), nil
 }
 

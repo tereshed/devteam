@@ -58,9 +58,10 @@ class LlmIntegrationsState {
 ///   3. После WS service-failure следующий server-event считается «reconnect» —
 ///      запускает повторный `refresh()`, чтобы покрыть пропуски.
 ///
-/// Контроллер реализован как обычный [ChangeNotifier] — Riverpod 3.x не
-/// экспортирует `ChangeNotifierProvider` напрямую, поэтому экспонируем его
-/// через `Notifier<LlmIntegrationsState>`-обёртку ([_LlmIntegrationsStateNotifier]).
+/// Реализация — [ChangeNotifier]. Riverpod 3.x не имеет `ChangeNotifierProvider`,
+/// поэтому стейт экспонируется как [Stream] через [llmIntegrationsStateProvider]
+/// (`StreamProvider` поверх `addListener`); сам контроллер раздаётся через
+/// обычный `Provider` для императивных вызовов (`refresh()`, `applyLocal()`).
 class LlmIntegrationsController extends ChangeNotifier {
   LlmIntegrationsController({
     required LlmIntegrationsRepository repository,
@@ -76,6 +77,12 @@ class LlmIntegrationsController extends ChangeNotifier {
   bool _needsResyncOnNextServerEvent = false;
   bool _disposed = false;
 
+  /// Монотонно растущая «версия» стейта. Инкрементируется при старте `refresh()`
+  /// и при каждой мутации из WS (`applyLocal`). Если за время летящего REST-запроса
+  /// номер вырастет, мы знаем, что в стейт уже попали более свежие данные из WS, и
+  /// результат REST не должен их перезатереть. Решает race из stage 2 ревью §1.
+  int _stateVersion = 0;
+
   LlmIntegrationsState get state => _state;
 
   void _setState(LlmIntegrationsState next) {
@@ -87,11 +94,19 @@ class LlmIntegrationsController extends ChangeNotifier {
   }
 
   /// Полный REST-rebuild. Вызывается при первом open экрана и при reconnect WS.
+  ///
+  /// Race-protection: фиксируем `_stateVersion` на входе. Если за время REST'а
+  /// прилетит WS-событие или другой `refresh()` — оно увеличит счётчик, и мы
+  /// тихо выходим, не перезаписывая свежий стейт устаревшим снимком из БД-реплики.
   Future<void> refresh() async {
+    final startedAtVersion = ++_stateVersion;
     _setState(_state.copyWith(isLoading: _state.connections.isEmpty));
     try {
       final apiKeyConnections = await _repository.fetchApiKeyConnections();
       final claudeStatus = await _repository.fetchClaudeCodeStatus();
+      if (_disposed || startedAtVersion != _stateVersion) {
+        return;
+      }
 
       final connections = <LlmIntegrationProvider, LlmProviderConnection>{};
       for (final c in apiKeyConnections) {
@@ -111,6 +126,9 @@ class LlmIntegrationsController extends ChangeNotifier {
         errorMessage: null,
       ));
     } catch (e) {
+      if (_disposed || startedAtVersion != _stateVersion) {
+        return;
+      }
       _setState(_state.copyWith(
         isLoading: false,
         errorMessage: e.toString(),
@@ -118,8 +136,11 @@ class LlmIntegrationsController extends ChangeNotifier {
     }
   }
 
-  /// Локальная мутация без сети — для диалогов, инициирующих flow.
+  /// Локальная мутация без сети — для диалогов, инициирующих flow, и для
+  /// применения событий из WS. Инкремент `_stateVersion` инвалидирует любой
+  /// летящий `refresh()`, чтобы он не затёр свежий статус устаревшим снимком.
   void applyLocal(LlmProviderConnection connection) {
+    _stateVersion++;
     final next = Map<LlmIntegrationProvider, LlmProviderConnection>.from(
       _state.connections,
     )..[connection.provider] = connection;
@@ -140,10 +161,9 @@ class LlmIntegrationsController extends ChangeNotifier {
       case WsClientEventParseError():
         return;
       case WsClientEventServer(:final event):
-        if (_needsResyncOnNextServerEvent) {
-          _needsResyncOnNextServerEvent = false;
-          unawaited(refresh());
-        }
+        // Сначала применяем сам ивент (синхронно, без сети) — это инкрементит
+        // _stateVersion. Потом запускаем resync: даже если он вернёт устаревший
+        // снимок из БД-реплики, version-guard в refresh() отбросит его.
         event.when(
           taskStatus: (_) {},
           taskMessage: (_) {},
@@ -152,6 +172,10 @@ class LlmIntegrationsController extends ChangeNotifier {
           integrationStatus: _applyIntegrationStatus,
           unknown: (_) {},
         );
+        if (_needsResyncOnNextServerEvent) {
+          _needsResyncOnNextServerEvent = false;
+          unawaited(refresh());
+        }
         return;
     }
   }
