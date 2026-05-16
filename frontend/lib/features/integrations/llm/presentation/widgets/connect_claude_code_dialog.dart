@@ -164,9 +164,9 @@ class _ConnectClaudeCodeDialogState
   }
 
   void _onSuccess() {
-    if (!mounted) {
-      return;
-    }
+      if (!mounted) {
+        return;
+      }
     _timeoutTimer?.cancel();
     final controller = widget.parentRef.read(llmIntegrationsControllerProvider);
     controller.applyLocal(
@@ -187,9 +187,9 @@ class _ConnectClaudeCodeDialogState
   }
 
   void _onWsError(String? reason) {
-    if (!mounted) {
-      return;
-    }
+      if (!mounted) {
+        return;
+      }
     _timeoutTimer?.cancel();
     final controller = widget.parentRef.read(llmIntegrationsControllerProvider);
     controller.applyLocal(
