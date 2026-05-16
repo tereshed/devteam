@@ -290,6 +290,234 @@ abstract class AppLocalizations {
   /// **'Cloud и self-hosted GitLab'**
   String get integrationsGitGitlabSubtitle;
 
+  /// ui_refactoring stage 3b: replaces ComingSoon copy on /integrations/git
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключите GitHub и GitLab, чтобы пушить ветки и открывать MR.'**
+  String get integrationsGitStage3Subtitle;
+
+  /// ui_refactoring stage 3b
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключено'**
+  String get integrationsGitSectionConnected;
+
+  /// ui_refactoring stage 3b
+  ///
+  /// In ru, this message translates to:
+  /// **'Доступно'**
+  String get integrationsGitSectionAvailable;
+
+  /// ui_refactoring stage 3b: button label
+  ///
+  /// In ru, this message translates to:
+  /// **'Отключить'**
+  String get integrationsGitDisconnectCta;
+
+  /// ui_refactoring stage 3b: secondary CTA on GitLab card
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить self-hosted'**
+  String get integrationsGitConnectSelfHostedCta;
+
+  /// ui_refactoring stage 3b: empty state under Available
+  ///
+  /// In ru, this message translates to:
+  /// **'Все поддерживаемые провайдеры уже подключены.'**
+  String get integrationsGitEmptyAvailable;
+
+  /// ui_refactoring stage 3b: §4a.5 user_cancelled
+  ///
+  /// In ru, this message translates to:
+  /// **'Авторизация отклонена. Попробуйте снова.'**
+  String get integrationsGitReasonUserCancelled;
+
+  /// ui_refactoring stage 3b: §4a.5 invalid_state
+  ///
+  /// In ru, this message translates to:
+  /// **'OAuth-сессия истекла. Начните заново.'**
+  String get integrationsGitReasonExpired;
+
+  /// ui_refactoring stage 3b: §4a.5 provider_unreachable
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-провайдер недоступен. Попробуйте позже.'**
+  String get integrationsGitReasonProviderUnreachable;
+
+  /// ui_refactoring stage 3b: §4a.5 invalid_host
+  ///
+  /// In ru, this message translates to:
+  /// **'Хост не разрешён (приватная сеть, неподдерживаемая схема или неверный URL).'**
+  String get integrationsGitReasonInvalidHost;
+
+  /// ui_refactoring stage 3b: §4a.5 oauth_not_configured
+  ///
+  /// In ru, this message translates to:
+  /// **'Этот провайдер не настроен на сервере.'**
+  String get integrationsGitReasonOauthNotConfigured;
+
+  /// ui_refactoring stage 3b: §4a.1 remote_revoke_failed notice
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключение удалено локально, но провайдер не подтвердил отзыв. Отзовите токен также в настройках аккаунта.'**
+  String get integrationsGitReasonRemoteRevokeFailed;
+
+  /// ui_refactoring stage 3b: pending state hint
+  ///
+  /// In ru, this message translates to:
+  /// **'Ждём подтверждения в браузере…'**
+  String get integrationsGitReasonPending;
+
+  /// ui_refactoring stage 3b: fallback for unknown reason codes
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось подключить: {reason}'**
+  String integrationsGitReasonUnknown(String reason);
+
+  /// ui_refactoring stage 3b: retry button
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить'**
+  String get integrationsGitRetry;
+
+  /// ui_refactoring stage 3b: error banner
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить интеграции: {message}'**
+  String integrationsGitLoadFailed(String message);
+
+  /// ui_refactoring stage 3b: subtitle for connected self-hosted GitLab
+  ///
+  /// In ru, this message translates to:
+  /// **'Хост: {host}'**
+  String integrationsGitConnectedHost(String host);
+
+  /// ui_refactoring stage 3b: subtitle for connected provider
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт: {login}'**
+  String integrationsGitConnectedAccount(String login);
+
+  /// ui_refactoring stage 3b: url_launcher fallback
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось открыть браузер. Откройте URL вручную: {url}'**
+  String integrationsGitBrowserOpenFailed(String url);
+
+  /// ui_refactoring stage 3b: BYO dialog title
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить self-hosted GitLab'**
+  String get integrationsGitlabHostDialogTitle;
+
+  /// ui_refactoring stage 3b: BYO dialog field label
+  ///
+  /// In ru, this message translates to:
+  /// **'Хост GitLab (https://…)'**
+  String get integrationsGitlabHostFieldHost;
+
+  /// ui_refactoring stage 3b: BYO dialog field label
+  ///
+  /// In ru, this message translates to:
+  /// **'Application ID'**
+  String get integrationsGitlabHostFieldClientId;
+
+  /// ui_refactoring stage 3b: BYO dialog field label
+  ///
+  /// In ru, this message translates to:
+  /// **'Application Secret'**
+  String get integrationsGitlabHostFieldClientSecret;
+
+  /// ui_refactoring stage 3b: BYO dialog field helper text
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохраняется как есть. Только https (или http для локальной разработки).'**
+  String get integrationsGitlabHostFieldHostHint;
+
+  /// ui_refactoring stage 3b: BYO dialog field helper text
+  ///
+  /// In ru, this message translates to:
+  /// **'Шифруется AES-256-GCM в базе.'**
+  String get integrationsGitlabHostFieldSecretHint;
+
+  /// ui_refactoring stage 3b: BYO dialog client-side validation
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите URL вашего GitLab'**
+  String get integrationsGitlabHostValidationHostRequired;
+
+  /// ui_refactoring stage 3b: BYO dialog client-side validation
+  ///
+  /// In ru, this message translates to:
+  /// **'Хост должен начинаться с https:// (или http:// для локальной разработки)'**
+  String get integrationsGitlabHostValidationHostScheme;
+
+  /// ui_refactoring stage 3b: BYO dialog client-side validation
+  ///
+  /// In ru, this message translates to:
+  /// **'Неверный формат URL'**
+  String get integrationsGitlabHostValidationHostFormat;
+
+  /// ui_refactoring stage 3b: BYO dialog client-side validation
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите Application ID'**
+  String get integrationsGitlabHostValidationClientIdRequired;
+
+  /// ui_refactoring stage 3b: BYO dialog client-side validation
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите Application Secret'**
+  String get integrationsGitlabHostValidationClientSecretRequired;
+
+  /// ui_refactoring stage 3b: expandable instructions header (oauth-setup-guide §5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Как зарегистрировать Application в моём GitLab'**
+  String get integrationsGitlabHostInstructionsToggle;
+
+  /// ui_refactoring stage 3b: BYO step (oauth-setup-guide §5)
+  ///
+  /// In ru, this message translates to:
+  /// **'Откройте https://<ваш-gitlab-host>/-/user_settings/applications.'**
+  String get integrationsGitlabHostInstructionsStep1;
+
+  /// ui_refactoring stage 3b: BYO step
+  ///
+  /// In ru, this message translates to:
+  /// **'Жмите «Add new application».'**
+  String get integrationsGitlabHostInstructionsStep2;
+
+  /// ui_refactoring stage 3b: BYO step with this app's callback URL
+  ///
+  /// In ru, this message translates to:
+  /// **'Name: DevTeam. Redirect URI: {redirectUri}.'**
+  String integrationsGitlabHostInstructionsStep3(String redirectUri);
+
+  /// ui_refactoring stage 3b: BYO step
+  ///
+  /// In ru, this message translates to:
+  /// **'Отметьте Confidential. Scopes: api, read_user, read_repository, write_repository.'**
+  String get integrationsGitlabHostInstructionsStep4;
+
+  /// ui_refactoring stage 3b: BYO step
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохраните, скопируйте Application ID и Secret, вставьте их выше.'**
+  String get integrationsGitlabHostInstructionsStep5;
+
+  /// ui_refactoring stage 3b: BYO dialog primary action
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить'**
+  String get integrationsGitlabHostSubmitCta;
+
+  /// ui_refactoring stage 3b: BYO dialog cancel
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get integrationsGitlabHostCancelCta;
+
   /// ui_refactoring stage 1: status chip on disabled stub cards
   ///
   /// In ru, this message translates to:

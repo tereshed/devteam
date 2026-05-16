@@ -108,6 +108,153 @@ class AppLocalizationsEn extends AppLocalizations {
   String get integrationsGitGitlabSubtitle => 'Cloud and self-hosted GitLab';
 
   @override
+  String get integrationsGitStage3Subtitle =>
+      'Connect GitHub and GitLab to push branches and open merge requests.';
+
+  @override
+  String get integrationsGitSectionConnected => 'Connected';
+
+  @override
+  String get integrationsGitSectionAvailable => 'Available';
+
+  @override
+  String get integrationsGitDisconnectCta => 'Disconnect';
+
+  @override
+  String get integrationsGitConnectSelfHostedCta => 'Connect self-hosted';
+
+  @override
+  String get integrationsGitEmptyAvailable =>
+      'All supported providers are already connected.';
+
+  @override
+  String get integrationsGitReasonUserCancelled =>
+      'Authorization was declined. Try again.';
+
+  @override
+  String get integrationsGitReasonExpired =>
+      'OAuth session expired. Start over.';
+
+  @override
+  String get integrationsGitReasonProviderUnreachable =>
+      'Git provider is unreachable. Try again later.';
+
+  @override
+  String get integrationsGitReasonInvalidHost =>
+      'Host is not allowed (private network, unsupported scheme, or malformed URL).';
+
+  @override
+  String get integrationsGitReasonOauthNotConfigured =>
+      'This provider is not configured on the server.';
+
+  @override
+  String get integrationsGitReasonRemoteRevokeFailed =>
+      'Connection removed locally, but the provider did not confirm revocation. Revoke the token in your account settings as well.';
+
+  @override
+  String get integrationsGitReasonPending =>
+      'Waiting for confirmation in the browser…';
+
+  @override
+  String integrationsGitReasonUnknown(String reason) {
+    return 'Connection failed: $reason';
+  }
+
+  @override
+  String get integrationsGitRetry => 'Retry';
+
+  @override
+  String integrationsGitLoadFailed(String message) {
+    return 'Failed to load integrations: $message';
+  }
+
+  @override
+  String integrationsGitConnectedHost(String host) {
+    return 'Host: $host';
+  }
+
+  @override
+  String integrationsGitConnectedAccount(String login) {
+    return 'Account: $login';
+  }
+
+  @override
+  String integrationsGitBrowserOpenFailed(String url) {
+    return 'Couldn\'t open the browser. Open this URL manually: $url';
+  }
+
+  @override
+  String get integrationsGitlabHostDialogTitle => 'Connect self-hosted GitLab';
+
+  @override
+  String get integrationsGitlabHostFieldHost => 'GitLab host (https://…)';
+
+  @override
+  String get integrationsGitlabHostFieldClientId => 'Application ID';
+
+  @override
+  String get integrationsGitlabHostFieldClientSecret => 'Application Secret';
+
+  @override
+  String get integrationsGitlabHostFieldHostHint =>
+      'Stored as-is. Must be https (or http in local dev).';
+
+  @override
+  String get integrationsGitlabHostFieldSecretHint =>
+      'Stored encrypted with AES-256-GCM.';
+
+  @override
+  String get integrationsGitlabHostValidationHostRequired =>
+      'Enter your GitLab host URL';
+
+  @override
+  String get integrationsGitlabHostValidationHostScheme =>
+      'Host must start with https:// (or http:// for local dev)';
+
+  @override
+  String get integrationsGitlabHostValidationHostFormat =>
+      'Host URL is malformed';
+
+  @override
+  String get integrationsGitlabHostValidationClientIdRequired =>
+      'Enter the Application ID';
+
+  @override
+  String get integrationsGitlabHostValidationClientSecretRequired =>
+      'Enter the Application Secret';
+
+  @override
+  String get integrationsGitlabHostInstructionsToggle =>
+      'How to register an Application in my GitLab';
+
+  @override
+  String get integrationsGitlabHostInstructionsStep1 =>
+      'Open https://<your-gitlab-host>/-/user_settings/applications.';
+
+  @override
+  String get integrationsGitlabHostInstructionsStep2 =>
+      'Click ‘Add new application’.';
+
+  @override
+  String integrationsGitlabHostInstructionsStep3(String redirectUri) {
+    return 'Name: DevTeam. Redirect URI: $redirectUri.';
+  }
+
+  @override
+  String get integrationsGitlabHostInstructionsStep4 =>
+      'Mark Confidential. Scopes: api, read_user, read_repository, write_repository.';
+
+  @override
+  String get integrationsGitlabHostInstructionsStep5 =>
+      'Save, copy Application ID and Secret, paste them above.';
+
+  @override
+  String get integrationsGitlabHostSubmitCta => 'Connect';
+
+  @override
+  String get integrationsGitlabHostCancelCta => 'Cancel';
+
+  @override
   String get integrationsComingSoonChip => 'Coming soon';
 
   @override

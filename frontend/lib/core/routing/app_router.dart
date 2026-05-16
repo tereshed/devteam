@@ -19,8 +19,8 @@ import 'package:frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/profile_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/register_screen.dart';
 import 'package:frontend/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:frontend/features/integrations/git/presentation/screens/git_integrations_screen.dart';
 import 'package:frontend/features/integrations/llm/presentation/screens/llm_integrations_screen.dart';
-import 'package:frontend/features/integrations/presentation/screens/git_integrations_screen.dart';
 import 'package:frontend/features/landing/presentation/screens/landing_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/create_project_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/project_dashboard_screen.dart';
@@ -70,10 +70,8 @@ class AppRouter {
 
       // Protected routes — обёрнуты в [AppShell].
       ShellRoute(
-        builder: (context, state, child) => AppShell(
-          location: state.matchedLocation,
-          child: child,
-        ),
+        builder: (context, state, child) =>
+            AppShell(location: state.matchedLocation, child: child),
         routes: [
           GoRoute(
             path: '/dashboard',
@@ -249,15 +247,16 @@ class AppRouter {
                 navigationShell: navigationShell,
               );
             },
-            navigatorContainerBuilder: (
-              BuildContext context,
-              StatefulNavigationShell navigationShell,
-              List<Widget> children,
-            ) {
-              // Только активная ветка: компромисс по state вкладок — см.
-              // docs/tasks/10.7-gorouter-projects-routes.md, «StatefulShellRoute и сохранение state».
-              return children[navigationShell.currentIndex];
-            },
+            navigatorContainerBuilder:
+                (
+                  BuildContext context,
+                  StatefulNavigationShell navigationShell,
+                  List<Widget> children,
+                ) {
+                  // Только активная ветка: компромисс по state вкладок — см.
+                  // docs/tasks/10.7-gorouter-projects-routes.md, «StatefulShellRoute и сохранение state».
+                  return children[navigationShell.currentIndex];
+                },
             branches: buildProjectDashboardShellBranches(
               chatNavigatorKey: _projectShellChatNavKey,
               tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
