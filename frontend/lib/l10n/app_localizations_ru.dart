@@ -147,6 +147,98 @@ class AppLocalizationsRu extends AppLocalizations {
   String get llmProviderZhipuSubtitle => 'Модели GLM';
 
   @override
+  String get integrationsLlmStage2Subtitle =>
+      'Управление API-ключами и OAuth-подписками для код-агентов.';
+
+  @override
+  String get integrationsLlmSectionConnected => 'Подключённые';
+
+  @override
+  String get integrationsLlmSectionAvailable => 'Доступные';
+
+  @override
+  String get integrationsLlmConnectCta => 'Подключить';
+
+  @override
+  String get integrationsLlmDisconnectCta => 'Отключить';
+
+  @override
+  String get integrationsLlmReplaceCta => 'Сменить ключ';
+
+  @override
+  String get integrationsLlmEmptyAvailable =>
+      'Все поддерживаемые провайдеры уже подключены.';
+
+  @override
+  String get integrationsLlmReasonUserCancelled =>
+      'Доступ отклонён. Попробуйте снова.';
+
+  @override
+  String get integrationsLlmReasonExpired => 'Сессия устарела. Начните заново.';
+
+  @override
+  String get integrationsLlmReasonProviderUnreachable =>
+      'Провайдер недоступен. Повторите позже.';
+
+  @override
+  String integrationsLlmReasonUnknown(String reason) {
+    return 'Не удалось подключить: $reason';
+  }
+
+  @override
+  String get integrationsLlmReasonPending => 'Ждём подтверждения в браузере…';
+
+  @override
+  String get integrationsLlmRetry => 'Попробовать снова';
+
+  @override
+  String integrationsLlmDialogApiKeyTitle(String provider) {
+    return 'Подключение $provider';
+  }
+
+  @override
+  String get integrationsLlmDialogApiKeyField => 'API-ключ';
+
+  @override
+  String get integrationsLlmDialogApiKeyHint =>
+      'Хранится зашифрованным (AES-256-GCM).';
+
+  @override
+  String get integrationsLlmDialogApiKeyRequired => 'Введите непустой API-ключ';
+
+  @override
+  String get integrationsLlmDialogCancel => 'Отмена';
+
+  @override
+  String get integrationsLlmDialogSave => 'Сохранить';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthTitle => 'Подключение Claude Code';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthStep1 =>
+      'Откройте Anthropic в браузере, введите код ниже и подтвердите вход.';
+
+  @override
+  String get integrationsLlmClaudeCodeOpenBrowser => 'Открыть браузер';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthCode => 'Код:';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthWaiting =>
+      'Ждём подтверждения… Можно закрыть это окно и вернуться позже — статус обновится автоматически.';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthTimeout =>
+      'Авторизация истекла через 20 минут. Попробуйте снова.';
+
+  @override
+  String integrationsLlmLoadFailed(String message) {
+    return 'Не удалось загрузить интеграции: $message';
+  }
+
+  @override
   String dashboardWelcomeUser(String email) {
     return 'Добро пожаловать, $email';
   }

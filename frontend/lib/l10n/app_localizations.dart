@@ -368,6 +368,162 @@ abstract class AppLocalizations {
   /// **'Модели GLM'**
   String get llmProviderZhipuSubtitle;
 
+  /// ui_refactoring stage 2: replaces ComingSoon copy
+  ///
+  /// In ru, this message translates to:
+  /// **'Управление API-ключами и OAuth-подписками для код-агентов.'**
+  String get integrationsLlmStage2Subtitle;
+
+  /// ui_refactoring stage 2
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключённые'**
+  String get integrationsLlmSectionConnected;
+
+  /// ui_refactoring stage 2
+  ///
+  /// In ru, this message translates to:
+  /// **'Доступные'**
+  String get integrationsLlmSectionAvailable;
+
+  /// ui_refactoring stage 2: button label
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить'**
+  String get integrationsLlmConnectCta;
+
+  /// ui_refactoring stage 2: button label
+  ///
+  /// In ru, this message translates to:
+  /// **'Отключить'**
+  String get integrationsLlmDisconnectCta;
+
+  /// ui_refactoring stage 2: button label
+  ///
+  /// In ru, this message translates to:
+  /// **'Сменить ключ'**
+  String get integrationsLlmReplaceCta;
+
+  /// ui_refactoring stage 2: empty state under Available
+  ///
+  /// In ru, this message translates to:
+  /// **'Все поддерживаемые провайдеры уже подключены.'**
+  String get integrationsLlmEmptyAvailable;
+
+  /// ui_refactoring stage 2: §4a.5 cancelled state
+  ///
+  /// In ru, this message translates to:
+  /// **'Доступ отклонён. Попробуйте снова.'**
+  String get integrationsLlmReasonUserCancelled;
+
+  /// ui_refactoring stage 2: §4a.5 invalid_state
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия устарела. Начните заново.'**
+  String get integrationsLlmReasonExpired;
+
+  /// ui_refactoring stage 2: §4a.5 provider_unreachable
+  ///
+  /// In ru, this message translates to:
+  /// **'Провайдер недоступен. Повторите позже.'**
+  String get integrationsLlmReasonProviderUnreachable;
+
+  /// ui_refactoring stage 2: fallback for unknown reason codes
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось подключить: {reason}'**
+  String integrationsLlmReasonUnknown(String reason);
+
+  /// ui_refactoring stage 2: pending state hint
+  ///
+  /// In ru, this message translates to:
+  /// **'Ждём подтверждения в браузере…'**
+  String get integrationsLlmReasonPending;
+
+  /// ui_refactoring stage 2: retry button
+  ///
+  /// In ru, this message translates to:
+  /// **'Попробовать снова'**
+  String get integrationsLlmRetry;
+
+  /// ui_refactoring stage 2: dialog title
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключение {provider}'**
+  String integrationsLlmDialogApiKeyTitle(String provider);
+
+  /// ui_refactoring stage 2: input field label
+  ///
+  /// In ru, this message translates to:
+  /// **'API-ключ'**
+  String get integrationsLlmDialogApiKeyField;
+
+  /// ui_refactoring stage 2: helper text
+  ///
+  /// In ru, this message translates to:
+  /// **'Хранится зашифрованным (AES-256-GCM).'**
+  String get integrationsLlmDialogApiKeyHint;
+
+  /// ui_refactoring stage 2: validation error
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите непустой API-ключ'**
+  String get integrationsLlmDialogApiKeyRequired;
+
+  /// ui_refactoring stage 2: dialog cancel
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get integrationsLlmDialogCancel;
+
+  /// ui_refactoring stage 2: dialog primary action
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get integrationsLlmDialogSave;
+
+  /// ui_refactoring stage 2: OAuth dialog title
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключение Claude Code'**
+  String get integrationsLlmClaudeCodeOAuthTitle;
+
+  /// ui_refactoring stage 2: OAuth instructions
+  ///
+  /// In ru, this message translates to:
+  /// **'Откройте Anthropic в браузере, введите код ниже и подтвердите вход.'**
+  String get integrationsLlmClaudeCodeOAuthStep1;
+
+  /// ui_refactoring stage 2: launch URL button
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть браузер'**
+  String get integrationsLlmClaudeCodeOpenBrowser;
+
+  /// ui_refactoring stage 2: user_code label
+  ///
+  /// In ru, this message translates to:
+  /// **'Код:'**
+  String get integrationsLlmClaudeCodeOAuthCode;
+
+  /// ui_refactoring stage 2: pending body copy
+  ///
+  /// In ru, this message translates to:
+  /// **'Ждём подтверждения… Можно закрыть это окно и вернуться позже — статус обновится автоматически.'**
+  String get integrationsLlmClaudeCodeOAuthWaiting;
+
+  /// ui_refactoring stage 2: §4a.5 timeout
+  ///
+  /// In ru, this message translates to:
+  /// **'Авторизация истекла через 20 минут. Попробуйте снова.'**
+  String get integrationsLlmClaudeCodeOAuthTimeout;
+
+  /// ui_refactoring stage 2: error banner
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить интеграции: {message}'**
+  String integrationsLlmLoadFailed(String message);
+
   /// ui_refactoring stage 1: dashboard greeting for authenticated user
   ///
   /// In ru, this message translates to:

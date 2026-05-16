@@ -2,21 +2,36 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/gin-gonic/gin"
 )
 
 // ClaudeCodeAuthHandler — OAuth-подписка Claude Code (Sprint 15.12, 15.15).
+// UI Refactoring §4a.5 — 4 явные ветки ошибок (cancel / access_denied / network / invalid_state).
+// UI Refactoring §4a.1 — все логи проходят через redact-handler.
 type ClaudeCodeAuthHandler struct {
 	svc service.ClaudeCodeAuthService
+	log *slog.Logger
 }
 
+// NewClaudeCodeAuthHandler — конструктор, использующий redact-обёрнутый logger по умолчанию.
 func NewClaudeCodeAuthHandler(svc service.ClaudeCodeAuthService) *ClaudeCodeAuthHandler {
-	return &ClaudeCodeAuthHandler{svc: svc}
+	return &ClaudeCodeAuthHandler{svc: svc, log: logging.NopLogger()}
+}
+
+// WithClaudeCodeAuthLogger подменяет logger (используется при инициализации в main / тестах).
+// Logger ОБЯЗАТЕЛЬНО должен быть обёрнут в logging.Handler — все callback-логи проходят через redact.
+func WithClaudeCodeAuthLogger(h *ClaudeCodeAuthHandler, log *slog.Logger) *ClaudeCodeAuthHandler {
+	if log != nil {
+		h.log = log
+	}
+	return h
 }
 
 // Init инициирует device-flow Claude Code.
@@ -77,15 +92,60 @@ func (h *ClaudeCodeAuthHandler) Callback(c *gin.Context) {
 	}
 	var req dto.ClaudeCodeAuthCallbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// Тело уже потенциально содержит секрет (device_code), поэтому не логируем raw.
+		h.log.Warn("claude_code_oauth callback: bind failed",
+			"user_id", uid.String(),
+			"error_kind", "bad_request",
+		)
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid request body")
 		return
 	}
 	status, err := h.svc.CompleteDeviceCode(c.Request.Context(), uid, req.DeviceCode)
 	if err != nil {
+		h.logCallbackError(uid.String(), err)
 		mapClaudeCodeAuthErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, dto.ClaudeCodeAuthStatusResponse(*status))
+}
+
+// logCallbackError — структурированный warning без сырого error-text провайдера.
+// Маппинг см. §4a.5 (cancel / access_denied / network / invalid_state).
+// Никаких access_token / refresh / code в логах: error.Error() обёрнут в SafeRawAttr.
+func (h *ClaudeCodeAuthHandler) logCallbackError(userID string, err error) {
+	kind := classifyClaudeCodeAuthErr(err)
+	if kind == "authorization_pending" || kind == "slow_down" {
+		// Промежуточные poll-состояния — слишком шумно для info; пропускаем.
+		return
+	}
+	h.log.Warn("claude_code_oauth callback: handler returned error",
+		"user_id", userID,
+		"error_kind", kind,
+		"error_summary", logging.SafeRawAttr([]byte(err.Error())),
+	)
+}
+
+// classifyClaudeCodeAuthErr возвращает короткий код, пригодный для логов/метрик.
+// Без error.Error() — текст может прийти от провайдера и содержать секреты.
+func classifyClaudeCodeAuthErr(err error) string {
+	switch {
+	case errors.Is(err, service.ErrDeviceCodeOwnerMismatch):
+		return "device_code_owner_mismatch"
+	case errors.Is(err, service.ErrAuthorizationPending):
+		return "authorization_pending"
+	case errors.Is(err, service.ErrSlowDown):
+		return "slow_down"
+	case errors.Is(err, service.ErrExpiredToken):
+		return "expired_token"
+	case errors.Is(err, service.ErrAccessDenied):
+		return "access_denied"
+	case errors.Is(err, service.ErrOAuthInvalidGrant):
+		return "invalid_grant"
+	case errors.Is(err, service.ErrOAuthNotConfigured):
+		return "oauth_not_configured"
+	default:
+		return "internal_error"
+	}
 }
 
 // Status возвращает текущий статус подписки.
@@ -135,6 +195,15 @@ func (h *ClaudeCodeAuthHandler) Revoke(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// mapClaudeCodeAuthErr — 4 явные ветки из §4a.5:
+//
+//  1. cancel (user_cancelled / access_denied)        -> 410, error_code=access_denied
+//  2. invalid_state (expired_token / invalid_grant)  -> 410/400, error_code=invalid_state
+//  3. provider_unreachable (network)                 -> 502, error_code=provider_unreachable
+//  4. all other (server_error от провайдера и т.п.)  -> 500, error_code=internal_error
+//
+// Тело ответа никогда не включает err.Error() от провайдера —
+// чтобы случайные access_token/refresh_token в сообщении не утекали клиенту.
 func mapClaudeCodeAuthErr(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrDeviceCodeOwnerMismatch):
@@ -144,15 +213,20 @@ func mapClaudeCodeAuthErr(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusAccepted, "authorization_pending", "Waiting for user to authorize")
 	case errors.Is(err, service.ErrSlowDown):
 		apierror.JSON(c, http.StatusTooManyRequests, "slow_down", "Polling too fast")
-	case errors.Is(err, service.ErrExpiredToken):
-		apierror.JSON(c, http.StatusGone, "expired_token", "Device code has expired")
+	// §4a.5 case 1: пользователь нажал Cancel.
 	case errors.Is(err, service.ErrAccessDenied):
 		apierror.JSON(c, http.StatusGone, "access_denied", "User denied authorization")
+	// §4a.5 case 3: устаревший device_code (CSRF / state) — поднимаем единым кодом invalid_state.
+	case errors.Is(err, service.ErrExpiredToken):
+		apierror.JSON(c, http.StatusGone, "invalid_state", "Device code has expired")
 	case errors.Is(err, service.ErrOAuthInvalidGrant):
-		apierror.JSON(c, http.StatusBadRequest, "invalid_grant", "Invalid grant")
+		apierror.JSON(c, http.StatusBadRequest, "invalid_state", "Invalid grant")
 	case errors.Is(err, service.ErrOAuthNotConfigured):
-		apierror.JSON(c, http.StatusServiceUnavailable, "oauth_not_configured", "Claude Code OAuth is not configured on this server")
+		apierror.JSON(c, http.StatusServiceUnavailable, "oauth_not_configured",
+			"Claude Code OAuth is not configured on this server")
 	default:
-		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
+		// §4a.5 case 4: server_error / network — провайдер недоступен.
+		apierror.JSON(c, http.StatusBadGateway, "provider_unreachable",
+			"Claude Code OAuth provider returned an unexpected error")
 	}
 }

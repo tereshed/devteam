@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
@@ -340,6 +343,156 @@ func TestClaudeCodeAuth_RefreshOne_Singleflight_CoalescesConcurrent(t *testing.T
 	// Должен пройти только один вызов RefreshToken, остальные ждут результат первого.
 	assert.Equal(t, int32(1), refreshCalls.Load(),
 		"singleflight must coalesce concurrent refreshes per user_id")
+}
+
+// --- UI Refactoring §4a.4: тесты публикации IntegrationConnectionChanged. ---
+
+// waitForIntegrationEvent читает один event указанного типа из подписки шины.
+func waitForIntegrationEvent(t *testing.T, ch <-chan events.DomainEvent) events.IntegrationConnectionChanged {
+	t.Helper()
+	for {
+		select {
+		case ev := <-ch:
+			if ice, ok := ev.(events.IntegrationConnectionChanged); ok {
+				return ice
+			}
+			// игнорируем посторонние события
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for IntegrationConnectionChanged event")
+		}
+	}
+}
+
+func newClaudeCodeAuthSvcWithBus(t *testing.T) (
+	ClaudeCodeAuthService,
+	*stubOAuthProvider,
+	*mockClaudeCodeSubRepo,
+	<-chan events.DomainEvent,
+	func(),
+) {
+	t.Helper()
+	bus := events.NewInMemoryBus(nil, nil)
+	ch, unsub := bus.Subscribe("test_integration_status", 16)
+	repo := newMockClaudeCodeSubRepo()
+	oauth := &stubOAuthProvider{}
+	svc := NewClaudeCodeAuthService(repo, NoopEncryptor{}, oauth)
+	svc = WithClaudeCodeEventBus(svc, bus)
+	cleanup := func() {
+		unsub()
+		bus.Close()
+	}
+	return svc, oauth, repo, ch, cleanup
+}
+
+// 4a.5 case "connected": успешный обмен device_code → access_token.
+func TestClaudeCodeAuth_PublishesIntegrationEvent_OnSuccess(t *testing.T) {
+	svc, oauth, _, ch, cleanup := newClaudeCodeAuthSvcWithBus(t)
+	defer cleanup()
+
+	expires := time.Now().Add(time.Hour).UTC()
+	oauth.pollFn = func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+		return &ClaudeCodeOAuthToken{
+			AccessToken: "a", RefreshToken: "r", TokenType: "Bearer", ExpiresAt: &expires,
+		}, nil
+	}
+	uid := uuid.New()
+	svc = seedDeviceCode(svc, uid, "dc")
+
+	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
+	require.NoError(t, err)
+
+	ev := waitForIntegrationEvent(t, ch)
+	assert.Equal(t, uid, ev.UserID)
+	assert.Equal(t, ProviderClaudeCodeOAuth, ev.Provider)
+	assert.Equal(t, events.IntegrationStatusConnected, ev.Status)
+	assert.Equal(t, "", ev.Reason)
+	require.NotNil(t, ev.ConnectedAt)
+	require.NotNil(t, ev.ExpiresAt)
+}
+
+// 4a.5 case "user cancelled (?error=access_denied)": Status=error, Reason=user_cancelled.
+func TestClaudeCodeAuth_PublishesIntegrationEvent_OnAccessDenied(t *testing.T) {
+	svc, oauth, _, ch, cleanup := newClaudeCodeAuthSvcWithBus(t)
+	defer cleanup()
+
+	oauth.pollFn = func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+		return nil, ErrAccessDenied
+	}
+	uid := uuid.New()
+	svc = seedDeviceCode(svc, uid, "dc")
+
+	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
+	require.ErrorIs(t, err, ErrAccessDenied)
+
+	ev := waitForIntegrationEvent(t, ch)
+	assert.Equal(t, events.IntegrationStatusError, ev.Status)
+	assert.Equal(t, ReasonUserCancelled, ev.Reason)
+}
+
+// 4a.5 case "network / провайдер недоступен": Status=error, Reason=provider_unreachable.
+func TestClaudeCodeAuth_PublishesIntegrationEvent_OnProviderError(t *testing.T) {
+	svc, oauth, _, ch, cleanup := newClaudeCodeAuthSvcWithBus(t)
+	defer cleanup()
+
+	oauth.pollFn = func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+		return nil, fmt.Errorf("dial tcp: i/o timeout")
+	}
+	uid := uuid.New()
+	svc = seedDeviceCode(svc, uid, "dc")
+
+	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, ErrAccessDenied))
+
+	ev := waitForIntegrationEvent(t, ch)
+	assert.Equal(t, events.IntegrationStatusError, ev.Status)
+	assert.Equal(t, ReasonProviderUnreachable, ev.Reason)
+}
+
+// 4a.5 case "revoke": Status=disconnected.
+func TestClaudeCodeAuth_PublishesIntegrationEvent_OnRevoke(t *testing.T) {
+	svc, oauth, _, ch, cleanup := newClaudeCodeAuthSvcWithBus(t)
+	defer cleanup()
+
+	expires := time.Now().Add(time.Hour).UTC()
+	oauth.pollFn = func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+		return &ClaudeCodeOAuthToken{
+			AccessToken: "a", RefreshToken: "r", TokenType: "Bearer", ExpiresAt: &expires,
+		}, nil
+	}
+	uid := uuid.New()
+	svc = seedDeviceCode(svc, uid, "dc")
+
+	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
+	require.NoError(t, err)
+	// drain connected event
+	_ = waitForIntegrationEvent(t, ch)
+
+	require.NoError(t, svc.Revoke(context.Background(), uid))
+	ev := waitForIntegrationEvent(t, ch)
+	assert.Equal(t, events.IntegrationStatusDisconnected, ev.Status)
+}
+
+// 4a.5 case "pending — поллинг не публикует промежуточные события".
+func TestClaudeCodeAuth_DoesNotPublishOnAuthorizationPending(t *testing.T) {
+	svc, oauth, _, ch, cleanup := newClaudeCodeAuthSvcWithBus(t)
+	defer cleanup()
+
+	oauth.pollFn = func(_ context.Context, _ string) (*ClaudeCodeOAuthToken, error) {
+		return nil, ErrAuthorizationPending
+	}
+	uid := uuid.New()
+	svc = seedDeviceCode(svc, uid, "dc")
+
+	_, err := svc.CompleteDeviceCode(context.Background(), uid, "dc")
+	require.ErrorIs(t, err, ErrAuthorizationPending)
+
+	select {
+	case ev := <-ch:
+		t.Fatalf("unexpected event for authorization_pending: %+v", ev)
+	case <-time.After(100 * time.Millisecond):
+		// ok — публикации не было
+	}
 }
 
 func TestClaudeCodeTokenRefresher_Tick_RefreshesExpiring(t *testing.T) {

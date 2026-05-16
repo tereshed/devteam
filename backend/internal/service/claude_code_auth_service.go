@@ -7,10 +7,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
+)
+
+// ProviderClaudeCodeOAuth — имя провайдера, под которым событие
+// IntegrationConnectionChanged публикуется для подписки Claude Code OAuth.
+// Frontend (см. llm_integrations_providers.dart) подписывается на этот идентификатор.
+const ProviderClaudeCodeOAuth = "claude_code_oauth"
+
+// Reason-коды для IntegrationConnectionChanged при ошибках Claude Code OAuth flow.
+// Маппинг см. dashboard-redesign §4a.5 (cancel / access_denied / network).
+const (
+	ReasonUserCancelled      = "user_cancelled"
+	ReasonExpiredToken       = "expired_token"
+	ReasonInvalidGrant       = "invalid_grant"
+	ReasonOAuthNotConfigured = "oauth_not_configured"
+	ReasonProviderUnreachable = "provider_unreachable"
+	ReasonInternalError      = "internal_error"
 )
 
 // ClaudeCodeAuthService — управление OAuth-подпиской Claude Code на пользователя (Sprint 15.12).
@@ -58,6 +75,9 @@ type claudeCodeAuthService struct {
 	// Anthropic ротейтит refresh_token при первом use; параллельный refresh из воркера и
 	// AccessTokenForSandbox без coalescing давал invalid_grant для второго звонящего.
 	refreshGroup singleflight.Group
+	// bus — публикация IntegrationConnectionChanged (dashboard-redesign §4a.4).
+	// Опционален: если nil — события не публикуются (backward-compat для тестов/legacy DI).
+	bus events.EventBus
 }
 
 // NewClaudeCodeAuthService собирает сервис.
@@ -81,6 +101,15 @@ func NewClaudeCodeAuthService(
 func WithClaudeCodeDeviceStore(svc ClaudeCodeAuthService, store DeviceCodeStore) ClaudeCodeAuthService {
 	if cs, ok := svc.(*claudeCodeAuthService); ok && store != nil {
 		cs.deviceCodes = store
+	}
+	return svc
+}
+
+// WithClaudeCodeEventBus подключает EventBus для публикации
+// IntegrationConnectionChanged. Без него сервис не публикует события (legacy/тест-фолбэк).
+func WithClaudeCodeEventBus(svc ClaudeCodeAuthService, bus events.EventBus) ClaudeCodeAuthService {
+	if cs, ok := svc.(*claudeCodeAuthService); ok {
+		cs.bus = bus
 	}
 	return svc
 }
@@ -117,14 +146,32 @@ func (s *claudeCodeAuthService) CompleteDeviceCode(ctx context.Context, userID u
 	}
 	tok, err := s.oauth.PollDeviceToken(ctx, deviceCode)
 	if err != nil {
+		// Pending/slow_down — promежуточные состояния, событие не публикуем.
+		switch {
+		case errors.Is(err, ErrAuthorizationPending), errors.Is(err, ErrSlowDown):
+			return nil, err
+		case errors.Is(err, ErrAccessDenied):
+			s.publishStatus(ctx, userID, events.IntegrationStatusError, ReasonUserCancelled, nil, nil)
+		case errors.Is(err, ErrExpiredToken):
+			s.publishStatus(ctx, userID, events.IntegrationStatusError, ReasonExpiredToken, nil, nil)
+		case errors.Is(err, ErrOAuthInvalidGrant):
+			s.publishStatus(ctx, userID, events.IntegrationStatusError, ReasonInvalidGrant, nil, nil)
+		case errors.Is(err, ErrOAuthNotConfigured):
+			s.publishStatus(ctx, userID, events.IntegrationStatusError, ReasonOAuthNotConfigured, nil, nil)
+		default:
+			s.publishStatus(ctx, userID, events.IntegrationStatusError, ReasonProviderUnreachable, nil, nil)
+		}
 		return nil, err
 	}
 	sub, err := s.persistToken(ctx, userID, tok)
 	if err != nil {
+		s.publishStatus(ctx, userID, events.IntegrationStatusError, ReasonInternalError, nil, nil)
 		return nil, err
 	}
 	// Поток успешно завершён — освобождаем device_code, чтобы повторный POST вернул mismatch (не reuse).
 	s.deviceCodes.Delete(deviceCode)
+	now := time.Now().UTC()
+	s.publishStatus(ctx, userID, events.IntegrationStatusConnected, "", &now, sub.ExpiresAt)
 	return toStatus(sub), nil
 }
 
@@ -150,7 +197,34 @@ func (s *claudeCodeAuthService) Revoke(ctx context.Context, userID uuid.UUID) er
 	if token, decErr := s.decrypt(sub.OAuthAccessTokenEnc, accessAAD(sub.UserID)); decErr == nil && token != "" {
 		_ = s.oauth.Revoke(ctx, token) // best-effort
 	}
-	return s.repo.DeleteByUserID(ctx, userID)
+	if err := s.repo.DeleteByUserID(ctx, userID); err != nil {
+		return err
+	}
+	s.publishStatus(ctx, userID, events.IntegrationStatusDisconnected, "", nil, nil)
+	return nil
+}
+
+// publishStatus отправляет IntegrationConnectionChanged в EventBus, если bus подключен.
+// no-op для legacy DI / тестов, где bus = nil.
+func (s *claudeCodeAuthService) publishStatus(
+	ctx context.Context,
+	userID uuid.UUID,
+	status events.IntegrationConnectionStatus,
+	reason string,
+	connectedAt, expiresAt *time.Time,
+) {
+	if s.bus == nil {
+		return
+	}
+	s.bus.Publish(ctx, events.IntegrationConnectionChanged{
+		UserID:      userID,
+		Provider:    ProviderClaudeCodeOAuth,
+		Status:      status,
+		Reason:      reason,
+		ConnectedAt: connectedAt,
+		ExpiresAt:   expiresAt,
+		OccurredAt:  time.Now().UTC(),
+	})
 }
 
 func (s *claudeCodeAuthService) AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error) {

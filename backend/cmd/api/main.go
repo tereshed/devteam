@@ -319,6 +319,9 @@ func main() {
 		Scopes:        cfg.ClaudeCodeOAuth.Scopes,
 	})
 	claudeCodeAuthSvc := service.NewClaudeCodeAuthService(claudeCodeSubRepo, encryptor, claudeCodeOAuthProvider)
+	// UI Refactoring §4a.4 — публикация IntegrationConnectionChanged для realtime-обновления
+	// экрана LLM Integrations (без поллинга). HubBridge маршрутизирует событие в Hub.SendToUser.
+	claudeCodeAuthSvc = service.WithClaudeCodeEventBus(claudeCodeAuthSvc, eventBus)
 
 	// User-per-credential service (нужен резолверу аутентификации sandbox).
 	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
@@ -478,7 +481,12 @@ func main() {
 	llmCredRL := middleware.NewLlmCredentialsPatchRateLimiter(30, time.Minute)
 	llmCredHandler := handler.NewUserLlmCredentialHandler(llmCredSvc)
 
-	claudeCodeAuthHandler := handler.NewClaudeCodeAuthHandler(claudeCodeAuthSvc)
+	// UI Refactoring §4a.1 — callback-handler логирует через redact-обёрнутый logger,
+	// чтобы случайные access_token / client_secret в сообщениях провайдера не утекали в stdout.
+	claudeCodeAuthHandler := handler.WithClaudeCodeAuthLogger(
+		handler.NewClaudeCodeAuthHandler(claudeCodeAuthSvc),
+		v2Logger,
+	)
 	if cfg.ClaudeCodeOAuth.ClientID != "" {
 		refresher := service.NewClaudeCodeTokenRefresher(claudeCodeSubRepo, claudeCodeAuthSvc, slog.Default())
 		go refresher.Run(ctxWorker)

@@ -148,6 +148,99 @@ class AppLocalizationsEn extends AppLocalizations {
   String get llmProviderZhipuSubtitle => 'GLM models';
 
   @override
+  String get integrationsLlmStage2Subtitle =>
+      'Manage API keys and OAuth subscriptions for code agents.';
+
+  @override
+  String get integrationsLlmSectionConnected => 'Connected';
+
+  @override
+  String get integrationsLlmSectionAvailable => 'Available';
+
+  @override
+  String get integrationsLlmConnectCta => 'Connect';
+
+  @override
+  String get integrationsLlmDisconnectCta => 'Disconnect';
+
+  @override
+  String get integrationsLlmReplaceCta => 'Replace key';
+
+  @override
+  String get integrationsLlmEmptyAvailable =>
+      'All supported providers are already connected.';
+
+  @override
+  String get integrationsLlmReasonUserCancelled =>
+      'Access was declined. Try again.';
+
+  @override
+  String get integrationsLlmReasonExpired => 'Session expired. Start over.';
+
+  @override
+  String get integrationsLlmReasonProviderUnreachable =>
+      'Provider is unreachable. Try again later.';
+
+  @override
+  String integrationsLlmReasonUnknown(String reason) {
+    return 'Connection failed: $reason';
+  }
+
+  @override
+  String get integrationsLlmReasonPending =>
+      'Waiting for confirmation in the browser…';
+
+  @override
+  String get integrationsLlmRetry => 'Retry';
+
+  @override
+  String integrationsLlmDialogApiKeyTitle(String provider) {
+    return 'Connect $provider';
+  }
+
+  @override
+  String get integrationsLlmDialogApiKeyField => 'API key';
+
+  @override
+  String get integrationsLlmDialogApiKeyHint =>
+      'Stored encrypted with AES-256-GCM.';
+
+  @override
+  String get integrationsLlmDialogApiKeyRequired => 'Enter a non-empty API key';
+
+  @override
+  String get integrationsLlmDialogCancel => 'Cancel';
+
+  @override
+  String get integrationsLlmDialogSave => 'Save';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthTitle => 'Connect Claude Code';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthStep1 =>
+      'Open Anthropic in your browser, enter the code below and authorize the app.';
+
+  @override
+  String get integrationsLlmClaudeCodeOpenBrowser => 'Open browser';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthCode => 'Code:';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthWaiting =>
+      'Waiting for confirmation… You can close this dialog and come back later — the status will update automatically.';
+
+  @override
+  String get integrationsLlmClaudeCodeOAuthTimeout =>
+      'Authorization timed out after 20 minutes. Try again.';
+
+  @override
+  String integrationsLlmLoadFailed(String message) {
+    return 'Failed to load integrations: $message';
+  }
+
+  @override
   String dashboardWelcomeUser(String email) {
     return 'Welcome, $email';
   }

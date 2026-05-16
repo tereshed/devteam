@@ -24,9 +24,9 @@ ENCRYPTION_KEY=<64 hex-символа = 32 байта>
 
 Без `ENCRYPTION_KEY` бэкенд работает в NoopEncryptor-режиме — credentials хранятся как plaintext (только для локальной разработки, **не для prod**).
 
-### Аудит шифрования (UI Refactoring — Этап 0.1, verified)
+### Аудит шифрования (UI Refactoring — Этапы 0.1 и 2.1, verified)
 
-Проверено 2026-05-16 в рамках [dashboard-redesign §4a.1](tasks/ui_refactoring/dashboard-redesign-plan.md#4a1-безопасность). Инвариант «секреты в БД только зашифрованными» соблюдён для всех каналов хранения пользовательских LLM-ключей:
+Проверено 2026-05-16 в рамках [dashboard-redesign §4a.1](tasks/ui_refactoring/dashboard-redesign-plan.md#4a1-безопасность) и подтверждено повторно перед Этапом 2 (UI Refactoring 2.1 — re-verify, no schema/code change). Инвариант «секреты в БД только зашифрованными» соблюдён для всех каналов хранения пользовательских LLM-ключей:
 
 | Таблица | Колонка с секретом | Шифрование | Где |
 |---|---|---|---|
