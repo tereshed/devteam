@@ -104,6 +104,354 @@ abstract class AppLocalizations {
   /// **'Wibe Flutter Gin Template'**
   String get appTitle;
 
+  /// ui_refactoring stage 1: brand label in AppBar of AppShell
+  ///
+  /// In ru, this message translates to:
+  /// **'DevTeam'**
+  String get appShellBrand;
+
+  /// ui_refactoring stage 1: sidebar item /dashboard
+  ///
+  /// In ru, this message translates to:
+  /// **'Обзор'**
+  String get navDashboard;
+
+  /// ui_refactoring stage 1: sidebar item /projects
+  ///
+  /// In ru, this message translates to:
+  /// **'Проекты'**
+  String get navProjects;
+
+  /// ui_refactoring stage 1: sidebar item /admin/agents-v2
+  ///
+  /// In ru, this message translates to:
+  /// **'Агенты'**
+  String get navAgents;
+
+  /// ui_refactoring stage 1: sidebar item /admin/worktrees
+  ///
+  /// In ru, this message translates to:
+  /// **'Воркtrees'**
+  String get navWorktrees;
+
+  /// ui_refactoring stage 1: sidebar item /integrations/llm
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM-провайдеры'**
+  String get navIntegrationsLlm;
+
+  /// ui_refactoring stage 1: sidebar item /integrations/git
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-провайдеры'**
+  String get navIntegrationsGit;
+
+  /// ui_refactoring stage 1: sidebar item /admin/prompts
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпты'**
+  String get navPrompts;
+
+  /// ui_refactoring stage 1: sidebar item /admin/workflows
+  ///
+  /// In ru, this message translates to:
+  /// **'Воркфлоу'**
+  String get navWorkflows;
+
+  /// ui_refactoring stage 1: sidebar item /admin/executions
+  ///
+  /// In ru, this message translates to:
+  /// **'Запуски'**
+  String get navExecutions;
+
+  /// ui_refactoring stage 1: sidebar item /settings
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки'**
+  String get navSettings;
+
+  /// ui_refactoring stage 1: sidebar item /profile
+  ///
+  /// In ru, this message translates to:
+  /// **'Профиль'**
+  String get navProfile;
+
+  /// ui_refactoring stage 1: sidebar item /profile/api-keys
+  ///
+  /// In ru, this message translates to:
+  /// **'API-ключи'**
+  String get navApiKeys;
+
+  /// ui_refactoring stage 1: sidebar section header
+  ///
+  /// In ru, this message translates to:
+  /// **'Главная'**
+  String get navGroupHome;
+
+  /// ui_refactoring stage 1: sidebar section header
+  ///
+  /// In ru, this message translates to:
+  /// **'Ресурсы'**
+  String get navGroupResources;
+
+  /// ui_refactoring stage 1: sidebar section header
+  ///
+  /// In ru, this message translates to:
+  /// **'Интеграции'**
+  String get navGroupIntegrations;
+
+  /// ui_refactoring stage 1: sidebar section header
+  ///
+  /// In ru, this message translates to:
+  /// **'Администрирование'**
+  String get navGroupAdmin;
+
+  /// ui_refactoring stage 1: sidebar section header
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки'**
+  String get navGroupSettings;
+
+  /// ui_refactoring stage 1: breadcrumb root label
+  ///
+  /// In ru, this message translates to:
+  /// **'Главная'**
+  String get navBreadcrumbHome;
+
+  /// ui_refactoring stage 1: breadcrumb segment for /new
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый'**
+  String get navBreadcrumbNew;
+
+  /// ui_refactoring stage 1: IntegrationProviderCard status chip
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключено'**
+  String get integrationStatusConnected;
+
+  /// ui_refactoring stage 1: IntegrationProviderCard status chip
+  ///
+  /// In ru, this message translates to:
+  /// **'Не подключено'**
+  String get integrationStatusDisconnected;
+
+  /// ui_refactoring stage 1: IntegrationProviderCard status chip
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get integrationStatusError;
+
+  /// ui_refactoring stage 1: IntegrationProviderCard status chip
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключение…'**
+  String get integrationStatusPending;
+
+  /// ui_refactoring stage 1: title on /integrations/llm stub
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM-провайдеры'**
+  String get integrationsLlmTitle;
+
+  /// ui_refactoring stage 1: subtitle on /integrations/llm stub
+  ///
+  /// In ru, this message translates to:
+  /// **'Управление провайдерами появится на этапе 2. Ниже — превью каталога.'**
+  String get integrationsLlmComingSoon;
+
+  /// ui_refactoring stage 1: title on /integrations/git stub
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-провайдеры'**
+  String get integrationsGitTitle;
+
+  /// ui_refactoring stage 1: subtitle on /integrations/git stub and snackbar on Connect tap
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключение GitHub и GitLab появится на этапе 3.'**
+  String get integrationsGitComingSoon;
+
+  /// ui_refactoring stage 1: primary CTA on git stub cards
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить'**
+  String get integrationsGitConnectCta;
+
+  /// ui_refactoring stage 1: github card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Чтение репозиториев, push в PR-ветки'**
+  String get integrationsGitGithubSubtitle;
+
+  /// ui_refactoring stage 1: gitlab card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Cloud и self-hosted GitLab'**
+  String get integrationsGitGitlabSubtitle;
+
+  /// ui_refactoring stage 1: status chip on disabled stub cards
+  ///
+  /// In ru, this message translates to:
+  /// **'Скоро'**
+  String get integrationsComingSoonChip;
+
+  /// ui_refactoring stage 1: LLM provider brand name (kept in l10n for consistency with gitProvider* keys)
+  ///
+  /// In ru, this message translates to:
+  /// **'Claude Code'**
+  String get llmProviderClaudeCode;
+
+  /// ui_refactoring stage 1: LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'Anthropic'**
+  String get llmProviderAnthropic;
+
+  /// ui_refactoring stage 1: LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'OpenAI'**
+  String get llmProviderOpenAi;
+
+  /// ui_refactoring stage 1: LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'OpenRouter'**
+  String get llmProviderOpenRouter;
+
+  /// ui_refactoring stage 1: LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'DeepSeek'**
+  String get llmProviderDeepSeek;
+
+  /// ui_refactoring stage 1: LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'Zhipu'**
+  String get llmProviderZhipu;
+
+  /// ui_refactoring stage 1: stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Подписка Anthropic через OAuth'**
+  String get llmProviderClaudeCodeSubtitle;
+
+  /// ui_refactoring stage 1: stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Прямой API-ключ Anthropic'**
+  String get llmProviderAnthropicSubtitle;
+
+  /// ui_refactoring stage 1: stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'GPT-4, GPT-4o, o-серия'**
+  String get llmProviderOpenAiSubtitle;
+
+  /// ui_refactoring stage 1: stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Мульти-провайдерный агрегатор'**
+  String get llmProviderOpenRouterSubtitle;
+
+  /// ui_refactoring stage 1: stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'DeepSeek Chat и Coder'**
+  String get llmProviderDeepSeekSubtitle;
+
+  /// ui_refactoring stage 1: stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Модели GLM'**
+  String get llmProviderZhipuSubtitle;
+
+  /// ui_refactoring stage 1: dashboard greeting for authenticated user
+  ///
+  /// In ru, this message translates to:
+  /// **'Добро пожаловать, {email}'**
+  String dashboardWelcomeUser(String email);
+
+  /// ui_refactoring stage 1: dashboard greeting fallback
+  ///
+  /// In ru, this message translates to:
+  /// **'Добро пожаловать'**
+  String get dashboardWelcomeAnon;
+
+  /// ui_refactoring stage 1: subtitle under greeting on /dashboard
+  ///
+  /// In ru, this message translates to:
+  /// **'Сводка по проектам, агентам и интеграциям.'**
+  String get dashboardHubSubtitle;
+
+  /// ui_refactoring stage 1: stat card primary value
+  ///
+  /// In ru, this message translates to:
+  /// **'{n, plural, =0{Нет активных} =1{1 активный} few{{n} активных} many{{n} активных} other{{n} активных}}'**
+  String dashboardStatProjectsActive(int n);
+
+  /// ui_refactoring stage 1: stat card secondary value
+  ///
+  /// In ru, this message translates to:
+  /// **'{n, plural, =0{Всего проектов нет} =1{Всего 1 проект} few{Всего {n} проекта} many{Всего {n} проектов} other{Всего {n} проектов}}'**
+  String dashboardStatProjectsTotal(int n);
+
+  /// ui_refactoring stage 1: stat card primary value
+  ///
+  /// In ru, this message translates to:
+  /// **'{n, plural, =0{Нет агентов} =1{1 агент} few{{n} агента} many{{n} агентов} other{{n} агентов}}'**
+  String dashboardStatAgentsTotal(int n);
+
+  /// ui_refactoring stage 1: stat card primary value
+  ///
+  /// In ru, this message translates to:
+  /// **'{n, plural, =0{Не подключено} =1{1 подключение} few{{n} подключения} many{{n} подключений} other{{n} подключений}}'**
+  String dashboardStatLlmConnected(int n);
+
+  /// ui_refactoring stage 1: stat card primary value
+  ///
+  /// In ru, this message translates to:
+  /// **'{n, plural, =0{Не подключено} =1{1 подключение} few{{n} подключения} many{{n} подключений} other{{n} подключений}}'**
+  String dashboardStatGitConnected(int n);
+
+  /// ui_refactoring stage 1: stat card CTA
+  ///
+  /// In ru, this message translates to:
+  /// **'Управлять'**
+  String get dashboardStatManageCta;
+
+  /// ui_refactoring stage 1: stat card secondary line for not-yet-shipped sections
+  ///
+  /// In ru, this message translates to:
+  /// **'Доступно на следующем этапе'**
+  String get dashboardStatComingSoon;
+
+  /// ui_refactoring stage 1: section title on dashboard
+  ///
+  /// In ru, this message translates to:
+  /// **'Последние задачи'**
+  String get dashboardRecentTasksTitle;
+
+  /// ui_refactoring stage 1: empty-state title
+  ///
+  /// In ru, this message translates to:
+  /// **'Задач пока нет'**
+  String get dashboardRecentTasksEmptyTitle;
+
+  /// ui_refactoring stage 1: empty-state subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Создайте проект и добавьте задачи — они появятся здесь.'**
+  String get dashboardRecentTasksEmptySubtitle;
+
+  /// ui_refactoring stage 1: error state for recent tasks block
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить последние задачи.'**
+  String get dashboardRecentTasksError;
+
   /// Кнопка входа
   ///
   /// In ru, this message translates to:

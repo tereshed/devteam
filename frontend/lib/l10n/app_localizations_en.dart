@@ -12,6 +12,233 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'Wibe Flutter Gin Template';
 
   @override
+  String get appShellBrand => 'DevTeam';
+
+  @override
+  String get navDashboard => 'Overview';
+
+  @override
+  String get navProjects => 'Projects';
+
+  @override
+  String get navAgents => 'Agents';
+
+  @override
+  String get navWorktrees => 'Worktrees';
+
+  @override
+  String get navIntegrationsLlm => 'LLM providers';
+
+  @override
+  String get navIntegrationsGit => 'Git providers';
+
+  @override
+  String get navPrompts => 'Prompts';
+
+  @override
+  String get navWorkflows => 'Workflows';
+
+  @override
+  String get navExecutions => 'Executions';
+
+  @override
+  String get navSettings => 'Settings';
+
+  @override
+  String get navProfile => 'Profile';
+
+  @override
+  String get navApiKeys => 'API keys';
+
+  @override
+  String get navGroupHome => 'Home';
+
+  @override
+  String get navGroupResources => 'Resources';
+
+  @override
+  String get navGroupIntegrations => 'Integrations';
+
+  @override
+  String get navGroupAdmin => 'Administration';
+
+  @override
+  String get navGroupSettings => 'Settings';
+
+  @override
+  String get navBreadcrumbHome => 'Home';
+
+  @override
+  String get navBreadcrumbNew => 'New';
+
+  @override
+  String get integrationStatusConnected => 'Connected';
+
+  @override
+  String get integrationStatusDisconnected => 'Not connected';
+
+  @override
+  String get integrationStatusError => 'Error';
+
+  @override
+  String get integrationStatusPending => 'Connecting…';
+
+  @override
+  String get integrationsLlmTitle => 'LLM providers';
+
+  @override
+  String get integrationsLlmComingSoon =>
+      'Provider management ships in stage 2. Below is a preview of the catalogue.';
+
+  @override
+  String get integrationsGitTitle => 'Git providers';
+
+  @override
+  String get integrationsGitComingSoon =>
+      'Connecting GitHub and GitLab ships in stage 3.';
+
+  @override
+  String get integrationsGitConnectCta => 'Connect';
+
+  @override
+  String get integrationsGitGithubSubtitle =>
+      'Read repositories, push to PR branches';
+
+  @override
+  String get integrationsGitGitlabSubtitle => 'Cloud and self-hosted GitLab';
+
+  @override
+  String get integrationsComingSoonChip => 'Coming soon';
+
+  @override
+  String get llmProviderClaudeCode => 'Claude Code';
+
+  @override
+  String get llmProviderAnthropic => 'Anthropic';
+
+  @override
+  String get llmProviderOpenAi => 'OpenAI';
+
+  @override
+  String get llmProviderOpenRouter => 'OpenRouter';
+
+  @override
+  String get llmProviderDeepSeek => 'DeepSeek';
+
+  @override
+  String get llmProviderZhipu => 'Zhipu';
+
+  @override
+  String get llmProviderClaudeCodeSubtitle =>
+      'Anthropic subscription via OAuth';
+
+  @override
+  String get llmProviderAnthropicSubtitle => 'Direct Anthropic API key';
+
+  @override
+  String get llmProviderOpenAiSubtitle => 'GPT-4, GPT-4o, o-series';
+
+  @override
+  String get llmProviderOpenRouterSubtitle => 'Multi-provider aggregator';
+
+  @override
+  String get llmProviderDeepSeekSubtitle => 'DeepSeek Chat and Coder';
+
+  @override
+  String get llmProviderZhipuSubtitle => 'GLM models';
+
+  @override
+  String dashboardWelcomeUser(String email) {
+    return 'Welcome, $email';
+  }
+
+  @override
+  String get dashboardWelcomeAnon => 'Welcome';
+
+  @override
+  String get dashboardHubSubtitle =>
+      'Overview of your projects, agents and integrations.';
+
+  @override
+  String dashboardStatProjectsActive(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n active',
+      one: '1 active',
+      zero: 'No active',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatProjectsTotal(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n projects in total',
+      one: '1 project in total',
+      zero: 'No projects in total',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatAgentsTotal(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n agents',
+      one: '1 agent',
+      zero: 'No agents',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatLlmConnected(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n connected',
+      one: '1 connected',
+      zero: 'Not connected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatGitConnected(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n connected',
+      one: '1 connected',
+      zero: 'Not connected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get dashboardStatManageCta => 'Manage';
+
+  @override
+  String get dashboardStatComingSoon => 'Available in upcoming stage';
+
+  @override
+  String get dashboardRecentTasksTitle => 'Recent tasks';
+
+  @override
+  String get dashboardRecentTasksEmptyTitle => 'No tasks yet';
+
+  @override
+  String get dashboardRecentTasksEmptySubtitle =>
+      'Create a project and add tasks to see them here.';
+
+  @override
+  String get dashboardRecentTasksError => 'Failed to load recent tasks.';
+
+  @override
   String get login => 'Login';
 
   @override

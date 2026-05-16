@@ -12,6 +12,243 @@ class AppLocalizationsRu extends AppLocalizations {
   String get appTitle => 'Wibe Flutter Gin Template';
 
   @override
+  String get appShellBrand => 'DevTeam';
+
+  @override
+  String get navDashboard => 'Обзор';
+
+  @override
+  String get navProjects => 'Проекты';
+
+  @override
+  String get navAgents => 'Агенты';
+
+  @override
+  String get navWorktrees => 'Воркtrees';
+
+  @override
+  String get navIntegrationsLlm => 'LLM-провайдеры';
+
+  @override
+  String get navIntegrationsGit => 'Git-провайдеры';
+
+  @override
+  String get navPrompts => 'Промпты';
+
+  @override
+  String get navWorkflows => 'Воркфлоу';
+
+  @override
+  String get navExecutions => 'Запуски';
+
+  @override
+  String get navSettings => 'Настройки';
+
+  @override
+  String get navProfile => 'Профиль';
+
+  @override
+  String get navApiKeys => 'API-ключи';
+
+  @override
+  String get navGroupHome => 'Главная';
+
+  @override
+  String get navGroupResources => 'Ресурсы';
+
+  @override
+  String get navGroupIntegrations => 'Интеграции';
+
+  @override
+  String get navGroupAdmin => 'Администрирование';
+
+  @override
+  String get navGroupSettings => 'Настройки';
+
+  @override
+  String get navBreadcrumbHome => 'Главная';
+
+  @override
+  String get navBreadcrumbNew => 'Новый';
+
+  @override
+  String get integrationStatusConnected => 'Подключено';
+
+  @override
+  String get integrationStatusDisconnected => 'Не подключено';
+
+  @override
+  String get integrationStatusError => 'Ошибка';
+
+  @override
+  String get integrationStatusPending => 'Подключение…';
+
+  @override
+  String get integrationsLlmTitle => 'LLM-провайдеры';
+
+  @override
+  String get integrationsLlmComingSoon =>
+      'Управление провайдерами появится на этапе 2. Ниже — превью каталога.';
+
+  @override
+  String get integrationsGitTitle => 'Git-провайдеры';
+
+  @override
+  String get integrationsGitComingSoon =>
+      'Подключение GitHub и GitLab появится на этапе 3.';
+
+  @override
+  String get integrationsGitConnectCta => 'Подключить';
+
+  @override
+  String get integrationsGitGithubSubtitle =>
+      'Чтение репозиториев, push в PR-ветки';
+
+  @override
+  String get integrationsGitGitlabSubtitle => 'Cloud и self-hosted GitLab';
+
+  @override
+  String get integrationsComingSoonChip => 'Скоро';
+
+  @override
+  String get llmProviderClaudeCode => 'Claude Code';
+
+  @override
+  String get llmProviderAnthropic => 'Anthropic';
+
+  @override
+  String get llmProviderOpenAi => 'OpenAI';
+
+  @override
+  String get llmProviderOpenRouter => 'OpenRouter';
+
+  @override
+  String get llmProviderDeepSeek => 'DeepSeek';
+
+  @override
+  String get llmProviderZhipu => 'Zhipu';
+
+  @override
+  String get llmProviderClaudeCodeSubtitle => 'Подписка Anthropic через OAuth';
+
+  @override
+  String get llmProviderAnthropicSubtitle => 'Прямой API-ключ Anthropic';
+
+  @override
+  String get llmProviderOpenAiSubtitle => 'GPT-4, GPT-4o, o-серия';
+
+  @override
+  String get llmProviderOpenRouterSubtitle => 'Мульти-провайдерный агрегатор';
+
+  @override
+  String get llmProviderDeepSeekSubtitle => 'DeepSeek Chat и Coder';
+
+  @override
+  String get llmProviderZhipuSubtitle => 'Модели GLM';
+
+  @override
+  String dashboardWelcomeUser(String email) {
+    return 'Добро пожаловать, $email';
+  }
+
+  @override
+  String get dashboardWelcomeAnon => 'Добро пожаловать';
+
+  @override
+  String get dashboardHubSubtitle =>
+      'Сводка по проектам, агентам и интеграциям.';
+
+  @override
+  String dashboardStatProjectsActive(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n активных',
+      many: '$n активных',
+      few: '$n активных',
+      one: '1 активный',
+      zero: 'Нет активных',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatProjectsTotal(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Всего $n проектов',
+      many: 'Всего $n проектов',
+      few: 'Всего $n проекта',
+      one: 'Всего 1 проект',
+      zero: 'Всего проектов нет',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatAgentsTotal(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n агентов',
+      many: '$n агентов',
+      few: '$n агента',
+      one: '1 агент',
+      zero: 'Нет агентов',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatLlmConnected(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n подключений',
+      many: '$n подключений',
+      few: '$n подключения',
+      one: '1 подключение',
+      zero: 'Не подключено',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String dashboardStatGitConnected(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n подключений',
+      many: '$n подключений',
+      few: '$n подключения',
+      one: '1 подключение',
+      zero: 'Не подключено',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get dashboardStatManageCta => 'Управлять';
+
+  @override
+  String get dashboardStatComingSoon => 'Доступно на следующем этапе';
+
+  @override
+  String get dashboardRecentTasksTitle => 'Последние задачи';
+
+  @override
+  String get dashboardRecentTasksEmptyTitle => 'Задач пока нет';
+
+  @override
+  String get dashboardRecentTasksEmptySubtitle =>
+      'Создайте проект и добавьте задачи — они появятся здесь.';
+
+  @override
+  String get dashboardRecentTasksError =>
+      'Не удалось загрузить последние задачи.';
+
+  @override
   String get login => 'Войти';
 
   @override

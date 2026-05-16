@@ -51,6 +51,9 @@ GitHub Settings / Developer Settings
 | **Authorization callback URL**| `http://localhost:8080/api/v1/integrations/github/auth/callback`    |
 | Enable Device Flow            | НЕ отмечаем                                                         |
 
+> **Где настройки доступов (scopes)?**
+> В отличие от GitLab (или GitHub Apps), для **GitHub OAuth Apps** права доступа не настраиваются в интерфейсе регистрации. Наше приложение (backend) само запросит нужные права (например, `scope=repo,user`) динамически при формировании ссылки для авторизации пользователя.
+
 Жми **Register application**.
 
 ### 1.3. Сохранить креды
@@ -60,18 +63,18 @@ GitHub Settings / Developer Settings
 ```
 DevTeam (dev)
 ─────────────────────────────────────────────
-Client ID:      Iv1.abcd1234efgh5678          ←  скопируй
+Client ID:      1234567890abcdef1234          ←  скопируй
                               [ Generate a new client secret ]
 ```
 
 1. Скопируй **Client ID** в буфер — это `GITHUB_OAUTH_CLIENT_ID`.
-2. Жми **Generate a new client secret** — появится длинная строка вида `ghp_AbCdEf...`. **Скопируй её немедленно** — GitHub показывает secret **только один раз**, после reload вместо неё будут точки.
+2. Жми **Generate a new client secret** — появится длинная случайная строка (обычно 40 символов, например `a1b2c3d4e5f6...`). **Скопируй её немедленно** — GitHub показывает secret **только один раз**, после reload вместо неё будут точки.
 
 Положи обе строки в `backend/.env`:
 
 ```env
-GITHUB_OAUTH_CLIENT_ID=Iv1.abcd1234efgh5678
-GITHUB_OAUTH_CLIENT_SECRET=ghp_AbCdEf...
+GITHUB_OAUTH_CLIENT_ID=1234567890abcdef1234
+GITHUB_OAUTH_CLIENT_SECRET=a1b2c3d4e5f6...
 ```
 
 ### 1.4. (Опционально) Логотип
@@ -194,8 +197,8 @@ GITLAB_OAUTH_CLIENT_SECRET=gloas-aBcDeF...
 
 ```env
 # GitHub OAuth (Shared App, Dev)
-GITHUB_OAUTH_CLIENT_ID=Iv1.xxxxxxxxxxxxxxxx
-GITHUB_OAUTH_CLIENT_SECRET=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_OAUTH_CLIENT_ID=xxxxxxxxxxxxxxxxxxxx
+GITHUB_OAUTH_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # GitLab.com OAuth (Shared App, Dev)
 GITLAB_OAUTH_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -219,7 +222,7 @@ INTEGRATION_TOKEN_ENC_KEY=<32-bytes-base64>
 3. Должно открыться окно Safari/Chrome с GitHub-prompt'ом «Authorize DevTeam (dev)».
 4. Кликнул Authorize → браузер показывает «Готово, вернитесь в приложение».
 5. В приложении статус-чип Connect стал зелёным **без ручного обновления** (через WS-событие, §4a.4).
-6. В БД (`docker exec wibe_yugabytedb /home/yugabyte/bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte -c "SELECT provider, length(access_token) FROM git_integration_credentials;"`) — поле `access_token` это **бинарный blob** длиной ~80–120 байт (AES-GCM overhead), а не plain-text `ghp_...`.
+6. В БД (`docker exec wibe_yugabytedb /home/yugabyte/bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte -c "SELECT provider, length(access_token) FROM git_integration_credentials;"`) — поле `access_token` это **бинарный blob** длиной ~80–120 байт (AES-GCM overhead), а не plain-text `a1b2c3...`.
 
 Если хоть один пункт не сходится — баг, чиним до мерджа.
 
