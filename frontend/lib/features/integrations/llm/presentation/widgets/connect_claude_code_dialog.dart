@@ -74,8 +74,7 @@ class _ConnectClaudeCodeDialogState
       _errorReason = null;
     });
     final repo = widget.parentRef.read(llmIntegrationsRepositoryProvider);
-    final controller =
-        widget.parentRef.read(llmIntegrationsControllerProvider);
+    final controller = widget.parentRef.read(llmIntegrationsControllerProvider);
     try {
       final init = await repo.initClaudeCodeOAuth();
       controller.applyLocal(
@@ -85,8 +84,8 @@ class _ConnectClaudeCodeDialogState
         ),
       );
       if (!mounted) {
-      return;
-    }
+        return;
+      }
       setState(() {
         _init = init;
         _phase = _OAuthDialogPhase.awaiting;
@@ -95,8 +94,8 @@ class _ConnectClaudeCodeDialogState
       _scheduleTimeout();
     } on LlmIntegrationsException catch (e) {
       if (!mounted) {
-      return;
-    }
+        return;
+      }
       setState(() {
         _phase = _OAuthDialogPhase.error;
         _errorReason = e.errorCode;
@@ -104,8 +103,8 @@ class _ConnectClaudeCodeDialogState
       });
     } catch (e) {
       if (!mounted) {
-      return;
-    }
+        return;
+      }
       setState(() {
         _phase = _OAuthDialogPhase.error;
         _errorMessage = e.toString();
@@ -118,16 +117,16 @@ class _ConnectClaudeCodeDialogState
     final ws = widget.parentRef.read(webSocketServiceProvider);
     _wsSub = ws.events.listen((ev) {
       if (ev is! WsClientEventServer) {
-      return;
-    }
+        return;
+      }
       final inner = ev.event;
       if (inner is! WsServerEventIntegrationStatus) {
-      return;
-    }
+        return;
+      }
       final integration = inner.value;
       if (integration.provider != 'claude_code_oauth') {
-      return;
-    }
+        return;
+      }
       switch (integration.status) {
         case WsIntegrationStatus.connected:
           _onSuccess();
@@ -147,10 +146,11 @@ class _ConnectClaudeCodeDialogState
     _timeoutTimer?.cancel();
     _timeoutTimer = Timer(_pendingTimeout, () {
       if (!mounted) {
-      return;
-    }
-      final controller =
-          widget.parentRef.read(llmIntegrationsControllerProvider);
+        return;
+      }
+      final controller = widget.parentRef.read(
+        llmIntegrationsControllerProvider,
+      );
       controller.applyLocal(
         const LlmProviderConnection(
           provider: LlmIntegrationProvider.claudeCodeOAuth,
@@ -168,8 +168,7 @@ class _ConnectClaudeCodeDialogState
       return;
     }
     _timeoutTimer?.cancel();
-    final controller =
-        widget.parentRef.read(llmIntegrationsControllerProvider);
+    final controller = widget.parentRef.read(llmIntegrationsControllerProvider);
     controller.applyLocal(
       const LlmProviderConnection(
         provider: LlmIntegrationProvider.claudeCodeOAuth,
@@ -192,8 +191,7 @@ class _ConnectClaudeCodeDialogState
       return;
     }
     _timeoutTimer?.cancel();
-    final controller =
-        widget.parentRef.read(llmIntegrationsControllerProvider);
+    final controller = widget.parentRef.read(llmIntegrationsControllerProvider);
     controller.applyLocal(
       LlmProviderConnection(
         provider: LlmIntegrationProvider.claudeCodeOAuth,
@@ -220,9 +218,9 @@ class _ConnectClaudeCodeDialogState
     );
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(uri.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(uri.toString())));
     }
   }
 
@@ -235,7 +233,10 @@ class _ConnectClaudeCodeDialogState
   }
 
   String _reasonText(BuildContext context, String? reason) {
-    final l10n = requireAppLocalizations(context, where: '_ConnectClaudeCodeDialog._reason');
+    final l10n = requireAppLocalizations(
+      context,
+      where: '_ConnectClaudeCodeDialog._reason',
+    );
     switch (reason) {
       case 'user_cancelled':
       case 'access_denied':
@@ -254,8 +255,10 @@ class _ConnectClaudeCodeDialogState
 
   @override
   Widget build(BuildContext context) {
-    final l10n =
-        requireAppLocalizations(context, where: '_ConnectClaudeCodeDialog');
+    final l10n = requireAppLocalizations(
+      context,
+      where: '_ConnectClaudeCodeDialog',
+    );
     return AlertDialog(
       title: Text(l10n.integrationsLlmClaudeCodeOAuthTitle),
       content: ConstrainedBox(
@@ -293,11 +296,12 @@ class _ConnectClaudeCodeDialogState
                 const SizedBox(width: 8),
                 SelectableText(
                   init.userCode,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontFamily: 'monospace'),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
                 ),
                 IconButton(
-                  tooltip: 'Copy',
+                  tooltip: l10n.integrationsLlmClaudeCodeOAuthCopy,
                   icon: const Icon(Icons.copy, size: 18),
                   onPressed: _copyCode,
                 ),

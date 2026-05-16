@@ -109,8 +109,9 @@ class LlmIntegrationsRepository {
         verificationUri: (data['verification_uri'] as String?) ?? '',
         verificationUriComplete:
             (data['verification_uri_complete'] as String?) ?? '',
-        intervalSeconds:
-            (data['interval_seconds'] is int) ? data['interval_seconds'] as int : 5,
+        intervalSeconds: (data['interval_seconds'] is int)
+            ? data['interval_seconds'] as int
+            : 5,
         expiresInSeconds: (data['expires_in_seconds'] is int)
             ? data['expires_in_seconds'] as int
             : 900,
@@ -182,16 +183,20 @@ class LlmIntegrationsRepository {
       }
       final masked = raw['masked_preview'];
       if (masked is String && masked.isNotEmpty) {
-        out.add(LlmProviderConnection(
-          provider: entry.value,
-          status: LlmProviderConnectionStatus.connected,
-          maskedPreview: masked,
-        ));
+        out.add(
+          LlmProviderConnection(
+            provider: entry.value,
+            status: LlmProviderConnectionStatus.connected,
+            maskedPreview: masked,
+          ),
+        );
       } else {
-        out.add(LlmProviderConnection(
-          provider: entry.value,
-          status: LlmProviderConnectionStatus.disconnected,
-        ));
+        out.add(
+          LlmProviderConnection(
+            provider: entry.value,
+            status: LlmProviderConnectionStatus.disconnected,
+          ),
+        );
       }
     }
     return out;

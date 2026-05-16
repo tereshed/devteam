@@ -149,6 +149,8 @@
   "@integrationsLlmClaudeCodeOpenBrowser": { "description": "ui_refactoring stage 2: launch URL button" },
   "integrationsLlmClaudeCodeOAuthCode": "Код:",
   "@integrationsLlmClaudeCodeOAuthCode": { "description": "ui_refactoring stage 2: user_code label" },
+  "integrationsLlmClaudeCodeOAuthCopy": "Скопировать код",
+  "@integrationsLlmClaudeCodeOAuthCopy": { "description": "ui_refactoring stage 2: tooltip for user_code copy IconButton" },
   "integrationsLlmClaudeCodeOAuthWaiting": "Ждём подтверждения… Можно закрыть это окно и вернуться позже — статус обновится автоматически.",
   "@integrationsLlmClaudeCodeOAuthWaiting": { "description": "ui_refactoring stage 2: pending body copy" },
   "integrationsLlmClaudeCodeOAuthTimeout": "Авторизация истекла через 20 минут. Попробуйте снова.",

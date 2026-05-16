@@ -506,6 +506,12 @@ abstract class AppLocalizations {
   /// **'Код:'**
   String get integrationsLlmClaudeCodeOAuthCode;
 
+  /// ui_refactoring stage 2: tooltip for user_code copy IconButton
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировать код'**
+  String get integrationsLlmClaudeCodeOAuthCopy;
+
   /// ui_refactoring stage 2: pending body copy
   ///
   /// In ru, this message translates to:

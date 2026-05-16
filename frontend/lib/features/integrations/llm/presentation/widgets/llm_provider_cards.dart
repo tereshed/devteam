@@ -148,30 +148,37 @@ IntegrationProviderCard llmProviderCard(
   final actions = <IntegrationAction>[];
   if (connection.status == LlmProviderConnectionStatus.connected) {
     if (onReplace != null) {
-      actions.add(IntegrationAction(
-        label: l10n.integrationsLlmReplaceCta,
-        onPressed: onReplace,
-        isBusy: busy,
-      ));
+      actions.add(
+        IntegrationAction(
+          label: l10n.integrationsLlmReplaceCta,
+          onPressed: onReplace,
+          isBusy: busy,
+        ),
+      );
     }
     if (onDisconnect != null) {
-      actions.add(IntegrationAction(
-        label: l10n.integrationsLlmDisconnectCta,
-        style: IntegrationActionStyle.destructive,
-        onPressed: onDisconnect,
-        isBusy: busy,
-      ));
+      actions.add(
+        IntegrationAction(
+          label: l10n.integrationsLlmDisconnectCta,
+          style: IntegrationActionStyle.destructive,
+          onPressed: onDisconnect,
+          isBusy: busy,
+        ),
+      );
     }
   } else {
     if (onConnect != null) {
-      actions.add(IntegrationAction(
-        label: connection.status == LlmProviderConnectionStatus.error
-            ? l10n.integrationsLlmRetry
-            : l10n.integrationsLlmConnectCta,
-        style: IntegrationActionStyle.primary,
-        onPressed: onConnect,
-        isBusy: busy || connection.status == LlmProviderConnectionStatus.pending,
-      ));
+      actions.add(
+        IntegrationAction(
+          label: connection.status == LlmProviderConnectionStatus.error
+              ? l10n.integrationsLlmRetry
+              : l10n.integrationsLlmConnectCta,
+          style: IntegrationActionStyle.primary,
+          onPressed: onConnect,
+          isBusy:
+              busy || connection.status == LlmProviderConnectionStatus.pending,
+        ),
+      );
     }
   }
   return IntegrationProviderCard(
@@ -195,15 +202,14 @@ IntegrationProviderCard claudeCodeCard(
   VoidCallback? onConnect,
   VoidCallback? onDisconnect,
   bool busy = false,
-}) =>
-    llmProviderCard(
-      context,
-      provider: LlmIntegrationProvider.claudeCodeOAuth,
-      connection: connection,
-      onConnect: onConnect,
-      onDisconnect: onDisconnect,
-      busy: busy,
-    );
+}) => llmProviderCard(
+  context,
+  provider: LlmIntegrationProvider.claudeCodeOAuth,
+  connection: connection,
+  onConnect: onConnect,
+  onDisconnect: onDisconnect,
+  busy: busy,
+);
 
 IntegrationProviderCard anthropicCard(
   BuildContext context, {
@@ -212,16 +218,15 @@ IntegrationProviderCard anthropicCard(
   VoidCallback? onDisconnect,
   VoidCallback? onReplace,
   bool busy = false,
-}) =>
-    llmProviderCard(
-      context,
-      provider: LlmIntegrationProvider.anthropic,
-      connection: connection,
-      onConnect: onConnect,
-      onDisconnect: onDisconnect,
-      onReplace: onReplace,
-      busy: busy,
-    );
+}) => llmProviderCard(
+  context,
+  provider: LlmIntegrationProvider.anthropic,
+  connection: connection,
+  onConnect: onConnect,
+  onDisconnect: onDisconnect,
+  onReplace: onReplace,
+  busy: busy,
+);
 
 IntegrationProviderCard openAiCard(
   BuildContext context, {
@@ -230,16 +235,15 @@ IntegrationProviderCard openAiCard(
   VoidCallback? onDisconnect,
   VoidCallback? onReplace,
   bool busy = false,
-}) =>
-    llmProviderCard(
-      context,
-      provider: LlmIntegrationProvider.openai,
-      connection: connection,
-      onConnect: onConnect,
-      onDisconnect: onDisconnect,
-      onReplace: onReplace,
-      busy: busy,
-    );
+}) => llmProviderCard(
+  context,
+  provider: LlmIntegrationProvider.openai,
+  connection: connection,
+  onConnect: onConnect,
+  onDisconnect: onDisconnect,
+  onReplace: onReplace,
+  busy: busy,
+);
 
 IntegrationProviderCard openRouterCard(
   BuildContext context, {
@@ -248,16 +252,15 @@ IntegrationProviderCard openRouterCard(
   VoidCallback? onDisconnect,
   VoidCallback? onReplace,
   bool busy = false,
-}) =>
-    llmProviderCard(
-      context,
-      provider: LlmIntegrationProvider.openrouter,
-      connection: connection,
-      onConnect: onConnect,
-      onDisconnect: onDisconnect,
-      onReplace: onReplace,
-      busy: busy,
-    );
+}) => llmProviderCard(
+  context,
+  provider: LlmIntegrationProvider.openrouter,
+  connection: connection,
+  onConnect: onConnect,
+  onDisconnect: onDisconnect,
+  onReplace: onReplace,
+  busy: busy,
+);
 
 IntegrationProviderCard deepseekCard(
   BuildContext context, {
@@ -266,16 +269,15 @@ IntegrationProviderCard deepseekCard(
   VoidCallback? onDisconnect,
   VoidCallback? onReplace,
   bool busy = false,
-}) =>
-    llmProviderCard(
-      context,
-      provider: LlmIntegrationProvider.deepseek,
-      connection: connection,
-      onConnect: onConnect,
-      onDisconnect: onDisconnect,
-      onReplace: onReplace,
-      busy: busy,
-    );
+}) => llmProviderCard(
+  context,
+  provider: LlmIntegrationProvider.deepseek,
+  connection: connection,
+  onConnect: onConnect,
+  onDisconnect: onDisconnect,
+  onReplace: onReplace,
+  busy: busy,
+);
 
 IntegrationProviderCard zhipuCard(
   BuildContext context, {
@@ -284,13 +286,12 @@ IntegrationProviderCard zhipuCard(
   VoidCallback? onDisconnect,
   VoidCallback? onReplace,
   bool busy = false,
-}) =>
-    llmProviderCard(
-      context,
-      provider: LlmIntegrationProvider.zhipu,
-      connection: connection,
-      onConnect: onConnect,
-      onDisconnect: onDisconnect,
-      onReplace: onReplace,
-      busy: busy,
-    );
+}) => llmProviderCard(
+  context,
+  provider: LlmIntegrationProvider.zhipu,
+  connection: connection,
+  onConnect: onConnect,
+  onDisconnect: onDisconnect,
+  onReplace: onReplace,
+  busy: busy,
+);

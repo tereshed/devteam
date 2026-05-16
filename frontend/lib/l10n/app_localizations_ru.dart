@@ -226,6 +226,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get integrationsLlmClaudeCodeOAuthCode => 'Код:';
 
   @override
+  String get integrationsLlmClaudeCodeOAuthCopy => 'Скопировать код';
+
+  @override
   String get integrationsLlmClaudeCodeOAuthWaiting =>
       'Ждём подтверждения… Можно закрыть это окно и вернуться позже — статус обновится автоматически.';
 

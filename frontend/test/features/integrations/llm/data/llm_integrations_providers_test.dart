@@ -14,8 +14,7 @@ import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dar
 class _FakeRepo implements LlmIntegrationsRepository {
   _FakeRepo({
     this.apiKeyConnections = const <LlmProviderConnection>[],
-    this.claudeStatus =
-        const ClaudeCodeIntegrationStatus(connected: false),
+    this.claudeStatus = const ClaudeCodeIntegrationStatus(connected: false),
     this.statusGate,
   });
 
@@ -130,7 +129,8 @@ void main() {
       );
     });
 
-    test('reconnect (transient failure → server event) запускает повторный GET /status',
+    test(
+        'reconnect (transient failure → server event) запускает повторный GET /status',
         () async {
       final repo = _FakeRepo();
       final ws = StreamController<WsClientEvent>.broadcast();
@@ -151,7 +151,8 @@ void main() {
       ));
       await Future<void>.delayed(Duration.zero);
       expect(repo.statusCallCount, firstCallCount,
-          reason: 'на сбое НЕ должен сразу пере-фетчить (сокет ещё в reconnect)');
+          reason:
+              'на сбое НЕ должен сразу пере-фетчить (сокет ещё в reconnect)');
 
       // Теперь приходит обычный server-event — это сигнал «сокет снова жив».
       ws.add(WsClientEvent.server(
@@ -172,7 +173,8 @@ void main() {
           reason: 'после reconnect должен быть второй GET /status');
     });
 
-    test('refresh() в полёте не затирает WS-обновление (version-guard, §1 ревью)',
+    test(
+        'refresh() в полёте не затирает WS-обновление (version-guard, §1 ревью)',
         () async {
       // Сценарий: REST вернёт устаревшие "disconnected" данные, но пока он летит,
       // приходит WS-ивент "connected" для того же провайдера. После завершения

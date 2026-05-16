@@ -228,6 +228,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get integrationsLlmClaudeCodeOAuthCode => 'Code:';
 
   @override
+  String get integrationsLlmClaudeCodeOAuthCopy => 'Copy code';
+
+  @override
   String get integrationsLlmClaudeCodeOAuthWaiting =>
       'Waiting for confirmation… You can close this dialog and come back later — the status will update automatically.';
 

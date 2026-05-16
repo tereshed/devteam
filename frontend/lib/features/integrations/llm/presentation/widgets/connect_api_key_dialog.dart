@@ -18,16 +18,12 @@ Future<void> showConnectApiKeyDialog(
 }) async {
   await showDialog<void>(
     context: context,
-    builder: (ctx) =>
-        _ConnectApiKeyDialog(provider: provider, parentRef: ref),
+    builder: (ctx) => _ConnectApiKeyDialog(provider: provider, parentRef: ref),
   );
 }
 
 class _ConnectApiKeyDialog extends ConsumerStatefulWidget {
-  const _ConnectApiKeyDialog({
-    required this.provider,
-    required this.parentRef,
-  });
+  const _ConnectApiKeyDialog({required this.provider, required this.parentRef});
 
   final LlmIntegrationProvider provider;
   final WidgetRef parentRef;
@@ -61,8 +57,7 @@ class _ConnectApiKeyDialogState extends ConsumerState<_ConnectApiKeyDialog> {
       _errorMessage = null;
     });
     final repo = widget.parentRef.read(llmIntegrationsRepositoryProvider);
-    final controller =
-        widget.parentRef.read(llmIntegrationsControllerProvider);
+    final controller = widget.parentRef.read(llmIntegrationsControllerProvider);
     try {
       await repo.setApiKey(
         provider: widget.provider,
@@ -94,7 +89,10 @@ class _ConnectApiKeyDialogState extends ConsumerState<_ConnectApiKeyDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = requireAppLocalizations(context, where: '_ConnectApiKeyDialog');
+    final l10n = requireAppLocalizations(
+      context,
+      where: '_ConnectApiKeyDialog',
+    );
     final providerLabel = _providerLabel(l10n, widget.provider);
 
     return AlertDialog(
@@ -127,9 +125,7 @@ class _ConnectApiKeyDialogState extends ConsumerState<_ConnectApiKeyDialog> {
                 const SizedBox(height: 12),
                 Text(
                   _errorMessage!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
             ],
@@ -176,4 +172,3 @@ class _ConnectApiKeyDialogState extends ConsumerState<_ConnectApiKeyDialog> {
     }
   }
 }
-

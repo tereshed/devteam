@@ -9,8 +9,9 @@ import 'package:frontend/features/integrations/llm/data/llm_integrations_reposit
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 
 /// DI: Singleton-репозиторий LLM Integrations.
-final llmIntegrationsRepositoryProvider =
-    Provider<LlmIntegrationsRepository>((ref) {
+final llmIntegrationsRepositoryProvider = Provider<LlmIntegrationsRepository>((
+  ref,
+) {
   final dio = ref.watch(dioClientProvider);
   return LlmIntegrationsRepository(dio: dio);
 });
@@ -66,8 +67,8 @@ class LlmIntegrationsController extends ChangeNotifier {
   LlmIntegrationsController({
     required LlmIntegrationsRepository repository,
     required Stream<WsClientEvent> wsEvents,
-  })  : _repository = repository,
-        _state = LlmIntegrationsState.initial {
+  }) : _repository = repository,
+       _state = LlmIntegrationsState.initial {
     _wsSubscription = wsEvents.listen(_onWsClientEvent);
   }
 
@@ -114,25 +115,24 @@ class LlmIntegrationsController extends ChangeNotifier {
       }
       connections[LlmIntegrationProvider.claudeCodeOAuth] =
           LlmProviderConnection(
-        provider: LlmIntegrationProvider.claudeCodeOAuth,
-        status: claudeStatus.connected
-            ? LlmProviderConnectionStatus.connected
-            : LlmProviderConnectionStatus.disconnected,
-        expiresAt: claudeStatus.expiresAt,
+            provider: LlmIntegrationProvider.claudeCodeOAuth,
+            status: claudeStatus.connected
+                ? LlmProviderConnectionStatus.connected
+                : LlmProviderConnectionStatus.disconnected,
+            expiresAt: claudeStatus.expiresAt,
+          );
+      _setState(
+        _state.copyWith(
+          connections: connections,
+          isLoading: false,
+          errorMessage: null,
+        ),
       );
-      _setState(_state.copyWith(
-        connections: connections,
-        isLoading: false,
-        errorMessage: null,
-      ));
     } catch (e) {
       if (_disposed || startedAtVersion != _stateVersion) {
         return;
       }
-      _setState(_state.copyWith(
-        isLoading: false,
-        errorMessage: e.toString(),
-      ));
+      _setState(_state.copyWith(isLoading: false, errorMessage: e.toString()));
     }
   }
 
@@ -148,8 +148,7 @@ class LlmIntegrationsController extends ChangeNotifier {
   }
 
   @visibleForTesting
-  bool get debugNeedsResyncOnNextServerEvent =>
-      _needsResyncOnNextServerEvent;
+  bool get debugNeedsResyncOnNextServerEvent => _needsResyncOnNextServerEvent;
 
   void _onWsClientEvent(WsClientEvent ev) {
     switch (ev) {
@@ -223,8 +222,9 @@ class LlmIntegrationsController extends ChangeNotifier {
 ///
 /// Возвращает long-lived контроллер; UI листает `state` через
 /// [llmIntegrationsStateProvider].
-final llmIntegrationsControllerProvider =
-    Provider<LlmIntegrationsController>((ref) {
+final llmIntegrationsControllerProvider = Provider<LlmIntegrationsController>((
+  ref,
+) {
   final repo = ref.watch(llmIntegrationsRepositoryProvider);
   final ws = ref.watch(webSocketServiceProvider);
   final controller = LlmIntegrationsController(
@@ -239,8 +239,9 @@ final llmIntegrationsControllerProvider =
 ///
 /// Использует [Stream] — Riverpod 3 не имеет `ChangeNotifierProvider`,
 /// но позволяет легко превращать [Listenable] в [Stream] через `addListener`.
-final llmIntegrationsStateProvider =
-    StreamProvider<LlmIntegrationsState>((ref) {
+final llmIntegrationsStateProvider = StreamProvider<LlmIntegrationsState>((
+  ref,
+) {
   final controller = ref.watch(llmIntegrationsControllerProvider);
   final controller$ = StreamController<LlmIntegrationsState>();
   void onChange() => controller$.add(controller.state);

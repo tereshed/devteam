@@ -23,8 +23,7 @@ import 'package:frontend/l10n/app_localizations.dart';
 class _FakeRepo implements LlmIntegrationsRepository {
   _FakeRepo({
     this.apiKey = const <LlmProviderConnection>[],
-    this.claude =
-        const ClaudeCodeIntegrationStatus(connected: false),
+    this.claude = const ClaudeCodeIntegrationStatus(connected: false),
     this.gate,
   });
 
@@ -43,7 +42,9 @@ class _FakeRepo implements LlmIntegrationsRepository {
   }
 
   @override
-  Future<ClaudeCodeIntegrationStatus> fetchClaudeCodeStatus({cancelToken}) async {
+  Future<ClaudeCodeIntegrationStatus> fetchClaudeCodeStatus({
+    cancelToken,
+  }) async {
     return claude;
   }
 
@@ -55,12 +56,12 @@ class _FakeRepo implements LlmIntegrationsRepository {
 
 class _FakeWebSocketService extends WebSocketService {
   _FakeWebSocketService()
-      : super(
-          baseUrl: 'http://127.0.0.1:8080/api/v1',
-          channelFactory: (_, {protocols}) =>
-              throw UnimplementedError('not used in tests'),
-          authProvider: () async => const WsAuth.none(),
-        );
+    : super(
+        baseUrl: 'http://127.0.0.1:8080/api/v1',
+        channelFactory: (_, {protocols}) =>
+            throw UnimplementedError('not used in tests'),
+        authProvider: () async => const WsAuth.none(),
+      );
 
   final _ctrl = StreamController<WsClientEvent>.broadcast();
 
@@ -84,10 +85,7 @@ ProviderContainer _container({
   );
 }
 
-Future<void> _pump(
-  WidgetTester tester,
-  ProviderContainer container,
-) async {
+Future<void> _pump(WidgetTester tester, ProviderContainer container) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -102,90 +100,97 @@ Future<void> _pump(
 
 void main() {
   group('LlmIntegrationsScreen', () {
-    testWidgets('loading: показывает CircularProgressIndicator до первого refresh',
-        (tester) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'loading: показывает CircularProgressIndicator до первого refresh',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      final gate = Completer<void>();
-      final repo = _FakeRepo(gate: gate);
-      final ws = _FakeWebSocketService();
-      final container = _container(repo: repo, ws: ws);
-      addTearDown(container.dispose);
-      addTearDown(ws.close);
+        final gate = Completer<void>();
+        final repo = _FakeRepo(gate: gate);
+        final ws = _FakeWebSocketService();
+        final container = _container(repo: repo, ws: ws);
+        addTearDown(container.dispose);
+        addTearDown(ws.close);
 
-      await _pump(tester, container);
-      // postFrameCallback запускает refresh(); gate не завершен → state.isLoading == true.
-      await tester.pump();
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      // Завершаем gate, чтобы убрать pending-Timer перед disposal.
-      gate.complete();
-      await tester.pumpAndSettle();
-    });
+        await _pump(tester, container);
+        // postFrameCallback запускает refresh(); gate не завершен → state.isLoading == true.
+        await tester.pump();
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        // Завершаем gate, чтобы убрать pending-Timer перед disposal.
+        gate.complete();
+        await tester.pumpAndSettle();
+      },
+    );
 
-    testWidgets('connected: показывает карточку Claude Code в секции Connected',
-        (tester) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'connected: показывает карточку Claude Code в секции Connected',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      final repo = _FakeRepo(
-        apiKey: const [
-          LlmProviderConnection(
-            provider: LlmIntegrationProvider.anthropic,
-            status: LlmProviderConnectionStatus.connected,
-            maskedPreview: '****3Mk9',
-          ),
-        ],
-        claude:
-            const ClaudeCodeIntegrationStatus(connected: true),
-      );
-      final ws = _FakeWebSocketService();
-      final container = _container(repo: repo, ws: ws);
-      addTearDown(container.dispose);
-      addTearDown(ws.close);
+        final repo = _FakeRepo(
+          apiKey: const [
+            LlmProviderConnection(
+              provider: LlmIntegrationProvider.anthropic,
+              status: LlmProviderConnectionStatus.connected,
+              maskedPreview: '****3Mk9',
+            ),
+          ],
+          claude: const ClaudeCodeIntegrationStatus(connected: true),
+        );
+        final ws = _FakeWebSocketService();
+        final container = _container(repo: repo, ws: ws);
+        addTearDown(container.dispose);
+        addTearDown(ws.close);
 
-      await _pump(tester, container);
-      await tester.pumpAndSettle();
+        await _pump(tester, container);
+        await tester.pumpAndSettle();
 
-      expect(find.text('Connected'), findsWidgets);
-      expect(find.text('Claude Code'), findsOneWidget);
-      expect(find.text('Anthropic'), findsOneWidget);
-      // masked_preview виден в карточке как statusDetail
-      expect(find.text('****3Mk9'), findsOneWidget);
-    });
+        expect(find.text('Connected'), findsWidgets);
+        expect(find.text('Claude Code'), findsOneWidget);
+        expect(find.text('Anthropic'), findsOneWidget);
+        // masked_preview виден в карточке как statusDetail
+        expect(find.text('****3Mk9'), findsOneWidget);
+      },
+    );
 
-    testWidgets('empty: connected секция показывает empty hint, available — все 6 карточек',
-        (tester) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'empty: connected секция показывает empty hint, available — все 6 карточек',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      final repo = _FakeRepo(); // ничего не подключено
-      final ws = _FakeWebSocketService();
-      final container = _container(repo: repo, ws: ws);
-      addTearDown(container.dispose);
-      addTearDown(ws.close);
+        final repo = _FakeRepo(); // ничего не подключено
+        final ws = _FakeWebSocketService();
+        final container = _container(repo: repo, ws: ws);
+        addTearDown(container.dispose);
+        addTearDown(ws.close);
 
-      await _pump(tester, container);
-      await tester.pumpAndSettle();
+        await _pump(tester, container);
+        await tester.pumpAndSettle();
 
-      // Connected секция пустая → видим empty hint.
-      expect(find.text('All supported providers are already connected.'),
-          findsOneWidget);
-      // Available секция содержит все 6 заявленных провайдеров.
-      expect(find.text('Claude Code'), findsOneWidget);
-      expect(find.text('Anthropic'), findsOneWidget);
-      expect(find.text('OpenAI'), findsOneWidget);
-      expect(find.text('OpenRouter'), findsOneWidget);
-      expect(find.text('DeepSeek'), findsOneWidget);
-      expect(find.text('Zhipu'), findsOneWidget);
-      // Кнопка "Connect" есть как минимум один раз.
-      expect(find.text('Connect'), findsWidgets);
-    });
+        // Connected секция пустая → видим empty hint.
+        expect(
+          find.text('All supported providers are already connected.'),
+          findsOneWidget,
+        );
+        // Available секция содержит все 6 заявленных провайдеров.
+        expect(find.text('Claude Code'), findsOneWidget);
+        expect(find.text('Anthropic'), findsOneWidget);
+        expect(find.text('OpenAI'), findsOneWidget);
+        expect(find.text('OpenRouter'), findsOneWidget);
+        expect(find.text('DeepSeek'), findsOneWidget);
+        expect(find.text('Zhipu'), findsOneWidget);
+        // Кнопка "Connect" есть как минимум один раз.
+        expect(find.text('Connect'), findsWidgets);
+      },
+    );
   });
 }

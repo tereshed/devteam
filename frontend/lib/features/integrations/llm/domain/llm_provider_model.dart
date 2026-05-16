@@ -39,12 +39,7 @@ enum LlmIntegrationProvider {
 /// Маппинг с `events.IntegrationConnectionStatus`: `connected/disconnected/error/pending`.
 /// UI-стейт `cancelled` различается через [LlmProviderConnection.reason] = `"user_cancelled"`,
 /// см. dashboard-redesign §4a.5.
-enum LlmProviderConnectionStatus {
-  connected,
-  disconnected,
-  pending,
-  error,
-}
+enum LlmProviderConnectionStatus { connected, disconnected, pending, error }
 
 /// Снимок состояния одного провайдера на экране LLM Integrations.
 ///

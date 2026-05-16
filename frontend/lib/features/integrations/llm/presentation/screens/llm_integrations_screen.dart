@@ -54,14 +54,18 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
       builder: (context, _) {
         final state = controller.state;
         final connected = _displayOrder
-            .where((p) =>
-                state.connections[p]?.status ==
-                LlmProviderConnectionStatus.connected)
+            .where(
+              (p) =>
+                  state.connections[p]?.status ==
+                  LlmProviderConnectionStatus.connected,
+            )
             .toList(growable: false);
         final available = _displayOrder
-            .where((p) =>
-                state.connections[p]?.status !=
-                LlmProviderConnectionStatus.connected)
+            .where(
+              (p) =>
+                  state.connections[p]?.status !=
+                  LlmProviderConnectionStatus.connected,
+            )
             .toList(growable: false);
 
         return SingleChildScrollView(
@@ -72,15 +76,15 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
               Text(
                 l10n.integrationsLlmTitle,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
                 l10n.integrationsLlmStage2Subtitle,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 24),
               if (state.isLoading && state.connections.isEmpty)
@@ -96,9 +100,8 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
                     message: l10n.integrationsLlmLoadFailed(
                       state.errorMessage!,
                     ),
-                    onRetry: () => ref
-                        .read(llmIntegrationsControllerProvider)
-                        .refresh(),
+                    onRetry: () =>
+                        ref.read(llmIntegrationsControllerProvider).refresh(),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -136,7 +139,8 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
     LlmIntegrationProvider provider,
     LlmIntegrationsState state,
   ) {
-    final conn = state.connections[provider] ??
+    final conn =
+        state.connections[provider] ??
         LlmProviderConnection(
           provider: provider,
           status: LlmProviderConnectionStatus.disconnected,
@@ -150,18 +154,19 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
       connection: conn,
       onConnect: provider == LlmIntegrationProvider.claudeCodeOAuth
           ? (conn.status == LlmProviderConnectionStatus.connected
-              ? null
-              : onConnect)
+                ? null
+                : onConnect)
           : (conn.status == LlmProviderConnectionStatus.connected
-              ? null
-              : onConnect),
-      onDisconnect:
-          conn.status == LlmProviderConnectionStatus.connected ? onDisconnect : null,
+                ? null
+                : onConnect),
+      onDisconnect: conn.status == LlmProviderConnectionStatus.connected
+          ? onDisconnect
+          : null,
       onReplace: provider == LlmIntegrationProvider.claudeCodeOAuth
           ? null
           : (conn.status == LlmProviderConnectionStatus.connected
-              ? onReplace
-              : null),
+                ? onReplace
+                : null),
     );
   }
 
@@ -198,16 +203,11 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
     }
   }
 
-  Widget _wrapCard(Widget card) =>
-      SizedBox(width: 320, child: card);
+  Widget _wrapCard(Widget card) => SizedBox(width: 320, child: card);
 }
 
 class _Section extends StatelessWidget {
-  const _Section({
-    required this.title,
-    required this.children,
-    this.emptyHint,
-  });
+  const _Section({required this.title, required this.children, this.emptyHint});
 
   final String title;
   final List<Widget> children;
@@ -220,9 +220,9 @@ class _Section extends StatelessWidget {
       children: [
         Text(
           title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
         if (children.isEmpty && emptyHint != null)
@@ -231,16 +231,12 @@ class _Section extends StatelessWidget {
             child: Text(
               emptyHint!,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           )
         else
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: children,
-          ),
+          Wrap(spacing: 16, runSpacing: 16, children: children),
       ],
     );
   }

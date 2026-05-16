@@ -146,6 +146,8 @@
   "@integrationsLlmClaudeCodeOpenBrowser": { "description": "ui_refactoring stage 2: launch URL button" },
   "integrationsLlmClaudeCodeOAuthCode": "Code:",
   "@integrationsLlmClaudeCodeOAuthCode": { "description": "ui_refactoring stage 2: user_code label" },
+  "integrationsLlmClaudeCodeOAuthCopy": "Copy code",
+  "@integrationsLlmClaudeCodeOAuthCopy": { "description": "ui_refactoring stage 2: tooltip for user_code copy IconButton" },
   "integrationsLlmClaudeCodeOAuthWaiting": "Waiting for confirmation… You can close this dialog and come back later — the status will update automatically.",
   "@integrationsLlmClaudeCodeOAuthWaiting": { "description": "ui_refactoring stage 2: pending body copy" },
   "integrationsLlmClaudeCodeOAuthTimeout": "Authorization timed out after 20 minutes. Try again.",

@@ -26,7 +26,8 @@ void main() {
       repo = LlmIntegrationsRepository(dio: dio);
     });
 
-    test('fetchApiKeyConnections — parses masked previews, marks empty as disconnected',
+    test(
+        'fetchApiKeyConnections — parses masked previews, marks empty as disconnected',
         () async {
       when(() => dio.get<Map<String, dynamic>>(
             '/me/llm-credentials',
@@ -139,7 +140,8 @@ void main() {
               'device_code': 'dc-1',
               'user_code': 'ABCD-EFGH',
               'verification_uri': 'https://login.example/device',
-              'verification_uri_complete': 'https://login.example/device?dc=dc-1',
+              'verification_uri_complete':
+                  'https://login.example/device?dc=dc-1',
               'interval_seconds': 5,
               'expires_in_seconds': 600,
             },
@@ -152,7 +154,8 @@ void main() {
       expect(init.intervalSeconds, 5);
     });
 
-    test('completeClaudeCodeOAuth — 202 → LlmIntegrationsException(authorization_pending)',
+    test(
+        'completeClaudeCodeOAuth — 202 → LlmIntegrationsException(authorization_pending)',
         () async {
       when(() => dio.post<Map<String, dynamic>>(
             '/claude-code/auth/callback',
@@ -175,7 +178,8 @@ void main() {
       );
     });
 
-    test('completeClaudeCodeOAuth — 410 access_denied → LlmIntegrationsException',
+    test(
+        'completeClaudeCodeOAuth — 410 access_denied → LlmIntegrationsException',
         () async {
       when(() => dio.post<Map<String, dynamic>>(
             '/claude-code/auth/callback',
