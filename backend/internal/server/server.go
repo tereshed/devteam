@@ -54,6 +54,9 @@ type Dependencies struct {
 
 	ClaudeCodeAuthHandler *handler.ClaudeCodeAuthHandler
 
+	// UI Refactoring Stage 3a — git OAuth интеграции (GitHub / GitLab / BYO GitLab).
+	GitIntegrationHandler *handler.GitIntegrationHandler
+
 	// Sprint 15.23 — per-agent settings.
 	AgentSettingsHandler *handler.AgentSettingsHandler
 
@@ -202,6 +205,26 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				cc.POST("/callback", deps.ClaudeCodeAuthHandler.Callback)
 				cc.GET("/status", deps.ClaudeCodeAuthHandler.Status)
 				cc.DELETE("", deps.ClaudeCodeAuthHandler.Revoke)
+			}
+		}
+
+		// UI Refactoring Stage 3a — git OAuth интеграции.
+		if deps.GitIntegrationHandler != nil {
+			gh := api.Group("/integrations/github/auth")
+			gh.Use(authMW)
+			{
+				gh.POST("/init", deps.GitIntegrationHandler.InitGitHub)
+				gh.POST("/callback", deps.GitIntegrationHandler.CallbackGitHub)
+				gh.GET("/status", deps.GitIntegrationHandler.StatusGitHub)
+				gh.DELETE("/revoke", deps.GitIntegrationHandler.RevokeGitHub)
+			}
+			gl := api.Group("/integrations/gitlab/auth")
+			gl.Use(authMW)
+			{
+				gl.POST("/init", deps.GitIntegrationHandler.InitGitLab)
+				gl.POST("/callback", deps.GitIntegrationHandler.CallbackGitLab)
+				gl.GET("/status", deps.GitIntegrationHandler.StatusGitLab)
+				gl.DELETE("/revoke", deps.GitIntegrationHandler.RevokeGitLab)
 			}
 		}
 

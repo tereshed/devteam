@@ -26,6 +26,9 @@ type Dependencies struct {
 	// Sprint 15.15: опционально. nil — инструменты не регистрируются.
 	ClaudeCodeAuthService service.ClaudeCodeAuthService
 
+	// UI Refactoring Stage 3a — git OAuth интеграции (опционально, nil → пропускаем).
+	GitIntegrationService service.GitIntegrationService
+
 	// Sprint 15.24 — реестр MCP-серверов и Claude Code skills (опционально).
 	MCPServerRegistryRepo repository.MCPServerRegistryRepository
 	AgentSkillRepo        repository.AgentSkillRepository
@@ -59,6 +62,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterTaskTools(server, deps.TaskService, deps.OrchestratorSvc)
 	RegisterConversationTools(server, deps.ConversationSvc)
 	RegisterClaudeCodeAuthTools(server, deps.ClaudeCodeAuthService)
+	RegisterGitIntegrationsTools(server, deps.GitIntegrationService)
 	RegisterAgentSettingsTools(server, deps.TeamService, deps.MCPServerRegistryRepo, deps.AgentSkillRepo)
 
 	// Sprint 16.C — Hermes-каталог (toolsets) для UI dropdown / агента.

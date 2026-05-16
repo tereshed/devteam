@@ -487,6 +487,39 @@ func main() {
 		handler.NewClaudeCodeAuthHandler(claudeCodeAuthSvc),
 		v2Logger,
 	)
+
+	// UI Refactoring Stage 3a — git-интеграции (GitHub / GitLab.com / BYO GitLab).
+	gitIntegrationRepo := repository.NewGitIntegrationCredentialRepository(db)
+	githubOAuthClient := service.NewGitHubOAuthClient(service.GitHubOAuthConfig{
+		ClientID:     cfg.GitHubOAuth.ClientID,
+		ClientSecret: cfg.GitHubOAuth.ClientSecret,
+		Scopes:       cfg.GitHubOAuth.Scopes,
+	})
+	gitlabOAuthClient := service.NewGitLabOAuthClient(service.GitLabOAuthConfig{
+		ClientID:     cfg.GitLabOAuth.ClientID,
+		ClientSecret: cfg.GitLabOAuth.ClientSecret,
+		Scopes:       cfg.GitLabOAuth.Scopes,
+	})
+	gitIntegrationSvc := service.NewGitIntegrationService(service.GitIntegrationServiceDeps{
+		Repo:       gitIntegrationRepo,
+		Encryptor:  encryptor,
+		GitHub:     githubOAuthClient,
+		GitLab:     gitlabOAuthClient,
+		Validator:  service.NewGitProviderHostValidator(service.DefaultHostResolver(), cfg.IsProd()),
+		StateStore: service.NewInMemoryGitOAuthStateStore(),
+		Bus:        eventBus,
+		Logger:     v2Logger,
+	})
+	gitIntegrationHandler := handler.WithGitIntegrationLogger(
+		handler.NewGitIntegrationHandler(gitIntegrationSvc),
+		v2Logger,
+	)
+	if cfg.GitHubOAuth.ClientID == "" {
+		log.Println("GitHub OAuth: disabled (set GITHUB_OAUTH_CLIENT_ID to enable)")
+	}
+	if cfg.GitLabOAuth.ClientID == "" {
+		log.Println("GitLab.com OAuth: disabled (set GITLAB_OAUTH_CLIENT_ID to enable; self-hosted BYO остаётся доступен)")
+	}
 	if cfg.ClaudeCodeOAuth.ClientID != "" {
 		refresher := service.NewClaudeCodeTokenRefresher(claudeCodeSubRepo, claudeCodeAuthSvc, slog.Default())
 		go refresher.Run(ctxWorker)
@@ -583,6 +616,7 @@ func main() {
 		LlmCredentialsPatchRL:    llmCredRL,
 
 		ClaudeCodeAuthHandler: claudeCodeAuthHandler,
+		GitIntegrationHandler: gitIntegrationHandler,
 		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
 		LLMProviderHandler:    llmProviderHandler,
 		HermesHandler:         handler.NewHermesHandler(),
@@ -624,6 +658,7 @@ func main() {
 			OrchestratorSvc:       orchestratorService,
 			ApiKeyService:         apiKeyService,
 			ClaudeCodeAuthService: claudeCodeAuthSvc,
+			GitIntegrationService: gitIntegrationSvc,
 			MCPServerRegistryRepo: repository.NewMCPServerRegistryRepository(db),
 			AgentSkillRepo:        repository.NewAgentSkillRepository(db),
 

@@ -35,6 +35,9 @@ var (
 	// Ошибки ClaudeCodeSubscription (Sprint 15.12)
 	ErrClaudeCodeSubscriptionNotFound = errors.New("claude code subscription not found")
 
+	// Ошибки GitIntegrationCredential (UI Refactoring Stage 3a).
+	ErrGitIntegrationNotFound = errors.New("git integration credential not found")
+
 	// Sprint 15.24 — реестр MCP-серверов и agent_skills.
 	ErrMCPServerRegistryNotFound = errors.New("mcp server registry entry not found")
 	ErrAgentSkillNotFound        = errors.New("agent skill not found")

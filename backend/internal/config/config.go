@@ -29,6 +29,28 @@ type Config struct {
 	WorkflowWorkerEnabled bool
 	// ClaudeCodeOAuth — настройки OAuth-провайдера Claude Code (Sprint 15.12).
 	ClaudeCodeOAuth ClaudeCodeOAuthConfig
+
+	// GitHubOAuth — настройки OAuth-провайдера GitHub (UI Refactoring Stage 3a).
+	// Пустой ClientID отключает фичу — хендлеры вернут 503.
+	GitHubOAuth GitHubOAuthAppConfig
+
+	// GitLabOAuth — настройки OAuth-провайдера GitLab.com (UI Refactoring Stage 3a).
+	// Пустой ClientID отключает shared-flow (self-hosted BYO остаётся доступным).
+	GitLabOAuth GitLabOAuthAppConfig
+}
+
+// GitHubOAuthAppConfig — env GITHUB_OAUTH_CLIENT_ID / SECRET / SCOPES.
+type GitHubOAuthAppConfig struct {
+	ClientID     string
+	ClientSecret string
+	Scopes       string
+}
+
+// GitLabOAuthAppConfig — env GITLAB_OAUTH_CLIENT_ID / SECRET / SCOPES.
+type GitLabOAuthAppConfig struct {
+	ClientID     string
+	ClientSecret string
+	Scopes       string
 }
 
 // ClaudeCodeOAuthConfig — env CLAUDE_CODE_OAUTH_*. Пустой ClientID отключает фичу
@@ -194,6 +216,16 @@ func Load() (*Config, error) {
 			TokenURL:      getEnv("CLAUDE_CODE_OAUTH_TOKEN_URL", "https://console.anthropic.com/v1/oauth/token"),
 			RevokeURL:     getEnv("CLAUDE_CODE_OAUTH_REVOKE_URL", ""),
 			Scopes:        getEnv("CLAUDE_CODE_OAUTH_SCOPES", "org:create_api_key user:profile user:inference"),
+		},
+		GitHubOAuth: GitHubOAuthAppConfig{
+			ClientID:     getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
+			ClientSecret: getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
+			Scopes:       getEnv("GITHUB_OAUTH_SCOPES", "repo read:user"),
+		},
+		GitLabOAuth: GitLabOAuthAppConfig{
+			ClientID:     getEnv("GITLAB_OAUTH_CLIENT_ID", ""),
+			ClientSecret: getEnv("GITLAB_OAUTH_CLIENT_SECRET", ""),
+			Scopes:       getEnv("GITLAB_OAUTH_SCOPES", "api read_user read_repository write_repository"),
 		},
 	}
 
