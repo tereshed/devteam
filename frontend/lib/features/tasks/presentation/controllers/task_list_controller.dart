@@ -224,6 +224,7 @@ class TaskListController extends _$TaskListController {
               requestRestRefetch();
             }
           },
+          integrationStatus: (_) {},
           unknown: (_) {},
         );
         return;

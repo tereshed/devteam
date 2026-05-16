@@ -219,6 +219,43 @@ abstract class WsUnknownEvent with _$WsUnknownEvent {
   }) = _WsUnknownEvent;
 }
 
+/// User-scoped событие: статус подключения внешней интеграции (LLM-провайдер,
+/// Claude Code OAuth и т.п.). В envelope нет `project_id` — вместо него `user_id`.
+/// Backend: `events.IntegrationConnectionChanged` → `Hub.SendToUser`
+/// (см. dashboard-redesign §4a.4).
+@freezed
+abstract class WsIntegrationStatusEvent with _$WsIntegrationStatusEvent {
+  const factory WsIntegrationStatusEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String provider,
+    required WsIntegrationStatus status,
+    String? reason,
+    DateTime? connectedAt,
+    DateTime? expiresAt,
+  }) = _WsIntegrationStatusEvent;
+}
+
+enum WsIntegrationStatus {
+  connected('connected'),
+  disconnected('disconnected'),
+  error('error'),
+  pending('pending');
+
+  const WsIntegrationStatus(this.jsonValue);
+  final String jsonValue;
+
+  static WsIntegrationStatus? tryParse(String raw) {
+    for (final v in WsIntegrationStatus.values) {
+      if (v.jsonValue == raw) {
+        return v;
+      }
+    }
+    return null;
+  }
+}
+
 @freezed
 abstract class WsServerEvent with _$WsServerEvent {
   const factory WsServerEvent.taskStatus(WsTaskStatusEvent value) =
@@ -228,6 +265,9 @@ abstract class WsServerEvent with _$WsServerEvent {
   const factory WsServerEvent.agentLog(WsAgentLogEvent value) =
       WsServerEventAgentLog;
   const factory WsServerEvent.error(WsErrorEvent value) = WsServerEventError;
+  const factory WsServerEvent.integrationStatus(
+    WsIntegrationStatusEvent value,
+  ) = WsServerEventIntegrationStatus;
   const factory WsServerEvent.unknown(WsUnknownEvent value) =
       WsServerEventUnknown;
 }
@@ -349,6 +389,63 @@ WsServerEvent parseWsServerEnvelope(String text) {
   } on FormatException catch (e) {
     throw WsParseError(message: e.message, detail: e.source?.toString());
   }
+  // User-scoped события (см. dashboard-redesign §4a.4) приходят с user_id вместо project_id.
+  // Для них parsing-ветка ниже отдельная; для project-scoped event'ов оставляем строгую проверку.
+  if (type == 'integration_status') {
+    final uid = m['user_id'];
+    if (uid is! String) {
+      throw const WsParseError(
+        message: 'user_id отсутствует или не string (integration_status)',
+      );
+    }
+    final data = m['data'];
+    if (data is! Map<String, dynamic>) {
+      throw const WsParseError(message: 'data отсутствует или не object');
+    }
+    final d = data;
+    final providerRaw = d['provider'];
+    if (providerRaw is! String || providerRaw.isEmpty) {
+      throw const WsParseError(
+        message: 'provider отсутствует или пуст (integration_status)',
+      );
+    }
+    final statusRaw = d['status'];
+    if (statusRaw is! String) {
+      throw const WsParseError(
+        message: 'status отсутствует или не string (integration_status)',
+      );
+    }
+    final status = WsIntegrationStatus.tryParse(statusRaw);
+    if (status == null) {
+      return WsServerEvent.unknown(
+        WsUnknownEvent(type: type, ts: ts, v: v, projectId: '', data: d),
+      );
+    }
+    DateTime? optTs(String key) {
+      final raw = d[key];
+      if (raw is! String || raw.isEmpty) {
+        return null;
+      }
+      try {
+        return parseWsTimestamp(raw, context: 'integration_status.$key');
+      } on FormatException {
+        return null;
+      }
+    }
+    return WsServerEvent.integrationStatus(
+      WsIntegrationStatusEvent(
+        ts: ts,
+        v: v,
+        userId: uid,
+        provider: providerRaw,
+        status: status,
+        reason: d['reason'] as String?,
+        connectedAt: optTs('connected_at'),
+        expiresAt: optTs('expires_at'),
+      ),
+    );
+  }
+
   final pid = m['project_id'];
   if (pid is! String) {
     throw const WsParseError(message: 'project_id отсутствует или не string');

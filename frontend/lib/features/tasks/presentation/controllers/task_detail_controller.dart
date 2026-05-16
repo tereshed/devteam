@@ -290,6 +290,7 @@ class TaskDetailController extends _$TaskDetailController {
               requestRestRefetch();
             }
           },
+          integrationStatus: (_) {},
           unknown: (_) {},
         );
         return;

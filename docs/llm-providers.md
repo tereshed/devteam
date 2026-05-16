@@ -24,6 +24,22 @@ ENCRYPTION_KEY=<64 hex-символа = 32 байта>
 
 Без `ENCRYPTION_KEY` бэкенд работает в NoopEncryptor-режиме — credentials хранятся как plaintext (только для локальной разработки, **не для prod**).
 
+### Аудит шифрования (UI Refactoring — Этап 0.1, verified)
+
+Проверено 2026-05-16 в рамках [dashboard-redesign §4a.1](tasks/ui_refactoring/dashboard-redesign-plan.md#4a1-безопасность). Инвариант «секреты в БД только зашифрованными» соблюдён для всех каналов хранения пользовательских LLM-ключей:
+
+| Таблица | Колонка с секретом | Шифрование | Где |
+|---|---|---|---|
+| `user_llm_credentials` (миграция 022) | `encrypted_key BYTEA NOT NULL` | AES-256-GCM, AAD = `row.ID.String()` | [user_llm_credential_service.go](../backend/internal/service/user_llm_credential_service.go) (`setProviderKey`, `tryEncryptUpdate`, `GetMasked`, `GetPlaintext`) |
+| `llm_providers` (миграция 023) | `credentials_encrypted BYTEA` | AES-256-GCM, AAD = `provider.ID` | [llm_provider_service.go](../backend/internal/service/llm_provider_service.go) |
+| `claude_code_subscriptions` (миграция 024) | OAuth-токены | AES-256-GCM | OAuth refresher worker |
+| `agent_secrets` (миграция 032) | `value_encrypted BYTEA` | AES-256-GCM | [agent_secret_repository.go](../backend/internal/repository/agent_secret_repository.go) |
+| `git_credentials` | `token_encrypted BYTEA` | AES-256-GCM, AAD = `id.String()` | [git_credential_repository.go](../backend/internal/repository/git_credential_repository.go) |
+
+Plain-text путь отсутствует: в API-слое `service.Encryptor` подменяется на `NoopEncryptor` только если `ENCRYPTION_KEY` не задан ([cmd/api/main.go](../backend/cmd/api/main.go) — `len(cfg.Encryption.Key) == 32`); в этом режиме `NoopEncryptor.Decrypt` отказывается читать blob с маркером `0x01` (см. `ErrNoopDecryptBlobRequiresKey`), исключая «гибрид» зашифрованного и plain-text содержимого в одной таблице. Backfill-миграция для `user_llm_credentials` не нужна: схема 022 создана уже с `BYTEA NOT NULL`, а production сразу пишет AES-GCM blob.
+
+Визуальная проверка (`ysqlsh -c "SELECT provider, length(encrypted_key) FROM user_llm_credentials LIMIT 5;"`) — длина blob = `1 (версия) + 12 (nonce) + len(plain) + 16 (GCM tag)`, явно не похоже на `sk-...`.
+
 CRUD по провайдерам — таблица `llm_providers` (миграция 023). Поля:
 
 | Поле | Назначение |

@@ -63,6 +63,7 @@ void main() {
         taskMessage: (_) => false,
         agentLog: (_) => false,
         error: (_) => false,
+        integrationStatus: (_) => false,
         unknown: (u) => u.value.type == 'Task_status',
       );
       expect(ok, isTrue);
@@ -88,9 +89,97 @@ void main() {
         taskMessage: (_) => false,
         agentLog: (_) => false,
         error: (e) => e.value.needsRestRefetch,
+        integrationStatus: (_) => false,
         unknown: (_) => false,
       );
       expect(ok, isTrue);
+    });
+  });
+
+  group('parseWsServerEnvelope (integration_status)', () {
+    test('connected с connected_at/expires_at → integrationStatus', () {
+      const json =
+          '{"type":"integration_status","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"user_id":"550e8400-e29b-41d4-a716-446655440000",'
+          '"data":{"provider":"anthropic","status":"connected",'
+          '"connected_at":"2026-05-16T09:59:00.000Z",'
+          '"expires_at":"2026-06-15T09:59:00.000Z"}}';
+      final ev = parseWsServerEnvelope(json);
+      final got = ev.map(
+        taskStatus: (_) => null,
+        taskMessage: (_) => null,
+        agentLog: (_) => null,
+        error: (_) => null,
+        integrationStatus: (e) => e.value,
+        unknown: (_) => null,
+      );
+      expect(got, isNotNull);
+      expect(got!.userId, '550e8400-e29b-41d4-a716-446655440000');
+      expect(got.provider, 'anthropic');
+      expect(got.status, WsIntegrationStatus.connected);
+      expect(got.reason, isNull);
+      expect(got.connectedAt, isNotNull);
+      expect(got.connectedAt!.isUtc, isTrue);
+      expect(got.expiresAt, isNotNull);
+    });
+
+    test('error со reason → integrationStatus.error', () {
+      const json =
+          '{"type":"integration_status","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"user_id":"550e8400-e29b-41d4-a716-446655440000",'
+          '"data":{"provider":"deepseek","status":"error","reason":"auth_failed"}}';
+      final ev = parseWsServerEnvelope(json);
+      final got = ev.map(
+        taskStatus: (_) => null,
+        taskMessage: (_) => null,
+        agentLog: (_) => null,
+        error: (_) => null,
+        integrationStatus: (e) => e.value,
+        unknown: (_) => null,
+      );
+      expect(got, isNotNull);
+      expect(got!.status, WsIntegrationStatus.error);
+      expect(got.reason, 'auth_failed');
+      expect(got.connectedAt, isNull);
+      expect(got.expiresAt, isNull);
+    });
+
+    test('неизвестный status → unknown event', () {
+      const json =
+          '{"type":"integration_status","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"user_id":"550e8400-e29b-41d4-a716-446655440000",'
+          '"data":{"provider":"anthropic","status":"reticulating_splines"}}';
+      final ev = parseWsServerEnvelope(json);
+      final isUnknown = ev.map(
+        taskStatus: (_) => false,
+        taskMessage: (_) => false,
+        agentLog: (_) => false,
+        error: (_) => false,
+        integrationStatus: (_) => false,
+        unknown: (u) => u.value.type == 'integration_status',
+      );
+      expect(isUnknown, isTrue);
+    });
+
+    test('отсутствие user_id → WsParseError', () {
+      const json =
+          '{"type":"integration_status","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"data":{"provider":"anthropic","status":"connected"}}';
+      expect(
+        () => parseWsServerEnvelope(json),
+        throwsA(isA<WsParseError>()),
+      );
+    });
+
+    test('отсутствие provider → WsParseError', () {
+      const json =
+          '{"type":"integration_status","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"user_id":"550e8400-e29b-41d4-a716-446655440000",'
+          '"data":{"status":"connected"}}';
+      expect(
+        () => parseWsServerEnvelope(json),
+        throwsA(isA<WsParseError>()),
+      );
     });
   });
 

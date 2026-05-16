@@ -22,11 +22,15 @@ type Hub struct {
 	register       chan *RegisterMessage
 	unregister     chan *Client
 	broadcast      chan *Message
+	userBroadcast  chan *UserMessage
 	unicast        chan *UnicastMessage
 	done           chan struct{}
 	projects       map[string]map[*Client]bool
 	clientProjects map[*Client]map[string]bool
 	clientsByID    map[string]*Client
+	// clientsByUser хранит множество клиентов одного пользователя для user-scoped fan-out
+	// (Hub.SendToUser → integration_status и т.п., см. dashboard-redesign §4a.4).
+	clientsByUser map[string]map[*Client]bool
 	// userConnCounts хранит количество соединений для пары (userID, projectID).
 	// Ключ = "userID:projectID". Обновляется атомарно в Run().
 	userConnCounts map[string]int
@@ -58,6 +62,13 @@ type UnicastMessage struct {
 	Payload  []byte
 }
 
+// UserMessage — сообщение для всех клиентов одного пользователя (user-scoped fan-out).
+type UserMessage struct {
+	UserID  string
+	Type    string
+	Payload []byte
+}
+
 // RegisterMessage — сообщение для регистрации клиента (Actor Model: данные летят вместе с клиентом).
 type RegisterMessage struct {
 	Client     *Client
@@ -72,11 +83,13 @@ func NewHub() *Hub {
 		register:           make(chan *RegisterMessage),
 		unregister:         make(chan *Client),
 		broadcast:          make(chan *Message, 256),
+		userBroadcast:      make(chan *UserMessage, 256),
 		unicast:            make(chan *UnicastMessage, 256),
 		done:               make(chan struct{}),
 		projects:           make(map[string]map[*Client]bool),
 		clientProjects:     make(map[*Client]map[string]bool),
 		clientsByID:        make(map[string]*Client),
+		clientsByUser:      make(map[string]map[*Client]bool),
 		userConnCounts:     make(map[string]int),
 		countReq:           make(chan *CountUserConnectionsMessage),
 		registerIfLimitReq: make(chan *RegisterIfLimitMessage),
@@ -108,6 +121,8 @@ func (h *Hub) Run(ctx context.Context) {
 			h.removeClient(client)
 		case msg := <-h.broadcast:
 			h.broadcastToProject(msg)
+		case msg := <-h.userBroadcast:
+			h.broadcastToUser(msg)
 		case msg := <-h.unicast:
 			h.sendToClient(msg)
 		case req := <-h.countReq:
@@ -215,6 +230,23 @@ func (h *Hub) SendToProject(projectID, msgType string, payload []byte) error {
 	}
 }
 
+// SendToUser отправляет сообщение всем активным клиентам одного пользователя (по всем
+// его открытым проектам). НЕБЛОКИРУЮЩАЯ операция: при переполнении канала событие дропается.
+//
+// Используется для user-scoped событий (например, integration_status в dashboard-redesign §4a.4),
+// которые не привязаны к конкретному проекту.
+func (h *Hub) SendToUser(userID, msgType string, payload []byte) error {
+	if userID == "" {
+		return ErrEmptyUserID
+	}
+	select {
+	case h.userBroadcast <- &UserMessage{UserID: userID, Type: msgType, Payload: payload}:
+		return nil
+	default:
+		return nil
+	}
+}
+
 // SendToClient отправляет сообщение конкретному клиенту по ClientID.
 // НЕБЛОКИРУЮЩАЯ операция.
 func (h *Hub) SendToClient(clientID, msgType string, payload []byte) error {
@@ -251,6 +283,13 @@ func (h *Hub) addClient(client *Client, projectIDs []string) {
 		key := userConnKey(client.UserID, pid)
 		h.userConnCounts[key]++
 	}
+
+	if client.UserID != "" {
+		if h.clientsByUser[client.UserID] == nil {
+			h.clientsByUser[client.UserID] = make(map[*Client]bool)
+		}
+		h.clientsByUser[client.UserID][client] = true
+	}
 }
 
 // removeClient удаляет клиента из Hub и всех его проектов.
@@ -278,6 +317,15 @@ func (h *Hub) removeClient(client *Client) {
 	}
 	delete(h.clientProjects, client)
 
+	if client.UserID != "" {
+		if users := h.clientsByUser[client.UserID]; users != nil {
+			delete(users, client)
+			if len(users) == 0 {
+				delete(h.clientsByUser, client.UserID)
+			}
+		}
+	}
+
 	delete(h.clientsByID, client.ID)
 
 	close(client.Send)
@@ -288,6 +336,24 @@ func (h *Hub) removeClient(client *Client) {
 // ВЫЗЫВАТЬ ТОЛЬКО ИЗ Run()
 func (h *Hub) broadcastToProject(msg *Message) {
 	clients, ok := h.projects[msg.ProjectID]
+	if !ok || len(clients) == 0 {
+		return
+	}
+
+	for client := range clients {
+		select {
+		case client.Send <- msg.Payload:
+		default:
+			h.removeClient(client)
+		}
+	}
+}
+
+// broadcastToUser отправляет сообщение всем активным клиентам одного пользователя.
+// НЕБЛОКИРУЮЩАЯ запись в каждый client.Send (slow client isolation).
+// ВЫЗЫВАТЬ ТОЛЬКО ИЗ Run()
+func (h *Hub) broadcastToUser(msg *UserMessage) {
+	clients, ok := h.clientsByUser[msg.UserID]
 	if !ok || len(clients) == 0 {
 		return
 	}

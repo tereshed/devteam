@@ -7,6 +7,7 @@ import (
 
 	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/pkg/secrets"
+	"github.com/google/uuid"
 )
 
 // HubBridge — подписчик на EventBus, который транслирует доменные события в WebSocket Hub.
@@ -62,6 +63,12 @@ func (b *HubBridge) Run(ctx context.Context) {
 }
 
 func (b *HubBridge) dispatch(ev events.DomainEvent) {
+	// User-scoped события маршрутизируются в Hub.SendToUser, не в проектный канал.
+	if e, ok := ev.(events.IntegrationConnectionChanged); ok {
+		b.dispatchIntegrationConnectionChanged(e)
+		return
+	}
+
 	var (
 		payload []byte
 		err     error
@@ -165,6 +172,44 @@ func (b *HubBridge) dispatch(ev events.DomainEvent) {
 
 	if err := b.hub.SendToProject(projectID.String(), string(msgType), payload); err != nil {
 		b.log.Error("failed to send message to hub", "error", err, "project_id", projectID)
+		b.metrics.IncDispatchError("hub_send_error")
+		return
+	}
+
+	b.metrics.IncDispatched(string(msgType))
+}
+
+func (b *HubBridge) dispatchIntegrationConnectionChanged(e events.IntegrationConnectionChanged) {
+	const msgType = MessageTypeIntegrationStatus
+
+	if e.UserID == (uuid.UUID{}) {
+		b.log.Warn("integration_connection_changed dropped: nil UserID", "provider", e.Provider)
+		b.metrics.IncDispatchError("nil_user_id")
+		return
+	}
+	if !events.IsValidIntegrationConnectionStatus(e.Status) {
+		b.log.Warn("integration_connection_changed dropped: invalid status",
+			"user_id", e.UserID, "provider", e.Provider, "status", e.Status)
+		b.metrics.IncDispatchError("invalid_status")
+		return
+	}
+
+	data := IntegrationStatusData{
+		Provider:    e.Provider,
+		Status:      string(e.Status),
+		Reason:      e.Reason,
+		ConnectedAt: e.ConnectedAt,
+		ExpiresAt:   e.ExpiresAt,
+	}
+	payload, err := MarshalIntegrationStatus(e.UserID, data)
+	if err != nil {
+		b.log.Error("failed to marshal integration_status envelope", "error", err)
+		b.metrics.IncDispatchError("marshal_error")
+		return
+	}
+
+	if err := b.hub.SendToUser(e.UserID.String(), string(msgType), payload); err != nil {
+		b.log.Error("failed to send integration_status to hub", "error", err, "user_id", e.UserID)
 		b.metrics.IncDispatchError("hub_send_error")
 		return
 	}

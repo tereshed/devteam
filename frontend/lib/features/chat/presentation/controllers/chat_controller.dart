@@ -320,6 +320,7 @@ class ChatController extends _$ChatController {
               _requestWsOverflowRefresh();
             }
           },
+          integrationStatus: (_) {},
           unknown: (_) {},
         );
         return;

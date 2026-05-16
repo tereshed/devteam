@@ -150,6 +150,47 @@ func (e ConversationMessageDeleted) domainEvent()          {}
 func (e ConversationMessageDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e ConversationMessageDeleted) GetTraceID() string      { return e.TraceID }
 
+// IntegrationConnectionStatus — состояние подключения внешней интеграции пользователя.
+type IntegrationConnectionStatus string
+
+const (
+	IntegrationStatusConnected    IntegrationConnectionStatus = "connected"
+	IntegrationStatusDisconnected IntegrationConnectionStatus = "disconnected"
+	IntegrationStatusError        IntegrationConnectionStatus = "error"
+	IntegrationStatusPending      IntegrationConnectionStatus = "pending"
+)
+
+// IsValidIntegrationConnectionStatus проверяет допустимое значение статуса.
+func IsValidIntegrationConnectionStatus(s IntegrationConnectionStatus) bool {
+	switch s {
+	case IntegrationStatusConnected, IntegrationStatusDisconnected, IntegrationStatusError, IntegrationStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// IntegrationConnectionChanged — изменение состояния подключения внешней интеграции
+// (LLM-провайдер, Claude Code OAuth, git-credential и т.п.). User-scoped, не привязано
+// к проекту: маршрутизируется через Hub.SendToUser, см. ws/hubbridge.go и dashboard-redesign §4a.4.
+type IntegrationConnectionChanged struct {
+	UserID      uuid.UUID
+	Provider    string                      // например "anthropic", "deepseek", "claude_code_oauth", "github"
+	Status      IntegrationConnectionStatus // connected|disconnected|error|pending
+	Reason      string                      // короткий код причины при Status=error/disconnected; пусто иначе
+	ConnectedAt *time.Time                  // когда подключение стало активным; nil если неизвестно/не применимо
+	ExpiresAt   *time.Time                  // когда токен/ключ истекает; nil если бессрочно
+	OccurredAt  time.Time
+	TraceID     string
+}
+
+func (e IntegrationConnectionChanged) domainEvent()          {}
+func (e IntegrationConnectionChanged) GetProjectID() uuid.UUID { return uuid.Nil }
+func (e IntegrationConnectionChanged) GetTraceID() string      { return e.TraceID }
+
+// isGlobal — событие не привязано к ProjectID (см. Publish: пропускаем nil-ProjectID drop).
+func (e IntegrationConnectionChanged) isGlobal() bool { return true }
+
 // EventBus — публикация и подписка на доменные события в одном процессе.
 type EventBus interface {
 	Publish(ctx context.Context, ev DomainEvent)
@@ -355,6 +396,8 @@ func getEventTypeName(ev DomainEvent) string {
 		return "conversation_message_created"
 	case ConversationMessageDeleted:
 		return "conversation_message_deleted"
+	case IntegrationConnectionChanged:
+		return "integration_connection_changed"
 	default:
 		return "unknown"
 	}

@@ -16,14 +16,18 @@ const SchemaVersion = 1
 // ErrNilProjectID — защита от отправки мусора в Hub (см. MarshalEnvelope).
 var ErrNilProjectID = errors.New("ws: projectID cannot be uuid.Nil")
 
+// ErrNilUserID — защита от отправки мусора в Hub.SendToUser (см. MarshalUserEnvelope).
+var ErrNilUserID = errors.New("ws: userID cannot be uuid.Nil")
+
 // MessageType — дискриминатор конверта.
 type MessageType string
 
 const (
-	MessageTypeTaskStatus  MessageType = "task_status"
-	MessageTypeTaskMessage MessageType = "task_message"
-	MessageTypeAgentLog    MessageType = "agent_log"
-	MessageTypeError       MessageType = "error"
+	MessageTypeTaskStatus        MessageType = "task_status"
+	MessageTypeTaskMessage       MessageType = "task_message"
+	MessageTypeAgentLog          MessageType = "agent_log"
+	MessageTypeError             MessageType = "error"
+	MessageTypeIntegrationStatus MessageType = "integration_status"
 )
 
 // ErrorCode — тип для кодов ошибок.
@@ -37,13 +41,32 @@ const (
 	ErrorCodeServerShutdown  ErrorCode = "server_shutdown"
 )
 
-// Envelope — единый формат всех исходящих сообщений.
+// Envelope — единый формат всех project-scoped исходящих сообщений.
 type Envelope[T any] struct {
 	Type      MessageType `json:"type"`
 	Version   int         `json:"v"`
 	Timestamp time.Time   `json:"ts"`
 	ProjectID uuid.UUID   `json:"project_id"`
 	Data      T           `json:"data"`
+}
+
+// UserEnvelope — формат user-scoped исходящих сообщений (без project_id, см. dashboard-redesign §4a.4).
+// Используется для событий, относящихся ко всему пользователю (интеграции, биллинг и т.п.).
+type UserEnvelope[T any] struct {
+	Type      MessageType `json:"type"`
+	Version   int         `json:"v"`
+	Timestamp time.Time   `json:"ts"`
+	UserID    uuid.UUID   `json:"user_id"`
+	Data      T           `json:"data"`
+}
+
+// IntegrationStatusData — payload для type=integration_status (user-scoped).
+type IntegrationStatusData struct {
+	Provider    string     `json:"provider"`
+	Status      string     `json:"status"` // connected|disconnected|error|pending
+	Reason      string     `json:"reason,omitempty"`
+	ConnectedAt *time.Time `json:"connected_at,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }
 
 // TaskStatusData — payload для type=task_status.
@@ -194,4 +217,23 @@ func MarshalAgentLog(projectID uuid.UUID, d AgentLogData) ([]byte, error) {
 }
 func MarshalError(projectID uuid.UUID, d ErrorData) ([]byte, error) {
 	return MarshalEnvelope(MessageTypeError, projectID, d)
+}
+
+// MarshalUserEnvelope — ЕДИНСТВЕННЫЙ способ сериализации user-scoped WS-сообщения.
+func MarshalUserEnvelope[T any](msgType MessageType, userID uuid.UUID, data T) ([]byte, error) {
+	if userID == uuid.Nil {
+		return nil, ErrNilUserID
+	}
+	return json.Marshal(&UserEnvelope[T]{
+		Type:      msgType,
+		Version:   SchemaVersion,
+		Timestamp: time.Now().UTC(),
+		UserID:    userID,
+		Data:      data,
+	})
+}
+
+// MarshalIntegrationStatus — обёртка для type=integration_status (user-scoped).
+func MarshalIntegrationStatus(userID uuid.UUID, d IntegrationStatusData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeIntegrationStatus, userID, d)
 }
