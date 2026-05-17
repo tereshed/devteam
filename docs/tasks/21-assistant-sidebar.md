@@ -433,13 +433,13 @@ func (r *assistantSessionRepo) ConfirmAndClosePending(
 | `conversation_list/get/history` | read | filter by user_id (или project ownership) | — |
 | `conversation_create` | mutation | user_id = ctx.UserID() | yes |
 | `conversation_send_message` | mutation | assert session.user_id == ctx.UserID() **и project ownership** | yes |
-| `agent_list/get` | read | project ownership (агенты per-project) | — |
-| `agent_create/update/set_secret` | mutation | project ownership assert | yes |
-| `agent_delete*` | mutation | project ownership assert | **yes (destructive)** |
+| `agent_list/get` | read | глобальный реестр (read доступен всем) — допустимо для assistant | — |
+| ~~`agent_create/update/set_secret`~~ | mutation | **исключены из каталога** (см. ниже) | — |
+| ~~`agent_delete*`~~ | mutation | **исключены из каталога** (см. ниже) | — |
 | `app_navigate` | side-effect (WS to user) | tightly scoped: только route string, без id чужих ресурсов | — |
 | `whoami` / `assistant_active_tasks_count` | read | по `ctx.UserID()` | — |
 
-Каждый «не проходит чек-лист» инструмент **исключается из каталога** до отдельной задачи (зарегистрировать в backlog как `21.X-authz-fix-<tool>.md`). Это часть acceptance criteria этого спринта, а не «потом».
+**Решение по AuthZ-аудиту (стадия 5):** `models.Agent` — это глобальный реестр шаблонов (`team_id` опционален, прямого `user_id` нет), а `AgentService.Create/Update/Delete/SetSecret/DeleteSecret` не гейтят мутации ни по user, ни по role. Executor же hard-coded подаёт `RoleUser` (защита от admin-обхода). Поэтому agent-мутации не могут пройти AuthZ-чек-лист «как есть» — они **исключены из каталога ассистента**. Управление шаблонами агентов и их секретами выполняется через существующие REST/UI (admin scope). Read-инструменты (`agent_list`, `agent_get`) остаются — глобальный реестр интенциально доступен для чтения. Восстановление полного CRUD требует отдельной задачи по введению per-agent ownership в `AgentService`.
 
 ### 6. Bootstrap agent registry
 

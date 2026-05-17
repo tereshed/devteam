@@ -679,6 +679,10 @@ func main() {
 			// Sprint 17 / 6.3 — destructive worktree_release MCP tool. nil → tool не регистрируется
 			// (legacy clone-path: WORKTREES_ROOT не задан).
 			WorktreeMgrV2: v2WorktreeMgr,
+
+			// Sprint 21 §5 — assistant-специфичные MCP tools.
+			Hub:      hub,
+			UserRepo: userRepo,
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)

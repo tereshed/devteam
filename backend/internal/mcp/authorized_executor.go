@@ -198,53 +198,24 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 	}
 
 	if e.agentSvc != nil {
+		// Sprint 21 §5.1: agent-реестр — глобальный (см. models.Agent: нет user_id /
+		// ownership), а AgentService мутации НЕ гейтит ни по user'у, ни по роли.
+		// Executor же hard-coded подаёт RoleUser (см. модуль-doc). Поэтому
+		// agent_create/update/delete/set_secret/delete_secret не проходят AuthZ-
+		// чек-лист и в каталог ассистента НЕ попадают. Управление шаблонами агентов —
+		// через REST/UI (admin-only). Здесь оставляем только read.
 		tools = append(tools,
 			agentloop.Tool{
 				Name:        "agent_list",
-				Description: "Список агентов реестра. Поддерживает фильтр role и пагинацию.",
+				Description: "Список агентов реестра (только чтение). Поддерживает фильтр role и пагинацию.",
 				InputSchema: schemaAgentList,
 				Handler:     e.agentList,
 			},
 			agentloop.Tool{
 				Name:        "agent_get",
-				Description: "Получить агента по UUID.",
+				Description: "Получить агента по UUID (только чтение).",
 				InputSchema: schemaAgentGet,
 				Handler:     e.agentGet,
-			},
-			agentloop.Tool{
-				Name:                 "agent_create",
-				Description:          "Создать нового агента. Требует подтверждения.",
-				InputSchema:          schemaAgentCreate,
-				RequiresConfirmation: true,
-				Handler:              e.agentCreate,
-			},
-			agentloop.Tool{
-				Name:                 "agent_update",
-				Description:          "Обновить агента. Требует подтверждения.",
-				InputSchema:          schemaAgentUpdate,
-				RequiresConfirmation: true,
-				Handler:              e.agentUpdate,
-			},
-			agentloop.Tool{
-				Name:                 "agent_delete",
-				Description:          "Удалить агента. DESTRUCTIVE — требует подтверждения.",
-				InputSchema:          schemaAgentGet,
-				RequiresConfirmation: true,
-				Handler:              e.agentDelete,
-			},
-			agentloop.Tool{
-				Name:                 "agent_set_secret",
-				Description:          "Установить или обновить секрет агента. Требует подтверждения.",
-				InputSchema:          schemaAgentSetSecret,
-				RequiresConfirmation: true,
-				Handler:              e.agentSetSecret,
-			},
-			agentloop.Tool{
-				Name:                 "agent_delete_secret",
-				Description:          "Удалить секрет агента. DESTRUCTIVE — требует подтверждения.",
-				InputSchema:          schemaAgentDeleteSecret,
-				RequiresConfirmation: true,
-				Handler:              e.agentDeleteSecret,
 			},
 		)
 	}
@@ -736,7 +707,7 @@ func (e *AuthorizedExecutor) conversationSendMessage(ctx context.Context, auth a
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Handlers: agent_* (read-only catalog — никаких mutations)
+// Handlers: agent_* (read-only — §5.1)
 // ─────────────────────────────────────────────────────────────────────────────
 
 type agentListArgs struct {
@@ -799,124 +770,10 @@ func (e *AuthorizedExecutor) agentGet(ctx context.Context, auth agentloop.AuthCo
 	return marshalResult(ag)
 }
 
-func (e *AuthorizedExecutor) agentCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
-	ctx, _, err := injectAuth(ctx, auth)
-	if err != nil {
-		return nil, err
-	}
-	var a service.CreateAgentInput
-	if err := parseArgs(args, &a); err != nil {
-		return businessErr("validation", err.Error())
-	}
-	ag, err := e.agentSvc.Create(ctx, a)
-	if err != nil {
-		return mapServiceErr(err)
-	}
-	return marshalResult(ag)
-}
-
-func (e *AuthorizedExecutor) agentUpdate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
-	ctx, _, err := injectAuth(ctx, auth)
-	if err != nil {
-		return nil, err
-	}
-	// Мы используем кастомную структуру, чтобы извлечь id.
-	var a struct {
-		ID      string `json:"id,omitempty"`
-		AgentID string `json:"agent_id,omitempty"`
-		service.UpdateAgentInput
-	}
-	if err := parseArgs(args, &a); err != nil {
-		return businessErr("validation", err.Error())
-	}
-	idArg := idArgs{ID: a.ID, AgentID: a.AgentID}
-	id, err := idArg.resolve()
-	if err != nil {
-		return businessErr("validation", err.Error())
-	}
-	ag, err := e.agentSvc.Update(ctx, id, a.UpdateAgentInput)
-	if err != nil {
-		return mapServiceErr(err)
-	}
-	return marshalResult(ag)
-}
-
-func (e *AuthorizedExecutor) agentDelete(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
-	ctx, _, err := injectAuth(ctx, auth)
-	if err != nil {
-		return nil, err
-	}
-	var a idArgs
-	if err := parseArgs(args, &a); err != nil {
-		return businessErr("validation", err.Error())
-	}
-	id, err := a.resolve()
-	if err != nil {
-		return businessErr("validation", err.Error())
-	}
-	
-	// Мягкое удаление через деактивацию
-	f := false
-	ag, err := e.agentSvc.Update(ctx, id, service.UpdateAgentInput{IsActive: &f})
-	if err != nil {
-		return mapServiceErr(err)
-	}
-	return marshalResult(map[string]any{"status": "deleted", "agent": ag})
-}
-
-type setSecretArgs struct {
-	AgentID     string `json:"agent_id"`
-	KeyName     string `json:"key_name"`
-	SecretValue string `json:"secret_value"`
-}
-
-func (e *AuthorizedExecutor) agentSetSecret(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
-	ctx, _, err := injectAuth(ctx, auth)
-	if err != nil {
-		return nil, err
-	}
-	var a setSecretArgs
-	if err := parseArgs(args, &a); err != nil {
-		return businessErr("validation", err.Error())
-	}
-	id, err := uuid.Parse(a.AgentID)
-	if err != nil {
-		return businessErr("validation", "agent_id must be a UUID")
-	}
-	in := service.SetSecretInput{
-		AgentID: id,
-		KeyName: a.KeyName,
-		Value:   a.SecretValue,
-	}
-	out, err := e.agentSvc.SetSecret(ctx, in)
-	if err != nil {
-		return mapServiceErr(err)
-	}
-	return marshalResult(out)
-}
-
-type delSecretArgs struct {
-	SecretID string `json:"secret_id"`
-}
-
-func (e *AuthorizedExecutor) agentDeleteSecret(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
-	ctx, _, err := injectAuth(ctx, auth)
-	if err != nil {
-		return nil, err
-	}
-	var a delSecretArgs
-	if err := parseArgs(args, &a); err != nil {
-		return businessErr("validation", err.Error())
-	}
-	secID, err := uuid.Parse(a.SecretID)
-	if err != nil {
-		return businessErr("validation", "secret_id must be a valid UUID")
-	}
-	if err := e.agentSvc.DeleteSecret(ctx, secID); err != nil {
-		return mapServiceErr(err)
-	}
-	return marshalResult(map[string]string{"status": "deleted"})
-}
+// Sprint 21 §5.1 — agent_create/update/delete/set_secret/delete_secret НЕ попадают
+// в catalog глобального ассистента: AgentService мутации не гейтит по user/role,
+// а Executor подаёт hard-coded RoleUser. До появления per-agent ownership/admin-
+// проверки в AgentService — мутации остаются исключительно за REST/UI.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Handlers: query_* (artifacts, router_decisions, worktrees)
@@ -1029,7 +886,7 @@ func (e *AuthorizedExecutor) assistantActiveTasksCount(ctx context.Context, auth
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := e.taskSvc.ListActiveByUser(ctx, uid, []models.TaskState{models.TaskStateActive}, 100)
+	tasks, err := e.taskSvc.ListActiveByUser(ctx, uid, []models.TaskState{models.TaskStateActive}, activeTasksCountLimit)
 	if err != nil {
 		return mapServiceErr(err)
 	}
@@ -1084,13 +941,9 @@ var (
 	schemaConvGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
 	schemaConvCreate        = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"}}}`)
 	schemaConvSendMessage   = json.RawMessage(`{"type":"object","required":["conversation_id","content"],"properties":{"conversation_id":{"type":"string","format":"uuid"},"content":{"type":"string"}}}`)
-	schemaAgentList         = json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaAgentGet          = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
-	schemaAgentCreate       = json.RawMessage(`{"type":"object","required":["name","role","execution_kind"],"properties":{"name":{"type":"string"},"role":{"type":"string"},"execution_kind":{"type":"string"},"system_prompt":{"type":"string"},"model":{"type":"string"},"temperature":{"type":"number"},"max_tokens":{"type":"integer"}}}`)
-	schemaAgentUpdate       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"system_prompt":{"type":"string"},"model":{"type":"string"},"temperature":{"type":"number"},"max_tokens":{"type":"integer"}},"anyOf":[{"required":["id"]},{"required":["agent_id"]}]}`)
-	schemaAgentSetSecret    = json.RawMessage(`{"type":"object","required":["agent_id","key_name","secret_value"],"properties":{"agent_id":{"type":"string","format":"uuid"},"key_name":{"type":"string"},"secret_value":{"type":"string"}}}`)
-	schemaAgentDeleteSecret = json.RawMessage(`{"type":"object","required":["secret_id"],"properties":{"secret_id":{"type":"string","format":"uuid"}}}`)
-	schemaArtifactList      = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"}}}`)
+	schemaAgentList    = json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaAgentGet     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
+	schemaArtifactList = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"}}}`)
 	schemaArtifactGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"anyOf":[{"required":["id"]},{"required":["artifact_id"]}]}`)
 	schemaAppNavigate       = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
 )

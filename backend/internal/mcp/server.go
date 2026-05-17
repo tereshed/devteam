@@ -7,6 +7,7 @@ import (
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/internal/ws"
 )
 
 // Dependencies содержит зависимости MCP-сервера
@@ -43,6 +44,12 @@ type Dependencies struct {
 	// Sprint 17 / 6.3 — для destructive worktree_release MCP-инструмента.
 	// nil → инструмент не регистрируется (legacy clone-path: WORKTREES_ROOT не задан).
 	WorktreeMgrV2 *service.WorktreeManager
+
+	// Sprint 21 §5 — assistant-специфичные MCP-инструменты (app_navigate,
+	// assistant_active_tasks_count, whoami). Все поля опциональны: nil →
+	// соответствующий tool не регистрируется (см. RegisterAssistantTools).
+	Hub      *ws.Hub
+	UserRepo repository.UserRepository
 }
 
 // NewMCPServer создает MCP-сервер с зарегистрированными инструментами
@@ -75,6 +82,21 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	if deps.OrchestrationQuerySvcV2 != nil {
 		RegisterOrchestrationV2Tools(server, deps.OrchestrationQuerySvcV2, deps.TaskLifecycleV2, deps.WorktreeMgrV2)
 	}
+
+	// Sprint 21 §5 — assistant tools (app_navigate, assistant_active_tasks_count, whoami).
+	// Каждое поле опционально (nil → tool пропускается).
+	//
+	// deps.Hub типа *ws.Hub удовлетворяет узкому UserNotifier (см. tools_assistant.go).
+	// Передаём напрямую — типобезопасно, без рантайм-каста.
+	var notifier UserNotifier
+	if deps.Hub != nil {
+		notifier = deps.Hub
+	}
+	RegisterAssistantTools(server, AssistantToolsDeps{
+		Notifier:    notifier,
+		TaskService: deps.TaskService,
+		UserRepo:    deps.UserRepo,
+	})
 
 	return server
 }
