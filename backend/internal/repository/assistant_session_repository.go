@@ -107,6 +107,12 @@ type AssistantSessionRepository interface {
 
 	// --- confirm flow (см. §4.1) ---
 
+	// GetPendingToolMessage — лукап pending tool-row по (session_id, tool_call_id)
+	// для confirm-flow. Service'у нужен tool_name + tool_arguments, чтобы
+	// исполнить подтверждённый MCP-вызов перед записью результата.
+	// ErrMessageNotFound — нет pending row (или уже закрыт другим confirm).
+	GetPendingToolMessage(ctx context.Context, sessionID uuid.UUID, toolCallID string) (*models.AssistantMessage, error)
+
 	// ConfirmAndClosePending атомарно:
 	//   1) SELECT ... FOR UPDATE по (session_id, user_id, busy=TRUE, pending_tool_call_id=toolCallID);
 	//   2) UPDATE assistant_messages SET tool_result=?::jsonb WHERE tool_call_id=? AND tool_result IS NULL;
@@ -470,6 +476,26 @@ func (r *assistantSessionRepository) ResetStaleBusy(ctx context.Context, staleTh
 		return 0, fmt.Errorf("reset stale busy: %w", res.Error)
 	}
 	return res.RowsAffected, nil
+}
+
+func (r *assistantSessionRepository) GetPendingToolMessage(ctx context.Context, sessionID uuid.UUID, toolCallID string) (*models.AssistantMessage, error) {
+	if sessionID == uuid.Nil || toolCallID == "" {
+		return nil, ErrInvalidInput
+	}
+
+	db := gormDB(ctx, r.db)
+	var msg models.AssistantMessage
+	err := db.WithContext(ctx).
+		Where("session_id = ? AND tool_call_id = ? AND role = ? AND tool_result IS NULL",
+			sessionID, toolCallID, models.AssistantMessageRoleTool).
+		First(&msg).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrMessageNotFound
+		}
+		return nil, fmt.Errorf("get pending tool message: %w", err)
+	}
+	return &msg, nil
 }
 
 // --- confirm flow ---

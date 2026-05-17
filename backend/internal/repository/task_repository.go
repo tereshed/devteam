@@ -75,6 +75,26 @@ type TaskRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	CountByProjectID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	ListByParentID(ctx context.Context, parentTaskID uuid.UUID) ([]models.Task, error)
+
+	// ListActiveByUser — все задачи в state'ах из states, принадлежащие
+	// проектам пользователя (JOIN tasks ⋈ projects ON projects.user_id=?).
+	// Sprint 21: используется AssistantService.ListActiveTasks (Tasks-tab).
+	// limit==0 → дефолт 200 (защита от мегабайтных ответов).
+	// Возвращает плоский snapshot с метаданными проекта — service'у не
+	// нужно делать дополнительный лукап имён.
+	ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]ActiveTaskRow, error)
+}
+
+// ActiveTaskRow — плоская проекция «задача + минимум данных её проекта»
+// для assistant Tasks-tab. Sprint 21. Возвращается одним JOIN-запросом,
+// чтобы избежать N+1 (project → tasks per project).
+type ActiveTaskRow struct {
+	TaskID      uuid.UUID        `gorm:"column:task_id"`
+	ProjectID   uuid.UUID        `gorm:"column:project_id"`
+	ProjectName string           `gorm:"column:project_name"`
+	Title       string           `gorm:"column:title"`
+	State       models.TaskState `gorm:"column:state"`
+	UpdatedAt   time.Time        `gorm:"column:updated_at"`
 }
 
 // taskRepository все публичные методы начинают с db := gormDB(ctx, r.db), чтобы запросы
@@ -289,4 +309,51 @@ func (r *taskRepository) ListByParentID(ctx context.Context, parentTaskID uuid.U
 		return nil, fmt.Errorf("failed to list subtasks: %w", err)
 	}
 	return tasks, nil
+}
+
+const activeTasksByUserDefaultLimit = 200
+
+// ListActiveByUser — единый JOIN tasks ⋈ projects по user_id (см. интерфейс).
+// Один запрос вместо N+1 (project loop) — критично для YugabyteDB, где
+// каждый round-trip = 2–5ms по кластеру (Sprint 21 review fix).
+//
+// Пустой states → возвращает все state'ы (на практике вызывается с
+// {active} для Tasks-tab; интерфейс оставлен общий на случай расширения).
+func (r *taskRepository) ListActiveByUser(
+	ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int,
+) ([]ActiveTaskRow, error) {
+	if userID == uuid.Nil {
+		return nil, ErrInvalidInput
+	}
+	if limit <= 0 {
+		limit = activeTasksByUserDefaultLimit
+	}
+
+	db := gormDB(ctx, r.db)
+	query := db.WithContext(ctx).
+		Table("tasks AS t").
+		Select(`
+			t.id          AS task_id,
+			t.project_id  AS project_id,
+			p.name        AS project_name,
+			t.title       AS title,
+			t.state       AS state,
+			t.updated_at  AS updated_at
+		`).
+		Joins("INNER JOIN projects AS p ON p.id = t.project_id").
+		Where("p.user_id = ?", userID)
+
+	if len(states) > 0 {
+		// states передаются как []models.TaskState — GORM маппит как `IN (?,?...)`.
+		query = query.Where("t.state IN ?", states)
+	}
+
+	var rows []ActiveTaskRow
+	if err := query.
+		Order("t.updated_at DESC").
+		Limit(limit).
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("list active tasks by user: %w", err)
+	}
+	return rows, nil
 }

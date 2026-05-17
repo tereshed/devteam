@@ -117,6 +117,13 @@ func (m *mockTaskRepository) ListByParentID(ctx context.Context, parentTaskID uu
 	}
 	return args.Get(0).([]models.Task), args.Error(1)
 }
+func (m *mockTaskRepository) ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error) {
+	args := m.Called(ctx, userID, states, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]repository.ActiveTaskRow), args.Error(1)
+}
 
 type mockTaskMessageRepository struct{ mock.Mock }
 
