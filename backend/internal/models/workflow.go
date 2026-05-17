@@ -23,6 +23,9 @@ const (
 	AgentRoleRouter     AgentRole = "router"
 	AgentRoleDecomposer AgentRole = "decomposer"
 	AgentRoleMerger     AgentRole = "merger"
+	// Sprint 21 — глобальный ассистент пользователя (правая боковая панель).
+	// Один на инсталляцию: seed-функция гарантирует наличие записи name='assistant'.
+	AgentRoleAssistant AgentRole = "assistant"
 )
 
 // IsValid проверяет валидность роли агента
@@ -31,7 +34,8 @@ func (r AgentRole) IsValid() bool {
 	case AgentRoleWorker, AgentRoleSupervisor, AgentRoleOrchestrator,
 		AgentRolePlanner, AgentRoleDeveloper, AgentRoleReviewer,
 		AgentRoleTester, AgentRoleDevOps,
-		AgentRoleRouter, AgentRoleDecomposer, AgentRoleMerger:
+		AgentRoleRouter, AgentRoleDecomposer, AgentRoleMerger,
+		AgentRoleAssistant:
 		return true
 	default:
 		return false

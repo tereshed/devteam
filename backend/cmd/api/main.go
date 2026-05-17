@@ -23,6 +23,7 @@ import (
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/sandbox"
+	"github.com/devteam/backend/internal/seed"
 	"github.com/devteam/backend/internal/server"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/internal/ws"
@@ -151,6 +152,14 @@ func main() {
 	if err := wfLoader.LoadSchedules(context.Background(), "schedules"); err != nil {
 		// Не падаем, если нет папки или ошибка, просто логируем
 		log.Printf("Failed to load schedules: %v", err)
+	}
+
+	// Sprint 21 §6 — bootstrap глобального assistant-агента (role='assistant').
+	// Идемпотентно: ON CONFLICT (name) WHERE team_id IS NULL DO NOTHING.
+	// Без этой записи AssistantService.runAgentLoop возвращает
+	// ErrAssistantAgentNotConfigured и правая боковая панель не работает.
+	if err := seed.SeedAssistantAgent(context.Background(), db, slog.Default()); err != nil {
+		log.Printf("Failed to seed assistant agent: %v", err)
 	}
 
 	// Services
