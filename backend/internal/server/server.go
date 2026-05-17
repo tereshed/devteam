@@ -203,6 +203,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			{
 				cc.POST("/init", deps.ClaudeCodeAuthHandler.Init)
 				cc.POST("/callback", deps.ClaudeCodeAuthHandler.Callback)
+				cc.PUT("/manual-token", deps.ClaudeCodeAuthHandler.ManualToken)
 				cc.GET("/status", deps.ClaudeCodeAuthHandler.Status)
 				cc.DELETE("", deps.ClaudeCodeAuthHandler.Revoke)
 			}
@@ -210,6 +211,11 @@ func (s *Server) setupRoutes(deps Dependencies) {
 
 		// UI Refactoring Stage 3a — git OAuth интеграции.
 		if deps.GitIntegrationHandler != nil {
+			// Публичные GET /callback — браузерный redirect от провайдера.
+			// Auth не требуется: state-токен привязан к user в Init и идентифицирует его.
+			api.GET("/integrations/github/auth/callback", deps.GitIntegrationHandler.BrowserCallbackGitHub)
+			api.GET("/integrations/gitlab/auth/callback", deps.GitIntegrationHandler.BrowserCallbackGitLab)
+
 			gh := api.Group("/integrations/github/auth")
 			gh.Use(authMW)
 			{

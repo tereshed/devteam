@@ -66,6 +66,7 @@ class GitIntegrationsController extends Notifier<GitIntegrationsState> {
   StreamSubscription<WsClientEvent>? _wsSubscription;
   bool _needsResyncOnNextServerEvent = false;
   int _stateVersion = 0;
+  final Map<GitIntegrationProvider, Timer> _pollTimers = {};
 
   @override
   GitIntegrationsState build() {
@@ -73,10 +74,70 @@ class GitIntegrationsController extends Notifier<GitIntegrationsState> {
     _wsSubscription = ws.events.listen(_onWsClientEvent);
     ref.onDispose(() {
       unawaited(_wsSubscription?.cancel());
+      for (final t in _pollTimers.values) {
+        t.cancel();
+      }
+      _pollTimers.clear();
     });
     // Запускаем первичный fetch
     scheduleMicrotask(refresh);
     return GitIntegrationsState.initial;
+  }
+
+  /// Polling-фолбэк к WS: WebSocket открывается только при наличии активного
+  /// проекта (см. websocket_service.dart), а OAuth-флоу можно запускать
+  /// раньше — без поллинга карточка зависнет в `pending` навсегда.
+  ///
+  /// Дёргаем `refresh()` каждые [period] до тех пор, пока статус [provider] не
+  /// уйдёт из `pending`, либо не истечёт [timeout]. Повторный вызов для того же
+  /// провайдера перезапускает таймер.
+  void pollUntilSettled(
+    GitIntegrationProvider provider, {
+    Duration period = const Duration(seconds: 2),
+    Duration timeout = const Duration(minutes: 3),
+  }) {
+    _pollTimers.remove(provider)?.cancel();
+    final deadline = DateTime.now().add(timeout);
+
+    // Возвращает true, если можно остановиться: только при connected (успех)
+    // или error (явный fail на колбэке). `disconnected` во время поллинга — это
+    // нормальный промежуточный сигнал (OAuth ещё не завершён или юзер revoke'нул
+    // прямо перед init), останавливаться нельзя — иначе мы пропустим момент,
+    // когда callback от провайдера наконец создаст запись в БД.
+    //
+    // Дополнительно: если refresh() перезаписал локальный pending этого
+    // провайдера на disconnected, восстанавливаем pending — поллинг сам по себе
+    // факт того, что OAuth в полёте.
+    Future<bool> tick() async {
+      await refresh();
+      final st = state.connections[provider]?.status;
+      if (st == GitProviderConnectionStatus.disconnected) {
+        applyLocal(
+          GitProviderConnection(
+            provider: provider,
+            status: GitProviderConnectionStatus.pending,
+          ),
+        );
+        return false;
+      }
+      return st == GitProviderConnectionStatus.connected ||
+          st == GitProviderConnectionStatus.error;
+    }
+
+    _pollTimers[provider] = Timer.periodic(period, (t) async {
+      if (DateTime.now().isAfter(deadline)) {
+        t.cancel();
+        _pollTimers.remove(provider);
+        return;
+      }
+      if (await tick()) {
+        t.cancel();
+        _pollTimers.remove(provider);
+      }
+    });
+    // Первая проба сразу — typical OAuth-flow на дев-машине меньше 1 секунды,
+    // ждать первый tick таймера лишний раз не нужно.
+    unawaited(tick());
   }
 
   /// Полный REST-rebuild: `GET /status` для обоих провайдеров.

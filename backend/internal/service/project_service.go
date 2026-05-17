@@ -69,22 +69,28 @@ type ProjectService interface {
 }
 
 type projectService struct {
-	projectRepo  repository.ProjectRepository
-	teamRepo     repository.TeamRepository
-	gitCredRepo  repository.GitCredentialRepository
-	transactions repository.TransactionManager
-	gitFactory   gitprovider.Factory
-	encryptor    Encryptor
-	eventBus     events.EventBus
-	indexer      indexer.CodeIndexer
-	importDir    string
+	projectRepo     repository.ProjectRepository
+	teamRepo        repository.TeamRepository
+	gitCredRepo     repository.GitCredentialRepository
+	gitIntegrations repository.GitIntegrationCredentialRepository
+	transactions    repository.TransactionManager
+	gitFactory      gitprovider.Factory
+	encryptor       Encryptor
+	eventBus        events.EventBus
+	indexer         indexer.CodeIndexer
+	importDir       string
 }
 
 // NewProjectService создаёт сервис проектов.
+//
+// gitIntegrations может быть nil (на момент написания не все вызовы main передают
+// репозиторий, и старые тесты тоже) — в этом случае fallback на OAuth-токен из
+// git_integration_credentials отключён, поведение совпадает со старым.
 func NewProjectService(
 	projectRepo repository.ProjectRepository,
 	teamRepo repository.TeamRepository,
 	gitCredRepo repository.GitCredentialRepository,
+	gitIntegrations repository.GitIntegrationCredentialRepository,
 	transactions repository.TransactionManager,
 	gitFactory gitprovider.Factory,
 	encryptor Encryptor,
@@ -93,15 +99,16 @@ func NewProjectService(
 	importDir string,
 ) ProjectService {
 	return &projectService{
-		projectRepo:  projectRepo,
-		teamRepo:     teamRepo,
-		gitCredRepo:  gitCredRepo,
-		transactions: transactions,
-		gitFactory:   gitFactory,
-		encryptor:    encryptor,
-		eventBus:     eventBus,
-		indexer:      indexer,
-		importDir:    importDir,
+		projectRepo:     projectRepo,
+		teamRepo:        teamRepo,
+		gitCredRepo:     gitCredRepo,
+		gitIntegrations: gitIntegrations,
+		transactions:    transactions,
+		gitFactory:      gitFactory,
+		encryptor:       encryptor,
+		eventBus:        eventBus,
+		indexer:         indexer,
+		importDir:       importDir,
 	}
 }
 
@@ -224,6 +231,19 @@ func listFilterFromDTO(req dto.ListProjectsRequest) (repository.ProjectFilter, e
 	return f, nil
 }
 
+// mapGitProviderToIntegration переводит models.GitProvider (поле проекта) в
+// models.GitIntegrationProvider (ключ OAuth-таблицы). Для local — false.
+func mapGitProviderToIntegration(p models.GitProvider) (models.GitIntegrationProvider, bool) {
+	switch p {
+	case models.GitProviderGitHub:
+		return models.GitIntegrationProviderGitHub, true
+	case models.GitProviderGitLab:
+		return models.GitIntegrationProviderGitLab, true
+	default:
+		return "", false
+	}
+}
+
 // buildGitProvider расшифровывает credentials и создаёт экземпляр GitProvider.
 func (s *projectService) buildGitProvider(
 	ctx context.Context,
@@ -253,6 +273,25 @@ func (s *projectService) buildGitProvider(
 			creds.Token = string(decrypted)
 		case models.GitCredentialAuthSSHKey:
 			creds.SSHKey = string(decrypted)
+		}
+	} else if s.gitIntegrations != nil {
+		// Fallback: если creds к проекту не привязаны, но юзер подключал
+		// провайдер через OAuth (страница «Git-провайдеры»), используем тот
+		// токен. Без этого создание GitHub/GitLab-проекта без явных кредов
+		// шло анонимно и валилось на приватных репах с «repository not found».
+		if integProvider, ok := mapGitProviderToIntegration(providerType); ok {
+			cred, err := s.gitIntegrations.GetByUserAndProvider(ctx, userID, integProvider)
+			if err == nil && cred != nil && len(cred.AccessTokenEnc) > 0 {
+				aad := repository.GitIntegrationCredentialAAD(cred.ID)
+				decrypted, decErr := s.encryptor.Decrypt(cred.AccessTokenEnc, aad)
+				if decErr != nil {
+					return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, decErr)
+				}
+				creds.Token = string(decrypted)
+			}
+			// На случай repository.ErrGitIntegrationNotFound и прочих ошибок —
+			// тихо падаем в анонимный клиент: для публичных репо этого хватит,
+			// для приватных бэк отдаст «repository not found» (диагностируемо).
 		}
 	}
 

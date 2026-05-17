@@ -282,10 +282,12 @@ func (c *gitlabOAuthClient) ExchangeCode(ctx context.Context, code, redirectURI 
 		switch parsed.Error {
 		case "access_denied":
 			return nil, ErrGitOAuthUserCancelled
-		case "invalid_grant", "invalid_client":
-			return nil, ErrGitOAuthInvalidGrant
+		case "invalid_grant":
+			return nil, fmt.Errorf("%w: gitlab invalid_grant: %s", ErrGitOAuthInvalidGrant, parsed.ErrorDescription)
+		case "invalid_client":
+			return nil, fmt.Errorf("%w: gitlab invalid_client (check GITLAB_OAUTH_CLIENT_ID/SECRET): %s", ErrGitOAuthInvalidGrant, parsed.ErrorDescription)
 		default:
-			return nil, fmt.Errorf("%w: gitlab error %q", ErrGitOAuthProviderUnreachable, parsed.Error)
+			return nil, fmt.Errorf("%w: gitlab error %q: %s", ErrGitOAuthProviderUnreachable, parsed.Error, parsed.ErrorDescription)
 		}
 	}
 	if parsed.AccessToken == "" {

@@ -46,6 +46,10 @@ type ClaudeCodeAuthService interface {
 	AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error)
 	// RefreshOne — обновляет токены конкретной подписки (используется воркером 15.13).
 	RefreshOne(ctx context.Context, sub *models.ClaudeCodeSubscription) error
+	// SaveManualToken записывает access/refresh-токены, полученные пользователем
+	// out-of-band (например, через `claude setup-token`). Поведение совпадает с
+	// успешным завершением device-flow: тот же persist + событие WS.
+	SaveManualToken(ctx context.Context, userID uuid.UUID, tok *ClaudeCodeOAuthToken) (*ClaudeCodeAuthStatus, error)
 }
 
 // ClaudeCodeAuthStatus — публичный статус подписки.
@@ -177,6 +181,23 @@ func (s *claudeCodeAuthService) CompleteDeviceCode(ctx context.Context, userID u
 	}
 	// Поток успешно завершён — освобождаем device_code, чтобы повторный POST вернул mismatch (не reuse).
 	s.deviceCodes.Delete(deviceCode)
+	now := time.Now().UTC()
+	s.publishStatus(persistCtx, userID, events.IntegrationStatusConnected, "", &now, sub.ExpiresAt)
+	return toStatus(sub), nil
+}
+
+// SaveManualToken — см. интерфейс. Поведение зеркально CompleteDeviceCode после
+// успешного poll'а: persist через WithoutCancel + публикация IntegrationStatus.
+func (s *claudeCodeAuthService) SaveManualToken(ctx context.Context, userID uuid.UUID, tok *ClaudeCodeOAuthToken) (*ClaudeCodeAuthStatus, error) {
+	if tok == nil || tok.AccessToken == "" {
+		return nil, fmt.Errorf("manual token: access_token is required")
+	}
+	persistCtx := context.WithoutCancel(ctx)
+	sub, err := s.persistToken(persistCtx, userID, tok)
+	if err != nil {
+		s.publishStatus(persistCtx, userID, events.IntegrationStatusError, ReasonInternalError, nil, nil)
+		return nil, err
+	}
 	now := time.Now().UTC()
 	s.publishStatus(persistCtx, userID, events.IntegrationStatusConnected, "", &now, sub.ExpiresAt)
 	return toStatus(sub), nil

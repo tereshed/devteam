@@ -157,6 +157,51 @@ func classifyClaudeCodeAuthErr(err error) string {
 	}
 }
 
+// ManualToken — PUT /claude-code/auth/manual-token.
+//
+// Принимает готовую пару (access/refresh) OAuth-токенов, выпущенных
+// out-of-band (`claude setup-token` локально). Альтернатива device-flow для
+// случаев, когда OAuth-провайдер на бэке не настроен (CLAUDE_CODE_OAUTH_CLIENT_ID
+// не задан) либо юзер не хочет проходить флоу заново.
+//
+// @Summary Сохранить заранее полученный токен подписки Claude Code
+// @Tags claude-code
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param request body dto.ClaudeCodeAuthManualTokenRequest true "Токен"
+// @Success 200 {object} dto.ClaudeCodeAuthStatusResponse
+// @Failure 400 {object} apierror.ErrorResponse
+// @Failure 401 {object} apierror.ErrorResponse
+// @Failure 500 {object} apierror.ErrorResponse
+// @Router /claude-code/auth/manual-token [put]
+func (h *ClaudeCodeAuthHandler) ManualToken(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+	var req dto.ClaudeCodeAuthManualTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid request body")
+		return
+	}
+	tok := &service.ClaudeCodeOAuthToken{
+		AccessToken:  req.AccessToken,
+		RefreshToken: req.RefreshToken,
+		TokenType:    req.TokenType,
+		Scopes:       req.Scopes,
+		ExpiresAt:    req.ExpiresAt,
+	}
+	status, err := h.svc.SaveManualToken(c.Request.Context(), uid, tok)
+	if err != nil {
+		mapClaudeCodeAuthErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.ClaudeCodeAuthStatusResponse(*status))
+}
+
 // Status возвращает текущий статус подписки.
 // @Summary Статус OAuth-подписки Claude Code
 // @Tags claude-code

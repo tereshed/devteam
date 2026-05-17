@@ -197,10 +197,15 @@ func main() {
 	vectorRepo := repository.NewVectorRepository(nil) // TODO: pass Weaviate client
 	codeIndexer, _ := indexer.NewCodeIndexer(syncRepo, vectorRepo, nil, 4, slog.Default())
 
+	// Конструируем git_integration_credentials репозиторий заранее: ProjectService
+	// использует его для fallback на OAuth-токен при создании проекта без явного
+	// git_credential_id.
+	gitIntegrationRepo := repository.NewGitIntegrationCredentialRepository(db)
 	projectService := service.NewProjectService(
 		projectRepo,
 		teamRepo,
 		gitCredRepo,
+		gitIntegrationRepo,
 		txManager,
 		gitFactory,
 		encryptor,
@@ -489,7 +494,7 @@ func main() {
 	)
 
 	// UI Refactoring Stage 3a — git-интеграции (GitHub / GitLab.com / BYO GitLab).
-	gitIntegrationRepo := repository.NewGitIntegrationCredentialRepository(db)
+	// (gitIntegrationRepo инициализирован выше для ProjectService fallback.)
 	githubOAuthClient := service.NewGitHubOAuthClient(service.GitHubOAuthConfig{
 		ClientID:     cfg.GitHubOAuth.ClientID,
 		ClientSecret: cfg.GitHubOAuth.ClientSecret,

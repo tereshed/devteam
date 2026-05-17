@@ -6,6 +6,7 @@ import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dar
 import 'package:frontend/features/integrations/llm/presentation/widgets/connect_api_key_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/connect_claude_code_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/llm_provider_cards.dart';
+import 'package:frontend/features/integrations/llm/presentation/widgets/manual_claude_code_dialog.dart';
 
 /// Экран `/integrations/llm` — управление LLM-провайдерами для текущего юзера.
 ///
@@ -148,25 +149,25 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
     void onConnect() => _onConnect(context, provider, conn);
     void onDisconnect() => _onDisconnect(provider);
     void onReplace() => _onConnect(context, provider, conn);
+    final isConnected = conn.status == LlmProviderConnectionStatus.connected;
+    if (provider == LlmIntegrationProvider.claudeCodeOAuth) {
+      return claudeCodeCard(
+        context,
+        connection: conn,
+        onConnect: isConnected ? null : onConnect,
+        onDisconnect: isConnected ? onDisconnect : null,
+        onManualToken: isConnected
+            ? null
+            : () => showManualClaudeCodeDialog(context, ref),
+      );
+    }
     return llmProviderCard(
       context,
       provider: provider,
       connection: conn,
-      onConnect: provider == LlmIntegrationProvider.claudeCodeOAuth
-          ? (conn.status == LlmProviderConnectionStatus.connected
-                ? null
-                : onConnect)
-          : (conn.status == LlmProviderConnectionStatus.connected
-                ? null
-                : onConnect),
-      onDisconnect: conn.status == LlmProviderConnectionStatus.connected
-          ? onDisconnect
-          : null,
-      onReplace: provider == LlmIntegrationProvider.claudeCodeOAuth
-          ? null
-          : (conn.status == LlmProviderConnectionStatus.connected
-                ? onReplace
-                : null),
+      onConnect: isConnected ? null : onConnect,
+      onDisconnect: isConnected ? onDisconnect : null,
+      onReplace: isConnected ? onReplace : null,
     );
   }
 

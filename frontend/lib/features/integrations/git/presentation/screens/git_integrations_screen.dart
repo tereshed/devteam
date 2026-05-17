@@ -178,6 +178,9 @@ class GitIntegrationsScreen extends ConsumerWidget {
     }
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (ok) {
+      // WS-канал открывается только при наличии активного проекта; пока его нет,
+      // OAuth-completion из браузера ловим поллингом GET /status.
+      controller.pollUntilSettled(provider);
       return;
     }
     controller.rollbackToDisconnected(provider);
@@ -242,7 +245,7 @@ class _SectionsLayout extends StatelessWidget {
         _Section(
           title: l10n.integrationsGitSectionConnected,
           emptyHint: connected.isEmpty
-              ? l10n.integrationsGitEmptyAvailable
+              ? l10n.integrationsGitEmptyConnected
               : null,
           spacing: spacing,
           children: [

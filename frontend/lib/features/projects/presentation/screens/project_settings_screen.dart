@@ -340,6 +340,22 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
 
     final project = asyncProject.requireValue;
 
+    // ref.listen выше срабатывает только на ПЕРЕХОДЫ провайдера. Если данные
+    // уже были в кеше Riverpod (типичный путь: создал проект → перешёл в
+    // Settings → projectProvider сразу AsyncData без перехода loading→data),
+    // listen не дёрнется и контроллеры останутся пустыми. Дублируем apply
+    // здесь, защищая от лишних setState через _lastApplied.
+    if (!_dirty &&
+        !_suppressNextProviderListenApply &&
+        (_lastApplied?.id != project.id ||
+            _lastApplied?.updatedAt != project.updatedAt)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() => _applyFromProject(project));
+        }
+      });
+    }
+
     final reindexDisabled =
         project.status == 'indexing' ||
         project.gitProvider == kLocalGitProvider ||

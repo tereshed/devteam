@@ -128,6 +128,10 @@ class AppLocalizationsRu extends AppLocalizations {
       'Все поддерживаемые провайдеры уже подключены.';
 
   @override
+  String get integrationsGitEmptyConnected =>
+      'Пока ни одного провайдера не подключено.';
+
+  @override
   String get integrationsGitReasonUserCancelled =>
       'Авторизация отклонена. Попробуйте снова.';
 
@@ -349,6 +353,28 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get integrationsLlmDialogApiKeyHint =>
       'Хранится зашифрованным (AES-256-GCM).';
+
+  @override
+  String get integrationsLlmClaudeCodeManualTitle => 'Ввести токен Claude Code';
+
+  @override
+  String get integrationsLlmClaudeCodeManualHint =>
+      'Используйте, если OAuth-приложение Anthropic ещё не настроено или у вас уже есть готовый setup-token.';
+
+  @override
+  String get integrationsLlmClaudeCodeManualAccessField =>
+      'Access token (sk-ant-oat01-...)';
+
+  @override
+  String get integrationsLlmClaudeCodeManualRefreshField =>
+      'Refresh token (опционально)';
+
+  @override
+  String get integrationsLlmClaudeCodeManualCta => 'Использовать готовый токен';
+
+  @override
+  String get integrationsLlmClaudeCodeManualAccessRequired =>
+      'Введите непустой access token';
 
   @override
   String get integrationsLlmDialogApiKeyRequired => 'Введите непустой API-ключ';
@@ -637,6 +663,10 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get errorServer => 'Ошибка сервера. Попробуйте позже.';
+
+  @override
+  String get errorExternalService =>
+      'Не удалось обратиться к внешнему сервису.';
 
   @override
   String get errorUnknown => 'Произошла неизвестная ошибка.';

@@ -31,9 +31,15 @@ func NewGitHubProvider(creds Credentials) *GitHubProvider {
 // NewGitHubProviderWithDeps — для тестов: runner и/или github.Client (nil = значения по умолчанию).
 func NewGitHubProviderWithDeps(creds Credentials, ghClient *github.Client, runner GitCommandRunner) *GitHubProvider {
 	var client *github.Client
-	if ghClient != nil {
+	switch {
+	case ghClient != nil:
 		client = ghClient
-	} else {
+	case creds.Token == "":
+		// Без токена ходим анонимно: иначе oauth2-обёртка шлёт `Authorization: Bearer `
+		// (пустой Bearer), и GitHub отвечает 401 даже для публичных/несуществующих репо —
+		// маскирует ErrRepoNotFound под ErrAuthFailed.
+		client = github.NewClient(nil)
+	default:
 		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: creds.Token})
 		httpClient := oauth2.NewClient(context.Background(), ts)
 		client = github.NewClient(httpClient)

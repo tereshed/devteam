@@ -8,8 +8,12 @@
 *.out
 main
 
-# Swagger docs
-docs/
+# Swagger docs — артефакты генерации, но swagger.{json,yaml} коммитим
+# (см. .cursor/rules/backend.mdc §6.5.1 Swagger commit gate).
+# `docs/*` (а не `docs/`) — иначе git не позволит re-include через `!`.
+docs/*
+!docs/swagger.json
+!docs/swagger.yaml
 
 # IDE
 .idea/

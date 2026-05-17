@@ -81,6 +81,8 @@
   "@integrationsGitConnectSelfHostedCta": { "description": "ui_refactoring stage 3b: secondary CTA on GitLab card" },
   "integrationsGitEmptyAvailable": "Все поддерживаемые провайдеры уже подключены.",
   "@integrationsGitEmptyAvailable": { "description": "ui_refactoring stage 3b: empty state under Available" },
+  "integrationsGitEmptyConnected": "Пока ни одного провайдера не подключено.",
+  "@integrationsGitEmptyConnected": { "description": "empty state under Connected section" },
   "integrationsGitReasonUserCancelled": "Авторизация отклонена. Попробуйте снова.",
   "@integrationsGitReasonUserCancelled": { "description": "ui_refactoring stage 3b: §4a.5 user_cancelled" },
   "integrationsGitReasonExpired": "OAuth-сессия истекла. Начните заново.",
@@ -229,6 +231,18 @@
   "@integrationsLlmDialogApiKeyField": { "description": "ui_refactoring stage 2: input field label" },
   "integrationsLlmDialogApiKeyHint": "Хранится зашифрованным (AES-256-GCM).",
   "@integrationsLlmDialogApiKeyHint": { "description": "ui_refactoring stage 2: helper text" },
+  "integrationsLlmClaudeCodeManualTitle": "Ввести токен Claude Code",
+  "@integrationsLlmClaudeCodeManualTitle": { "description": "Manual subscription token dialog title" },
+  "integrationsLlmClaudeCodeManualHint": "Используйте, если OAuth-приложение Anthropic ещё не настроено или у вас уже есть готовый setup-token.",
+  "@integrationsLlmClaudeCodeManualHint": { "description": "Manual token dialog hint" },
+  "integrationsLlmClaudeCodeManualAccessField": "Access token (sk-ant-oat01-...)",
+  "@integrationsLlmClaudeCodeManualAccessField": { "description": "Manual token: access token field label" },
+  "integrationsLlmClaudeCodeManualRefreshField": "Refresh token (опционально)",
+  "@integrationsLlmClaudeCodeManualRefreshField": { "description": "Manual token: refresh token field label" },
+  "integrationsLlmClaudeCodeManualCta": "Использовать готовый токен",
+  "@integrationsLlmClaudeCodeManualCta": { "description": "Button on Claude Code card: open manual-token dialog" },
+  "integrationsLlmClaudeCodeManualAccessRequired": "Введите непустой access token",
+  "@integrationsLlmClaudeCodeManualAccessRequired": { "description": "Validation error" },
   "integrationsLlmDialogApiKeyRequired": "Введите непустой API-ключ",
   "@integrationsLlmDialogApiKeyRequired": { "description": "ui_refactoring stage 2: validation error" },
   "integrationsLlmDialogCancel": "Отмена",
@@ -538,6 +552,10 @@
   "errorServer": "Ошибка сервера. Попробуйте позже.",
   "@errorServer": {
     "description": "Ошибка: проблема на сервере"
+  },
+  "errorExternalService": "Не удалось обратиться к внешнему сервису.",
+  "@errorExternalService": {
+    "description": "Ошибка: проблема при вызове внешнего сервиса (502 Bad Gateway)"
   },
   "errorUnknown": "Произошла неизвестная ошибка.",
   "@errorUnknown": {

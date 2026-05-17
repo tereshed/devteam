@@ -31,7 +31,11 @@ String _createProjectApiErrorTitle(
   if (message == 'Network timeout' || message == 'Network error') {
     return l10n.errorNetwork;
   }
-  if ((e.statusCode ?? 0) >= 500) {
+  final code = e.statusCode ?? 0;
+  if (code == 502) {
+    return l10n.errorExternalService;
+  }
+  if (code >= 500) {
     return l10n.errorServer;
   }
   return l10n.createProjectErrorGeneric;

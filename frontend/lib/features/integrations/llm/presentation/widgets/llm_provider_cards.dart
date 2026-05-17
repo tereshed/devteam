@@ -140,6 +140,7 @@ IntegrationProviderCard llmProviderCard(
   VoidCallback? onConnect,
   VoidCallback? onDisconnect,
   VoidCallback? onReplace,
+  IntegrationAction? extraSecondaryAction,
   bool busy = false,
 }) {
   final l10n = requireAppLocalizations(context, where: 'llmProviderCard');
@@ -180,6 +181,9 @@ IntegrationProviderCard llmProviderCard(
         ),
       );
     }
+    if (extraSecondaryAction != null) {
+      actions.add(extraSecondaryAction);
+    }
   }
   return IntegrationProviderCard(
     logo: Icon(
@@ -201,15 +205,27 @@ IntegrationProviderCard claudeCodeCard(
   required LlmProviderConnection connection,
   VoidCallback? onConnect,
   VoidCallback? onDisconnect,
+  VoidCallback? onManualToken,
   bool busy = false,
-}) => llmProviderCard(
-  context,
-  provider: LlmIntegrationProvider.claudeCodeOAuth,
-  connection: connection,
-  onConnect: onConnect,
-  onDisconnect: onDisconnect,
-  busy: busy,
-);
+}) {
+  final l10n = requireAppLocalizations(context, where: 'claudeCodeCard');
+  return llmProviderCard(
+    context,
+    provider: LlmIntegrationProvider.claudeCodeOAuth,
+    connection: connection,
+    onConnect: onConnect,
+    onDisconnect: onDisconnect,
+    busy: busy,
+    extraSecondaryAction: onManualToken == null
+        ? null
+        : IntegrationAction(
+            label: l10n.integrationsLlmClaudeCodeManualCta,
+            style: IntegrationActionStyle.secondary,
+            onPressed: onManualToken,
+            isBusy: busy,
+          ),
+  );
+}
 
 IntegrationProviderCard anthropicCard(
   BuildContext context, {

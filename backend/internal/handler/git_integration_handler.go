@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"html"
 	"log/slog"
 	"net/http"
 
@@ -280,6 +281,77 @@ func (h *GitIntegrationHandler) handleRevoke(c *gin.Context, provider models.Git
 		Provider:           string(provider),
 		RemoteRevokeFailed: remoteFailed,
 	})
+}
+
+// BrowserCallbackGitHub — GET /integrations/github/auth/callback.
+//
+// Публичный endpoint для браузерного редиректа от GitHub после consent.
+// JWT/API-key не требуется: пользователь идентифицируется через state, который
+// привязан к user в Init (см. GitOAuthState.UserID).
+//
+// Отдаёт HTML-страницу "Готово, можно закрыть окно" / "Ошибка ..." — фронт
+// (нативный десктоп) узнаёт об успехе через polling GET /status.
+func (h *GitIntegrationHandler) BrowserCallbackGitHub(c *gin.Context) {
+	h.handleBrowserCallback(c, models.GitIntegrationProviderGitHub)
+}
+
+// BrowserCallbackGitLab — GET /integrations/gitlab/auth/callback (см. BrowserCallbackGitHub).
+func (h *GitIntegrationHandler) BrowserCallbackGitLab(c *gin.Context) {
+	h.handleBrowserCallback(c, models.GitIntegrationProviderGitLab)
+}
+
+func (h *GitIntegrationHandler) handleBrowserCallback(c *gin.Context, expected models.GitIntegrationProvider) {
+	code := c.Query("code")
+	state := c.Query("state")
+	providerErr := c.Query("error")
+
+	res, err := h.svc.HandleCallback(c.Request.Context(), code, state, providerErr)
+	if err != nil {
+		h.log.Warn("git_integration browser callback failed",
+			"provider", string(expected),
+			"reason", classifyGitErr(err),
+			"error_summary", logging.SafeRawAttr([]byte(err.Error())),
+		)
+		writeOAuthResultHTML(c, http.StatusOK, string(expected), "", false, classifyGitErr(err))
+		return
+	}
+	if res.Provider != expected {
+		writeOAuthResultHTML(c, http.StatusOK, string(expected), "", false, "invalid_state")
+		return
+	}
+	writeOAuthResultHTML(c, http.StatusOK, string(res.Provider), res.Status.AccountLogin, true, "")
+}
+
+func writeOAuthResultHTML(c *gin.Context, status int, provider, account string, ok bool, reason string) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	// Минималистичная страница: фронт-приложение узнает результат через polling /status.
+	// Никаких inline-скриптов — щадим CSP и не зависим от JS в браузере пользователя.
+	c.String(status, oauthResultPageHTML(provider, account, ok, reason))
+}
+
+func oauthResultPageHTML(provider, account string, ok bool, reason string) string {
+	title := "Подключение " + provider
+	body := ""
+	if ok {
+		body = "✅ Подключено к <b>" + html.EscapeString(provider) + "</b>"
+		if account != "" {
+			body += " как <b>" + html.EscapeString(account) + "</b>"
+		}
+		body += ". Можно закрыть это окно и вернуться в приложение."
+	} else {
+		body = "❌ Не удалось подключить <b>" + html.EscapeString(provider) + "</b>"
+		if reason != "" {
+			body += " (" + html.EscapeString(reason) + ")"
+		}
+		body += ". Закройте окно и попробуйте ещё раз в приложении."
+	}
+	return "<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\">" +
+		"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+		"<title>" + html.EscapeString(title) + "</title>" +
+		"<style>html,body{height:100%;margin:0;font-family:-apple-system,Segoe UI,sans-serif;background:#0f1115;color:#e6e6e6;}" +
+		"main{display:flex;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;}" +
+		"div{max-width:520px;line-height:1.5;font-size:16px;}" +
+		"</style></head><body><main><div>" + body + "</div></main></body></html>"
 }
 
 // mapErr — общий маппер service-ошибок в HTTP-коды (§4a.5).

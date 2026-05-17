@@ -19,6 +19,17 @@ type ClaudeCodeAuthCallbackRequest struct {
 	DeviceCode string `json:"device_code" binding:"required"`
 }
 
+// ClaudeCodeAuthManualTokenRequest — тело PUT /claude-code/auth/manual-token.
+// Используется, когда у пользователя уже есть long-lived setup-token
+// (`claude setup-token`) и поднимать device-flow не нужно (или он не настроен).
+type ClaudeCodeAuthManualTokenRequest struct {
+	AccessToken  string     `json:"access_token" binding:"required"`
+	RefreshToken string     `json:"refresh_token,omitempty"`
+	TokenType    string     `json:"token_type,omitempty"`
+	Scopes       string     `json:"scopes,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+}
+
 // ClaudeCodeAuthStatusResponse — статус подписки текущего пользователя.
 type ClaudeCodeAuthStatusResponse struct {
 	Connected       bool       `json:"connected"`

@@ -326,6 +326,12 @@ abstract class AppLocalizations {
   /// **'Все поддерживаемые провайдеры уже подключены.'**
   String get integrationsGitEmptyAvailable;
 
+  /// empty state under Connected section
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока ни одного провайдера не подключено.'**
+  String get integrationsGitEmptyConnected;
+
   /// ui_refactoring stage 3b: §4a.5 user_cancelled
   ///
   /// In ru, this message translates to:
@@ -691,6 +697,42 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Хранится зашифрованным (AES-256-GCM).'**
   String get integrationsLlmDialogApiKeyHint;
+
+  /// Manual subscription token dialog title
+  ///
+  /// In ru, this message translates to:
+  /// **'Ввести токен Claude Code'**
+  String get integrationsLlmClaudeCodeManualTitle;
+
+  /// Manual token dialog hint
+  ///
+  /// In ru, this message translates to:
+  /// **'Используйте, если OAuth-приложение Anthropic ещё не настроено или у вас уже есть готовый setup-token.'**
+  String get integrationsLlmClaudeCodeManualHint;
+
+  /// Manual token: access token field label
+  ///
+  /// In ru, this message translates to:
+  /// **'Access token (sk-ant-oat01-...)'**
+  String get integrationsLlmClaudeCodeManualAccessField;
+
+  /// Manual token: refresh token field label
+  ///
+  /// In ru, this message translates to:
+  /// **'Refresh token (опционально)'**
+  String get integrationsLlmClaudeCodeManualRefreshField;
+
+  /// Button on Claude Code card: open manual-token dialog
+  ///
+  /// In ru, this message translates to:
+  /// **'Использовать готовый токен'**
+  String get integrationsLlmClaudeCodeManualCta;
+
+  /// Validation error
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите непустой access token'**
+  String get integrationsLlmClaudeCodeManualAccessRequired;
 
   /// ui_refactoring stage 2: validation error
   ///
@@ -1129,6 +1171,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Ошибка сервера. Попробуйте позже.'**
   String get errorServer;
+
+  /// Ошибка: проблема при вызове внешнего сервиса (502 Bad Gateway)
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось обратиться к внешнему сервису.'**
+  String get errorExternalService;
 
   /// Ошибка: неизвестная ошибка
   ///

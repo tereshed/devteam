@@ -1,0 +1,5281 @@
+basePath: /api/v1
+definitions:
+  apierror.ErrorResponse:
+    properties:
+      error:
+        description: Stable error code (e.g., "invalid_credentials")
+        type: string
+      message:
+        description: Human-readable message
+        type: string
+    type: object
+  dto.AgentResponse:
+    properties:
+      code_backend:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      model:
+        type: string
+      name:
+        type: string
+      prompt_id:
+        type: string
+      prompt_name:
+        type: string
+      role:
+        type: string
+      tool_bindings:
+        items:
+          $ref: '#/definitions/dto.ToolBindingResponse'
+        type: array
+    type: object
+  dto.AgentSettingsResponse:
+    properties:
+      agent_id:
+        type: string
+      code_backend:
+        type: string
+      code_backend_settings:
+        type: object
+      sandbox_permissions:
+        type: object
+    type: object
+  dto.AgentSummary:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  dto.ApiKeyCreatedResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      key_prefix:
+        type: string
+      last_used_at:
+        type: string
+      name:
+        type: string
+      raw_key:
+        description: Показывается только при создании!
+        type: string
+      scopes:
+        type: string
+    type: object
+  dto.ApiKeyResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      key_prefix:
+        type: string
+      last_used_at:
+        type: string
+      name:
+        type: string
+      scopes:
+        type: string
+    type: object
+  dto.AuthResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        type: string
+    type: object
+  dto.ClaudeCodeAuthCallbackRequest:
+    properties:
+      device_code:
+        type: string
+    required:
+    - device_code
+    type: object
+  dto.ClaudeCodeAuthInitResponse:
+    properties:
+      device_code:
+        type: string
+      expires_in_seconds:
+        description: ExpiresInSeconds — через сколько device_code станет невалидным.
+        type: integer
+      interval_seconds:
+        description: IntervalSeconds — минимальный интервал между poll-запросами /callback.
+        type: integer
+      user_code:
+        type: string
+      verification_uri:
+        type: string
+      verification_uri_complete:
+        type: string
+    type: object
+  dto.ClaudeCodeAuthManualTokenRequest:
+    properties:
+      access_token:
+        type: string
+      expires_at:
+        type: string
+      refresh_token:
+        type: string
+      scopes:
+        type: string
+      token_type:
+        type: string
+    required:
+    - access_token
+    type: object
+  dto.ClaudeCodeAuthStatusResponse:
+    properties:
+      connected:
+        type: boolean
+      expires_at:
+        type: string
+      last_refreshed_at:
+        type: string
+      scopes:
+        type: string
+      token_type:
+        type: string
+    type: object
+  dto.ConversationListResponse:
+    properties:
+      conversations:
+        items:
+          $ref: '#/definitions/dto.ConversationResponse'
+        type: array
+      has_next:
+        type: boolean
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.ConversationResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      project_id:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.CorrectTaskRequest:
+    properties:
+      text:
+        minLength: 1
+        type: string
+    required:
+    - text
+    type: object
+  dto.CreateApiKeyRequest:
+    properties:
+      expires_in:
+        description: Время жизни в секундах (nil = бессрочный)
+        type: integer
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      scopes:
+        description: '"*" — полный доступ, или список через запятую'
+        type: string
+    required:
+    - name
+    type: object
+  dto.CreateConversationRequest:
+    properties:
+      title:
+        example: Обсуждение архитектуры
+        maxLength: 255
+        type: string
+    required:
+    - title
+    type: object
+  dto.CreateLLMProviderRequest:
+    properties:
+      auth_type:
+        type: string
+      base_url:
+        type: string
+      credential:
+        type: string
+      default_model:
+        type: string
+      enabled:
+        type: boolean
+      kind:
+        type: string
+      name:
+        type: string
+    required:
+    - kind
+    - name
+    type: object
+  dto.CreateProjectRequest:
+    properties:
+      description:
+        type: string
+      git_credential_id:
+        type: string
+      git_default_branch:
+        type: string
+      git_provider:
+        type: string
+      git_url:
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      settings:
+        type: string
+      status:
+        type: string
+      tech_stack:
+        type: string
+      vector_collection:
+        type: string
+    required:
+    - name
+    type: object
+  dto.CreatePromptRequest:
+    properties:
+      description:
+        type: string
+      is_active:
+        description: Используем указатель чтобы отличить false от zero value
+        type: boolean
+      json_schema:
+        type: string
+      name:
+        type: string
+      template:
+        type: string
+    required:
+    - name
+    - template
+    type: object
+  dto.CreateTaskMessageRequest:
+    properties:
+      content:
+        minLength: 1
+        type: string
+      message_type:
+        type: string
+      metadata:
+        type: string
+    required:
+    - content
+    - message_type
+    type: object
+  dto.CreateTaskRequest:
+    properties:
+      assigned_agent_id:
+        type: string
+      branch_name:
+        description: |-
+          BranchName — необязательное имя git-ветки, которое sandbox-исполнитель
+          (Developer/Tester c claude-code) использует при clone в контейнере.
+          Без него orchestrator не сможет дойти до in_progress→review.
+        type: string
+      context:
+        type: string
+      custom_timeout:
+        description: |-
+          CustomTimeout — per-task override task_timeout (формат time.ParseDuration:
+          "4h", "90m", "1h30m"). Если пуст — используется глобальный default.
+        type: string
+      description:
+        type: string
+      parent_task_id:
+        type: string
+      priority:
+        type: string
+      title:
+        maxLength: 500
+        minLength: 1
+        type: string
+    required:
+    - title
+    type: object
+  dto.CreateWebhookRequest:
+    properties:
+      allowed_ips:
+        type: string
+      description:
+        type: string
+      input_json_path:
+        type: string
+      input_template:
+        type: string
+      name:
+        type: string
+      require_secret:
+        type: boolean
+      workflow_name:
+        type: string
+    required:
+    - name
+    - workflow_name
+    type: object
+  dto.ExecutionListResponse:
+    properties:
+      executions:
+        items:
+          $ref: '#/definitions/dto.ExecutionResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ExecutionResponse:
+    properties:
+      created_at:
+        type: string
+      current_step_id:
+        type: string
+      error_message:
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      input_data:
+        type: string
+      output_data:
+        description: Финальный результат
+        type: string
+      status:
+        type: string
+      step_count:
+        type: integer
+      workflow_id:
+        type: string
+    type: object
+  dto.ExecutionStepResponse:
+    properties:
+      agent_name:
+        type: string
+      created_at:
+        type: string
+      duration_ms:
+        type: integer
+      id:
+        type: string
+      input_context:
+        type: string
+      output_content:
+        type: string
+      step_id:
+        type: string
+      tokens_used:
+        type: integer
+    type: object
+  dto.GitCredentialSummary:
+    properties:
+      auth_type:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      provider:
+        type: string
+    type: object
+  dto.GitIntegrationCallbackRequest:
+    properties:
+      code:
+        type: string
+      error:
+        description: Error — если провайдер вернул ?error=... (например access_denied).
+        type: string
+      state:
+        type: string
+    required:
+    - state
+    type: object
+  dto.GitIntegrationCallbackResponse:
+    properties:
+      provider:
+        type: string
+      status:
+        $ref: '#/definitions/dto.GitIntegrationStatusResponse'
+    type: object
+  dto.GitIntegrationInitRequest:
+    properties:
+      byo_client_id:
+        description: ByoClientID / ByoClientSecret — только для self-hosted GitLab.
+        type: string
+      byo_client_secret:
+        type: string
+      host:
+        description: Host — только для self-hosted GitLab. Пусто = shared.
+        type: string
+      redirect_uri:
+        description: |-
+          RedirectURI — куда провайдер вернёт пользователя после consent. Должен совпадать
+          с client_secret-конфигом OAuth App у провайдера.
+        type: string
+    required:
+    - redirect_uri
+    type: object
+  dto.GitIntegrationInitResponse:
+    properties:
+      authorize_url:
+        type: string
+      state:
+        type: string
+    type: object
+  dto.GitIntegrationRevokeResponse:
+    properties:
+      provider:
+        type: string
+      remote_revoke_failed:
+        type: boolean
+    type: object
+  dto.GitIntegrationStatusResponse:
+    properties:
+      account_login:
+        type: string
+      connected:
+        type: boolean
+      connected_at:
+        type: string
+      expires_at:
+        type: string
+      host:
+        type: string
+      provider:
+        type: string
+      scopes:
+        type: string
+    type: object
+  dto.LLMLogListResponse:
+    properties:
+      logs:
+        items:
+          $ref: '#/definitions/dto.LLMLogResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.LLMLogResponse:
+    properties:
+      agent_id:
+        type: string
+      cost:
+        type: number
+      created_at:
+        type: string
+      duration_ms:
+        type: integer
+      error_message:
+        type: string
+      id:
+        type: string
+      input_tokens:
+        type: integer
+      model:
+        type: string
+      output_tokens:
+        type: integer
+      provider:
+        type: string
+      step_id:
+        type: string
+      total_tokens:
+        type: integer
+      workflow_execution_id:
+        type: string
+    type: object
+  dto.LLMProviderResponse:
+    properties:
+      auth_type:
+        type: string
+      base_url:
+        type: string
+      created_at:
+        type: string
+      default_model:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: string
+      kind:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.LlmCredentialsResponse:
+    properties:
+      anthropic:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
+      deepseek:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
+      gemini:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
+      openai:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
+      openrouter:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
+      qwen:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
+    type: object
+  dto.LlmProviderMaskView:
+    properties:
+      masked_preview:
+        example: '****3Mk9'
+        type: string
+        x-nullable: true
+    type: object
+  dto.LoginRequest:
+    properties:
+      email:
+        description: Email для JSON входа
+        type: string
+      password:
+        type: string
+      username:
+        description: Username для Swagger OAuth2 (form-data)
+        type: string
+    required:
+    - password
+    type: object
+  dto.MCPConfigResponse:
+    properties:
+      config:
+        additionalProperties: true
+        description: Готовый конфиг для mcpServers
+        type: object
+      instructions:
+        description: Инструкция для пользователя
+        type: string
+      server_url:
+        description: URL MCP-сервера
+        type: string
+    type: object
+  dto.MessageListResponse:
+    properties:
+      has_next:
+        type: boolean
+      limit:
+        type: integer
+      messages:
+        items:
+          $ref: '#/definitions/dto.MessageResponse'
+        type: array
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.MessageResponse:
+    properties:
+      content:
+        type: string
+      conversation_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      linked_task_ids:
+        items:
+          type: string
+        type: array
+      metadata:
+        type: object
+      role:
+        type: string
+    type: object
+  dto.PatchAgentRequest:
+    type: object
+  dto.PatchLlmCredentialsRequest:
+    properties:
+      anthropic_api_key:
+        format: password
+        type: string
+      clear_anthropic_key:
+        type: boolean
+      clear_deepseek_key:
+        type: boolean
+      clear_gemini_key:
+        type: boolean
+      clear_openai_key:
+        type: boolean
+      clear_openrouter_key:
+        type: boolean
+      clear_qwen_key:
+        type: boolean
+      deepseek_api_key:
+        format: password
+        type: string
+      gemini_api_key:
+        format: password
+        type: string
+      openai_api_key:
+        format: password
+        type: string
+      openrouter_api_key:
+        format: password
+        type: string
+      qwen_api_key:
+        format: password
+        type: string
+    type: object
+  dto.ProjectListResponse:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      projects:
+        items:
+          $ref: '#/definitions/dto.ProjectResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ProjectResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      git_credential:
+        allOf:
+        - $ref: '#/definitions/dto.GitCredentialSummary'
+        description: nil — ключ в JSON не выводится
+      git_default_branch:
+        type: string
+      git_provider:
+        type: string
+      git_url:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      settings:
+        type: string
+      status:
+        type: string
+      tech_stack:
+        type: string
+      updated_at:
+        type: string
+      vector_collection:
+        type: string
+    type: object
+  dto.PromptResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      json_schema:
+        type: string
+      name:
+        type: string
+      template:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  dto.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  dto.SendMessageRequest:
+    properties:
+      content:
+        example: Привет, как дела?
+        maxLength: 4096
+        type: string
+    required:
+    - content
+    type: object
+  dto.StartWorkflowRequest:
+    properties:
+      input:
+        type: string
+    required:
+    - input
+    type: object
+  dto.TaskListItem:
+    properties:
+      assigned_agent:
+        $ref: '#/definitions/dto.AgentSummary'
+      branch_name:
+        type: string
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      created_by_id:
+        type: string
+      created_by_type:
+        type: string
+      id:
+        type: string
+      parent_task_id:
+        type: string
+      priority:
+        type: string
+      project_id:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.TaskListResponse:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      tasks:
+        items:
+          $ref: '#/definitions/dto.TaskListItem'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.TaskMessageListResponse:
+    properties:
+      limit:
+        type: integer
+      messages:
+        items:
+          $ref: '#/definitions/dto.TaskMessageResponse'
+        type: array
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.TaskMessageResponse:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      message_type:
+        type: string
+      metadata:
+        type: string
+      sender_id:
+        type: string
+      sender_type:
+        type: string
+      task_id:
+        type: string
+    type: object
+  dto.TaskResponse:
+    properties:
+      artifacts:
+        type: string
+      assigned_agent:
+        $ref: '#/definitions/dto.AgentSummary'
+      branch_name:
+        type: string
+      completed_at:
+        type: string
+      context:
+        type: string
+      created_at:
+        type: string
+      created_by_id:
+        type: string
+      created_by_type:
+        type: string
+      custom_timeout:
+        type: string
+      description:
+        type: string
+      error_message:
+        type: string
+      id:
+        type: string
+      message_count:
+        type: integer
+      parent_task_id:
+        type: string
+      priority:
+        type: string
+      project_id:
+        type: string
+      result:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      sub_tasks:
+        items:
+          $ref: '#/definitions/dto.TaskSummary'
+        type: array
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.TaskSummary:
+    properties:
+      id:
+        type: string
+      priority:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  dto.TeamResponse:
+    properties:
+      agents:
+        items:
+          $ref: '#/definitions/dto.AgentResponse'
+        type: array
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      project_id:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.TestLLMProviderConnectionRequest:
+    properties:
+      auth_type:
+        type: string
+      base_url:
+        type: string
+      credential:
+        type: string
+      default_model:
+        type: string
+      enabled:
+        type: boolean
+      kind:
+        type: string
+      name:
+        type: string
+    required:
+    - kind
+    - name
+    type: object
+  dto.ToolBindingResponse:
+    properties:
+      category:
+        type: string
+      name:
+        type: string
+      tool_definition_id:
+        type: string
+    type: object
+  dto.ToolDefinitionListItemResponse:
+    properties:
+      category:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_builtin:
+        type: boolean
+      name:
+        type: string
+    type: object
+  dto.UpdateAgentSettingsRequest:
+    properties:
+      code_backend:
+        type: string
+      code_backend_settings:
+        type: object
+      sandbox_permissions:
+        type: object
+    type: object
+  dto.UpdateLLMProviderRequest:
+    properties:
+      auth_type:
+        type: string
+      base_url:
+        type: string
+      credential:
+        type: string
+      default_model:
+        type: string
+      enabled:
+        type: boolean
+      kind:
+        type: string
+      name:
+        type: string
+    required:
+    - kind
+    - name
+    type: object
+  dto.UpdateProjectRequest:
+    properties:
+      clear_settings:
+        type: boolean
+      clear_tech_stack:
+        type: boolean
+      description:
+        type: string
+      git_credential_id:
+        type: string
+      git_default_branch:
+        type: string
+      git_provider:
+        type: string
+      git_url:
+        type: string
+      name:
+        type: string
+      remove_git_credential:
+        type: boolean
+      settings:
+        type: string
+      status:
+        type: string
+      tech_stack:
+        type: string
+      vector_collection:
+        type: string
+    type: object
+  dto.UpdatePromptRequest:
+    properties:
+      description:
+        type: string
+      is_active:
+        type: boolean
+      json_schema:
+        type: string
+      template:
+        type: string
+    type: object
+  dto.UpdateTaskRequest:
+    properties:
+      assigned_agent_id:
+        type: string
+      branch_name:
+        type: string
+      clear_assigned_agent:
+        type: boolean
+      custom_timeout:
+        description: |-
+          CustomTimeout — per-task override task_timeout. Передача "" сбрасывает
+          override (возвращает к глобальному default). Формат time.ParseDuration
+          ("4h", "90m", "1h30m"), bounds: 1m..72h.
+        type: string
+      description:
+        type: string
+      priority:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  dto.UpdateTeamRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  dto.UpdateWebhookRequest:
+    properties:
+      allowed_ips:
+        type: string
+      description:
+        type: string
+      input_json_path:
+        type: string
+      input_template:
+        type: string
+      is_active:
+        type: boolean
+      regenerate_secret:
+        type: boolean
+      require_secret:
+        type: boolean
+      workflow_name:
+        type: string
+    type: object
+  dto.UserResponse:
+    properties:
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      id:
+        type: string
+      role:
+        type: string
+    type: object
+  dto.WebhookLogResponse:
+    properties:
+      created_at:
+        type: string
+      error_message:
+        type: string
+      execution_id:
+        type: string
+      id:
+        type: string
+      method:
+        type: string
+      response_code:
+        type: integer
+      source_ip:
+        type: string
+      success:
+        type: boolean
+      webhook_id:
+        type: string
+    type: object
+  dto.WebhookResponse:
+    properties:
+      allowed_ips:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      input_json_path:
+        type: string
+      input_template:
+        type: string
+      is_active:
+        type: boolean
+      last_triggered:
+        type: string
+      name:
+        type: string
+      require_secret:
+        type: boolean
+      secret:
+        description: Показывается только при создании
+        type: string
+      trigger_count:
+        type: integer
+      webhook_url:
+        type: string
+      workflow_name:
+        type: string
+    type: object
+  dto.WebhookTriggerResponse:
+    properties:
+      execution_id:
+        type: string
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  dto.WorkflowResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+    type: object
+  handler.HermesToolsetItem:
+    properties:
+      description:
+        example: Read/Edit/Write/Glob/Grep over the workspace
+        type: string
+      name:
+        example: file_ops
+        type: string
+    type: object
+  handler.artifactFullResponse:
+    properties:
+      content:
+        type: object
+      created_at:
+        type: string
+      id:
+        type: string
+      iteration:
+        type: integer
+      kind:
+        type: string
+      parent_id:
+        type: string
+      producer_agent:
+        type: string
+      status:
+        type: string
+      summary:
+        type: string
+      task_id:
+        type: string
+    type: object
+  handler.createAgentRequest:
+    properties:
+      code_backend:
+        type: string
+      execution_kind:
+        type: string
+      is_active:
+        type: boolean
+      max_tokens:
+        type: integer
+      model:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+      role_description:
+        type: string
+      system_prompt:
+        type: string
+      temperature:
+        type: number
+    required:
+    - execution_kind
+    - name
+    - role
+    type: object
+  handler.setSecretRequest:
+    properties:
+      key_name:
+        type: string
+      value:
+        type: string
+    required:
+    - key_name
+    - value
+    type: object
+  handler.updateAgentRequest:
+    properties:
+      code_backend:
+        type: string
+      is_active:
+        type: boolean
+      max_tokens:
+        type: integer
+      model:
+        type: string
+      role_description:
+        type: string
+      system_prompt:
+        type: string
+      temperature:
+        type: number
+    type: object
+  handler.worktreeResponse:
+    properties:
+      allocated_at:
+        type: string
+      base_branch:
+        type: string
+      branch_name:
+        type: string
+      id:
+        type: string
+      released_at:
+        type: string
+      state:
+        type: string
+      subtask_id:
+        type: string
+      task_id:
+        type: string
+    type: object
+  llm.Function:
+    properties:
+      arguments:
+        description: JSON string of arguments
+        type: string
+      name:
+        type: string
+    type: object
+  llm.Message:
+    properties:
+      content:
+        type: string
+      name:
+        description: For tool messages
+        type: string
+      role:
+        $ref: '#/definitions/llm.Role'
+      tool_call_id:
+        description: For tool messages
+        type: string
+      tool_calls:
+        description: For assistant messages
+        items:
+          $ref: '#/definitions/llm.ToolCall'
+        type: array
+    type: object
+  llm.ProviderType:
+    enum:
+    - openai
+    - anthropic
+    - anthropic_oauth
+    - gemini
+    - deepseek
+    - qwen
+    - openrouter
+    - moonshot
+    - ollama
+    - zhipu
+    type: string
+    x-enum-varnames:
+    - ProviderOpenAI
+    - ProviderAnthropic
+    - ProviderAnthropicOAuth
+    - ProviderGemini
+    - ProviderDeepseek
+    - ProviderQwen
+    - ProviderOpenRouter
+    - ProviderMoonshot
+    - ProviderOllama
+    - ProviderZhipu
+  llm.Request:
+    properties:
+      max_tokens:
+        type: integer
+      messages:
+        items:
+          $ref: '#/definitions/llm.Message'
+        type: array
+      model:
+        type: string
+      provider:
+        $ref: '#/definitions/llm.ProviderType'
+      structured_output_schema:
+        description: JSON Schema for structured output
+        type: object
+      system_prompt:
+        type: string
+      temperature:
+        description: Temperature — если не nil, передаётся провайдеру, в том числе
+          при значении 0 (важно для YAML-конфигов агентов).
+        type: number
+      tools:
+        items:
+          $ref: '#/definitions/llm.Tool'
+        type: array
+    type: object
+  llm.Response:
+    properties:
+      content:
+        type: string
+      tool_calls:
+        items:
+          $ref: '#/definitions/llm.ToolCall'
+        type: array
+      usage:
+        $ref: '#/definitions/llm.Usage'
+    type: object
+  llm.Role:
+    enum:
+    - system
+    - user
+    - assistant
+    - tool
+    type: string
+    x-enum-varnames:
+    - RoleSystem
+    - RoleUser
+    - RoleAssistant
+    - RoleTool
+  llm.Tool:
+    properties:
+      description:
+        type: string
+      input_schema:
+        description: JSON Schema for arguments
+        type: object
+      name:
+        type: string
+    type: object
+  llm.ToolCall:
+    properties:
+      function:
+        $ref: '#/definitions/llm.Function'
+      id:
+        type: string
+      type:
+        type: string
+    type: object
+  llm.Usage:
+    properties:
+      completion_tokens:
+        type: integer
+      prompt_tokens:
+        type: integer
+      total_tokens:
+        type: integer
+    type: object
+  models.Agent:
+    properties:
+      agent_skills:
+        items:
+          $ref: '#/definitions/models.AgentSkill'
+        type: array
+      code_backend:
+        $ref: '#/definitions/models.CodeBackend'
+      code_backend_settings:
+        type: object
+      created_at:
+        type: string
+      execution_kind:
+        allOf:
+        - $ref: '#/definitions/models.AgentExecutionKind'
+        description: |-
+          Sprint 17 / Orchestration v2 — поля для LLM-driven Router.
+          ExecutionKind — обязательно (NOT NULL в БД). Llm vs sandbox runtime.
+          RoleDescription — текст для промпта Router'а ("кому я могу делегировать").
+          SystemPrompt — системный промпт самого агента (inline). Опциональный fallback на PromptID.
+          Temperature, MaxTokens — параметры LLM (только для llm-агентов).
+      id:
+        type: string
+      is_active:
+        type: boolean
+      max_tokens:
+        type: integer
+      mcp_bindings:
+        items:
+          $ref: '#/definitions/models.AgentMCPBinding'
+        type: array
+      model:
+        type: string
+      model_config:
+        type: object
+      name:
+        type: string
+      prompt:
+        $ref: '#/definitions/models.Prompt'
+      prompt_id:
+        type: string
+      provider_kind:
+        allOf:
+        - $ref: '#/definitions/models.AgentProviderKind'
+        description: |-
+          Sprint 15.e2e refactor — kind провайдера: anthropic / anthropic_oauth / deepseek / zhipu / openrouter.
+          По этому полю SandboxAuthEnvResolver выбирает base_url и user_llm_credentials.
+          LLMProviderID (системный каталог llm_providers) удалён миграцией 029 — резолвер
+          использует ProviderKind напрямую, креденшелы хранятся в user_llm_credentials.
+      requires_code_context:
+        type: boolean
+      role:
+        $ref: '#/definitions/models.AgentRole'
+      role_description:
+        type: string
+      sandbox_permissions:
+        type: object
+      settings:
+        type: object
+      skills:
+        type: object
+      system_prompt:
+        type: string
+      team:
+        $ref: '#/definitions/models.Team'
+      team_id:
+        type: string
+      temperature:
+        type: number
+      tool_bindings:
+        items:
+          $ref: '#/definitions/models.AgentToolBinding'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  models.AgentExecutionKind:
+    enum:
+    - llm
+    - sandbox
+    type: string
+    x-enum-varnames:
+    - AgentExecutionKindLLM
+    - AgentExecutionKindSandbox
+  models.AgentMCPBinding:
+    properties:
+      agent_id:
+        type: string
+      created_at:
+        type: string
+      mcp_server_config:
+        $ref: '#/definitions/models.MCPServerConfig'
+      mcp_server_config_id:
+        type: string
+      settings:
+        type: object
+    type: object
+  models.AgentProviderKind:
+    enum:
+    - anthropic
+    - anthropic_oauth
+    - deepseek
+    - zhipu
+    - openrouter
+    type: string
+    x-enum-varnames:
+    - AgentProviderKindAnthropic
+    - AgentProviderKindAnthropicOAuth
+    - AgentProviderKindDeepSeek
+    - AgentProviderKindZhipu
+    - AgentProviderKindOpenRouter
+  models.AgentRole:
+    enum:
+    - worker
+    - supervisor
+    - orchestrator
+    - planner
+    - developer
+    - reviewer
+    - tester
+    - devops
+    - router
+    - decomposer
+    - merger
+    type: string
+    x-enum-varnames:
+    - AgentRoleWorker
+    - AgentRoleSupervisor
+    - AgentRoleOrchestrator
+    - AgentRolePlanner
+    - AgentRoleDeveloper
+    - AgentRoleReviewer
+    - AgentRoleTester
+    - AgentRoleDevOps
+    - AgentRoleRouter
+    - AgentRoleDecomposer
+    - AgentRoleMerger
+  models.AgentSkill:
+    properties:
+      agent_id:
+        type: string
+      config_json:
+        type: object
+      created_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      skill_name:
+        type: string
+      skill_source:
+        $ref: '#/definitions/models.AgentSkillSource'
+      updated_at:
+        type: string
+    type: object
+  models.AgentSkillSource:
+    enum:
+    - builtin
+    - plugin
+    - path
+    type: string
+    x-enum-varnames:
+    - AgentSkillSourceBuiltin
+    - AgentSkillSourcePlugin
+    - AgentSkillSourcePath
+  models.AgentToolBinding:
+    properties:
+      agent_id:
+        type: string
+      config:
+        type: object
+      created_at:
+        type: string
+      tool_definition:
+        $ref: '#/definitions/models.ToolDefinition'
+      tool_definition_id:
+        type: string
+    type: object
+  models.CodeBackend:
+    enum:
+    - claude-code
+    - aider
+    - hermes
+    - custom
+    type: string
+    x-enum-varnames:
+    - CodeBackendClaudeCode
+    - CodeBackendAider
+    - CodeBackendHermes
+    - CodeBackendCustom
+  models.GitCredential:
+    properties:
+      auth_type:
+        $ref: '#/definitions/models.GitCredentialAuthType'
+      created_at:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      provider:
+        $ref: '#/definitions/models.GitCredentialProvider'
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: string
+    type: object
+  models.GitCredentialAuthType:
+    enum:
+    - token
+    - ssh_key
+    - oauth
+    type: string
+    x-enum-varnames:
+    - GitCredentialAuthToken
+    - GitCredentialAuthSSHKey
+    - GitCredentialAuthOAuth
+  models.GitCredentialProvider:
+    enum:
+    - github
+    - gitlab
+    - bitbucket
+    type: string
+    x-enum-varnames:
+    - GitCredentialProviderGitHub
+    - GitCredentialProviderGitLab
+    - GitCredentialProviderBitbucket
+  models.GitProvider:
+    enum:
+    - github
+    - gitlab
+    - bitbucket
+    - local
+    type: string
+    x-enum-varnames:
+    - GitProviderGitHub
+    - GitProviderGitLab
+    - GitProviderBitbucket
+    - GitProviderLocal
+  models.MCPAuthType:
+    enum:
+    - none
+    - api_key
+    - oauth
+    - bearer
+    type: string
+    x-enum-varnames:
+    - MCPAuthNone
+    - MCPAuthAPIKey
+    - MCPAuthOAuth
+    - MCPAuthBearer
+  models.MCPServerConfig:
+    properties:
+      auth_type:
+        $ref: '#/definitions/models.MCPAuthType'
+      created_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
+        type: string
+      settings:
+        type: object
+      updated_at:
+        type: string
+      url:
+        type: string
+    type: object
+  models.Project:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      git_credential:
+        $ref: '#/definitions/models.GitCredential'
+      git_credentials_id:
+        type: string
+      git_default_branch:
+        type: string
+      git_provider:
+        $ref: '#/definitions/models.GitProvider'
+      git_url:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      settings:
+        type: object
+      status:
+        $ref: '#/definitions/models.ProjectStatus'
+      tech_stack:
+        type: object
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: string
+      vector_collection:
+        type: string
+    type: object
+  models.ProjectStatus:
+    enum:
+    - active
+    - paused
+    - archived
+    - indexing
+    - indexing_failed
+    - ready
+    type: string
+    x-enum-varnames:
+    - ProjectStatusActive
+    - ProjectStatusPaused
+    - ProjectStatusArchived
+    - ProjectStatusIndexing
+    - ProjectStatusIndexingFailed
+    - ProjectStatusReady
+  models.Prompt:
+    properties:
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      isActive:
+        type: boolean
+      jsonschema:
+        description: Схема для валидации ответа (опционально)
+        type: object
+      name:
+        type: string
+      template:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  models.Team:
+    properties:
+      agents:
+        items:
+          $ref: '#/definitions/models.Agent'
+        type: array
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
+        type: string
+      type:
+        $ref: '#/definitions/models.TeamType'
+      updated_at:
+        type: string
+    type: object
+  models.TeamType:
+    enum:
+    - development
+    type: string
+    x-enum-varnames:
+    - TeamTypeDevelopment
+  models.ToolDefinition:
+    properties:
+      category:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_builtin:
+        type: boolean
+      name:
+        type: string
+      parameters_schema:
+        type: object
+      updated_at:
+        type: string
+    type: object
+  models.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      id:
+        type: string
+      role:
+        $ref: '#/definitions/models.UserRole'
+      updated_at:
+        type: string
+    type: object
+  models.UserRole:
+    enum:
+    - guest
+    - user
+    - admin
+    type: string
+    x-enum-varnames:
+    - RoleGuest
+    - RoleUser
+    - RoleAdmin
+  service.SetSecretOutput:
+    properties:
+      agentID:
+        type: string
+      keyName:
+        type: string
+      secretID:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description: Backend API с авторизацией на JWT токенах
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Backend API
+  version: "1.0"
+paths:
+  /agents:
+    get:
+      description: Реестр LLM/sandbox-агентов с фильтрами (only_active, execution_kind,
+        role, name_like) и пагинацией. system_prompt НЕ включается; полную запись
+        — через GET /agents/:id.
+      parameters:
+      - description: только is_active=true
+        in: query
+        name: only_active
+        type: boolean
+      - description: llm | sandbox
+        in: query
+        name: execution_kind
+        type: string
+      - description: router/planner/decomposer/reviewer/developer/merger/tester/...
+        in: query
+        name: role
+        type: string
+      - description: частичный поиск по name
+        in: query
+        name: name_like
+        type: string
+      - description: 1-200; default 50
+        in: query
+        name: limit
+        type: integer
+      - description: default 0
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List v2 agents
+      tags:
+      - agents-v2
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: agent payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Agent'
+        "400":
+          description: validation
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: name already taken
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create v2 agent
+      tags:
+      - agents-v2
+  /agents/{id}:
+    get:
+      parameters:
+      - description: Agent UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get v2 agent by ID
+      tags:
+      - agents-v2
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Agent UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: patch fields
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.updateAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: concurrent update
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update v2 agent
+      tags:
+      - agents-v2
+  /agents/{id}/secrets:
+    post:
+      consumes:
+      - application/json
+      description: Шифрует value через AES-256-GCM (AAD = secret.id), сохраняет в
+        agent_secrets. Back-read невозможен через API.
+      parameters:
+      - description: Agent UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: key_name + plaintext value
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.setSecretRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/service.SetSecretOutput'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set v2 agent secret (encrypted)
+      tags:
+      - agents-v2
+  /agents/{id}/settings:
+    get:
+      parameters:
+      - description: UUID агента
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AgentSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Получить настройки агента (Sprint 15)
+      tags:
+      - agents
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: UUID агента
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Поля для обновления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateAgentSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AgentSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Обновить настройки агента (Sprint 15)
+      tags:
+      - agents
+  /agents/secrets/{secret_id}:
+    delete:
+      parameters:
+      - description: Secret UUID
+        in: path
+        name: secret_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete v2 agent secret
+      tags:
+      - agents-v2
+  /auth/api-keys:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает все активные API-ключи текущего пользователя
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ApiKeyResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - OAuth2Password: []
+      summary: Список API-ключей
+      tags:
+      - api-keys
+    post:
+      consumes:
+      - application/json
+      description: Создает новый долгосрочный API-ключ для текущего пользователя.
+        Сырой ключ показывается только один раз!
+      parameters:
+      - description: Данные для создания ключа
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateApiKeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ApiKeyCreatedResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - OAuth2Password: []
+      summary: Создание API-ключа
+      tags:
+      - api-keys
+  /auth/api-keys/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Полностью удаляет API-ключ из системы
+      parameters:
+      - description: ID API-ключа
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - OAuth2Password: []
+      summary: Удаление API-ключа
+      tags:
+      - api-keys
+  /auth/api-keys/{id}/revoke:
+    post:
+      consumes:
+      - application/json
+      description: Отзывает (деактивирует) API-ключ. Ключ перестает работать, но запись
+        остается.
+      parameters:
+      - description: ID API-ключа
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - OAuth2Password: []
+      summary: Отзыв API-ключа
+      tags:
+      - api-keys
+  /auth/api-keys/mcp-config:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает готовую конфигурацию для подключения к MCP-серверу (для
+        Cursor, Claude Desktop, VS Code Copilot)
+      parameters:
+      - description: Конкретный API-ключ (по умолчанию используется первый активный)
+        in: query
+        name: apiKey
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MCPConfigResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - OAuth2Password: []
+      summary: Получить MCP-конфигурацию
+      tags:
+      - api-keys
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      - application/x-www-form-urlencoded
+      description: Аутентифицирует пользователя и возвращает токены
+      parameters:
+      - description: Данные для входа
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      summary: Вход пользователя
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Отзывает все refresh токены пользователя
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - OAuth2Password: []
+      summary: Выход пользователя
+      tags:
+      - auth
+  /auth/me:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает данные аутентифицированного пользователя
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение данных текущего пользователя
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Обновляет access token используя refresh token
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      summary: Обновление токена
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Создает нового пользователя и возвращает токены
+      parameters:
+      - description: Данные для регистрации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      summary: Регистрация нового пользователя
+      tags:
+      - auth
+  /claude-code/auth:
+    delete:
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: ""
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Отзыв OAuth-подписки Claude Code
+      tags:
+      - claude-code
+  /claude-code/auth/callback:
+    post:
+      consumes:
+      - application/json
+      description: Должен вызываться периодически (раз в interval_seconds), пока не
+        вернёт 200 или 410.
+      parameters:
+      - description: device_code из /init
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ClaudeCodeAuthCallbackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClaudeCodeAuthStatusResponse'
+        "202":
+          description: Пользователь ещё не подтвердил доступ (authorization_pending)
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "410":
+          description: expired_token / access_denied
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "429":
+          description: slow_down
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Завершение OAuth (device flow) для Claude Code
+      tags:
+      - claude-code
+  /claude-code/auth/init:
+    post:
+      description: Возвращает device-code и URL, по которому пользователь должен подтвердить
+        вход.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClaudeCodeAuthInitResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Старт OAuth (device flow) для Claude Code
+      tags:
+      - claude-code
+  /claude-code/auth/manual-token:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Токен
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ClaudeCodeAuthManualTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClaudeCodeAuthStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Сохранить заранее полученный токен подписки Claude Code
+      tags:
+      - claude-code
+  /claude-code/auth/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClaudeCodeAuthStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Статус OAuth-подписки Claude Code
+      tags:
+      - claude-code
+  /conversations/{id}:
+    delete:
+      description: Удаляет чат и все связанные с ним сообщения (Soft Delete)
+      parameters:
+      - description: Conversation ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Чат успешно удален
+        "400":
+          description: Невалидный UUID
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к чату
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Чат не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление чата
+      tags:
+      - conversations
+    get:
+      description: Возвращает полную информацию о чате по его ID
+      parameters:
+      - description: Conversation ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ConversationResponse'
+        "400":
+          description: Невалидный UUID
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к чату
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Чат не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение чата
+      tags:
+      - conversations
+  /conversations/{id}/messages:
+    get:
+      description: Возвращает пагинированный список сообщений чата (от новых к старым)
+      parameters:
+      - description: Conversation ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Лимит (1–100, по умолчанию 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.MessageListResponse'
+        "400":
+          description: Невалидный UUID или параметры пагинации
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к чату
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Чат не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: История сообщений чата
+      tags:
+      - conversation-messages
+    post:
+      consumes:
+      - application/json
+      description: Добавляет сообщение пользователя в чат и запускает процесс оркестрации.
+        Поддерживает идемпотентность через заголовок X-Client-Message-ID.
+      parameters:
+      - description: Conversation ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Ключ идемпотентности (UUIDv4)
+        in: header
+        name: X-Client-Message-ID
+        required: true
+        type: string
+      - description: Текст сообщения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Сообщение уже было отправлено (идемпотентность)
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "201":
+          description: Сообщение успешно создано
+          schema:
+            $ref: '#/definitions/dto.MessageResponse'
+        "400":
+          description: Невалидный JSON, пустой контент или невалидный ID идемпотентности
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к чату
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Чат не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "429":
+          description: Слишком много запросов
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Отправка сообщения
+      tags:
+      - conversation-messages
+  /executions:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает историю запусков с пагинацией
+      parameters:
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ExecutionListResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список выполнений
+      tags:
+      - workflows
+  /executions/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает текущее состояние процесса
+      parameters:
+      - description: ID выполнения (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ExecutionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение статуса выполнения
+      tags:
+      - workflows
+  /executions/{id}/steps:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает детализацию шагов конкретного запуска
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ExecutionStepResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Шаги выполнения
+      tags:
+      - workflows
+  /hermes/toolsets:
+    get:
+      description: Статичный список Hermes toolsets, доступных для агента (Sprint
+        16.C).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.HermesToolsetItem'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Каталог Hermes toolsets
+      tags:
+      - hermes
+  /hooks/{name}:
+    post:
+      consumes:
+      - application/json
+      description: Публичный эндпоинт для запуска workflow через webhook
+      parameters:
+      - description: Имя webhook
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: HMAC подпись (если требуется)
+        in: header
+        name: X-Webhook-Signature
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.WebhookTriggerResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      summary: Триггер webhook
+      tags:
+      - webhooks
+  /integrations/github/auth/callback:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: code + state
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GitIntegrationCallbackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationCallbackResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "410":
+          description: user_cancelled / invalid_state
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "502":
+          description: provider_unreachable
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Завершение GitHub OAuth (code + state от провайдера)
+      tags:
+      - git-integrations
+  /integrations/github/auth/init:
+    post:
+      consumes:
+      - application/json
+      description: Возвращает URL, куда фронт открывает попап/таб для авторизации.
+      parameters:
+      - description: redirect_uri
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GitIntegrationInitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationInitResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Старт GitHub OAuth
+      tags:
+      - git-integrations
+  /integrations/github/auth/revoke:
+    delete:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationRevokeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Отозвать подключение GitHub
+      tags:
+      - git-integrations
+  /integrations/github/auth/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Статус подключения GitHub
+      tags:
+      - git-integrations
+  /integrations/gitlab/auth/callback:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: code + state
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GitIntegrationCallbackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationCallbackResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "410":
+          description: user_cancelled / invalid_state
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "502":
+          description: provider_unreachable
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Завершение GitLab OAuth (code + state от провайдера)
+      tags:
+      - git-integrations
+  /integrations/gitlab/auth/init:
+    post:
+      consumes:
+      - application/json
+      description: Если в теле передан host+byo_client_id+byo_client_secret — self-hosted;
+        иначе gitlab.com.
+      parameters:
+      - description: redirect_uri (+ host/byo_* для self-hosted)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GitIntegrationInitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationInitResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Старт GitLab OAuth (gitlab.com shared или self-hosted BYO)
+      tags:
+      - git-integrations
+  /integrations/gitlab/auth/revoke:
+    delete:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationRevokeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Отозвать подключение GitLab
+      tags:
+      - git-integrations
+  /integrations/gitlab/auth/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Статус подключения GitLab
+      tags:
+      - git-integrations
+  /llm-providers:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.LLMProviderResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Список LLM-провайдеров
+      tags:
+      - llm-providers
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Параметры
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateLLMProviderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.LLMProviderResponse'
+      security:
+      - BearerAuth: []
+      summary: Создать LLM-провайдера
+      tags:
+      - llm-providers
+  /llm-providers/{id}:
+    delete:
+      parameters:
+      - description: UUID провайдера
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Удалить LLM-провайдера
+      tags:
+      - llm-providers
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: UUID провайдера
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Параметры
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateLLMProviderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.LLMProviderResponse'
+      security:
+      - BearerAuth: []
+      summary: Обновить LLM-провайдера
+      tags:
+      - llm-providers
+  /llm-providers/{id}/health-check:
+    post:
+      parameters:
+      - description: UUID провайдера
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Проверка здоровья провайдера
+      tags:
+      - llm-providers
+  /llm-providers/test-connection:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Параметры
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TestLLMProviderConnectionRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Тест подключения к провайдеру (без сохранения)
+      tags:
+      - llm-providers
+  /llm/chat:
+    post:
+      consumes:
+      - application/json
+      description: Generates a response from the LLM provider
+      parameters:
+      - description: Chat Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/llm.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/llm.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Chat with LLM
+      tags:
+      - llm
+  /llm/logs:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает историю запросов к LLM с пагинацией
+      parameters:
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.LLMLogListResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список логов LLM
+      tags:
+      - llm
+  /me/llm-credentials:
+    get:
+      description: Возвращает masked_preview по каждому провайдеру (без has_key, без
+        полного ключа)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.LlmCredentialsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Список LLM credentials (маски)
+      tags:
+      - me
+    patch:
+      consumes:
+      - application/json
+      description: Частичное обновление API-ключей; тело см. dto.PatchLlmCredentialsRequest
+      parameters:
+      - description: Поля set/clear
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PatchLlmCredentialsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.LlmCredentialsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Обновление LLM credentials
+      tags:
+      - me
+  /projects:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает проекты текущего пользователя (для admin — все)
+      parameters:
+      - description: Фильтр по статусу
+        in: query
+        name: status
+        type: string
+      - description: Фильтр по git-провайдеру
+        in: query
+        name: git_provider
+        type: string
+      - description: Поиск по имени
+        in: query
+        name: search
+        type: string
+      - description: Лимит (1–100, по умолчанию 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Смещение
+        in: query
+        name: offset
+        type: integer
+      - description: Поле сортировки
+        in: query
+        name: order_by
+        type: string
+      - description: Направление сортировки
+        in: query
+        name: order_dir
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProjectListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список проектов
+      tags:
+      - projects
+    post:
+      consumes:
+      - application/json
+      description: Создаёт проект с автоматическим созданием команды
+      parameters:
+      - description: Данные проекта
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateProjectRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ProjectResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание проекта
+      tags:
+      - projects
+  /projects/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Удаляет проект по UUID
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление проекта
+      tags:
+      - projects
+    get:
+      consumes:
+      - application/json
+      description: Возвращает проект по UUID
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProjectResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение проекта
+      tags:
+      - projects
+    put:
+      consumes:
+      - application/json
+      description: Частичное обновление полей проекта
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Поля для обновления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateProjectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProjectResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Обновление проекта
+      tags:
+      - projects
+  /projects/{id}/reindex:
+    post:
+      consumes:
+      - application/json
+      description: Запускает процесс полной переиндексации проекта в фоновом режиме
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Переиндексация проекта
+      tags:
+      - projects
+  /projects/{id}/tasks:
+    get:
+      description: Возвращает задачи проекта с фильтрацией и пагинацией
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Фильтр по статусу
+        in: query
+        name: status
+        type: string
+      - collectionFormat: multi
+        description: Фильтр по нескольким статусам
+        in: query
+        items:
+          type: string
+        name: statuses
+        type: array
+      - description: Фильтр по приоритету
+        in: query
+        name: priority
+        type: string
+      - description: Фильтр по агенту
+        in: query
+        name: assigned_agent_id
+        type: string
+      - description: Фильтр по типу создателя (user/agent)
+        in: query
+        name: created_by_type
+        type: string
+      - description: Фильтр по ID создателя
+        in: query
+        name: created_by_id
+        type: string
+      - description: Фильтр по parent задаче
+        in: query
+        name: parent_task_id
+        type: string
+      - description: Только корневые задачи (без parent)
+        in: query
+        name: root_only
+        type: boolean
+      - description: Фильтр по git-ветке
+        in: query
+        name: branch_name
+        type: string
+      - description: Поиск по title/description
+        in: query
+        name: search
+        type: string
+      - description: Лимит (1–200, по умолчанию 50)
+        in: query
+        name: limit
+        type: integer
+      - description: Смещение
+        in: query
+        name: offset
+        type: integer
+      - description: Поле сортировки
+        in: query
+        name: order_by
+        type: string
+      - description: Направление сортировки (asc/desc)
+        in: query
+        name: order_dir
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskListResponse'
+        "400":
+          description: Невалидные query params
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список задач проекта
+      tags:
+      - tasks
+    post:
+      consumes:
+      - application/json
+      description: Создаёт задачу в указанном проекте. Статус устанавливается pending.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные задачи
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TaskResponse'
+        "400":
+          description: Невалидный JSON, пустой title, невалидный priority
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Агент не в команде / parent task не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание задачи
+      tags:
+      - tasks
+  /projects/{id}/team:
+    get:
+      description: Возвращает команду с агентами для указанного проекта
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TeamResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение команды проекта
+      tags:
+      - teams
+    put:
+      consumes:
+      - application/json
+      description: Обновляет настройки команды (название)
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные обновления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateTeamRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TeamResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Обновление команды
+      tags:
+      - teams
+  /projects/{id}/team/agents/{agentId}:
+    patch:
+      consumes:
+      - application/json
+      description: 'PATCH полей агента: model, prompt_id, code_backend, is_active,
+        tool_bindings (полная замена привязок или [] для снятия всех)'
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Agent ID
+        in: path
+        name: agentId
+        required: true
+        type: string
+      - description: Поля патча
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PatchAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TeamResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Частичное обновление агента
+      tags:
+      - teams
+  /projects/{id}/ws:
+    get:
+      description: Стримит события task_status, task_message, agent_log, error для
+        проекта в реальном времени
+      parameters:
+      - description: Project ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "101":
+          description: Switching Protocols
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Подключение к WebSocket стриму проекта
+      tags:
+      - websocket
+  /projects/{project_id}/conversations:
+    get:
+      description: Возвращает пагинированный список чатов проекта, к которым у пользователя
+        есть доступ
+      parameters:
+      - description: Project ID
+        format: uuid
+        in: path
+        name: project_id
+        required: true
+        type: string
+      - description: Лимит (1–100, по умолчанию 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ConversationListResponse'
+        "400":
+          description: Невалидный UUID или параметры пагинации
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список чатов проекта
+      tags:
+      - conversations
+    post:
+      consumes:
+      - application/json
+      description: Создает новый чат в указанном проекте для текущего пользователя
+      parameters:
+      - description: Project ID
+        format: uuid
+        in: path
+        name: project_id
+        required: true
+        type: string
+      - description: Данные чата
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ConversationResponse'
+        "400":
+          description: Невалидный UUID или JSON
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание чата
+      tags:
+      - conversations
+  /prompts:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает все промпты (только админ)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.PromptResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список промптов
+      tags:
+      - prompts
+    post:
+      consumes:
+      - application/json
+      description: Создает новый шаблон промпта (только админ)
+      parameters:
+      - description: Данные промпта
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreatePromptRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.PromptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание промпта
+      tags:
+      - prompts
+  /prompts/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Удаляет промпт по ID (только админ)
+      parameters:
+      - description: Prompt ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление промпта
+      tags:
+      - prompts
+    get:
+      consumes:
+      - application/json
+      description: Возвращает промпт по ID (только админ)
+      parameters:
+      - description: Prompt ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromptResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение промпта
+      tags:
+      - prompts
+    put:
+      consumes:
+      - application/json
+      description: Обновляет данные промпта (только админ)
+      parameters:
+      - description: Prompt ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные для обновления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdatePromptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Обновление промпта
+      tags:
+      - prompts
+  /tasks/{id}:
+    delete:
+      description: Удаляет задачу (каскадно удаляет messages, SET NULL для подзадач)
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Задача успешно удалена
+        "400":
+          description: Невалидный UUID
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление задачи
+      tags:
+      - tasks
+    get:
+      description: Возвращает задачу по UUID с агентом и подзадачами
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskResponse'
+        "400":
+          description: Невалидный UUID
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение задачи
+      tags:
+      - tasks
+    put:
+      consumes:
+      - application/json
+      description: Частичное обновление полей задачи (title, description, priority,
+        status, assigned_agent_id, branch_name)
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Поля для обновления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskResponse'
+        "400":
+          description: Невалидный JSON/UUID, невалидный priority/status
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Недопустимый переход статуса
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Агент не в команде проекта
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Обновление задачи
+      tags:
+      - tasks
+  /tasks/{id}/artifacts:
+    get:
+      description: Все артефакты задачи в порядке создания. Content не загружается;
+        для полного — GET /tasks/{id}/artifacts/{artifactId}.
+      parameters:
+      - description: Task UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: только status='ready' (default false — включая superseded)
+        in: query
+        name: only_ready
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List task artifacts (metadata)
+      tags:
+      - orchestration-v2
+  /tasks/{id}/artifacts/{artifactId}:
+    get:
+      parameters:
+      - description: Task UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Artifact UUID
+        in: path
+        name: artifactId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.artifactFullResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get artifact by ID (with content)
+      tags:
+      - orchestration-v2
+  /tasks/{id}/cancel:
+    post:
+      description: Переводит задачу в терминальный статус cancelled. Устанавливает
+        completed_at.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Задача уже в терминальном статусе (completed/cancelled)
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Отмена задачи
+      tags:
+      - tasks
+  /tasks/{id}/correct:
+    post:
+      consumes:
+      - application/json
+      description: Обновляет контекст задачи валидированным текстом; из review/testing
+        переводит в in_progress.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Текст коррекции
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CorrectTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskResponse'
+        "400":
+          description: Слишком длинный или невалидный текст
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Коррекция задачи
+      tags:
+      - tasks
+  /tasks/{id}/messages:
+    get:
+      description: Возвращает пагинированный список сообщений задачи с фильтрацией
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Фильтр по типу сообщения
+        in: query
+        name: message_type
+        type: string
+      - description: Фильтр по типу отправителя (user/agent/system)
+        in: query
+        name: sender_type
+        type: string
+      - description: Лимит (1–200, по умолчанию 50)
+        in: query
+        name: limit
+        type: integer
+      - description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskMessageListResponse'
+        "400":
+          description: Невалидные query params
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список сообщений задачи
+      tags:
+      - task-messages
+    post:
+      consumes:
+      - application/json
+      description: Добавляет пользовательское сообщение (коррекция, комментарий) к
+        задаче
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные сообщения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTaskMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TaskMessageResponse'
+        "400":
+          description: Невалидный JSON, пустой content, невалидный message_type
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Добавление сообщения
+      tags:
+      - task-messages
+  /tasks/{id}/pause:
+    post:
+      description: Переводит задачу в state='paused'. Допустимо только из state='active'.
+        Воркеры при pickup проверяют state и пропускают agent_job до Resume.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Задача не в state='active' или уже терминальная
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Приостановка задачи
+      tags:
+      - tasks
+  /tasks/{id}/resume:
+    post:
+      description: Переводит задачу из paused/needs_human/failed в active. Сбрасывает
+        completed_at и пинает оркестратор (Router пересчитает следующее действие).
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TaskResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту задачи
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Задача не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Задача не в статусе paused/needs_human/failed
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Возобновление задачи
+      tags:
+      - tasks
+  /tasks/{id}/router-decisions:
+    get:
+      description: Все решения Router'а в порядке step_no. encrypted_raw_response
+        НЕ возвращается.
+      parameters:
+      - description: Task UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List router decisions (timeline)
+      tags:
+      - orchestration-v2
+  /tool-definitions:
+    get:
+      description: Возвращает активные записи реестра tool_definitions, отсортированные
+        по category и name
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ToolDefinitionListItemResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список определений инструментов
+      tags:
+      - tool-definitions
+  /webhooks:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает все webhook-триггеры
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.WebhookResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список webhooks
+      tags:
+      - webhooks
+    post:
+      consumes:
+      - application/json
+      description: Создаёт новый webhook-триггер для workflow
+      parameters:
+      - description: Данные webhook
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateWebhookRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.WebhookResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание webhook
+      tags:
+      - webhooks
+  /webhooks/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Удаляет webhook-триггер
+      parameters:
+      - description: Webhook ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление webhook
+      tags:
+      - webhooks
+    get:
+      consumes:
+      - application/json
+      description: Возвращает webhook-триггер по ID
+      parameters:
+      - description: Webhook ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.WebhookResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение webhook
+      tags:
+      - webhooks
+    put:
+      consumes:
+      - application/json
+      description: Обновляет webhook-триггер
+      parameters:
+      - description: Webhook ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные для обновления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateWebhookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.WebhookResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Обновление webhook
+      tags:
+      - webhooks
+  /webhooks/{id}/logs:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает историю вызовов webhook
+      parameters:
+      - description: Webhook ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: 20
+        description: Limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.WebhookLogResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Логи webhook
+      tags:
+      - webhooks
+  /workflows:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает все доступные воркфлоу
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.WorkflowResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список воркфлоу
+      tags:
+      - workflows
+  /workflows/{name}/start:
+    post:
+      consumes:
+      - application/json
+      description: Запускает новый процесс выполнения воркфлоу
+      parameters:
+      - description: Имя воркфлоу
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Входные данные
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.StartWorkflowRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ExecutionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Запуск воркфлоу
+      tags:
+      - workflows
+  /worktrees:
+    get:
+      description: Список git worktree'ев. Без task_id — admin-only; с task_id — нужен
+        доступ к задаче.
+      parameters:
+      - description: Filter by task UUID
+        in: query
+        name: task_id
+        type: string
+      - description: Filter by state (allocated|in_use|released)
+        in: query
+        name: state
+        type: string
+      - description: Max items (default 200, capped at 200)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: no task_id requires admin role; task_id requires task access
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List worktrees (debug)
+      tags:
+      - orchestration-v2
+  /worktrees/{id}/release:
+    post:
+      description: Принудительно выполняет git worktree remove --force и помечает
+        запись released. Admin-only. Idempotent NOT — повторный вызов на released
+        worktree возвращает 409.
+      parameters:
+      - description: Worktree UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.worktreeResponse'
+        "400":
+          description: invalid uuid
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: admin-only
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: worktree not found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: worktree already released
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "503":
+          description: worktree manager not configured
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Manually release a worktree (admin)
+      tags:
+      - orchestration-v2
+securityDefinitions:
+  ApiKeyAuth:
+    description: 'Long-lived API key for programmatic access. Format: wibe_<key>'
+    in: header
+    name: X-API-Key
+    type: apiKey
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+  OAuth2Password:
+    flow: password
+    tokenUrl: /api/v1/auth/login
+    type: oauth2
+swagger: "2.0"

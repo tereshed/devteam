@@ -162,6 +162,43 @@ class LlmIntegrationsRepository {
     }
   }
 
+  /// Сохраняет уже полученный пользователем OAuth-токен Claude Code (например,
+  /// результат `claude setup-token`). Альтернатива device-flow для случаев,
+  /// когда `CLAUDE_CODE_OAUTH_CLIENT_ID` на бэке не задан.
+  Future<ClaudeCodeIntegrationStatus> saveClaudeCodeManualToken({
+    required String accessToken,
+    String? refreshToken,
+    DateTime? expiresAt,
+    String? scopes,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final body = <String, dynamic>{'access_token': accessToken};
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        body['refresh_token'] = refreshToken;
+      }
+      if (expiresAt != null) {
+        body['expires_at'] = expiresAt.toUtc().toIso8601String();
+      }
+      if (scopes != null && scopes.isNotEmpty) {
+        body['scopes'] = scopes;
+      }
+      final resp = await _dio.put<Map<String, dynamic>>(
+        '/claude-code/auth/manual-token',
+        data: body,
+        cancelToken: cancelToken,
+      );
+      final data = resp.data ?? <String, dynamic>{};
+      return ClaudeCodeIntegrationStatus(
+        connected: data['connected'] == true,
+        expiresAt: _parseTs(data['expires_at']),
+        lastRefreshedAt: _parseTs(data['last_refreshed_at']),
+      );
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
   // --- helpers ------------------------------------------------------------
 
   static List<LlmProviderConnection> _parseCredentialsResponse(

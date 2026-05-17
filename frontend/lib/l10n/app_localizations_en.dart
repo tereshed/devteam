@@ -128,6 +128,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'All supported providers are already connected.';
 
   @override
+  String get integrationsGitEmptyConnected => 'No providers connected yet.';
+
+  @override
   String get integrationsGitReasonUserCancelled =>
       'Authorization was declined. Try again.';
 
@@ -351,6 +354,28 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get integrationsLlmDialogApiKeyHint =>
       'Stored encrypted with AES-256-GCM.';
+
+  @override
+  String get integrationsLlmClaudeCodeManualTitle => 'Enter Claude Code token';
+
+  @override
+  String get integrationsLlmClaudeCodeManualHint =>
+      'Use this if Anthropic OAuth is not configured on the server or you already have a setup-token.';
+
+  @override
+  String get integrationsLlmClaudeCodeManualAccessField =>
+      'Access token (sk-ant-oat01-...)';
+
+  @override
+  String get integrationsLlmClaudeCodeManualRefreshField =>
+      'Refresh token (optional)';
+
+  @override
+  String get integrationsLlmClaudeCodeManualCta => 'Use existing token';
+
+  @override
+  String get integrationsLlmClaudeCodeManualAccessRequired =>
+      'Access token is required';
 
   @override
   String get integrationsLlmDialogApiKeyRequired => 'Enter a non-empty API key';
@@ -629,6 +654,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorServer => 'Server error. Please try again later.';
+
+  @override
+  String get errorExternalService => 'Could not reach the external service.';
 
   @override
   String get errorUnknown => 'An unknown error occurred.';

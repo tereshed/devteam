@@ -56,6 +56,10 @@ func (s *claudeCodeAuthSvcStub) RefreshOne(_ context.Context, _ *models.ClaudeCo
 	return nil
 }
 
+func (s *claudeCodeAuthSvcStub) SaveManualToken(_ context.Context, _ uuid.UUID, _ *service.ClaudeCodeOAuthToken) (*service.ClaudeCodeAuthStatus, error) {
+	return &service.ClaudeCodeAuthStatus{Connected: true, TokenType: "Bearer"}, nil
+}
+
 func callbackRequestBody(t *testing.T, deviceCode string) []byte {
 	t.Helper()
 	body, err := json.Marshal(dto.ClaudeCodeAuthCallbackRequest{DeviceCode: deviceCode})
