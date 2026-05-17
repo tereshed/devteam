@@ -93,11 +93,13 @@ class AssistantConfirmDialog extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
+                  key: const ValueKey('assistant_confirm_deny'),
                   onPressed: busy ? null : onDeny,
                   child: Text(l10n.assistantConfirmDeny),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
+                  key: const ValueKey('assistant_confirm_approve'),
                   onPressed: busy ? null : onApprove,
                   child: Text(l10n.assistantConfirmApprove),
                 ),

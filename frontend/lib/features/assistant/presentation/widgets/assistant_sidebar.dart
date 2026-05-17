@@ -92,12 +92,15 @@ class _AssistantTabBar extends StatelessWidget {
       segments: [
         ButtonSegment(
           value: AssistantSidebarTab.chat,
-          label: Text(chatLabel),
+          // ValueKey на label — единственное место в ButtonSegment, куда
+          // можно подвесить ключ. Тесты ищут вкладки по этим ключам, чтобы
+          // не зависеть от локализации (см. docs/rules/frontend.md i18n).
+          label: Text(chatLabel, key: const ValueKey('assistant_tab_chat')),
           icon: const Icon(Icons.chat_bubble_outline, size: 16),
         ),
         ButtonSegment(
           value: AssistantSidebarTab.tasks,
-          label: Text(tasksLabel),
+          label: Text(tasksLabel, key: const ValueKey('assistant_tab_tasks')),
           icon: const Icon(Icons.task_alt_outlined, size: 16),
         ),
       ],
