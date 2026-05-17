@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 	"gorm.io/datatypes"
@@ -137,6 +138,18 @@ func (m *MockTaskService) ListMessages(ctx context.Context, userID uuid.UUID, us
 func (m *MockTaskService) Close() error {
 	args := m.Called()
 	return args.Error(0)
+}
+
+// ListActiveByUser — Sprint 21: используется AssistantService для Tasks-tab.
+// Добавлен в MockTaskService, чтобы он удовлетворял расширенному интерфейсу
+// service.TaskService (см. internal/service/task_service.go).
+func (m *MockTaskService) ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error) {
+	args := m.Called(ctx, userID, states, limit)
+	var rows []repository.ActiveTaskRow
+	if args.Get(0) != nil {
+		rows = args.Get(0).([]repository.ActiveTaskRow)
+	}
+	return rows, args.Error(1)
 }
 
 func setupTaskRouter(mockSvc *MockTaskService, withAuth bool) *gin.Engine {

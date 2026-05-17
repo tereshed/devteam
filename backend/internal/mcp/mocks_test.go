@@ -8,6 +8,7 @@ import (
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/llm"
 )
@@ -238,6 +239,14 @@ func (m *mockTaskService) List(ctx context.Context, userID uuid.UUID, userRole m
 		total = v.(int64)
 	}
 	return list, total, args.Error(2)
+}
+
+func (m *mockTaskService) ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error) {
+	args := m.Called(ctx, userID, states, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]repository.ActiveTaskRow), args.Error(1)
 }
 
 func (m *mockTaskService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.UpdateTaskRequest) (*models.Task, error) {

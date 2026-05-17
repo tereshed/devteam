@@ -73,6 +73,7 @@ type AuthorizedExecutor struct {
 	taskSvc    service.TaskService
 	convSvc    service.ConversationService
 	agentSvc   *service.AgentService
+	querySvc   *service.OrchestrationQueryService
 }
 
 // AuthorizedExecutorDeps — DI-структура (для удобства main.go).
@@ -81,6 +82,7 @@ type AuthorizedExecutorDeps struct {
 	TaskService         service.TaskService
 	ConversationService service.ConversationService
 	AgentService        *service.AgentService
+	QueryService        *service.OrchestrationQueryService
 }
 
 // NewAuthorizedExecutor — конструктор.
@@ -90,6 +92,7 @@ func NewAuthorizedExecutor(deps AuthorizedExecutorDeps) *AuthorizedExecutor {
 		taskSvc:    deps.TaskService,
 		convSvc:    deps.ConversationService,
 		agentSvc:   deps.AgentService,
+		querySvc:   deps.QueryService,
 	}
 }
 
@@ -121,6 +124,20 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 				InputSchema:          schemaProjectCreate,
 				RequiresConfirmation: true,
 				Handler:              e.projectCreate,
+			},
+			agentloop.Tool{
+				Name:                 "project_update",
+				Description:          "Обновить настройки проекта. Требует подтверждения.",
+				InputSchema:          schemaProjectUpdate,
+				RequiresConfirmation: true,
+				Handler:              e.projectUpdate,
+			},
+			agentloop.Tool{
+				Name:                 "project_delete",
+				Description:          "Удалить проект. DESTRUCTIVE — требует подтверждения.",
+				InputSchema:          schemaProjectGet, // тот же {id/project_id}
+				RequiresConfirmation: true,
+				Handler:              e.projectDelete,
 			},
 		)
 	}
@@ -170,6 +187,13 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 				RequiresConfirmation: true,
 				Handler:              e.conversationCreate,
 			},
+			agentloop.Tool{
+				Name:                 "conversation_send_message",
+				Description:          "Отправить сообщение в чат проекта. Требует подтверждения.",
+				InputSchema:          schemaConvSendMessage,
+				RequiresConfirmation: true,
+				Handler:              e.conversationSendMessage,
+			},
 		)
 	}
 
@@ -187,11 +211,81 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 				InputSchema: schemaAgentGet,
 				Handler:     e.agentGet,
 			},
+			agentloop.Tool{
+				Name:                 "agent_create",
+				Description:          "Создать нового агента. Требует подтверждения.",
+				InputSchema:          schemaAgentCreate,
+				RequiresConfirmation: true,
+				Handler:              e.agentCreate,
+			},
+			agentloop.Tool{
+				Name:                 "agent_update",
+				Description:          "Обновить агента. Требует подтверждения.",
+				InputSchema:          schemaAgentUpdate,
+				RequiresConfirmation: true,
+				Handler:              e.agentUpdate,
+			},
+			agentloop.Tool{
+				Name:                 "agent_delete",
+				Description:          "Удалить агента. DESTRUCTIVE — требует подтверждения.",
+				InputSchema:          schemaAgentGet,
+				RequiresConfirmation: true,
+				Handler:              e.agentDelete,
+			},
+			agentloop.Tool{
+				Name:                 "agent_set_secret",
+				Description:          "Установить или обновить секрет агента. Требует подтверждения.",
+				InputSchema:          schemaAgentSetSecret,
+				RequiresConfirmation: true,
+				Handler:              e.agentSetSecret,
+			},
+			agentloop.Tool{
+				Name:                 "agent_delete_secret",
+				Description:          "Удалить секрет агента. DESTRUCTIVE — требует подтверждения.",
+				InputSchema:          schemaAgentDeleteSecret,
+				RequiresConfirmation: true,
+				Handler:              e.agentDeleteSecret,
+			},
+		)
+	}
+
+	if e.querySvc != nil {
+		tools = append(tools,
+			agentloop.Tool{
+				Name:        "artifact_list",
+				Description: "Список артефактов задачи (без содержимого).",
+				InputSchema: schemaArtifactList,
+				Handler:     e.artifactList,
+			},
+			agentloop.Tool{
+				Name:        "artifact_get",
+				Description: "Получить полный артефакт (с содержимым).",
+				InputSchema: schemaArtifactGet,
+				Handler:     e.artifactGet,
+			},
+			agentloop.Tool{
+				Name:        "router_decision_list",
+				Description: "Лог Router-решений по задаче.",
+				InputSchema: schemaArtifactList, // тот же task_id
+				Handler:     e.routerDecisionList,
+			},
+			agentloop.Tool{
+				Name:        "worktree_list",
+				Description: "Список git worktree задачи (debug-view).",
+				InputSchema: schemaArtifactList, // тот же task_id
+				Handler:     e.worktreeList,
+			},
 		)
 	}
 
 	// Tools без зависимостей — всегда в каталоге.
 	tools = append(tools,
+		agentloop.Tool{
+			Name:        "assistant_active_tasks_count",
+			Description: "Возвращает количество активных задач пользователя во всех проектах.",
+			InputSchema: schemaEmpty,
+			Handler:     e.assistantActiveTasksCount,
+		},
 		agentloop.Tool{
 			Name:        "whoami",
 			Description: "Возвращает информацию о текущем пользователе (id, scope).",
@@ -339,13 +433,14 @@ func (e *AuthorizedExecutor) projectList(ctx context.Context, auth agentloop.Aut
 type idArgs struct {
 	ID string `json:"id,omitempty"`
 	// Альясы для дружелюбия — модель часто пишет project_id вместо id.
-	ProjectID string `json:"project_id,omitempty"`
-	TaskID    string `json:"task_id,omitempty"`
-	AgentID   string `json:"agent_id,omitempty"`
+	ProjectID  string `json:"project_id,omitempty"`
+	TaskID     string `json:"task_id,omitempty"`
+	AgentID    string `json:"agent_id,omitempty"`
+	ArtifactID string `json:"artifact_id,omitempty"`
 }
 
 func (a idArgs) resolve() (uuid.UUID, error) {
-	for _, raw := range []string{a.ID, a.ProjectID, a.TaskID, a.AgentID} {
+	for _, raw := range []string{a.ID, a.ProjectID, a.TaskID, a.AgentID, a.ArtifactID} {
 		if raw != "" {
 			id, err := uuid.Parse(raw)
 			if err != nil {
@@ -354,7 +449,7 @@ func (a idArgs) resolve() (uuid.UUID, error) {
 			return id, nil
 		}
 	}
-	return uuid.Nil, errors.New("id/project_id/task_id/agent_id is required")
+	return uuid.Nil, errors.New("id/project_id/task_id/agent_id/artifact_id is required")
 }
 
 func (e *AuthorizedExecutor) projectGet(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
@@ -394,6 +489,55 @@ func (e *AuthorizedExecutor) projectCreate(ctx context.Context, auth agentloop.A
 		return mapServiceErr(err)
 	}
 	return marshalResult(p)
+}
+
+func (e *AuthorizedExecutor) projectUpdate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a struct {
+		ID          string  `json:"id,omitempty"`
+		ProjectID   string  `json:"project_id,omitempty"`
+		Name        *string `json:"name,omitempty"`
+		Description *string `json:"description,omitempty"`
+	}
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	idArg := idArgs{ID: a.ID, ProjectID: a.ProjectID}
+	pid, err := idArg.resolve()
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+	req := dto.UpdateProjectRequest{
+		Name:        a.Name,
+		Description: a.Description,
+	}
+	p, err := e.projectSvc.Update(ctx, uid, models.RoleUser, pid, req)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(p)
+}
+
+func (e *AuthorizedExecutor) projectDelete(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a idArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	pid, err := a.resolve()
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if err := e.projectSvc.Delete(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]string{"status": "deleted"})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -561,6 +705,36 @@ func (e *AuthorizedExecutor) conversationCreate(ctx context.Context, auth agentl
 	return marshalResult(c)
 }
 
+type convSendMessageArgs struct {
+	ConversationID string `json:"conversation_id"`
+	Content        string `json:"content"`
+}
+
+func (e *AuthorizedExecutor) conversationSendMessage(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a convSendMessageArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	cid, err := uuid.Parse(a.ConversationID)
+	if err != nil {
+		return businessErr("validation", "conversation_id is required (UUID)")
+	}
+	if a.Content == "" {
+		return businessErr("validation", "content is required")
+	}
+	// Мы используем рандомный client_msg_id, т.к. это разовый вызов от ассистента.
+	clientMsgID := uuid.New()
+	msg, err := e.convSvc.SendMessage(ctx, uid, cid, a.Content, clientMsgID)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(msg)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Handlers: agent_* (read-only catalog — никаких mutations)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -625,9 +799,242 @@ func (e *AuthorizedExecutor) agentGet(ctx context.Context, auth agentloop.AuthCo
 	return marshalResult(ag)
 }
 
+func (e *AuthorizedExecutor) agentCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, _, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a service.CreateAgentInput
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	ag, err := e.agentSvc.Create(ctx, a)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(ag)
+}
+
+func (e *AuthorizedExecutor) agentUpdate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, _, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	// Мы используем кастомную структуру, чтобы извлечь id.
+	var a struct {
+		ID      string `json:"id,omitempty"`
+		AgentID string `json:"agent_id,omitempty"`
+		service.UpdateAgentInput
+	}
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	idArg := idArgs{ID: a.ID, AgentID: a.AgentID}
+	id, err := idArg.resolve()
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+	ag, err := e.agentSvc.Update(ctx, id, a.UpdateAgentInput)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(ag)
+}
+
+func (e *AuthorizedExecutor) agentDelete(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, _, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a idArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	id, err := a.resolve()
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+	
+	// Мягкое удаление через деактивацию
+	f := false
+	ag, err := e.agentSvc.Update(ctx, id, service.UpdateAgentInput{IsActive: &f})
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"status": "deleted", "agent": ag})
+}
+
+type setSecretArgs struct {
+	AgentID     string `json:"agent_id"`
+	KeyName     string `json:"key_name"`
+	SecretValue string `json:"secret_value"`
+}
+
+func (e *AuthorizedExecutor) agentSetSecret(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, _, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a setSecretArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	id, err := uuid.Parse(a.AgentID)
+	if err != nil {
+		return businessErr("validation", "agent_id must be a UUID")
+	}
+	in := service.SetSecretInput{
+		AgentID: id,
+		KeyName: a.KeyName,
+		Value:   a.SecretValue,
+	}
+	out, err := e.agentSvc.SetSecret(ctx, in)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(out)
+}
+
+type delSecretArgs struct {
+	SecretID string `json:"secret_id"`
+}
+
+func (e *AuthorizedExecutor) agentDeleteSecret(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, _, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a delSecretArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	secID, err := uuid.Parse(a.SecretID)
+	if err != nil {
+		return businessErr("validation", "secret_id must be a valid UUID")
+	}
+	if err := e.agentSvc.DeleteSecret(ctx, secID); err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]string{"status": "deleted"})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Handlers: query_* (artifacts, router_decisions, worktrees)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type taskIdArgs struct {
+	TaskID string `json:"task_id"`
+}
+
+func (e *AuthorizedExecutor) artifactList(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a taskIdArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	tid, err := uuid.Parse(a.TaskID)
+	if err != nil {
+		return businessErr("validation", "task_id must be a valid UUID")
+	}
+	// Проверка доступа к задаче (неявно через taskSvc)
+	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid); err != nil {
+		return mapServiceErr(err)
+	}
+	artifacts, err := e.querySvc.ListArtifacts(ctx, tid, false)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"items": artifacts})
+}
+
+func (e *AuthorizedExecutor) artifactGet(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a idArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	artID, err := a.resolve()
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+	artifact, err := e.querySvc.GetArtifact(ctx, artID)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	// Проверка доступа к задаче артефакта
+	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, artifact.TaskID); err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(artifact)
+}
+
+func (e *AuthorizedExecutor) routerDecisionList(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a taskIdArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	tid, err := uuid.Parse(a.TaskID)
+	if err != nil {
+		return businessErr("validation", "task_id must be a valid UUID")
+	}
+	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid); err != nil {
+		return mapServiceErr(err)
+	}
+	decisions, err := e.querySvc.ListRouterDecisions(ctx, tid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"items": decisions})
+}
+
+func (e *AuthorizedExecutor) worktreeList(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a taskIdArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	tid, err := uuid.Parse(a.TaskID)
+	if err != nil {
+		return businessErr("validation", "task_id must be a valid UUID")
+	}
+	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid); err != nil {
+		return mapServiceErr(err)
+	}
+	trees, err := e.querySvc.ListWorktrees(ctx, tid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"items": trees})
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Handlers: meta tools
 // ─────────────────────────────────────────────────────────────────────────────
+
+func (e *AuthorizedExecutor) assistantActiveTasksCount(ctx context.Context, auth agentloop.AuthContext, _ json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := e.taskSvc.ListActiveByUser(ctx, uid, []models.TaskState{models.TaskStateActive}, 100)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"count": len(tasks)})
+}
 
 func (e *AuthorizedExecutor) whoami(_ context.Context, auth agentloop.AuthContext, _ json.RawMessage) (json.RawMessage, error) {
 	return marshalResult(map[string]any{
@@ -666,18 +1073,26 @@ func (e *AuthorizedExecutor) appNavigate(_ context.Context, _ agentloop.AuthCont
 // ─────────────────────────────────────────────────────────────────────────────
 
 var (
-	schemaEmpty         = json.RawMessage(`{"type":"object","properties":{}}`)
-	schemaProjectList   = json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"git_provider":{"type":"string"},"search":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaProjectGet    = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"}},"oneOf":[{"required":["id"]},{"required":["project_id"]}]}`)
-	schemaProjectCreate = json.RawMessage(`{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"git_provider":{"type":"string"},"git_url":{"type":"string"},"git_default_branch":{"type":"string"}}}`)
-	schemaTaskList      = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaTaskGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
-	schemaConvList      = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaConvGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
-	schemaConvCreate    = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"}}}`)
-	schemaAgentList     = json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaAgentGet      = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
-	schemaAppNavigate   = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
+	schemaEmpty             = json.RawMessage(`{"type":"object","properties":{}}`)
+	schemaProjectList       = json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"git_provider":{"type":"string"},"search":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaProjectGet        = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"}},"oneOf":[{"required":["id"]},{"required":["project_id"]}]}`)
+	schemaProjectCreate     = json.RawMessage(`{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"git_provider":{"type":"string"},"git_url":{"type":"string"},"git_default_branch":{"type":"string"}}}`)
+	schemaProjectUpdate     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"anyOf":[{"required":["id"]},{"required":["project_id"]}]}`)
+	schemaTaskList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaTaskGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
+	schemaConvList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaConvGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
+	schemaConvCreate        = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"}}}`)
+	schemaConvSendMessage   = json.RawMessage(`{"type":"object","required":["conversation_id","content"],"properties":{"conversation_id":{"type":"string","format":"uuid"},"content":{"type":"string"}}}`)
+	schemaAgentList         = json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaAgentGet          = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
+	schemaAgentCreate       = json.RawMessage(`{"type":"object","required":["name","role","execution_kind"],"properties":{"name":{"type":"string"},"role":{"type":"string"},"execution_kind":{"type":"string"},"system_prompt":{"type":"string"},"model":{"type":"string"},"temperature":{"type":"number"},"max_tokens":{"type":"integer"}}}`)
+	schemaAgentUpdate       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"system_prompt":{"type":"string"},"model":{"type":"string"},"temperature":{"type":"number"},"max_tokens":{"type":"integer"}},"anyOf":[{"required":["id"]},{"required":["agent_id"]}]}`)
+	schemaAgentSetSecret    = json.RawMessage(`{"type":"object","required":["agent_id","key_name","secret_value"],"properties":{"agent_id":{"type":"string","format":"uuid"},"key_name":{"type":"string"},"secret_value":{"type":"string"}}}`)
+	schemaAgentDeleteSecret = json.RawMessage(`{"type":"object","required":["secret_id"],"properties":{"secret_id":{"type":"string","format":"uuid"}}}`)
+	schemaArtifactList      = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"}}}`)
+	schemaArtifactGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"anyOf":[{"required":["id"]},{"required":["artifact_id"]}]}`)
+	schemaAppNavigate       = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
 )
 
 func maxInt(a, b int) int {

@@ -141,6 +141,14 @@ func (m *mockTaskSvc) GetByID(ctx context.Context, userID uuid.UUID, userRole mo
 func (m *mockTaskSvc) List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.ListTasksRequest) ([]models.Task, int64, error) {
 	return nil, 0, nil
 }
+func (m *mockTaskSvc) ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error) {
+	args := m.Called(ctx, userID, states, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]repository.ActiveTaskRow), args.Error(1)
+}
+
 func (m *mockTaskSvc) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.UpdateTaskRequest) (*models.Task, error) {
 	return nil, nil
 }

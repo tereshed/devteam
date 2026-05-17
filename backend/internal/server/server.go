@@ -71,6 +71,9 @@ type Dependencies struct {
 
 	// Sprint 16.C — Hermes-каталог (toolsets) для UI dropdown'а.
 	HermesHandler *handler.HermesHandler
+
+	// Sprint 21 — глобальный ассистент правой панели (docs/tasks/21-assistant-sidebar.md §4).
+	AssistantHandler *handler.AssistantHandler
 }
 
 // New создает новый экземпляр сервера
@@ -345,6 +348,27 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			webhooksGroup.PUT("/:id", deps.WebhookHandler.Update)
 			webhooksGroup.DELETE("/:id", deps.WebhookHandler.Delete)
 			webhooksGroup.GET("/:id/logs", deps.WebhookHandler.GetLogs)
+		}
+
+		// Sprint 21 — глобальный ассистент (правая панель).
+		// scope=user, без project_id; идёт собственной группой /assistant/*.
+		// Все эндпоинты требуют auth.
+		if deps.AssistantHandler != nil {
+			assistant := api.Group("/assistant")
+			assistant.Use(authMW)
+			{
+				// Tasks-tab правой панели — live-список in-progress задач юзера.
+				assistant.GET("/active-tasks", deps.AssistantHandler.ListActiveTasks)
+
+				// Сессии: CRUD + история + send + confirm.
+				assistant.POST("/sessions", deps.AssistantHandler.CreateSession)
+				assistant.GET("/sessions", deps.AssistantHandler.ListSessions)
+				assistant.GET("/sessions/:id", deps.AssistantHandler.GetSession)
+				assistant.DELETE("/sessions/:id", deps.AssistantHandler.ArchiveSession)
+				assistant.GET("/sessions/:id/messages", deps.AssistantHandler.GetMessages)
+				assistant.POST("/sessions/:id/messages", deps.AssistantHandler.SendMessage)
+				assistant.POST("/sessions/:id/confirm", deps.AssistantHandler.ConfirmToolCall)
+			}
 		}
 
 		// Public webhook trigger endpoint (NO AUTH)

@@ -385,7 +385,7 @@ func mustMarshalToolError(status, message string) json.RawMessage {
 		Message string `json:"message"`
 	}{status, message})
 	if err != nil {
-		return json.RawMessage(fmt.Sprintf(`{"status":%q,"message":"failed to marshal error"}`, status))
+		return json.RawMessage(`{"status":"error","message":"failed to marshal error"}`)
 	}
 	return b
 }

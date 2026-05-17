@@ -178,13 +178,14 @@ func approxMessageSize(m Message, cfg Config) int {
 	if m.Role == llm.RoleTool {
 		// Tool-row передаётся как Content=string(truncated). Учитываем
 		// max — реальная нагрузка на бюджет именно такая.
-		size = len(m.Content)
 		if l := len(m.ToolResult); l > 0 {
 			if cfg.MaxToolResultBytes > 0 && l > cfg.MaxToolResultBytes {
-				size += cfg.MaxToolResultBytes
+				size = cfg.MaxToolResultBytes
 			} else {
-				size += l
+				size = l
 			}
+		} else {
+			size = 0
 		}
 	}
 	// Tool-call args в assistant-row тоже бьют по бюджету.
@@ -238,13 +239,12 @@ func compactToolMessage(m Message) Message {
 }
 
 // compactAssistantWithCalls сворачивает assistant-row с tool_calls в текстовый
-// маркер, оставляя tool_calls пустыми (LLM не должен «думать», что эти вызовы
-// ещё актуальны, после того как мы выбросили парные tool_result).
+// маркер (LLM поймет, что это сжатый промежуточный ответ).
 //
 // Замечание: для строгой совместимости с tool-calling провайдерами
 // (assistant.tool_calls должен иметь парный tool.tool_call_id) мы сохраняем
 // исходное число пар: compactToolMessage сохраняет ToolCallID, а здесь
-// оставляем ToolCalls. Поэтому реальное сжатие — только в Content/ToolResult.
+// оставляем ToolCalls без изменений. Поэтому реальное сжатие — только в Content/ToolResult.
 func compactAssistantWithCalls(m Message) Message {
 	out := m
 	if out.Content == "" {

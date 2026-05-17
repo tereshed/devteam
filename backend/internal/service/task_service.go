@@ -135,6 +135,9 @@ type TaskService interface {
 	Resume(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error)
 	Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error)
 
+	ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error)
+
+
 	Transition(ctx context.Context, taskID uuid.UUID, newState models.TaskState, opts TransitionOpts) (*models.Task, error)
 
 	AddMessage(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.CreateTaskMessageRequest) (*models.TaskMessage, error)
@@ -609,6 +612,10 @@ func (s *taskService) List(ctx context.Context, userID uuid.UUID, userRole model
 		return nil, 0, err
 	}
 	return s.taskRepo.List(ctx, filter)
+}
+
+func (s *taskService) ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error) {
+	return s.taskRepo.ListActiveByUser(ctx, userID, states, limit)
 }
 
 func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.UpdateTaskRequest) (*models.Task, error) {
