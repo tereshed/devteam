@@ -159,7 +159,7 @@ type AssistantService interface {
 
 	// SendMessage — 202 Accepted: записывает user-сообщение (идемпотентно
 	// по clientMsgID), захватывает busy и стартует агент-петлю в горутине.
-	SendMessage(ctx context.Context, sessionID, userID uuid.UUID, content string, clientMsgID string) (*models.AssistantMessage, error)
+	SendMessage(ctx context.Context, sessionID, userID uuid.UUID, content string, clientMsgID string) (*models.AssistantMessage, bool, error)
 
 	// ConfirmToolCall — resume после destructive confirm. approved=true →
 	// исполняет tool в той же горутине (синхронно завершает confirm-call),
@@ -298,12 +298,12 @@ func (s *assistantService) GetHistory(ctx context.Context, sessionID, userID uui
 // SendMessage — 202 Accepted, агент-петля в горутине.
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (s *assistantService) SendMessage(ctx context.Context, sessionID, userID uuid.UUID, content, clientMsgID string) (*models.AssistantMessage, error) {
+func (s *assistantService) SendMessage(ctx context.Context, sessionID, userID uuid.UUID, content, clientMsgID string) (*models.AssistantMessage, bool, error) {
 	if sessionID == uuid.Nil || userID == uuid.Nil {
-		return nil, ErrAssistantInvalidInput
+		return nil, false, ErrAssistantInvalidInput
 	}
 	if content == "" {
-		return nil, ErrAssistantInvalidInput
+		return nil, false, ErrAssistantInvalidInput
 	}
 
 	// 1) Ownership + idempotency lookup (если повторный clientMsgID — возвращаем
@@ -311,9 +311,9 @@ func (s *assistantService) SendMessage(ctx context.Context, sessionID, userID uu
 	if clientMsgID != "" {
 		if existing, err := s.deps.Repo.FindMessageByClientID(ctx, sessionID, clientMsgID); err == nil {
 			// Повторная доставка — no-op. Не стартуем петлю.
-			return existing, nil
+			return existing, true, nil
 		} else if !errors.Is(err, repository.ErrMessageNotFound) {
-			return nil, fmt.Errorf("idempotency lookup: %w", err)
+			return nil, false, fmt.Errorf("idempotency lookup: %w", err)
 		}
 	}
 
@@ -323,11 +323,11 @@ func (s *assistantService) SendMessage(ctx context.Context, sessionID, userID uu
 		// Различаем «не нашли/чужая» vs «занята» доп. SELECT'ом.
 		if errors.Is(err, repository.ErrAssistantSessionBusy) {
 			if _, getErr := s.deps.Repo.GetSession(ctx, sessionID, userID); errors.Is(getErr, repository.ErrAssistantSessionNotFound) {
-				return nil, ErrAssistantSessionNotFound
+				return nil, false, ErrAssistantSessionNotFound
 			}
-			return nil, ErrAssistantSessionBusy
+			return nil, false, ErrAssistantSessionBusy
 		}
-		return nil, s.mapRepoErr(err)
+		return nil, false, s.mapRepoErr(err)
 	}
 
 	// 3) Запись user-сообщения. Если идемпотентный конфликт — снимаем busy
@@ -344,10 +344,10 @@ func (s *assistantService) SendMessage(ctx context.Context, sessionID, userID uu
 		_ = s.deps.Repo.ReleaseBusy(context.Background(), sessionID)
 		if errors.Is(err, repository.ErrAssistantMessageDuplicate) && clientMsgID != "" {
 			if existing, lookupErr := s.deps.Repo.FindMessageByClientID(ctx, sessionID, clientMsgID); lookupErr == nil {
-				return existing, nil
+				return existing, true, nil
 			}
 		}
-		return nil, fmt.Errorf("append user message: %w", err)
+		return nil, false, fmt.Errorf("append user message: %w", err)
 	}
 
 	s.broadcastMessage(userID, sessionID, userMsg)
@@ -356,7 +356,7 @@ func (s *assistantService) SendMessage(ctx context.Context, sessionID, userID uu
 	//    отменять long-running петлю; свой timeout живёт внутри runAgentLoop.
 	go s.runAgentLoop(context.Background(), sessionID, userID)
 
-	return userMsg, nil
+	return userMsg, false, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

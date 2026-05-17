@@ -459,6 +459,575 @@
                 }
             }
         },
+        "/assistant/active-tasks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Live-список task.state=active по всем проектам пользователя (для Tasks-tab правой панели). Возвращается одним JOIN'ом (tasks ⋈ projects WHERE projects.user_id = ?).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Активные задачи пользователя",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantActiveTasksResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/assistant/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Возвращает сессии пользователя, отсортированные по last_message_at DESC NULLS LAST. По умолчанию архивные исключены.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Список assistant-сессий",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Включить архивные сессии",
+                        "name": "include_archived",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Лимит (1–200, по умолчанию 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantSessionListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидные параметры",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Создаёт пустую глобальную сессию ассистента (scope=user, без project_id). Title выставляется автоматически после первого ответа модели.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Создание assistant-сессии",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный запрос",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/assistant/sessions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Возвращает полную информацию о сессии (включая busy, busy_since, pending_tool_call_id для UI input-disable).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Получение assistant-сессии",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный UUID",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Сессия не найдена",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Soft-delete: status='archived'. На busy=TRUE возвращает 409 — занятую петлю архивировать нельзя.",
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Архивация assistant-сессии",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Сессия архивирована"
+                    },
+                    "400": {
+                        "description": "Невалидный UUID",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Сессия не найдена",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Сессия занята (busy=TRUE)",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/assistant/sessions/{id}/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Resume агент-петли после destructive-confirm. approved=true → исполняется MCP-tool и петля резюмируется; approved=false → синтетический deny payload, петля резюмируется и LLM объяснит отказ. Идемпотентно через атомарный UPDATE по tool_result IS NULL.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Подтверждение destructive операции",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "tool_call_id + approved + (опц.) client_request_id",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmToolCallRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Принято, агент-петля резюмируется",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmToolCallResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидные данные",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Сессия не найдена",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "no_pending_confirmation | already_confirmed | session_busy",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload слишком большой",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "415": {
+                        "description": "Неверный Content-Type",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/assistant/sessions/{id}/messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Возвращает сообщения сессии в порядке (created_at, id) DESC. Курсор — пара (before_created_at, before_id) последнего элемента предыдущей страницы.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "История сообщений assistant-сессии",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Лимит (1–100, по умолчанию 30)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Курсор: ID последнего сообщения предыдущей страницы",
+                        "name": "before_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Курсор: created_at последнего сообщения предыдущей страницы (RFC3339)",
+                        "name": "before_created_at",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantMessageListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидные параметры",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Сессия не найдена",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Записывает user-сообщение и запускает агент-петлю в горутине. Возвращает 202 Accepted. Идемпотентность — через client_message_id в теле или X-Client-Message-ID в заголовке. Если сессия busy — 409 {error:\"session_busy\", pending_tool_call_id}.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Отправка сообщения ассистенту",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Ключ идемпотентности (UUIDv4). Альтернатива — поле client_message_id в теле.",
+                        "name": "X-Client-Message-ID",
+                        "in": "header"
+                    },
+                    {
+                        "description": "Текст сообщения + client_message_id",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendAssistantMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Дубликат по client_message_id (идемпотентность)",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendAssistantMessageResponse"
+                        }
+                    },
+                    "202": {
+                        "description": "Сообщение принято, агент-петля стартует",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendAssistantMessageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидные данные",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Сессия не найдена",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Сессия занята (session_busy)",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload слишком большой",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "415": {
+                        "description": "Неверный Content-Type",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/api-keys": {
             "get": {
                 "security": [
@@ -5678,6 +6247,149 @@
                 }
             }
         },
+        "dto.AssistantActiveTaskResponse": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string"
+                },
+                "project_name": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AssistantActiveTasksResponse": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AssistantActiveTaskResponse"
+                    }
+                }
+            }
+        },
+        "dto.AssistantMessageListResponse": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AssistantMessageResponse"
+                    }
+                },
+                "next_before_created_at": {
+                    "type": "string"
+                },
+                "next_before_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AssistantMessageResponse": {
+            "type": "object",
+            "properties": {
+                "client_message_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "assistant"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "tool_arguments": {
+                    "type": "object"
+                },
+                "tool_call_id": {
+                    "type": "string"
+                },
+                "tool_name": {
+                    "type": "string"
+                },
+                "tool_result": {
+                    "type": "object"
+                }
+            }
+        },
+        "dto.AssistantSessionListResponse": {
+            "type": "object",
+            "properties": {
+                "sessions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AssistantSessionResponse"
+                    }
+                }
+            }
+        },
+        "dto.AssistantSessionResponse": {
+            "type": "object",
+            "properties": {
+                "busy": {
+                    "type": "boolean"
+                },
+                "busy_since": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_message_at": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object"
+                },
+                "pending_tool_call_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "active"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.AuthResponse": {
             "type": "object",
             "properties": {
@@ -5771,6 +6483,35 @@
                 },
                 "token_type": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ConfirmToolCallRequest": {
+            "type": "object",
+            "required": [
+                "tool_call_id"
+            ],
+            "properties": {
+                "approved": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "client_request_id": {
+                    "type": "string",
+                    "example": "4a2b6c5d-7e8f-4a3b-9c1d-2f3e4a5b6c7d"
+                },
+                "tool_call_id": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "example": "call_01H..."
+                }
+            }
+        },
+        "dto.ConfirmToolCallResponse": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "boolean"
                 }
             }
         },
@@ -6626,6 +7367,35 @@
                 "password": {
                     "type": "string",
                     "minLength": 8
+                }
+            }
+        },
+        "dto.SendAssistantMessageRequest": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "client_message_id": {
+                    "type": "string",
+                    "example": "3f1b6d4a-2c1e-4b9f-8f1a-1f1c5a9d2b7e"
+                },
+                "content": {
+                    "type": "string",
+                    "maxLength": 4096,
+                    "example": "Покажи мои проекты"
+                }
+            }
+        },
+        "dto.SendAssistantMessageResponse": {
+            "type": "object",
+            "properties": {
+                "duplicate": {
+                    "description": "Duplicate=true → сервер не запустил петлю заново (idempotent replay).\nФронту полезно: можно не показывать typing-индикатор «думаю...».",
+                    "type": "boolean"
+                },
+                "message": {
+                    "$ref": "#/definitions/dto.AssistantMessageResponse"
                 }
             }
         },

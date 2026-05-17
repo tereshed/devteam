@@ -89,6 +89,100 @@ definitions:
       scopes:
         type: string
     type: object
+  dto.AssistantActiveTaskResponse:
+    properties:
+      project_id:
+        type: string
+      project_name:
+        type: string
+      state:
+        type: string
+      task_id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.AssistantActiveTasksResponse:
+    properties:
+      tasks:
+        items:
+          $ref: '#/definitions/dto.AssistantActiveTaskResponse'
+        type: array
+    type: object
+  dto.AssistantMessageListResponse:
+    properties:
+      has_more:
+        type: boolean
+      limit:
+        type: integer
+      messages:
+        items:
+          $ref: '#/definitions/dto.AssistantMessageResponse'
+        type: array
+      next_before_created_at:
+        type: string
+      next_before_id:
+        type: string
+    type: object
+  dto.AssistantMessageResponse:
+    properties:
+      client_message_id:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      role:
+        example: assistant
+        type: string
+      session_id:
+        type: string
+      tool_arguments:
+        type: object
+      tool_call_id:
+        type: string
+      tool_name:
+        type: string
+      tool_result:
+        type: object
+    type: object
+  dto.AssistantSessionListResponse:
+    properties:
+      sessions:
+        items:
+          $ref: '#/definitions/dto.AssistantSessionResponse'
+        type: array
+    type: object
+  dto.AssistantSessionResponse:
+    properties:
+      busy:
+        type: boolean
+      busy_since:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      last_message_at:
+        type: string
+      metadata:
+        type: object
+      pending_tool_call_id:
+        type: string
+      status:
+        example: active
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   dto.AuthResponse:
     properties:
       access_token:
@@ -151,6 +245,26 @@ definitions:
         type: string
       token_type:
         type: string
+    type: object
+  dto.ConfirmToolCallRequest:
+    properties:
+      approved:
+        example: true
+        type: boolean
+      client_request_id:
+        example: 4a2b6c5d-7e8f-4a3b-9c1d-2f3e4a5b6c7d
+        type: string
+      tool_call_id:
+        example: call_01H...
+        maxLength: 64
+        type: string
+    required:
+    - tool_call_id
+    type: object
+  dto.ConfirmToolCallResponse:
+    properties:
+      accepted:
+        type: boolean
     type: object
   dto.ConversationListResponse:
     properties:
@@ -728,6 +842,28 @@ definitions:
     required:
     - email
     - password
+    type: object
+  dto.SendAssistantMessageRequest:
+    properties:
+      client_message_id:
+        example: 3f1b6d4a-2c1e-4b9f-8f1a-1f1c5a9d2b7e
+        type: string
+      content:
+        example: Покажи мои проекты
+        maxLength: 4096
+        type: string
+    required:
+    - content
+    type: object
+  dto.SendAssistantMessageResponse:
+    properties:
+      duplicate:
+        description: |-
+          Duplicate=true → сервер не запустил петлю заново (idempotent replay).
+          Фронту полезно: можно не показывать typing-индикатор «думаю...».
+        type: boolean
+      message:
+        $ref: '#/definitions/dto.AssistantMessageResponse'
     type: object
   dto.SendMessageRequest:
     properties:
@@ -2100,6 +2236,373 @@ paths:
       summary: Delete v2 agent secret
       tags:
       - agents-v2
+  /assistant/active-tasks:
+    get:
+      description: Live-список task.state=active по всем проектам пользователя (для
+        Tasks-tab правой панели). Возвращается одним JOIN'ом (tasks ⋈ projects WHERE
+        projects.user_id = ?).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AssistantActiveTasksResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Активные задачи пользователя
+      tags:
+      - assistant
+  /assistant/sessions:
+    get:
+      description: Возвращает сессии пользователя, отсортированные по last_message_at
+        DESC NULLS LAST. По умолчанию архивные исключены.
+      parameters:
+      - description: Включить архивные сессии
+        in: query
+        name: include_archived
+        type: boolean
+      - description: Лимит (1–200, по умолчанию 50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AssistantSessionListResponse'
+        "400":
+          description: Невалидные параметры
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список assistant-сессий
+      tags:
+      - assistant
+    post:
+      consumes:
+      - application/json
+      description: Создаёт пустую глобальную сессию ассистента (scope=user, без project_id).
+        Title выставляется автоматически после первого ответа модели.
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AssistantSessionResponse'
+        "400":
+          description: Невалидный запрос
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание assistant-сессии
+      tags:
+      - assistant
+  /assistant/sessions/{id}:
+    delete:
+      description: 'Soft-delete: status=''archived''. На busy=TRUE возвращает 409
+        — занятую петлю архивировать нельзя.'
+      parameters:
+      - description: Session ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Сессия архивирована
+        "400":
+          description: Невалидный UUID
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Сессия не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Сессия занята (busy=TRUE)
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Архивация assistant-сессии
+      tags:
+      - assistant
+    get:
+      description: Возвращает полную информацию о сессии (включая busy, busy_since,
+        pending_tool_call_id для UI input-disable).
+      parameters:
+      - description: Session ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AssistantSessionResponse'
+        "400":
+          description: Невалидный UUID
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Сессия не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение assistant-сессии
+      tags:
+      - assistant
+  /assistant/sessions/{id}/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Resume агент-петли после destructive-confirm. approved=true → исполняется
+        MCP-tool и петля резюмируется; approved=false → синтетический deny payload,
+        петля резюмируется и LLM объяснит отказ. Идемпотентно через атомарный UPDATE
+        по tool_result IS NULL.
+      parameters:
+      - description: Session ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: tool_call_id + approved + (опц.) client_request_id
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConfirmToolCallRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Принято, агент-петля резюмируется
+          schema:
+            $ref: '#/definitions/dto.ConfirmToolCallResponse'
+        "400":
+          description: Невалидные данные
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Сессия не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: no_pending_confirmation | already_confirmed | session_busy
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "413":
+          description: Payload слишком большой
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "415":
+          description: Неверный Content-Type
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Подтверждение destructive операции
+      tags:
+      - assistant
+  /assistant/sessions/{id}/messages:
+    get:
+      description: Возвращает сообщения сессии в порядке (created_at, id) DESC. Курсор
+        — пара (before_created_at, before_id) последнего элемента предыдущей страницы.
+      parameters:
+      - description: Session ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Лимит (1–100, по умолчанию 30)
+        in: query
+        name: limit
+        type: integer
+      - description: 'Курсор: ID последнего сообщения предыдущей страницы'
+        format: uuid
+        in: query
+        name: before_id
+        type: string
+      - description: 'Курсор: created_at последнего сообщения предыдущей страницы
+          (RFC3339)'
+        format: date-time
+        in: query
+        name: before_created_at
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AssistantMessageListResponse'
+        "400":
+          description: Невалидные параметры
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Сессия не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: История сообщений assistant-сессии
+      tags:
+      - assistant
+    post:
+      consumes:
+      - application/json
+      description: Записывает user-сообщение и запускает агент-петлю в горутине. Возвращает
+        202 Accepted. Идемпотентность — через client_message_id в теле или X-Client-Message-ID
+        в заголовке. Если сессия busy — 409 {error:"session_busy", pending_tool_call_id}.
+      parameters:
+      - description: Session ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Ключ идемпотентности (UUIDv4). Альтернатива — поле client_message_id
+          в теле.
+        in: header
+        name: X-Client-Message-ID
+        type: string
+      - description: Текст сообщения + client_message_id
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendAssistantMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Дубликат по client_message_id (идемпотентность)
+          schema:
+            $ref: '#/definitions/dto.SendAssistantMessageResponse'
+        "202":
+          description: Сообщение принято, агент-петля стартует
+          schema:
+            $ref: '#/definitions/dto.SendAssistantMessageResponse'
+        "400":
+          description: Невалидные данные
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Сессия не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Сессия занята (session_busy)
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "413":
+          description: Payload слишком большой
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "415":
+          description: Неверный Content-Type
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Отправка сообщения ассистенту
+      tags:
+      - assistant
   /auth/api-keys:
     get:
       consumes:
