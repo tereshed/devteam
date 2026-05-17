@@ -1425,6 +1425,53 @@
     "placeholders": {
       "kind": { "type": "String" }
     }
-  }
+  },
+
+  "assistantSidebarTitle": "Ассистент",
+  "assistantTabChat": "Чат",
+  "assistantTabTasks": "Задачи",
+  "assistantEmptyChat": "Спросите ассистента о проектах, задачах или настройках.",
+  "assistantInputHint": "Сообщение ассистенту…",
+  "assistantSend": "Отправить",
+  "assistantConfirmTitle": "Подтвердите действие",
+  "assistantConfirmApprove": "Подтвердить",
+  "assistantConfirmDeny": "Отклонить",
+  "assistantNoActiveTasks": "Нет активных задач ни в одном проекте.",
+  "assistantActiveTaskInProgress": "В работе",
+  "assistantToggleTooltip": "Скрыть/показать ассистента",
+  "assistantSessionBusy": "Ассистент работает…",
+  "assistantSessionStale": "Сессия не отвечает — попробуйте чуть позже.",
+  "assistantToolCallTitle": "Инструмент {tool}",
+  "@assistantToolCallTitle": {
+    "placeholders": { "tool": { "type": "String" } }
+  },
+  "assistantToolResultStatusOk": "OK",
+  "assistantToolResultStatusForbidden": "Запрещено",
+  "assistantToolResultStatusError": "Ошибка",
+  "assistantToolResultStatusDenied": "Отклонено",
+  "assistantToolResultStatusTruncated": "Усечено",
+  "assistantToolResultStatusPending": "Ожидает",
+  "assistantToolResultLabel": "Результат",
+  "assistantToolArgumentsLabel": "Аргументы",
+  "assistantNewSession": "Новый чат",
+  "assistantSessionUntitled": "Без названия",
+  "assistantOpenTask": "Открыть",
+  "assistantLoadOlder": "Загрузить ещё",
+  "assistantRetry": "Повторить",
+  "assistantErrorGeneric": "Что-то пошло не так. Попробуйте ещё раз.",
+  "assistantConfirmSummaryFallback": "Ассистент хочет вызвать {tool}. Подтвердите, чтобы продолжить.",
+  "@assistantConfirmSummaryFallback": {
+    "placeholders": { "tool": { "type": "String" } }
+  },
+  "assistantMessageRoleUser": "Вы",
+  "assistantMessageRoleAssistant": "Ассистент",
+  "assistantMessageRoleSystem": "Система",
+
+  "assistantTaskStateActive": "В работе",
+  "assistantTaskStateDone": "Готово",
+  "assistantTaskStateFailed": "Ошибка",
+  "assistantTaskStateCancelled": "Отменена",
+  "assistantTaskStateNeedsHuman": "Нужна помощь",
+  "assistantTaskStatePaused": "Пауза"
 }
 

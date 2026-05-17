@@ -4,6 +4,8 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/app_shell_destinations.dart';
 import 'package:frontend/core/widgets/breadcrumb.dart';
+import 'package:frontend/features/assistant/presentation/controllers/assistant_sidebar_controller.dart';
+import 'package:frontend/features/assistant/presentation/widgets/assistant_sidebar.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/auth/presentation/widgets/logout_button.dart';
 import 'package:go_router/go_router.dart';
@@ -50,6 +52,10 @@ class AppShell extends ConsumerWidget {
 
     final selectedIndex = _selectedIndex(destinations, location);
 
+    final sidebarOpen = ref.watch(
+      assistantSidebarControllerProvider.select((s) => s.open),
+    );
+
     final appBar = AppBar(
       elevation: 0,
       scrolledUnderElevation: 1,
@@ -66,13 +72,42 @@ class AppShell extends ConsumerWidget {
             Flexible(child: Breadcrumb(location: location)),
         ],
       ),
-      actions: const [
-        Padding(
+      actions: [
+        // Desktop — toggle inline-колонки через провайдер; tablet/mobile —
+        // открываем endDrawer через Scaffold (только тут доступ к нему есть).
+        Builder(
+          builder: (ctx) => IconButton(
+            tooltip: l10n.assistantToggleTooltip,
+            onPressed: () {
+              if (device == DeviceType.desktop) {
+                ref
+                    .read(assistantSidebarControllerProvider.notifier)
+                    .toggleOpen();
+              } else {
+                Scaffold.of(ctx).openEndDrawer();
+              }
+            },
+            icon: Icon(
+              sidebarOpen
+                  ? Icons.assistant
+                  : Icons.assistant_outlined,
+            ),
+          ),
+        ),
+        const Padding(
           padding: EdgeInsets.only(right: 8),
           child: LogoutButton(),
         ),
       ],
     );
+
+    // endDrawer для assistant sidebar на mobile/tablet (план §2 frontend).
+    // Desktop держит панель встроенной колонкой в Row ниже.
+    final endDrawer = device != DeviceType.desktop
+        ? const Drawer(
+            child: SafeArea(child: SizedBox(width: 360, child: AssistantSidebar())),
+          )
+        : null;
 
     if (isMobile) {
       return Scaffold(
@@ -91,6 +126,7 @@ class AppShell extends ConsumerWidget {
             ),
           ),
         ),
+        endDrawer: endDrawer,
         body: SafeArea(
           child: Column(
             children: [
@@ -110,9 +146,12 @@ class AppShell extends ConsumerWidget {
 
     final extended = device == DeviceType.desktop;
     final railWidth = extended ? 240.0 : 80.0;
+    const assistantWidth = 360.0;
+    final showInlineAssistant = extended && sidebarOpen;
 
     return Scaffold(
       appBar: appBar,
+      endDrawer: extended ? null : endDrawer,
       body: SafeArea(
         child: Row(
           children: [
@@ -132,6 +171,23 @@ class AppShell extends ConsumerWidget {
             ),
             const VerticalDivider(width: 1, thickness: 1),
             Expanded(child: child),
+            // Desktop: правая колонка-ассистент, collapsible. Сворачиваем
+            // через AnimatedSize, чтобы layout перестраивался плавно (§8).
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              alignment: Alignment.centerRight,
+              child: showInlineAssistant
+                  ? const Row(
+                      children: [
+                        VerticalDivider(width: 1, thickness: 1),
+                        SizedBox(
+                          width: assistantWidth,
+                          child: AssistantSidebar(),
+                        ),
+                      ],
+                    )
+                  : const SizedBox(width: 0, height: 0),
+            ),
           ],
         ),
       ),

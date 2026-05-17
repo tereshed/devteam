@@ -2135,4 +2135,127 @@ class AppLocalizationsEn extends AppLocalizations {
   String artifactViewerFullTitle(String kind) {
     return '$kind · full';
   }
+
+  @override
+  String get assistantSidebarTitle => 'Assistant';
+
+  @override
+  String get assistantTabChat => 'Chat';
+
+  @override
+  String get assistantTabTasks => 'Tasks';
+
+  @override
+  String get assistantEmptyChat =>
+      'Ask the assistant about your projects, tasks, or settings.';
+
+  @override
+  String get assistantInputHint => 'Message the assistant…';
+
+  @override
+  String get assistantSend => 'Send';
+
+  @override
+  String get assistantConfirmTitle => 'Confirm action';
+
+  @override
+  String get assistantConfirmApprove => 'Approve';
+
+  @override
+  String get assistantConfirmDeny => 'Deny';
+
+  @override
+  String get assistantNoActiveTasks => 'No active tasks across your projects.';
+
+  @override
+  String get assistantActiveTaskInProgress => 'In progress';
+
+  @override
+  String get assistantToggleTooltip => 'Toggle assistant';
+
+  @override
+  String get assistantSessionBusy => 'Assistant is working…';
+
+  @override
+  String get assistantSessionStale =>
+      'Session is unresponsive — retry shortly.';
+
+  @override
+  String assistantToolCallTitle(String tool) {
+    return 'Tool $tool';
+  }
+
+  @override
+  String get assistantToolResultStatusOk => 'OK';
+
+  @override
+  String get assistantToolResultStatusForbidden => 'Forbidden';
+
+  @override
+  String get assistantToolResultStatusError => 'Error';
+
+  @override
+  String get assistantToolResultStatusDenied => 'Denied';
+
+  @override
+  String get assistantToolResultStatusTruncated => 'Truncated';
+
+  @override
+  String get assistantToolResultStatusPending => 'Pending';
+
+  @override
+  String get assistantToolResultLabel => 'Result';
+
+  @override
+  String get assistantToolArgumentsLabel => 'Arguments';
+
+  @override
+  String get assistantNewSession => 'New chat';
+
+  @override
+  String get assistantSessionUntitled => 'Untitled chat';
+
+  @override
+  String get assistantOpenTask => 'Open';
+
+  @override
+  String get assistantLoadOlder => 'Load older messages';
+
+  @override
+  String get assistantRetry => 'Retry';
+
+  @override
+  String get assistantErrorGeneric => 'Something went wrong. Please try again.';
+
+  @override
+  String assistantConfirmSummaryFallback(String tool) {
+    return 'The assistant wants to run $tool. Approve to proceed.';
+  }
+
+  @override
+  String get assistantMessageRoleUser => 'You';
+
+  @override
+  String get assistantMessageRoleAssistant => 'Assistant';
+
+  @override
+  String get assistantMessageRoleSystem => 'System';
+
+  @override
+  String get assistantTaskStateActive => 'Active';
+
+  @override
+  String get assistantTaskStateDone => 'Done';
+
+  @override
+  String get assistantTaskStateFailed => 'Failed';
+
+  @override
+  String get assistantTaskStateCancelled => 'Cancelled';
+
+  @override
+  String get assistantTaskStateNeedsHuman => 'Needs human';
+
+  @override
+  String get assistantTaskStatePaused => 'Paused';
 }

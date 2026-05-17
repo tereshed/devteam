@@ -2152,4 +2152,128 @@ class AppLocalizationsRu extends AppLocalizations {
   String artifactViewerFullTitle(String kind) {
     return '$kind · полностью';
   }
+
+  @override
+  String get assistantSidebarTitle => 'Ассистент';
+
+  @override
+  String get assistantTabChat => 'Чат';
+
+  @override
+  String get assistantTabTasks => 'Задачи';
+
+  @override
+  String get assistantEmptyChat =>
+      'Спросите ассистента о проектах, задачах или настройках.';
+
+  @override
+  String get assistantInputHint => 'Сообщение ассистенту…';
+
+  @override
+  String get assistantSend => 'Отправить';
+
+  @override
+  String get assistantConfirmTitle => 'Подтвердите действие';
+
+  @override
+  String get assistantConfirmApprove => 'Подтвердить';
+
+  @override
+  String get assistantConfirmDeny => 'Отклонить';
+
+  @override
+  String get assistantNoActiveTasks => 'Нет активных задач ни в одном проекте.';
+
+  @override
+  String get assistantActiveTaskInProgress => 'В работе';
+
+  @override
+  String get assistantToggleTooltip => 'Скрыть/показать ассистента';
+
+  @override
+  String get assistantSessionBusy => 'Ассистент работает…';
+
+  @override
+  String get assistantSessionStale =>
+      'Сессия не отвечает — попробуйте чуть позже.';
+
+  @override
+  String assistantToolCallTitle(String tool) {
+    return 'Инструмент $tool';
+  }
+
+  @override
+  String get assistantToolResultStatusOk => 'OK';
+
+  @override
+  String get assistantToolResultStatusForbidden => 'Запрещено';
+
+  @override
+  String get assistantToolResultStatusError => 'Ошибка';
+
+  @override
+  String get assistantToolResultStatusDenied => 'Отклонено';
+
+  @override
+  String get assistantToolResultStatusTruncated => 'Усечено';
+
+  @override
+  String get assistantToolResultStatusPending => 'Ожидает';
+
+  @override
+  String get assistantToolResultLabel => 'Результат';
+
+  @override
+  String get assistantToolArgumentsLabel => 'Аргументы';
+
+  @override
+  String get assistantNewSession => 'Новый чат';
+
+  @override
+  String get assistantSessionUntitled => 'Без названия';
+
+  @override
+  String get assistantOpenTask => 'Открыть';
+
+  @override
+  String get assistantLoadOlder => 'Загрузить ещё';
+
+  @override
+  String get assistantRetry => 'Повторить';
+
+  @override
+  String get assistantErrorGeneric =>
+      'Что-то пошло не так. Попробуйте ещё раз.';
+
+  @override
+  String assistantConfirmSummaryFallback(String tool) {
+    return 'Ассистент хочет вызвать $tool. Подтвердите, чтобы продолжить.';
+  }
+
+  @override
+  String get assistantMessageRoleUser => 'Вы';
+
+  @override
+  String get assistantMessageRoleAssistant => 'Ассистент';
+
+  @override
+  String get assistantMessageRoleSystem => 'Система';
+
+  @override
+  String get assistantTaskStateActive => 'В работе';
+
+  @override
+  String get assistantTaskStateDone => 'Готово';
+
+  @override
+  String get assistantTaskStateFailed => 'Ошибка';
+
+  @override
+  String get assistantTaskStateCancelled => 'Отменена';
+
+  @override
+  String get assistantTaskStateNeedsHuman => 'Нужна помощь';
+
+  @override
+  String get assistantTaskStatePaused => 'Пауза';
 }

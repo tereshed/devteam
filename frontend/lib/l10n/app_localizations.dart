@@ -3931,6 +3931,240 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'{kind} · полностью'**
   String artifactViewerFullTitle(String kind);
+
+  /// No description provided for @assistantSidebarTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент'**
+  String get assistantSidebarTitle;
+
+  /// No description provided for @assistantTabChat.
+  ///
+  /// In ru, this message translates to:
+  /// **'Чат'**
+  String get assistantTabChat;
+
+  /// No description provided for @assistantTabTasks.
+  ///
+  /// In ru, this message translates to:
+  /// **'Задачи'**
+  String get assistantTabTasks;
+
+  /// No description provided for @assistantEmptyChat.
+  ///
+  /// In ru, this message translates to:
+  /// **'Спросите ассистента о проектах, задачах или настройках.'**
+  String get assistantEmptyChat;
+
+  /// No description provided for @assistantInputHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сообщение ассистенту…'**
+  String get assistantInputHint;
+
+  /// No description provided for @assistantSend.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправить'**
+  String get assistantSend;
+
+  /// No description provided for @assistantConfirmTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтвердите действие'**
+  String get assistantConfirmTitle;
+
+  /// No description provided for @assistantConfirmApprove.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтвердить'**
+  String get assistantConfirmApprove;
+
+  /// No description provided for @assistantConfirmDeny.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отклонить'**
+  String get assistantConfirmDeny;
+
+  /// No description provided for @assistantNoActiveTasks.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет активных задач ни в одном проекте.'**
+  String get assistantNoActiveTasks;
+
+  /// No description provided for @assistantActiveTaskInProgress.
+  ///
+  /// In ru, this message translates to:
+  /// **'В работе'**
+  String get assistantActiveTaskInProgress;
+
+  /// No description provided for @assistantToggleTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скрыть/показать ассистента'**
+  String get assistantToggleTooltip;
+
+  /// No description provided for @assistantSessionBusy.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент работает…'**
+  String get assistantSessionBusy;
+
+  /// No description provided for @assistantSessionStale.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия не отвечает — попробуйте чуть позже.'**
+  String get assistantSessionStale;
+
+  /// No description provided for @assistantToolCallTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Инструмент {tool}'**
+  String assistantToolCallTitle(String tool);
+
+  /// No description provided for @assistantToolResultStatusOk.
+  ///
+  /// In ru, this message translates to:
+  /// **'OK'**
+  String get assistantToolResultStatusOk;
+
+  /// No description provided for @assistantToolResultStatusForbidden.
+  ///
+  /// In ru, this message translates to:
+  /// **'Запрещено'**
+  String get assistantToolResultStatusForbidden;
+
+  /// No description provided for @assistantToolResultStatusError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get assistantToolResultStatusError;
+
+  /// No description provided for @assistantToolResultStatusDenied.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отклонено'**
+  String get assistantToolResultStatusDenied;
+
+  /// No description provided for @assistantToolResultStatusTruncated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Усечено'**
+  String get assistantToolResultStatusTruncated;
+
+  /// No description provided for @assistantToolResultStatusPending.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ожидает'**
+  String get assistantToolResultStatusPending;
+
+  /// No description provided for @assistantToolResultLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Результат'**
+  String get assistantToolResultLabel;
+
+  /// No description provided for @assistantToolArgumentsLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аргументы'**
+  String get assistantToolArgumentsLabel;
+
+  /// No description provided for @assistantNewSession.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый чат'**
+  String get assistantNewSession;
+
+  /// No description provided for @assistantSessionUntitled.
+  ///
+  /// In ru, this message translates to:
+  /// **'Без названия'**
+  String get assistantSessionUntitled;
+
+  /// No description provided for @assistantOpenTask.
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть'**
+  String get assistantOpenTask;
+
+  /// No description provided for @assistantLoadOlder.
+  ///
+  /// In ru, this message translates to:
+  /// **'Загрузить ещё'**
+  String get assistantLoadOlder;
+
+  /// No description provided for @assistantRetry.
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить'**
+  String get assistantRetry;
+
+  /// No description provided for @assistantErrorGeneric.
+  ///
+  /// In ru, this message translates to:
+  /// **'Что-то пошло не так. Попробуйте ещё раз.'**
+  String get assistantErrorGeneric;
+
+  /// No description provided for @assistantConfirmSummaryFallback.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент хочет вызвать {tool}. Подтвердите, чтобы продолжить.'**
+  String assistantConfirmSummaryFallback(String tool);
+
+  /// No description provided for @assistantMessageRoleUser.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы'**
+  String get assistantMessageRoleUser;
+
+  /// No description provided for @assistantMessageRoleAssistant.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент'**
+  String get assistantMessageRoleAssistant;
+
+  /// No description provided for @assistantMessageRoleSystem.
+  ///
+  /// In ru, this message translates to:
+  /// **'Система'**
+  String get assistantMessageRoleSystem;
+
+  /// No description provided for @assistantTaskStateActive.
+  ///
+  /// In ru, this message translates to:
+  /// **'В работе'**
+  String get assistantTaskStateActive;
+
+  /// No description provided for @assistantTaskStateDone.
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get assistantTaskStateDone;
+
+  /// No description provided for @assistantTaskStateFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get assistantTaskStateFailed;
+
+  /// No description provided for @assistantTaskStateCancelled.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменена'**
+  String get assistantTaskStateCancelled;
+
+  /// No description provided for @assistantTaskStateNeedsHuman.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нужна помощь'**
+  String get assistantTaskStateNeedsHuman;
+
+  /// No description provided for @assistantTaskStatePaused.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пауза'**
+  String get assistantTaskStatePaused;
 }
 
 class _AppLocalizationsDelegate
