@@ -51,6 +51,18 @@ CREATE INDEX idx_assistant_sessions_user
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- Stale-recovery cron: SELECT-target для ResetStaleBusy (см. §3.1 плана).
+-- Partial index покрывает ровно `WHERE busy=TRUE AND pending_tool_call_id IS NULL`
+-- запросы cron-джобы — без него каждая итерация делала бы full table scan по
+-- assistant_sessions, что неприемлемо при росте числа сессий.
+-- pending_tool_call_id IS NULL отдельно фильтруется в индексе — confirm-парк
+-- (агент ждёт человека) не должен сбрасываться через timeout.
+CREATE INDEX idx_assistant_sessions_stale_busy
+    ON assistant_sessions(busy_since)
+    WHERE busy = TRUE AND pending_tool_call_id IS NULL;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 
 -- assistant_messages: сообщения сессии (user / assistant / tool / system).
 --
