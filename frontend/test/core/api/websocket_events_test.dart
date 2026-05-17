@@ -58,13 +58,9 @@ void main() {
       const json =
           '{"type":"Task_status","v":1,"ts":"2026-01-01T00:00:00.000Z","project_id":"550e8400-e29b-41d4-a716-446655440000","data":{}}';
       final ev = parseWsServerEnvelope(json);
-      final ok = ev.map(
-        taskStatus: (_) => false,
-        taskMessage: (_) => false,
-        agentLog: (_) => false,
-        error: (_) => false,
-        integrationStatus: (_) => false,
+      final ok = ev.maybeMap(
         unknown: (u) => u.value.type == 'Task_status',
+        orElse: () => false,
       );
       expect(ok, isTrue);
     });
@@ -84,13 +80,9 @@ void main() {
       const json =
           '{"type":"error","v":1,"ts":"2026-01-01T00:00:00.000Z","project_id":"550e8400-e29b-41d4-a716-446655440000","data":{"code":"stream_overflow","message":"x"}}';
       final ev = parseWsServerEnvelope(json);
-      final ok = ev.map(
-        taskStatus: (_) => false,
-        taskMessage: (_) => false,
-        agentLog: (_) => false,
+      final ok = ev.maybeMap(
         error: (e) => e.value.needsRestRefetch,
-        integrationStatus: (_) => false,
-        unknown: (_) => false,
+        orElse: () => false,
       );
       expect(ok, isTrue);
     });
@@ -105,13 +97,9 @@ void main() {
           '"connected_at":"2026-05-16T09:59:00.000Z",'
           '"expires_at":"2026-06-15T09:59:00.000Z"}}';
       final ev = parseWsServerEnvelope(json);
-      final got = ev.map(
-        taskStatus: (_) => null,
-        taskMessage: (_) => null,
-        agentLog: (_) => null,
-        error: (_) => null,
+      final got = ev.maybeMap(
         integrationStatus: (e) => e.value,
-        unknown: (_) => null,
+        orElse: () => null,
       );
       expect(got, isNotNull);
       expect(got!.userId, '550e8400-e29b-41d4-a716-446655440000');
@@ -129,13 +117,9 @@ void main() {
           '"user_id":"550e8400-e29b-41d4-a716-446655440000",'
           '"data":{"provider":"deepseek","status":"error","reason":"auth_failed"}}';
       final ev = parseWsServerEnvelope(json);
-      final got = ev.map(
-        taskStatus: (_) => null,
-        taskMessage: (_) => null,
-        agentLog: (_) => null,
-        error: (_) => null,
+      final got = ev.maybeMap(
         integrationStatus: (e) => e.value,
-        unknown: (_) => null,
+        orElse: () => null,
       );
       expect(got, isNotNull);
       expect(got!.status, WsIntegrationStatus.error);
@@ -150,13 +134,9 @@ void main() {
           '"user_id":"550e8400-e29b-41d4-a716-446655440000",'
           '"data":{"provider":"anthropic","status":"reticulating_splines"}}';
       final ev = parseWsServerEnvelope(json);
-      final isUnknown = ev.map(
-        taskStatus: (_) => false,
-        taskMessage: (_) => false,
-        agentLog: (_) => false,
-        error: (_) => false,
-        integrationStatus: (_) => false,
+      final isUnknown = ev.maybeMap(
         unknown: (u) => u.value.type == 'integration_status',
+        orElse: () => false,
       );
       expect(isUnknown, isTrue);
     });

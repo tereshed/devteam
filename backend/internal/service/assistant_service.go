@@ -30,6 +30,7 @@ import (
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/internal/ws"
 	"github.com/devteam/backend/pkg/llm"
 )
 
@@ -557,38 +558,70 @@ func (s *assistantService) mapRepoErr(err error) error {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WS broadcast helpers
+//
+// КОНТРАКТ: каждое WS-сообщение ассистента ВСЕГДА уходит через
+// MarshalAssistant*-обёртки из пакета `internal/ws`. Эти обёртки строят
+// UserEnvelope{type, v, ts, user_id, data}; без них фронт (websocket_events.dart)
+// бросает WsParseError на отсутствие корневых полей. Прямой json.Marshal на
+// map[string]any в этом пакете запрещён — линтуется ревью.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const (
-	wsTypeAssistantSessionUpdated = "assistant.session_updated"
-	wsTypeAssistantMessage        = "assistant.message"
-	wsTypeAssistantToolCall       = "assistant.tool_call"
-	wsTypeAssistantToolResult     = "assistant.tool_result"
-	wsTypeAssistantConfirmRequest = "assistant.confirm_request"
-	wsTypeAssistantNavigate       = "assistant.navigate"
-)
-
 func (s *assistantService) broadcastSessionUpdated(userID uuid.UUID, sess *models.AssistantSession) {
-	payload, _ := json.Marshal(sess)
-	s.send(userID, wsTypeAssistantSessionUpdated, payload)
+	title := ""
+	if sess.Title != nil {
+		title = *sess.Title
+	}
+	data := ws.AssistantSessionUpdatedData{
+		SessionID:     sess.ID,
+		Title:         title,
+		Status:        string(sess.Status),
+		Busy:          sess.Busy,
+		LastMessageAt: sess.LastMessageAt,
+		UpdatedAt:     sess.UpdatedAt,
+	}
+	payload, err := ws.MarshalAssistantSessionUpdated(userID, data)
+	if err != nil {
+		s.logSendError(err, ws.MessageTypeAssistantSessionUpdated, "marshal")
+		return
+	}
+	s.send(userID, ws.MessageTypeAssistantSessionUpdated, payload)
 }
 
 func (s *assistantService) broadcastMessage(userID, sessionID uuid.UUID, msg *models.AssistantMessage) {
-	payload, _ := json.Marshal(map[string]any{
-		"session_id": sessionID,
-		"message":    msg,
-	})
-	s.send(userID, wsTypeAssistantMessage, payload)
+	data := ws.AssistantMessageData{
+		SessionID: sessionID,
+		MessageID: msg.ID,
+		Role:      string(msg.Role),
+		Content:   derefStringEmpty(msg.Content),
+		CreatedAt: msg.CreatedAt,
+	}
+	if msg.ToolCallID != nil {
+		data.ToolCallID = *msg.ToolCallID
+	}
+	if msg.ToolName != nil {
+		data.ToolName = *msg.ToolName
+	}
+	payload, err := ws.MarshalAssistantMessage(userID, data)
+	if err != nil {
+		s.logSendError(err, ws.MessageTypeAssistantMessage, "marshal")
+		return
+	}
+	s.send(userID, ws.MessageTypeAssistantMessage, payload)
 }
 
 func (s *assistantService) broadcastToolCall(userID, sessionID uuid.UUID, call agentloop.ToolCall) {
-	payload, _ := json.Marshal(map[string]any{
-		"session_id":   sessionID,
-		"tool_call_id": call.ID,
-		"tool_name":    call.Name,
-		"arguments":    call.Arguments,
-	})
-	s.send(userID, wsTypeAssistantToolCall, payload)
+	data := ws.AssistantToolCallData{
+		SessionID:  sessionID,
+		ToolCallID: call.ID,
+		ToolName:   call.Name,
+		Arguments:  json.RawMessage(call.Arguments),
+	}
+	payload, err := ws.MarshalAssistantToolCall(userID, data)
+	if err != nil {
+		s.logSendError(err, ws.MessageTypeAssistantToolCall, "marshal")
+		return
+	}
+	s.send(userID, ws.MessageTypeAssistantToolCall, payload)
 }
 
 func (s *assistantService) broadcastToolResult(userID, sessionID uuid.UUID, callID string, approved bool, result json.RawMessage) {
@@ -596,39 +629,78 @@ func (s *assistantService) broadcastToolResult(userID, sessionID uuid.UUID, call
 	if !approved {
 		status = "denied"
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"session_id":   sessionID,
-		"tool_call_id": callID,
-		"status":       status,
-		"result":       result,
-	})
-	s.send(userID, wsTypeAssistantToolResult, payload)
+	data := ws.AssistantToolResultData{
+		SessionID:  sessionID,
+		ToolCallID: callID,
+		Status:     status,
+		Result:     result,
+	}
+	payload, err := ws.MarshalAssistantToolResult(userID, data)
+	if err != nil {
+		s.logSendError(err, ws.MessageTypeAssistantToolResult, "marshal")
+		return
+	}
+	s.send(userID, ws.MessageTypeAssistantToolResult, payload)
 }
 
 func (s *assistantService) broadcastConfirmRequest(userID, sessionID uuid.UUID, call agentloop.ToolCall) {
-	payload, _ := json.Marshal(map[string]any{
-		"session_id":   sessionID,
-		"tool_call_id": call.ID,
-		"tool_name":    call.Name,
-		"arguments":    call.Arguments,
-		"summary":      fmt.Sprintf("Ассистент хочет выполнить %s. Подтвердите или отмените.", call.Name),
-	})
-	s.send(userID, wsTypeAssistantConfirmRequest, payload)
+	data := ws.AssistantConfirmRequestData{
+		SessionID:  sessionID,
+		ToolCallID: call.ID,
+		ToolName:   call.Name,
+		Arguments:  json.RawMessage(call.Arguments),
+		Summary:    fmt.Sprintf("Ассистент хочет выполнить %s. Подтвердите или отмените.", call.Name),
+	}
+	payload, err := ws.MarshalAssistantConfirmRequest(userID, data)
+	if err != nil {
+		s.logSendError(err, ws.MessageTypeAssistantConfirmRequest, "marshal")
+		return
+	}
+	s.send(userID, ws.MessageTypeAssistantConfirmRequest, payload)
 }
 
 func (s *assistantService) broadcastNavigate(userID uuid.UUID, route string) {
-	payload, _ := json.Marshal(map[string]string{"route": route})
-	s.send(userID, wsTypeAssistantNavigate, payload)
+	data := ws.AssistantNavigateData{Route: route}
+	payload, err := ws.MarshalAssistantNavigate(userID, data)
+	if err != nil {
+		s.logSendError(err, ws.MessageTypeAssistantNavigate, "marshal")
+		return
+	}
+	s.send(userID, ws.MessageTypeAssistantNavigate, payload)
 }
 
-func (s *assistantService) send(userID uuid.UUID, msgType string, payload []byte) {
-	if err := s.deps.Hub.SendToUser(userID.String(), msgType, payload); err != nil {
-		// WS-эмиссия — best-effort. Падение Hub'а не должно блокировать петлю.
-		s.deps.Logger.WarnContext(context.Background(), "assistant: ws send failed",
-			slog.String("type", msgType),
-			slog.String("error", err.Error()),
-		)
+// broadcastToolResultPayload — тонкая обёртка для loop.go OnToolResult-хука,
+// который оперирует raw payload + tool_name из agentloop.ToolResult и должен
+// сохранять status, отданный handler'ом.
+func (s *assistantService) broadcastToolResultPayload(userID, sessionID uuid.UUID, callID, toolName, status string, result json.RawMessage) {
+	data := ws.AssistantToolResultData{
+		SessionID:  sessionID,
+		ToolCallID: callID,
+		ToolName:   toolName,
+		Status:     status,
+		Result:     result,
 	}
+	payload, err := ws.MarshalAssistantToolResult(userID, data)
+	if err != nil {
+		s.logSendError(err, ws.MessageTypeAssistantToolResult, "marshal")
+		return
+	}
+	s.send(userID, ws.MessageTypeAssistantToolResult, payload)
+}
+
+func (s *assistantService) send(userID uuid.UUID, msgType ws.MessageType, payload []byte) {
+	if err := s.deps.Hub.SendToUser(userID.String(), string(msgType), payload); err != nil {
+		s.logSendError(err, msgType, "send")
+	}
+}
+
+// logSendError — единая точка warn-логирования для marshal/send-ошибок;
+// WS-эмиссия best-effort и не должна валить агент-петлю.
+func (s *assistantService) logSendError(err error, msgType ws.MessageType, stage string) {
+	s.deps.Logger.WarnContext(context.Background(), "assistant: ws "+stage+" failed",
+		slog.String("type", string(msgType)),
+		slog.String("error", err.Error()),
+	)
 }
 
 func ptrString(s string) *string { return &s }

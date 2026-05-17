@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -38,6 +39,7 @@ import (
 	"github.com/devteam/backend/pkg/secrets"
 	"github.com/devteam/backend/pkg/workflowloader"
 	"github.com/docker/docker/client"
+	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
 	"github.com/redis/go-redis/v9"
 	"log/slog"
@@ -597,8 +599,12 @@ func main() {
 	}()
 	log.Println("Orchestrator v2 retention service started")
 
-	// WebSocket Handler
-	wsHandler := ws.NewWebSocketHandler(hub, projectService, ws.HandlerConfig{
+	// WebSocket Handler. Адаптер транслирует доменные ошибки ProjectService
+	// (ErrProjectNotFound/Forbidden) в булевый контракт ws.ProjectAccessor —
+	// это break import cycle (см. ws/handler.go), чтобы `service` мог
+	// импортировать `ws` для assistant-marshalers (Sprint 21 §7).
+	wsProjectAccess := wsProjectAccessAdapter{svc: projectService}
+	wsHandler := ws.NewWebSocketHandler(hub, wsProjectAccess, ws.HandlerConfig{
 		AllowedOrigins:         cfg.WebSocket.AllowedOrigins,
 		MaxConnsPerUserProject: cfg.WebSocket.MaxConnsPerUserProject,
 		ReadBufferSize:         1024,
@@ -852,3 +858,23 @@ func gormLogLevelFromEnv() logger.LogLevel {
 
 // Sprint 17 / Orchestration v2 — stub удалён. Используется реальный
 // service.Orchestrator(v2), сконструированный выше.
+
+// wsProjectAccessAdapter мостит service.ProjectService.HasAccess в булевый
+// контракт ws.ProjectAccessor (см. ws/handler.go). Без адаптера ws пришлось
+// бы импортировать service для проверки sentinel'ов ErrProjectNotFound /
+// ErrProjectForbidden — но service сам импортирует ws ради typed-Marshal'еров
+// assistant.* событий (Sprint 21 §7).
+type wsProjectAccessAdapter struct {
+	svc service.ProjectService
+}
+
+func (a wsProjectAccessAdapter) HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (allowed, denied bool, err error) {
+	err = a.svc.HasAccess(ctx, userID, userRole, projectID)
+	if err == nil {
+		return true, false, nil
+	}
+	if errors.Is(err, service.ErrProjectNotFound) || errors.Is(err, service.ErrProjectForbidden) {
+		return false, true, nil
+	}
+	return false, false, err
+}

@@ -108,6 +108,9 @@ func (m *mockIdxProjectService) HasAccess(ctx context.Context, userID uuid.UUID,
 func (m *mockIdxProjectService) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
 	return nil
 }
+func (m *mockIdxProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
 
 type mockIdxSyncRepo struct{ mock.Mock }
 

@@ -28,6 +28,21 @@ const (
 	MessageTypeAgentLog          MessageType = "agent_log"
 	MessageTypeError             MessageType = "error"
 	MessageTypeIntegrationStatus MessageType = "integration_status"
+
+	// Assistant-events (Sprint 21 §7). Все — user-scoped, маршрутизируются
+	// через Hub.SendToUser и обязаны сериализоваться через MarshalUserEnvelope —
+	// иначе фронт (websocket_events.dart) свалится в WsParseError из-за
+	// отсутствующих type/v/ts. Прямой json.Marshal на map[string]any запрещён.
+	MessageTypeAssistantSessionUpdated MessageType = "assistant.session_updated"
+	MessageTypeAssistantMessage        MessageType = "assistant.message"
+	MessageTypeAssistantToolCall       MessageType = "assistant.tool_call"
+	MessageTypeAssistantToolResult     MessageType = "assistant.tool_result"
+	MessageTypeAssistantConfirmRequest MessageType = "assistant.confirm_request"
+	MessageTypeAssistantNavigate       MessageType = "assistant.navigate"
+	// MessageTypeAssistantTaskUpdate — user-scoped тип для Tasks-tab правой
+	// панели ассистента (Sprint 21 §7). Эмитится HubBridge'м параллельно
+	// с project-scoped MessageTypeTaskStatus при смене task.state.
+	MessageTypeAssistantTaskUpdate MessageType = "assistant.task_update"
 )
 
 // ErrorCode — тип для кодов ошибок.
@@ -58,6 +73,94 @@ type UserEnvelope[T any] struct {
 	Timestamp time.Time   `json:"ts"`
 	UserID    uuid.UUID   `json:"user_id"`
 	Data      T           `json:"data"`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Assistant-event DTO (Sprint 21 §7). Все user-scoped; их единственный путь
+// в сеть — MarshalAssistant*  → MarshalUserEnvelope → Hub.SendToUser.
+//
+// Контракт фронта (frontend/lib/core/api/websocket_events.dart):
+//   1) обязательны корневые поля type/v/ts/user_id;
+//   2) data всегда object (не nil, не массив);
+//   3) числа — строго JSON-number, строки — UTF-8.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// AssistantSessionUpdatedData — карточка сессии после изменения busy/title/
+// last_message_at. Минимум полей: всё остальное фронт может дотянуть REST'ом.
+type AssistantSessionUpdatedData struct {
+	SessionID     uuid.UUID  `json:"session_id"`
+	Title         string     `json:"title,omitempty"`
+	Status        string     `json:"status"`
+	Busy          bool       `json:"busy"`
+	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// AssistantMessageData — единое представление сообщения для UI. Покрывает
+// все 4 роли (user/assistant/tool/system); поля специфичные для tool-rows
+// (tool_call_id, tool_name) omitempty.
+type AssistantMessageData struct {
+	SessionID  uuid.UUID `json:"session_id"`
+	MessageID  uuid.UUID `json:"message_id"`
+	Role       string    `json:"role"`
+	Content    string    `json:"content,omitempty"`
+	ToolCallID string    `json:"tool_call_id,omitempty"`
+	ToolName   string    `json:"tool_name,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// AssistantToolCallData — стрим-уведомление о намерении ассистента вызвать
+// инструмент (рендерится «🔧 tool_name(args)» карточкой ещё ДО исполнения).
+// Arguments — сырой JSON, фронт не парсит структуру (зависит от tool'а).
+type AssistantToolCallData struct {
+	SessionID  uuid.UUID       `json:"session_id"`
+	MessageID  uuid.UUID       `json:"message_id,omitempty"`
+	ToolCallID string          `json:"tool_call_id"`
+	ToolName   string          `json:"tool_name"`
+	Arguments  json.RawMessage `json:"arguments,omitempty"`
+}
+
+// AssistantToolResultData — результат исполнения MCP-инструмента. Status:
+// ok|error|forbidden|denied|truncated|pending (определяется handler'ом или
+// confirm-flow'ом). Result — сырой JSON (может быть очень большим, фронт
+// сам решает, разворачивать ли).
+type AssistantToolResultData struct {
+	SessionID  uuid.UUID       `json:"session_id"`
+	MessageID  uuid.UUID       `json:"message_id,omitempty"`
+	ToolCallID string          `json:"tool_call_id"`
+	ToolName   string          `json:"tool_name,omitempty"`
+	Status     string          `json:"status"`
+	Result     json.RawMessage `json:"result,omitempty"`
+}
+
+// AssistantConfirmRequestData — запрос подтверждения destructive-операции.
+// Фронт обязан показать inline-диалог Approve/Deny; до получения POST /confirm
+// сессия остаётся busy=true.
+type AssistantConfirmRequestData struct {
+	SessionID  uuid.UUID       `json:"session_id"`
+	ToolCallID string          `json:"tool_call_id"`
+	ToolName   string          `json:"tool_name"`
+	Arguments  json.RawMessage `json:"arguments,omitempty"`
+	Summary    string          `json:"summary,omitempty"`
+}
+
+// AssistantNavigateData — просьба ассистента переключить роут go_router'а.
+// Route — абсолютный путь (например, "/projects/<uuid>"); фронт сам решает,
+// автоматически переходить или показать кнопку.
+type AssistantNavigateData struct {
+	Route string `json:"route"`
+}
+
+// AssistantTaskUpdateData — payload для type=assistant.task_update (user-scoped).
+// Шлётся всем активным WS-клиентам пользователя (по всем его проектам), чтобы
+// Tasks-tab правой панели мог жить кросс-проектно. Поля повторяют контракт из
+// docs/tasks/21-assistant-sidebar.md §7.
+type AssistantTaskUpdateData struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	TaskID    uuid.UUID `json:"task_id"`
+	State     string    `json:"state"`
+	Title     string    `json:"title,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // IntegrationStatusData — payload для type=integration_status (user-scoped).
@@ -236,4 +339,39 @@ func MarshalUserEnvelope[T any](msgType MessageType, userID uuid.UUID, data T) (
 // MarshalIntegrationStatus — обёртка для type=integration_status (user-scoped).
 func MarshalIntegrationStatus(userID uuid.UUID, d IntegrationStatusData) ([]byte, error) {
 	return MarshalUserEnvelope(MessageTypeIntegrationStatus, userID, d)
+}
+
+// MarshalAssistantTaskUpdate — обёртка для type=assistant.task_update (user-scoped).
+func MarshalAssistantTaskUpdate(userID uuid.UUID, d AssistantTaskUpdateData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeAssistantTaskUpdate, userID, d)
+}
+
+// MarshalAssistantSessionUpdated — обёртка для type=assistant.session_updated.
+func MarshalAssistantSessionUpdated(userID uuid.UUID, d AssistantSessionUpdatedData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeAssistantSessionUpdated, userID, d)
+}
+
+// MarshalAssistantMessage — обёртка для type=assistant.message.
+func MarshalAssistantMessage(userID uuid.UUID, d AssistantMessageData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeAssistantMessage, userID, d)
+}
+
+// MarshalAssistantToolCall — обёртка для type=assistant.tool_call.
+func MarshalAssistantToolCall(userID uuid.UUID, d AssistantToolCallData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeAssistantToolCall, userID, d)
+}
+
+// MarshalAssistantToolResult — обёртка для type=assistant.tool_result.
+func MarshalAssistantToolResult(userID uuid.UUID, d AssistantToolResultData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeAssistantToolResult, userID, d)
+}
+
+// MarshalAssistantConfirmRequest — обёртка для type=assistant.confirm_request.
+func MarshalAssistantConfirmRequest(userID uuid.UUID, d AssistantConfirmRequestData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeAssistantConfirmRequest, userID, d)
+}
+
+// MarshalAssistantNavigate — обёртка для type=assistant.navigate.
+func MarshalAssistantNavigate(userID uuid.UUID, d AssistantNavigateData) ([]byte, error) {
+	return MarshalUserEnvelope(MessageTypeAssistantNavigate, userID, d)
 }

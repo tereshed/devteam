@@ -198,6 +198,20 @@ func (m *mockTaskProjectService) Delete(ctx context.Context, userID uuid.UUID, u
 func (m *mockTaskProjectService) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
 	return m.Called(ctx, userID, userRole, projectID).Error(0)
 }
+// GetOwnerID — необязательная зависимость для большинства тестов
+// publishEventsWithTime (см. task_service.go §resolveProjectOwnerID). Если
+// expectation не задан — возвращаем uuid.Nil, чтобы fan-out просто
+// пропустился без падения теста на «unexpected mock call».
+func (m *mockTaskProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "GetOwnerID" {
+			args := m.Called(ctx, projectID)
+			id, _ := args.Get(0).(uuid.UUID)
+			return id, args.Error(1)
+		}
+	}
+	return uuid.Nil, nil
+}
 
 type mockTaskTeamService struct{ mock.Mock }
 

@@ -79,6 +79,12 @@ func (m *MockProjectService) Reindex(ctx context.Context, userID uuid.UUID, user
 	return args.Error(0)
 }
 
+func (m *MockProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
+	args := m.Called(ctx, projectID)
+	id, _ := args.Get(0).(uuid.UUID)
+	return id, args.Error(1)
+}
+
 func setupProjectRouter(mockSvc *MockProjectService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

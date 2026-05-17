@@ -237,6 +237,117 @@ abstract class WsIntegrationStatusEvent with _$WsIntegrationStatusEvent {
   }) = _WsIntegrationStatusEvent;
 }
 
+// ---------------------------------------------------------------------------
+// Assistant events (Sprint 21 §7). User-scoped: envelope несёт user_id,
+// project_id отсутствует (кроме assistant.task_update, где он внутри data).
+// Бэкенд: ws.MarshalAssistant*  → MarshalUserEnvelope → Hub.SendToUser.
+// ---------------------------------------------------------------------------
+
+/// Базовый набор общих полей user-scoped envelope'а ассистента.
+/// Конкретные события расширяют его специфичной payload-частью.
+@freezed
+abstract class WsAssistantSessionUpdatedEvent
+    with _$WsAssistantSessionUpdatedEvent {
+  const factory WsAssistantSessionUpdatedEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String sessionId,
+    String? title,
+    required String status,
+    required bool busy,
+    DateTime? lastMessageAt,
+    required DateTime updatedAt,
+  }) = _WsAssistantSessionUpdatedEvent;
+}
+
+@freezed
+abstract class WsAssistantMessageEvent with _$WsAssistantMessageEvent {
+  const factory WsAssistantMessageEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String sessionId,
+    required String messageId,
+    required String role,
+    String? content,
+    String? toolCallId,
+    String? toolName,
+    required DateTime createdAt,
+  }) = _WsAssistantMessageEvent;
+}
+
+@freezed
+abstract class WsAssistantToolCallEvent with _$WsAssistantToolCallEvent {
+  const factory WsAssistantToolCallEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String sessionId,
+    String? messageId,
+    required String toolCallId,
+    required String toolName,
+    @Default(<String, dynamic>{}) Map<String, dynamic> arguments,
+  }) = _WsAssistantToolCallEvent;
+}
+
+@freezed
+abstract class WsAssistantToolResultEvent with _$WsAssistantToolResultEvent {
+  const factory WsAssistantToolResultEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String sessionId,
+    String? messageId,
+    required String toolCallId,
+    String? toolName,
+    required String status,
+    @Default(<String, dynamic>{}) Map<String, dynamic> result,
+  }) = _WsAssistantToolResultEvent;
+}
+
+@freezed
+abstract class WsAssistantConfirmRequestEvent
+    with _$WsAssistantConfirmRequestEvent {
+  const factory WsAssistantConfirmRequestEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String sessionId,
+    required String toolCallId,
+    required String toolName,
+    @Default(<String, dynamic>{}) Map<String, dynamic> arguments,
+    String? summary,
+  }) = _WsAssistantConfirmRequestEvent;
+}
+
+@freezed
+abstract class WsAssistantNavigateEvent with _$WsAssistantNavigateEvent {
+  const factory WsAssistantNavigateEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String route,
+  }) = _WsAssistantNavigateEvent;
+}
+
+/// Live-карточка задачи для Tasks-tab правой панели. Эмитится бэкендом
+/// параллельно с project-scoped `task_status` при смене state (см.
+/// backend/internal/ws/hubbridge.go fanOutAssistantTaskUpdate).
+@freezed
+abstract class WsAssistantTaskUpdateEvent with _$WsAssistantTaskUpdateEvent {
+  const factory WsAssistantTaskUpdateEvent({
+    required DateTime ts,
+    required int v,
+    required String userId,
+    required String projectId,
+    required String taskId,
+    required String state,
+    String? title,
+    required DateTime updatedAt,
+  }) = _WsAssistantTaskUpdateEvent;
+}
+
 enum WsIntegrationStatus {
   connected('connected'),
   disconnected('disconnected'),
@@ -268,6 +379,27 @@ abstract class WsServerEvent with _$WsServerEvent {
   const factory WsServerEvent.integrationStatus(
     WsIntegrationStatusEvent value,
   ) = WsServerEventIntegrationStatus;
+  const factory WsServerEvent.assistantSessionUpdated(
+    WsAssistantSessionUpdatedEvent value,
+  ) = WsServerEventAssistantSessionUpdated;
+  const factory WsServerEvent.assistantMessage(
+    WsAssistantMessageEvent value,
+  ) = WsServerEventAssistantMessage;
+  const factory WsServerEvent.assistantToolCall(
+    WsAssistantToolCallEvent value,
+  ) = WsServerEventAssistantToolCall;
+  const factory WsServerEvent.assistantToolResult(
+    WsAssistantToolResultEvent value,
+  ) = WsServerEventAssistantToolResult;
+  const factory WsServerEvent.assistantConfirmRequest(
+    WsAssistantConfirmRequestEvent value,
+  ) = WsServerEventAssistantConfirmRequest;
+  const factory WsServerEvent.assistantNavigate(
+    WsAssistantNavigateEvent value,
+  ) = WsServerEventAssistantNavigate;
+  const factory WsServerEvent.assistantTaskUpdate(
+    WsAssistantTaskUpdateEvent value,
+  ) = WsServerEventAssistantTaskUpdate;
   const factory WsServerEvent.unknown(WsUnknownEvent value) =
       WsServerEventUnknown;
 }
@@ -347,6 +479,245 @@ DateTime parseWsTimestamp(String raw, {String? context}) {
   );
 }
 
+/// Список type-дискриминаторов, которые приходят без `project_id` — envelope
+/// несёт `user_id`. Sprint 21 §7: assistant.* — все user-scoped.
+bool _isUserScopedType(String type) {
+  return type == 'integration_status' || type.startsWith('assistant.');
+}
+
+/// Парсинг user-scoped envelope (общий вход для integration_status и assistant.*).
+WsServerEvent _parseUserScopedEnvelope({
+  required String type,
+  required DateTime ts,
+  required int v,
+  required Map<String, dynamic> root,
+}) {
+  final uid = root['user_id'];
+  if (uid is! String) {
+    throw WsParseError(
+      message: 'user_id отсутствует или не string ($type)',
+    );
+  }
+  final data = root['data'];
+  if (data is! Map<String, dynamic>) {
+    throw const WsParseError(message: 'data отсутствует или не object');
+  }
+  final d = data;
+
+  DateTime? optTs(String key, {String? context}) {
+    final raw = d[key];
+    if (raw is! String || raw.isEmpty) {
+      return null;
+    }
+    try {
+      return parseWsTimestamp(raw, context: context ?? '$type.$key');
+    } on FormatException {
+      return null;
+    }
+  }
+
+  DateTime requiredTs(String key) {
+    final raw = d[key];
+    if (raw is! String || raw.isEmpty) {
+      throw WsParseError(message: '$key отсутствует или не string ($type)');
+    }
+    try {
+      return parseWsTimestamp(raw, context: '$type.$key');
+    } on FormatException catch (e) {
+      throw WsParseError(message: e.message, detail: e.source?.toString());
+    }
+  }
+
+  Map<String, dynamic> asMap(String key) {
+    final raw = d[key];
+    if (raw is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(raw);
+    }
+    return <String, dynamic>{};
+  }
+
+  switch (type) {
+    case 'integration_status':
+      final providerRaw = d['provider'];
+      if (providerRaw is! String || providerRaw.isEmpty) {
+        throw const WsParseError(
+          message: 'provider отсутствует или пуст (integration_status)',
+        );
+      }
+      final statusRaw = d['status'];
+      if (statusRaw is! String) {
+        throw const WsParseError(
+          message: 'status отсутствует или не string (integration_status)',
+        );
+      }
+      final status = WsIntegrationStatus.tryParse(statusRaw);
+      if (status == null) {
+        return WsServerEvent.unknown(
+          WsUnknownEvent(type: type, ts: ts, v: v, projectId: '', data: d),
+        );
+      }
+      return WsServerEvent.integrationStatus(
+        WsIntegrationStatusEvent(
+          ts: ts,
+          v: v,
+          userId: uid,
+          provider: providerRaw,
+          status: status,
+          reason: d['reason'] as String?,
+          connectedAt: optTs('connected_at'),
+          expiresAt: optTs('expires_at'),
+        ),
+      );
+
+    case 'assistant.session_updated':
+      final sid = d['session_id'];
+      if (sid is! String || sid.isEmpty) {
+        throw const WsParseError(
+          message: 'session_id отсутствует (assistant.session_updated)',
+        );
+      }
+      return WsServerEvent.assistantSessionUpdated(
+        WsAssistantSessionUpdatedEvent(
+          ts: ts,
+          v: v,
+          userId: uid,
+          sessionId: sid,
+          title: d['title'] as String?,
+          status: d['status'] as String? ?? '',
+          busy: d['busy'] as bool? ?? false,
+          lastMessageAt: optTs('last_message_at'),
+          updatedAt: requiredTs('updated_at'),
+        ),
+      );
+
+    case 'assistant.message':
+      final sid = d['session_id'];
+      final mid = d['message_id'];
+      if (sid is! String || sid.isEmpty || mid is! String || mid.isEmpty) {
+        throw const WsParseError(
+          message: 'session_id/message_id отсутствуют (assistant.message)',
+        );
+      }
+      return WsServerEvent.assistantMessage(
+        WsAssistantMessageEvent(
+          ts: ts,
+          v: v,
+          userId: uid,
+          sessionId: sid,
+          messageId: mid,
+          role: d['role'] as String? ?? '',
+          content: d['content'] as String?,
+          toolCallId: d['tool_call_id'] as String?,
+          toolName: d['tool_name'] as String?,
+          createdAt: requiredTs('created_at'),
+        ),
+      );
+
+    case 'assistant.tool_call':
+      final sid = d['session_id'];
+      final tcid = d['tool_call_id'];
+      if (sid is! String || sid.isEmpty || tcid is! String || tcid.isEmpty) {
+        throw const WsParseError(
+          message: 'session_id/tool_call_id отсутствуют (assistant.tool_call)',
+        );
+      }
+      return WsServerEvent.assistantToolCall(
+        WsAssistantToolCallEvent(
+          ts: ts,
+          v: v,
+          userId: uid,
+          sessionId: sid,
+          messageId: d['message_id'] as String?,
+          toolCallId: tcid,
+          toolName: d['tool_name'] as String? ?? '',
+          arguments: asMap('arguments'),
+        ),
+      );
+
+    case 'assistant.tool_result':
+      final sid = d['session_id'];
+      final tcid = d['tool_call_id'];
+      if (sid is! String || sid.isEmpty || tcid is! String || tcid.isEmpty) {
+        throw const WsParseError(
+          message:
+              'session_id/tool_call_id отсутствуют (assistant.tool_result)',
+        );
+      }
+      return WsServerEvent.assistantToolResult(
+        WsAssistantToolResultEvent(
+          ts: ts,
+          v: v,
+          userId: uid,
+          sessionId: sid,
+          messageId: d['message_id'] as String?,
+          toolCallId: tcid,
+          toolName: d['tool_name'] as String?,
+          status: d['status'] as String? ?? '',
+          result: asMap('result'),
+        ),
+      );
+
+    case 'assistant.confirm_request':
+      final sid = d['session_id'];
+      final tcid = d['tool_call_id'];
+      if (sid is! String || sid.isEmpty || tcid is! String || tcid.isEmpty) {
+        throw const WsParseError(
+          message:
+              'session_id/tool_call_id отсутствуют (assistant.confirm_request)',
+        );
+      }
+      return WsServerEvent.assistantConfirmRequest(
+        WsAssistantConfirmRequestEvent(
+          ts: ts,
+          v: v,
+          userId: uid,
+          sessionId: sid,
+          toolCallId: tcid,
+          toolName: d['tool_name'] as String? ?? '',
+          arguments: asMap('arguments'),
+          summary: d['summary'] as String?,
+        ),
+      );
+
+    case 'assistant.navigate':
+      final route = d['route'];
+      if (route is! String || route.isEmpty) {
+        throw const WsParseError(
+          message: 'route отсутствует (assistant.navigate)',
+        );
+      }
+      return WsServerEvent.assistantNavigate(
+        WsAssistantNavigateEvent(ts: ts, v: v, userId: uid, route: route),
+      );
+
+    case 'assistant.task_update':
+      final pid = d['project_id'];
+      final tid = d['task_id'];
+      if (pid is! String || pid.isEmpty || tid is! String || tid.isEmpty) {
+        throw const WsParseError(
+          message: 'project_id/task_id отсутствуют (assistant.task_update)',
+        );
+      }
+      return WsServerEvent.assistantTaskUpdate(
+        WsAssistantTaskUpdateEvent(
+          ts: ts,
+          v: v,
+          userId: uid,
+          projectId: pid,
+          taskId: tid,
+          state: d['state'] as String? ?? '',
+          title: d['title'] as String?,
+          updatedAt: requiredTs('updated_at'),
+        ),
+      );
+
+    default:
+      return WsServerEvent.unknown(
+        WsUnknownEvent(type: type, ts: ts, v: v, projectId: '', data: d),
+      );
+  }
+}
+
 /// Декодирование одного текстового кадра → [WsServerEvent] или бросок [FormatException]/[WsParseError].
 WsServerEvent parseWsServerEnvelope(String text) {
   var t = text;
@@ -389,61 +760,11 @@ WsServerEvent parseWsServerEnvelope(String text) {
   } on FormatException catch (e) {
     throw WsParseError(message: e.message, detail: e.source?.toString());
   }
-  // User-scoped события (см. dashboard-redesign §4a.4) приходят с user_id вместо project_id.
-  // Для них parsing-ветка ниже отдельная; для project-scoped event'ов оставляем строгую проверку.
-  if (type == 'integration_status') {
-    final uid = m['user_id'];
-    if (uid is! String) {
-      throw const WsParseError(
-        message: 'user_id отсутствует или не string (integration_status)',
-      );
-    }
-    final data = m['data'];
-    if (data is! Map<String, dynamic>) {
-      throw const WsParseError(message: 'data отсутствует или не object');
-    }
-    final d = data;
-    final providerRaw = d['provider'];
-    if (providerRaw is! String || providerRaw.isEmpty) {
-      throw const WsParseError(
-        message: 'provider отсутствует или пуст (integration_status)',
-      );
-    }
-    final statusRaw = d['status'];
-    if (statusRaw is! String) {
-      throw const WsParseError(
-        message: 'status отсутствует или не string (integration_status)',
-      );
-    }
-    final status = WsIntegrationStatus.tryParse(statusRaw);
-    if (status == null) {
-      return WsServerEvent.unknown(
-        WsUnknownEvent(type: type, ts: ts, v: v, projectId: '', data: d),
-      );
-    }
-    DateTime? optTs(String key) {
-      final raw = d[key];
-      if (raw is! String || raw.isEmpty) {
-        return null;
-      }
-      try {
-        return parseWsTimestamp(raw, context: 'integration_status.$key');
-      } on FormatException {
-        return null;
-      }
-    }
-    return WsServerEvent.integrationStatus(
-      WsIntegrationStatusEvent(
-        ts: ts,
-        v: v,
-        userId: uid,
-        provider: providerRaw,
-        status: status,
-        reason: d['reason'] as String?,
-        connectedAt: optTs('connected_at'),
-        expiresAt: optTs('expires_at'),
-      ),
-    );
+  // User-scoped события (см. dashboard-redesign §4a.4 и Sprint 21 §7) приходят
+  // с user_id вместо project_id. Для них parsing-ветка ниже отдельная;
+  // для project-scoped event'ов сохраняем строгую проверку.
+  if (_isUserScopedType(type)) {
+    return _parseUserScopedEnvelope(type: type, ts: ts, v: v, root: m);
   }
 
   final pid = m['project_id'];

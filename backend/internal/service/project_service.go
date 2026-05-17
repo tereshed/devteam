@@ -66,6 +66,10 @@ type ProjectService interface {
 	HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
 	// Reindex запускает переиндексацию проекта в фоновом режиме.
 	Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
+	// GetOwnerID возвращает user_id владельца проекта (без ABAC-проверки) —
+	// используется продюсерами доменных событий (TaskService) для user-scoped
+	// fan-out в WebSocket Hub (Sprint 21 §7 — assistant.task_update).
+	GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 }
 
 type projectService struct {
@@ -505,6 +509,18 @@ func (s *projectService) GetByID(ctx context.Context, userID uuid.UUID, userRole
 		return nil, err
 	}
 	return project, nil
+}
+
+// GetOwnerID возвращает user_id владельца проекта без ABAC-проверки.
+// Используется внутренними продюсерами событий, у которых уже нет на руках
+// userID (например, оркестратор v2 при `Transition`), но которым нужен
+// user_id для user-scoped fan-out в WebSocket (см. Sprint 21 §7).
+func (s *projectService) GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return uuid.Nil, mapProjectRepoErr(err)
+	}
+	return project.UserID, nil
 }
 
 func (s *projectService) List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, req dto.ListProjectsRequest) ([]models.Project, int64, error) {

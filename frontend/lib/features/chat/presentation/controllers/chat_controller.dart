@@ -321,6 +321,16 @@ class ChatController extends _$ChatController {
             }
           },
           integrationStatus: (_) {},
+          // Assistant-события (Sprint 21 §7) — user-scoped, маршрутизируются
+          // в AssistantChatController / AssistantTasksController. Здесь —
+          // явный no-op, чтобы Freezed-sealed when остался exhaustive.
+          assistantSessionUpdated: (_) {},
+          assistantMessage: (_) {},
+          assistantToolCall: (_) {},
+          assistantToolResult: (_) {},
+          assistantConfirmRequest: (_) {},
+          assistantNavigate: (_) {},
+          assistantTaskUpdate: (_) {},
           unknown: (_) {},
         );
         return;

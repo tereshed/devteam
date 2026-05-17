@@ -1,12 +1,11 @@
 package ws
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
-	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,11 +14,55 @@ import (
 	"time"
 )
 
+// getUserID/getUserRole — локальные копии middleware-helper'ов, чтобы избежать
+// import-cycle: ws → middleware → service → ws. Поля контекста идентичны
+// тем, что выставляет AuthMiddleware (см. middleware/auth_middleware.go).
+func getUserID(c *gin.Context) (uuid.UUID, bool) {
+	v, exists := c.Get("userID")
+	if !exists {
+		return uuid.Nil, false
+	}
+	id, ok := v.(uuid.UUID)
+	if !ok {
+		panic("userID in context is not of type uuid.UUID")
+	}
+	return id, true
+}
+
+func getUserRole(c *gin.Context) (string, bool) {
+	v, exists := c.Get("userRole")
+	if !exists {
+		return "", false
+	}
+	r, ok := v.(string)
+	if !ok {
+		panic("userRole in context is not of type string")
+	}
+	return r, true
+}
+
+// ProjectAccessor — узкий интерфейс для проверки доступа к проекту перед
+// upgrade в WS. Введён, чтобы избежать import cycle: пакет `service` теперь
+// импортирует `ws` для типизированных Marshal-помощников assistant-событий
+// (Sprint 21 §7), поэтому `ws` сам зависеть от `service` не может.
+//
+// Адаптер живёт в cmd/api/main.go — он мостит service.ProjectService.HasAccess
+// в этот интерфейс и транслирует доменные ошибки `ErrProjectNotFound` /
+// `ErrProjectForbidden` в (allowed=false, denied=true).
+type ProjectAccessor interface {
+	// HasAccess возвращает:
+	//   allowed=true             — пользователь допущен.
+	//   allowed=false, denied=true — доступ запрещён по ABAC (либо проект не существует).
+	//                                Handler ответит 403 без раскрытия причины.
+	//   allowed=false, err!=nil  — внутренняя ошибка (БД и т.п.). Handler ответит 500.
+	HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (allowed, denied bool, err error)
+}
+
 // WebSocketHandler — HTTP-обработчик upgrade в WS + регистрация в Hub.
 // ВСЯ проверка прав доступа к project_id происходит здесь (Hub их не валидирует).
 type WebSocketHandler struct {
 	hub            *Hub
-	projectService service.ProjectService
+	projectAccess  ProjectAccessor
 	upgrader       websocket.Upgrader
 	cfg            HandlerConfig
 	log            *slog.Logger
@@ -33,12 +76,12 @@ type HandlerConfig struct {
 	WriteBufferSize        int
 }
 
-func NewWebSocketHandler(hub *Hub, ps service.ProjectService, cfg HandlerConfig, log *slog.Logger) *WebSocketHandler {
+func NewWebSocketHandler(hub *Hub, access ProjectAccessor, cfg HandlerConfig, log *slog.Logger) *WebSocketHandler {
 	return &WebSocketHandler{
-		hub:            hub,
-		projectService: ps,
-		cfg:            cfg,
-		log:            log,
+		hub:           hub,
+		projectAccess: access,
+		cfg:           cfg,
+		log:           log,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  cfg.ReadBufferSize,
 			WriteBufferSize: cfg.WriteBufferSize,
@@ -79,13 +122,13 @@ func NewWebSocketHandler(hub *Hub, ps service.ProjectService, cfg HandlerConfig,
 // @Router       /projects/{id}/ws [get]
 func (h *WebSocketHandler) Connect(c *gin.Context) {
 	// 1. Аутентификация: userID и role уже в контексте благодаря AuthMiddleware
-	userID, ok := middleware.GetUserID(c)
+	userID, ok := getUserID(c)
 	if !ok {
 		apierror.AbortJSON(c, http.StatusUnauthorized, apierror.ErrTokenRequired, "User ID not found in context")
 		return
 	}
 
-	userRoleStr, ok := middleware.GetUserRole(c)
+	userRoleStr, ok := getUserRole(c)
 	if !ok {
 		apierror.AbortJSON(c, http.StatusUnauthorized, apierror.ErrTokenRequired, "User role not found in context")
 		return
@@ -103,13 +146,17 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	// 3. Авторизация (доступ к project_id)
 	// КРИТИЧНО — IDOR: Hub не знает о пользователях.
 	// Используем запросный контекст c.Request.Context(), он валиден ДО Upgrade().
-	if err := h.projectService.HasAccess(c.Request.Context(), userID, userRole, projectID); err != nil {
-		if err == service.ErrProjectNotFound || err == service.ErrProjectForbidden {
-			apierror.AbortJSON(c, http.StatusForbidden, apierror.ErrForbidden, "Access to project denied")
-		} else {
-			h.log.Error("failed to check project access", "err", err, "userID", userID, "projectID", projectID)
-			apierror.AbortJSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "Internal server error")
-		}
+	allowed, denied, err := h.projectAccess.HasAccess(c.Request.Context(), userID, userRole, projectID)
+	if err != nil {
+		h.log.Error("failed to check project access", "err", err, "userID", userID, "projectID", projectID)
+		apierror.AbortJSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "Internal server error")
+		return
+	}
+	if !allowed {
+		// denied=true → проект не найден или ABAC запрещает. В обоих случаях 403,
+		// чтобы не утечь факт существования.
+		_ = denied
+		apierror.AbortJSON(c, http.StatusForbidden, apierror.ErrForbidden, "Access to project denied")
 		return
 	}
 

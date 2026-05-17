@@ -186,9 +186,10 @@ func TestHubBridge_Dispatch(t *testing.T) {
 	defer bus.Close()
 
 	hub := &Hub{
-		broadcast: make(chan *Message, 10),
+		broadcast:     make(chan *Message, 10),
+		userBroadcast: make(chan *UserMessage, 10),
 	}
-	
+
 	scrub := secrets.NewScrubber()
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	bridge := NewHubBridge(bus, hub, scrub, log, nil)
@@ -217,13 +218,64 @@ func TestHubBridge_Dispatch(t *testing.T) {
 		case msg := <-hub.broadcast:
 			assert.Equal(t, projectID.String(), msg.ProjectID)
 			assert.Equal(t, string(MessageTypeTaskStatus), msg.Type)
-			
+
 			var env Envelope[TaskStatusData]
 			err := json.Unmarshal(msg.Payload, &env)
 			require.NoError(t, err)
 			assert.Equal(t, "running", env.Data.Status)
 		case <-time.After(time.Second):
 			t.Fatal("timed out")
+		}
+
+		// UserID отсутствует → user-scoped fan-out пропущен (Sprint 21 §7).
+		select {
+		case msg := <-hub.userBroadcast:
+			t.Fatalf("unexpected user-scoped fan-out without UserID: %#v", msg)
+		case <-time.After(50 * time.Millisecond):
+			// ok
+		}
+	})
+
+	t.Run("TaskStatusChanged_FansOutAssistantTaskUpdate", func(t *testing.T) {
+		userID := uuid.New()
+		occurredAt := time.Now().UTC().Truncate(time.Millisecond)
+		ev := events.TaskStatusChanged{
+			ProjectID:  projectID,
+			UserID:     userID,
+			TaskID:     taskID,
+			Title:      "Build dashboard widget",
+			Current:    "done",
+			Previous:   "active",
+			OccurredAt: occurredAt,
+		}
+		bus.Publish(ctx, ev)
+
+		// Project-scoped task_status — как раньше.
+		select {
+		case msg := <-hub.broadcast:
+			assert.Equal(t, string(MessageTypeTaskStatus), msg.Type)
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for task_status")
+		}
+
+		// User-scoped assistant.task_update — новый канал (Sprint 21 §7).
+		select {
+		case msg := <-hub.userBroadcast:
+			assert.Equal(t, userID.String(), msg.UserID)
+			assert.Equal(t, string(MessageTypeAssistantTaskUpdate), msg.Type)
+
+			var env UserEnvelope[AssistantTaskUpdateData]
+			err := json.Unmarshal(msg.Payload, &env)
+			require.NoError(t, err)
+			assert.Equal(t, MessageTypeAssistantTaskUpdate, env.Type)
+			assert.Equal(t, userID, env.UserID)
+			assert.Equal(t, projectID, env.Data.ProjectID)
+			assert.Equal(t, taskID, env.Data.TaskID)
+			assert.Equal(t, "done", env.Data.State)
+			assert.Equal(t, "Build dashboard widget", env.Data.Title)
+			assert.WithinDuration(t, occurredAt, env.Data.UpdatedAt, time.Millisecond)
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for assistant.task_update")
 		}
 	})
 

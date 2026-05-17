@@ -330,14 +330,9 @@ func (s *assistantService) buildHooks(sessionID, userID uuid.UUID) agentloop.Hoo
 			}
 			// WS-эмиссия: result уже урезанным сюда НЕ приходит — Executor
 			// отдаёт сырой payload (truncation — только для подачи в LLM).
-			payload, _ := json.Marshal(map[string]any{
-				"session_id":   sessionID,
-				"tool_call_id": res.CallID,
-				"tool_name":    res.Name,
-				"status":       res.Status,
-				"result":       res.Result,
-			})
-			s.send(userID, wsTypeAssistantToolResult, payload)
+			// Идём через ws.MarshalAssistantToolResult — обёртку,
+			// которая собирает корректный UserEnvelope{type,v,ts,user_id,data}.
+			s.broadcastToolResultPayload(userID, sessionID, res.CallID, res.Name, res.Status, json.RawMessage(res.Result))
 
 			// Special-case app_navigate → отдельный WS-event для go_router.
 			if res.Name == "app_navigate" && res.Status == "ok" {

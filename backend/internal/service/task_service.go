@@ -327,11 +327,18 @@ func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models
 			agentRole = string(task.AssignedAgent.Role)
 		}
 
+		// Резолвим UserID владельца проекта для user-scoped fan-out в HubBridge
+		// (Sprint 21 §7 — assistant.task_update). best-effort: при ошибке оставляем
+		// uuid.Nil и пропускаем fan-out, project-scoped доставка не страдает.
+		ownerID := s.resolveProjectOwnerID(pubCtx, task)
+
 		// TODO(7.x): перейти на transactional outbox для гарантии at-least-once доставки.
 		s.bus.Publish(pubCtx, events.TaskStatusChanged{
 			ProjectID:       task.ProjectID,
+			UserID:          ownerID,
 			TaskID:          task.ID,
 			ParentTaskID:    task.ParentTaskID,
+			Title:           task.Title,
 			Previous:        string(prevState),
 			Current:         string(task.State),
 			AssignedAgentID: task.AssignedAgentID,
@@ -371,6 +378,32 @@ func (s *taskService) publishEventsWithTime(ctx context.Context, userRole models
 
 func (s *taskService) publishEvents(ctx context.Context, userRole models.UserRole, task *models.Task, prevState models.TaskState, msg *models.TaskMessage) {
 	s.publishEventsWithTime(ctx, userRole, task, prevState, msg, time.Now().UTC())
+}
+
+// resolveProjectOwnerID — best-effort лукап user_id владельца проекта для
+// user-scoped fan-out при публикации TaskStatusChanged (см. Sprint 21 §7).
+// Приоритет: preloaded task.Project → projectSvc.GetOwnerID(projectID).
+// При любой ошибке возвращает uuid.Nil — HubBridge просто пропустит
+// assistant.task_update, project-scoped task_status broadcast не страдает.
+func (s *taskService) resolveProjectOwnerID(ctx context.Context, task *models.Task) uuid.UUID {
+	if task == nil {
+		return uuid.Nil
+	}
+	if task.Project != nil && task.Project.UserID != uuid.Nil {
+		return task.Project.UserID
+	}
+	ownerID, err := s.projectSvc.GetOwnerID(ctx, task.ProjectID)
+	if err != nil {
+		// Логируем, но не валим публикацию: project-scoped subscribers всё
+		// равно получат событие.
+		s.logger.WarnContext(ctx, "task_service: resolve project owner failed",
+			slog.String("project_id", task.ProjectID.String()),
+			slog.String("task_id", task.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		return uuid.Nil
+	}
+	return ownerID
 }
 
 func getSafeErrorMessage(task *models.Task) string {

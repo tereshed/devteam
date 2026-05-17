@@ -309,6 +309,14 @@ class GitIntegrationsController extends Notifier<GitIntegrationsState> {
           agentLog: (_) {},
           error: (_) {},
           integrationStatus: _applyIntegrationStatus,
+          // Sprint 21 §7 — assistant.* идут в правую панель.
+          assistantSessionUpdated: (_) {},
+          assistantMessage: (_) {},
+          assistantToolCall: (_) {},
+          assistantToolResult: (_) {},
+          assistantConfirmRequest: (_) {},
+          assistantNavigate: (_) {},
+          assistantTaskUpdate: (_) {},
           unknown: (_) {},
         );
         if (_needsResyncOnNextServerEvent) {

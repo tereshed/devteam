@@ -8,48 +8,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devteam/backend/internal/handler/dto"
+	"log/slog"
+
 	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
-	"log/slog"
 )
 
-// mockProjectService implements the ProjectService interface for testing
+// mockProjectService реализует ws.ProjectAccessor для тестов handler'а.
+// Историческое имя оставлено, чтобы не править сотню точек использования
+// по тесту. Sprint 21 §7: handler перестал импортировать service ради разрыва
+// import-cycle ws ↔ service, поэтому интерфейс теперь булевый.
 type mockProjectService struct {
 	access map[string]bool // key = "userID:projectID"
 }
 
-func (m *mockProjectService) HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
+func (m *mockProjectService) HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (allowed, denied bool, err error) {
 	key := userID.String() + ":" + projectID.String()
 	if m.access[key] {
-		return nil
+		return true, false, nil
 	}
-	return service.ErrProjectForbidden
+	return false, true, nil
 }
 
-// Unused interface methods - implement to satisfy ProjectService interface
-func (m *mockProjectService) Create(ctx context.Context, userID uuid.UUID, req dto.CreateProjectRequest) (*models.Project, error) {
-	return nil, nil
-}
-func (m *mockProjectService) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.Project, error) {
-	return nil, nil
-}
-func (m *mockProjectService) List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, req dto.ListProjectsRequest) ([]models.Project, int64, error) {
-	return nil, 0, nil
-}
-func (m *mockProjectService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.UpdateProjectRequest) (*models.Project, error) {
-	return nil, nil
-}
-func (m *mockProjectService) Delete(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
-	return nil
-}
-
-// Ensure mockProjectService implements the interface
-var _ service.ProjectService = (*mockProjectService)(nil)
+// Ensure mockProjectService реализует ProjectAccessor (compile-time check).
+var _ ProjectAccessor = (*mockProjectService)(nil)
 
 // TestCheckOrigin tests the CheckOrigin function behavior
 func TestCheckOrigin_EmptyOrigin(t *testing.T) {
@@ -392,8 +377,4 @@ func TestHubRegisterIfUnderLimit_MultipleProjects(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 	assert.Equal(t, 2, hub.CountUserConnections("user1", "project1"))
-}
-
-func (m *mockProjectService) Reindex(ctx context.Context, projectID uuid.UUID, role models.UserRole, userID uuid.UUID) error {
-	return nil
 }

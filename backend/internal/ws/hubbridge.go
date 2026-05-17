@@ -90,6 +90,10 @@ func (b *HubBridge) dispatch(ev events.DomainEvent) {
 			ErrorMessage:    e.ErrorMessage,
 		}
 		payload, err = MarshalTaskStatus(projectID, data)
+		// User-scoped fan-out для Tasks-tab правой панели ассистента (Sprint 21 §7).
+		// Делаем до возможного `return` ниже, чтобы ошибка маршала project-конверта
+		// не блокировала assistant.task_update — это разные подписчики.
+		b.fanOutAssistantTaskUpdate(e)
 
 	case events.TaskMessageCreated:
 		msgType = MessageTypeTaskMessage
@@ -177,6 +181,42 @@ func (b *HubBridge) dispatch(ev events.DomainEvent) {
 	}
 
 	b.metrics.IncDispatched(string(msgType))
+}
+
+// fanOutAssistantTaskUpdate шлёт user-scoped дубль TaskStatusChanged-события
+// под типом assistant.task_update — для Tasks-tab правой панели (Sprint 21 §7).
+//
+// Контракт: project-scoped доставка (MessageTypeTaskStatus) идёт независимо
+// и НЕ должна страдать от ошибок этого fan-out'а. Если продюсер не успел
+// разрезолвить user_id (например, при отказе projectRepo) — событие просто
+// дропается с пометкой в метриках; на корректность task_status это не влияет.
+func (b *HubBridge) fanOutAssistantTaskUpdate(e events.TaskStatusChanged) {
+	if e.UserID == (uuid.UUID{}) {
+		b.metrics.IncDispatchError("assistant_task_update_nil_user_id")
+		return
+	}
+
+	data := AssistantTaskUpdateData{
+		ProjectID: e.ProjectID,
+		TaskID:    e.TaskID,
+		State:     e.Current,
+		Title:     e.Title,
+		UpdatedAt: e.OccurredAt,
+	}
+	payload, err := MarshalAssistantTaskUpdate(e.UserID, data)
+	if err != nil {
+		b.log.Error("failed to marshal assistant.task_update envelope",
+			"error", err, "user_id", e.UserID, "task_id", e.TaskID)
+		b.metrics.IncDispatchError("marshal_error")
+		return
+	}
+	if err := b.hub.SendToUser(e.UserID.String(), string(MessageTypeAssistantTaskUpdate), payload); err != nil {
+		b.log.Error("failed to send assistant.task_update to hub",
+			"error", err, "user_id", e.UserID, "task_id", e.TaskID)
+		b.metrics.IncDispatchError("hub_send_error")
+		return
+	}
+	b.metrics.IncDispatched(string(MessageTypeAssistantTaskUpdate))
 }
 
 func (b *HubBridge) dispatchIntegrationConnectionChanged(e events.IntegrationConnectionChanged) {

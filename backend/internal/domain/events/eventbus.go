@@ -18,10 +18,16 @@ type DomainEvent interface {
 }
 
 // TaskStatusChanged — переход статуса задачи (см. 3.6).
+//
+// UserID и Title резолвятся продюсером (TaskService) для user-scoped
+// fan-out в HubBridge (см. Sprint 21 §7 — assistant.task_update).
+// Если UserID == uuid.Nil, fan-out пропускается.
 type TaskStatusChanged struct {
 	ProjectID       uuid.UUID
+	UserID          uuid.UUID
 	TaskID          uuid.UUID
 	ParentTaskID    *uuid.UUID
+	Title           string
 	Previous        string // task.StatusType
 	Current         string
 	AssignedAgentID *uuid.UUID
