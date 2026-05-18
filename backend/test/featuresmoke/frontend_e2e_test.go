@@ -54,15 +54,19 @@ import (
 )
 
 // defaultPhase3FrontendTests — P0/P1 интеграционные сценарии (Phase 3 Tasks
-// 3.1–3.3 + Sprint 14.2 full_flow). assistant_e2e_test.dart **не** в этом
-// списке — он специально про LLM agent-loop и требует отдельного прогона
-// под guard'ом «delta == calls_to_FakeLLM», а не «delta == 0».
+// 3.1–3.3 + Sprint 14.2 full_flow) + Phase 4 LLM-free flow (chat_flow_test).
+// assistant_e2e_test.dart **не** в этом списке — он специально про LLM
+// agent-loop и требует отдельного прогона под guard'ом «delta ==
+// calls_to_FakeLLM», а не «delta == 0».
 var defaultPhase3FrontendTests = []string{
 	"integration_test/auth_flow_test.dart",
 	"integration_test/projects_flow_test.dart",
 	"integration_test/team_settings_test.dart",
 	"integration_test/task_lifecycle_test.dart",
 	"integration_test/full_flow_test.dart",
+	// Phase 4 Task 4.1 — UI-контракт чата без LLM-вызова. Тапа на send нет,
+	// llm_logs не должна расти; делит cost-leak guard с остальными.
+	"integration_test/chat_flow_test.dart",
 }
 
 func frontendTestsFromEnv() []string {

@@ -13,6 +13,7 @@ import (
 	"github.com/devteam/backend/pkg/jwt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
@@ -114,6 +115,13 @@ func (s *Server) setupRoutes(deps Dependencies) {
 
 	// Health check endpoint
 	s.router.GET("/health", s.healthCheck)
+
+	// Prometheus metrics endpoint. Открыт без auth — потребляет
+	// scrape'ом Prometheus/Grafana внутри dev-stack; в проде закрывается
+	// сетевыми правилами (отдельный listener / firewall), как и /health.
+	// Никаких user-данных не отдаёт — только счётчики и гистограммы из
+	// internal/metrics, internal/service/*_service.go, sandbox/, domain/events/.
+	s.router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Swagger документация
 	s.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

@@ -369,9 +369,37 @@ Cost-leak prevention (см. harness.go):
 - [ ] **Task 3.3: Жизненный цикл задачи.** `task_lifecycle_test.dart` (включая WS-обновления).
 
 ### Фаза 4: Расширенное покрытие (P2 & P3)
-- [ ] **Task 4.1: Assistant и Prompts.** `chat_flow_test.dart`, `prompts_smoke_test.go`.
-- [ ] **Task 4.2: Workflows и API Keys.** `workflows_smoke_test.go`, `api_keys_smoke_test.go`.
-- [ ] **Task 4.3: Non-functional.** Тест `/health` под нагрузкой, тест идемпотентности Goose миграций, проверка Прометей-метрик.
+- [x] **Task 4.1: Assistant и Prompts.** `chat_flow_test.dart`, `prompts_smoke_test.go`, `assistant_smoke_test.go`.
+- [x] **Task 4.2: Workflows и API Keys.** `workflows_smoke_test.go`, `api_keys_smoke_test.go`.
+- [x] **Task 4.3: Non-functional.** `health_load_test.go`, `migrations_smoke_test.go`,
+  `metrics_smoke_test.go` (+ добавлен `/metrics` endpoint в `server.go` — promhttp.Handler,
+  открыт без auth, scrape'ится Prometheus'ом внутри dev-stack).
+
+Прогон: **3/3 stability-run'а** только новых Phase 4 backend-тестов — все зелёные
+(включая 2 ожидаемых SKIP: `TestPrompts_AdminHappyPath` и `TestWorkflows_AdminHappyPath`,
+обе уходят в Phase 5 real-режим, как и `TestLLMProviders_AdminCreateAndTestConnection`).
+
+Состав Phase 4 (24 теста):
+- 4 prompts (no-auth × 5 path, non-admin × 5 path, admin happy-path SKIP)
+- 4 workflows (no-auth × 5 path, non-admin × 5 path, admin happy-path SKIP)
+- 5 api-keys (CRUD + cross-tenant + auth + MCP-config)
+- 7 assistant (lifecycle, missing, cross-tenant, active-tasks, auth, send-echo, **prompt sanity через llm_logs**)
+- 1 health-under-load (20 workers × 25 req)
+- 2 migrations (idempotence + status)
+- 2 metrics (format + no-auth)
+- 1 frontend chat_flow_test.dart (LLM-free UI-контракт; добавлен в
+  `defaultPhase3FrontendTests` под cost-leak guard delta=0)
+
+Адекватность LLM-запроса assistant'а проверяется через `llm_logs`:
+- `provider` + `model` непустые (anthropic + claude-haiku из seed.SeedAssistantAgent);
+- `prompt_snapshot` содержит assistant system prompt («ассистент платформы»);
+- `prompt_snapshot` содержит уникальный user-content тестового сообщения
+  (фильтрация через `prompt_snapshot::text LIKE '%marker%'` исключает race
+  между параллельными tests, которые тоже шлют /messages).
+
+В real-режиме тот же тест посылает один реальный запрос на anthropic-haiku
+(≈¢ за прогон) — это и есть «осторожная проверка с реальной LLM», на которую
+дальше смотрит ревьюер глазами через `psql llm_logs`.
 
 ### Фаза 5: CI/CD и Дашборд
 - [ ] **Task 5.1: PR-gate Workflow.** Настройка `feature-smoke.yml` (разделение на ubuntu-latest для backend/web и macos-latest для iOS/macOS).

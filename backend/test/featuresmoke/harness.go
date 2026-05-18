@@ -686,6 +686,90 @@ func (h *Harness) FakeGit(t *testing.T) *fakes.FakeGit {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared assertion helpers для смоук-тестов.
+//
+// Назначение: убрать копипаст «список ручек → проверить 401/403» из
+// prompts/workflows/api-keys/assistant и т.п. Каждая ручка — это маленький
+// контракт; набор контрактов крутится в одном месте, новые ручки добавляются
+// одной строкой в slice (см. review Phase 4 §3 DRY).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// EndpointCase описывает один эндпоинт для assert-хелперов. `Name` опционален —
+// если задан, идёт в имя sub-test'а (parallel-friendly диагностика при
+// падениях). Если пуст, имя строится из method+path.
+type EndpointCase struct {
+	Name   string
+	Method string
+	Path   string
+	Body   any
+}
+
+// caseName возвращает стабильное имя для sub-test'а — без пробелов, чтобы
+// `go test -run …/<name>` работал без экранирования.
+func (ec EndpointCase) caseName() string {
+	if ec.Name != "" {
+		return ec.Name
+	}
+	// Приводим path к ascii-safe виду: «/api/v1/foo» → «api_v1_foo».
+	safe := strings.NewReplacer(
+		"/", "_",
+		"-", "_",
+		":", "_",
+	).Replace(strings.TrimPrefix(ec.Path, "/"))
+	return ec.Method + "_" + safe
+}
+
+// AssertRequiresAuth проверяет, что без Authorization-токена каждая ручка
+// отвечает 401. Запускает по sub-test'у на кейс — при падении видно,
+// какая именно ручка пропустила запрос.
+//
+// Использование:
+//
+//	h.AssertRequiresAuth(t, []EndpointCase{
+//	    {Method: "GET",  Path: "/api/v1/prompts"},
+//	    {Method: "POST", Path: "/api/v1/prompts", Body: map[string]any{"name":"x"}},
+//	})
+func (h *Harness) AssertRequiresAuth(t *testing.T, cases []EndpointCase) {
+	t.Helper()
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.caseName()+"_no_token_returns_401", func(t *testing.T) {
+			t.Parallel()
+			resp := h.Do(t, tc.Method, tc.Path, tc.Body, "")
+			if resp.Status != http.StatusUnauthorized {
+				t.Fatalf("%s %s no token: status=%d (ожидали 401) body=%s",
+					tc.Method, tc.Path, resp.Status, truncBody(resp.Body))
+			}
+		})
+	}
+}
+
+// AssertRequiresAdmin проверяет, что обычный (не-admin) пользователь
+// получает 403 на каждой из ручек, защищённых middleware.AdminOnlyMiddleware().
+// Запускает по sub-test'у на кейс — диагностика как у AssertRequiresAuth.
+//
+// `token` — access_token обычного юзера; вызывающий код обязан передать
+// валидный токен, иначе фейл будет 401 (auth-middleware срабатывает раньше
+// admin-middleware), и сообщение будет misleading.
+func (h *Harness) AssertRequiresAdmin(t *testing.T, token string, cases []EndpointCase) {
+	t.Helper()
+	if token == "" {
+		t.Fatalf("AssertRequiresAdmin: token пуст — кейс деградирует в auth-check")
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.caseName()+"_as_user_returns_403", func(t *testing.T) {
+			t.Parallel()
+			resp := h.Do(t, tc.Method, tc.Path, tc.Body, token)
+			if resp.Status != http.StatusForbidden {
+				t.Fatalf("%s %s as non-admin: status=%d (ожидали 403) body=%s",
+					tc.Method, tc.Path, resp.Status, truncBody(resp.Body))
+			}
+		})
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Utils.
 // ─────────────────────────────────────────────────────────────────────────────
 
