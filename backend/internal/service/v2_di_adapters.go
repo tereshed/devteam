@@ -92,11 +92,39 @@ func (l *DBAgentLoader) GetAgentByName(ctx context.Context, name string) (*model
 	return &a, nil
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AssistantLLMClientAdapter — Sprint 21. Реализует AssistantLLMClientResolver,
+// оборачивая существующий llm.Provider (llmService) в llm.Client через
+// ProviderAdapter. Этого достаточно для agentloop.Executor: ему нужны только
+// Chat() и (опционально) HealthCheck/ResolveBaseURL. Конкретный backend
+// (anthropic/openai/...) выбирается внутри llmService.Generate по
+// req.Provider/Model, проброшенным из agent.ProviderKind/Model.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type AssistantLLMClientAdapter struct {
+	provider llm.Provider
+}
+
+// NewAssistantLLMClientAdapter — конструктор.
+func NewAssistantLLMClientAdapter(provider llm.Provider) *AssistantLLMClientAdapter {
+	return &AssistantLLMClientAdapter{provider: provider}
+}
+
+// ResolveAssistantClient реализует AssistantLLMClientResolver. Agent игнорируется —
+// llmService сам выбирает backend по req.Provider (см. llmService.Generate).
+func (r *AssistantLLMClientAdapter) ResolveAssistantClient(ctx context.Context, a *models.Agent) (llm.Client, error) {
+	if r == nil || r.provider == nil {
+		return nil, errors.New("AssistantLLMClientAdapter: provider is not configured")
+	}
+	return &llm.ProviderAdapter{Provider: r.provider}, nil
+}
+
 // Compile-time проверки соответствия интерфейсам.
 var (
-	_ LLMProviderResolver    = (*SingletonLLMProviderResolver)(nil)
-	_ SandboxExecutorFactory = (*SingletonSandboxExecutorFactory)(nil)
-	_ AgentLoader            = (*DBAgentLoader)(nil)
+	_ LLMProviderResolver         = (*SingletonLLMProviderResolver)(nil)
+	_ SandboxExecutorFactory      = (*SingletonSandboxExecutorFactory)(nil)
+	_ AgentLoader                 = (*DBAgentLoader)(nil)
+	_ AssistantLLMClientResolver  = (*AssistantLLMClientAdapter)(nil)
 )
 
 // Ensure uuid import is used (silences linters if file evolves).

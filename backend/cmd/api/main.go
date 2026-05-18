@@ -18,6 +18,7 @@ import (
 	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler"
 	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/llm/agentloop"
 	"github.com/devteam/backend/internal/logging"
 	mcpserver "github.com/devteam/backend/internal/mcp"
 	"github.com/devteam/backend/internal/middleware"
@@ -599,6 +600,45 @@ func main() {
 	}()
 	log.Println("Orchestrator v2 retention service started")
 
+	// Sprint 21 — Global Assistant (правая боковая панель).
+	// Собираем agentloop.Executor с публичными константами AssistantMax* (см. assistant_service.go),
+	// AuthorizedExecutor (фиксированный каталог tools), AssistantService и AssistantHandler.
+	// ConversationService не подключён к процессу — соответствующая группа conversation_*
+	// tools просто выпадает из каталога (поведение AuthorizedExecutor задокументировано).
+	assistantExecutor := agentloop.NewExecutor(agentloop.Config{
+		MaxIterations:      service.AssistantMaxIterations,
+		MaxToolResultBytes: service.AssistantMaxToolResultBytes,
+		MaxHistoryBytes:    service.AssistantMaxHistoryBytes,
+		HistoryTailKeep:    service.AssistantHistoryTailKeep,
+		PerLLMCallTimeout:  60 * time.Second,
+	}, v2Logger) // v2Logger обёрнут logging.NewHandler — маскирует секреты в промптах/raw_response/tool args (docs/rules/backend.mdc §2.3, review.md §1).
+	assistantToolCatalog := mcpserver.NewAuthorizedExecutor(mcpserver.AuthorizedExecutorDeps{
+		ProjectService: projectService,
+		TaskService:    taskService,
+		AgentService:   agentSvcV2,
+		QueryService: service.NewOrchestrationQueryService(
+			artifactRepoV2,
+			routerDecisionRepoV2,
+			worktreeRepoV2,
+		),
+	})
+	assistantSessionRepo := repository.NewAssistantSessionRepository(db)
+	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{
+		Repo:        assistantSessionRepo,
+		TaskRepo:    taskRepo,
+		AgentLoader: service.NewDBAgentLoader(db),
+		LLMResolver: service.NewAssistantLLMClientAdapter(llmService),
+		ToolCatalog: assistantToolCatalog,
+		Hub:         hub,
+		Executor:    assistantExecutor,
+		Logger:      v2Logger, // redact-обёрнутый; не пускает токены/ключи/пароли в stdout (см. comment выше).
+	})
+	if err != nil {
+		log.Fatalf("Failed to construct AssistantService: %v", err)
+	}
+	go assistantSvc.StartStaleRecovery(ctxWorker)
+	assistantHandler := handler.NewAssistantHandler(assistantSvc)
+
 	// WebSocket Handler. Адаптер транслирует доменные ошибки ProjectService
 	// (ErrProjectNotFound/Forbidden) в булевый контракт ws.ProjectAccessor —
 	// это break import cycle (см. ws/handler.go), чтобы `service` мог
@@ -637,6 +677,7 @@ func main() {
 
 		ClaudeCodeAuthHandler: claudeCodeAuthHandler,
 		GitIntegrationHandler: gitIntegrationHandler,
+		AssistantHandler:      assistantHandler,
 		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
 		LLMProviderHandler:    llmProviderHandler,
 		HermesHandler:         handler.NewHermesHandler(),

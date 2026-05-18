@@ -932,9 +932,12 @@ func (e *AuthorizedExecutor) appNavigate(_ context.Context, _ agentloop.AuthCont
 var (
 	schemaEmpty             = json.RawMessage(`{"type":"object","properties":{}}`)
 	schemaProjectList       = json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"git_provider":{"type":"string"},"search":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaProjectGet        = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"}},"oneOf":[{"required":["id"]},{"required":["project_id"]}]}`)
+	// Anthropic tool-schemas НЕ принимают oneOf/anyOf/allOf на верхнем уровне input_schema
+	// (status 400 invalid_request_error). Альтернативность id|project_id валидируется в
+	// runtime через idArgs.resolve() — этого достаточно.
+	schemaProjectGet        = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
 	schemaProjectCreate     = json.RawMessage(`{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"git_provider":{"type":"string"},"git_url":{"type":"string"},"git_default_branch":{"type":"string"}}}`)
-	schemaProjectUpdate     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"anyOf":[{"required":["id"]},{"required":["project_id"]}]}`)
+	schemaProjectUpdate     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
 	schemaTaskList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaTaskGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
 	schemaConvList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
@@ -944,7 +947,7 @@ var (
 	schemaAgentList    = json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaAgentGet     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
 	schemaArtifactList = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"}}}`)
-	schemaArtifactGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"anyOf":[{"required":["id"]},{"required":["artifact_id"]}]}`)
+	schemaArtifactGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо artifact_id (UUID артефакта)."}`)
 	schemaAppNavigate       = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
 )
 

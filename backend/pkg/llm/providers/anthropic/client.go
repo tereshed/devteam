@@ -156,22 +156,37 @@ func (c *Client) Generate(ctx context.Context, req llm.Request) (*llm.Response, 
 func (c *Client) mapRequest(req llm.Request) messagesRequest {
 	messages := make([]message, 0, len(req.Messages))
 
+	// Anthropic Messages API принимает ТОЛЬКО роли "user" и "assistant" в
+	// корне message; tool_result и tool_use — это content-блоки.
+	//   • llm.RoleTool        → role:"user"     + content:[{type:"tool_result",…}]
+	//   • llm.RoleAssistant   → role:"assistant" + [{text}|{tool_use}…]
+	//   • llm.RoleUser/прочие → role:"user"     + [{text}]
+	//   • llm.RoleSystem      → idem-skip (уходит в верхнеуровневое поле `system`).
+	//
+	// Дополнительно Anthropic требует строгого чередования user/assistant: подряд
+	// идущие messages с одинаковой ролью НЕ принимаются. Это всплывает в
+	// agent-loop'е, когда LLM в одном turn'е заказал несколько tool_use — мы
+	// получаем подряд несколько llm.RoleTool, каждый из которых должен стать
+	// user-сообщением. Поэтому при появлении новой "user"-роли мы пытаемся
+	// дописать content-blocks в предыдущее user-сообщение, а не создать новое.
 	for _, msg := range req.Messages {
-		// Skip system messages as they go to top-level field
 		if msg.Role == llm.RoleSystem {
 			continue
 		}
 
+		var role string
 		var contents []content
-		if msg.Role == llm.RoleTool {
-			// Tool result
-			contents = append(contents, content{
+
+		switch {
+		case msg.Role == llm.RoleTool:
+			role = "user"
+			contents = []content{{
 				Type:      "tool_result",
 				ToolUseID: msg.ToolCallID,
 				Content:   msg.Content,
-			})
-		} else if len(msg.ToolCalls) > 0 {
-			// Assistant message with tool calls
+			}}
+		case len(msg.ToolCalls) > 0:
+			role = "assistant"
 			if msg.Content != "" {
 				contents = append(contents, content{
 					Type: "text",
@@ -186,18 +201,25 @@ func (c *Client) mapRequest(req llm.Request) messagesRequest {
 					Input: json.RawMessage(tc.Function.Arguments),
 				})
 			}
-		} else {
-			// Regular text message
-			contents = append(contents, content{
-				Type: "text",
-				Text: msg.Content,
-			})
+		case msg.Role == llm.RoleAssistant:
+			role = "assistant"
+			contents = []content{{Type: "text", Text: msg.Content}}
+		default:
+			role = "user"
+			contents = []content{{Type: "text", Text: msg.Content}}
 		}
 
-		messages = append(messages, message{
-			Role:    string(msg.Role),
-			Content: contents,
-		})
+		// Merge consecutive same-role messages в один (см. контракт выше).
+		// Anthropic accepts mixing text + tool_result + tool_use внутри одного
+		// content[]-массива, поэтому слияние безопасно.
+		if n := len(messages); n > 0 && messages[n-1].Role == role {
+			messages[n-1].Content = append(messages[n-1].Content, contents...)
+		} else {
+			messages = append(messages, message{
+				Role:    role,
+				Content: contents,
+			})
+		}
 	}
 
 	var tools []tool
