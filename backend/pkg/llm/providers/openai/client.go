@@ -200,7 +200,7 @@ func (c *Client) mapRequest(req llm.Request) chatCompletionRequest {
 
 	model := req.Model
 	if model == "" {
-		model = "gpt-4o"
+		model = "gpt-4.1-mini"
 	}
 
 	return chatCompletionRequest{

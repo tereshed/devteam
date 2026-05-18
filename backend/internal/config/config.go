@@ -167,20 +167,24 @@ func Load() (*Config, error) {
 		LLM: LLMConfig{
 			DefaultProvider:  getEnv("LLM_PROVIDER", "openai"),
 			OpenRouterAPIKey: getEnv("OPENROUTER_API_KEY", getEnv("OPENROUTER_KEY", getEnv("LLM_API_KEY", ""))), // Если нет специфичного ключа, берем общий
+			// Дефолты — самые дешёвые модели каждого провайдера. Пользователь может
+			// перебить через ENV если нужна более жирная модель. См. audit cost-leak
+			// Phase 2: на Sonnet 4.6 + gpt-4o уходило в 3-15× больше денег, чем нужно
+			// для подавляющего большинства pipeline-задач.
 			OpenAI: ProviderConfig{
 				APIKey:  getEnv("OPENAI_API_KEY", getEnv("LLM_API_KEY", "")), // Fallback to LLM_API_KEY for backward compatibility
 				BaseURL: getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-				Model:   getEnv("OPENAI_MODEL", "gpt-4o"),
+				Model:   getEnv("OPENAI_MODEL", "gpt-4o-mini"), // $0.15/$0.60 vs gpt-4o $2.50/$10
 			},
 			Anthropic: ProviderConfig{
 				APIKey:  getEnv("ANTHROPIC_API_KEY", ""),
 				BaseURL: getEnv("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
-				Model:   getEnv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620"),
+				Model:   getEnv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"), // $1/$5 vs Sonnet 4.6 $3/$15
 			},
 			Gemini: ProviderConfig{
 				APIKey:  getEnv("GEMINI_API_KEY", ""),
 				BaseURL: getEnv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"),
-				Model:   getEnv("GEMINI_MODEL", "gemini-1.5-pro"),
+				Model:   getEnv("GEMINI_MODEL", "gemini-1.5-flash"), // $0.075/$0.30 vs 1.5-pro $1.25/$5
 			},
 			Deepseek: ProviderConfig{
 				APIKey:  getEnv("DEEPSEEK_API_KEY", ""),

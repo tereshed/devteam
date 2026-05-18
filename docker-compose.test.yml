@@ -1,0 +1,42 @@
+# docker-compose.test.yml — overlay для интеграционных smoke-тестов.
+#
+# Используется через:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up -d <service>...
+#
+# Цель: добавить локальный Gitea (замена GitHub в PR-gate режиме), не трогая
+# основной dev-stack. Backend (service `app`) при прогоне featuresmoke
+# поднимается тестовым harness'ом (subprocess), а не compose'ом.
+#
+# YugabyteDB наследуется из основного docker-compose.yml (тот же контейнер,
+# та же БД). Изоляция тестов — через уникальный user_id/project_id (UUID),
+# миграции накатываются один раз при старте backend.
+
+services:
+  gitea:
+    image: gitea/gitea:1.22.3
+    container_name: wibe_gitea_test
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__ROOT_URL: http://localhost:3001/
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "false"
+      # Тестовое окружение — слабые таймауты OK.
+      GITEA__webhook__ALLOWED_HOST_LIST: "*"
+    ports:
+      - "3001:3000"
+    volumes:
+      - gitea_test_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/version || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  gitea_test_data:

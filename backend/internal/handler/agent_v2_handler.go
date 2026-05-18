@@ -292,6 +292,31 @@ func (h *AgentV2Handler) SetSecret(c *gin.Context) {
 	c.JSON(http.StatusCreated, out)
 }
 
+// Delete удаляет агента из реестра вместе с его секретами и tool-bindings.
+// @Summary Delete v2 agent
+// @Description Hard-delete агента + cascade на agent_secrets и agent_tool_bindings.
+// Для soft-disable используй PUT с is_active=false (сохраняет историю для in-flight задач).
+// @Tags agents-v2
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Agent UUID"
+// @Success 204
+// @Failure 400 {object} apierror.ErrorResponse
+// @Failure 404 {object} apierror.ErrorResponse
+// @Router /agents/{id} [delete]
+func (h *AgentV2Handler) Delete(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid agent id")
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		writeAgentServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // DeleteSecret удаляет секрет по UUID записи.
 // @Summary Delete v2 agent secret
 // @Tags agents-v2

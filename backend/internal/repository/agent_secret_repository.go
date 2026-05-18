@@ -27,6 +27,10 @@ type AgentSecretRepository interface {
 	GetByName(ctx context.Context, agentID uuid.UUID, keyName string) (*models.AgentSecret, error)
 	ListByAgentID(ctx context.Context, agentID uuid.UUID) ([]models.AgentSecret, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	// DeleteByAgentID удаляет все секреты, привязанные к агенту. Возвращает nil
+	// если ни одного секрета не было (NOT NotFound — это idempotent cleanup,
+	// caller'у не надо отдельно ловить «секретов не было»).
+	DeleteByAgentID(ctx context.Context, agentID uuid.UUID) error
 }
 
 type agentSecretRepository struct {
@@ -87,6 +91,15 @@ func (r *agentSecretRepository) Delete(ctx context.Context, id uuid.UUID) error 
 	}
 	if result.RowsAffected == 0 {
 		return ErrAgentSecretNotFound
+	}
+	return nil
+}
+
+func (r *agentSecretRepository) DeleteByAgentID(ctx context.Context, agentID uuid.UUID) error {
+	if err := gormDB(ctx, r.db).WithContext(ctx).
+		Where("agent_id = ?", agentID).
+		Delete(&models.AgentSecret{}).Error; err != nil {
+		return fmt.Errorf("failed to delete agent secrets for %s: %w", agentID, err)
 	}
 	return nil
 }

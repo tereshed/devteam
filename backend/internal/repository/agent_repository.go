@@ -240,6 +240,15 @@ func (r *agentRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	db := gormDB(ctx, r.db)
 	// Hard delete — это семантически "удалить из реестра". Для soft-disable
 	// есть is_active=false (правильный способ для backward-compat с in-flight задачами).
+	//
+	// Каскадно чистим agent_tool_bindings: в схеме нет ON DELETE CASCADE
+	// (см. миграции 015/017 — FK без RESTRICT/CASCADE), поэтому без явного
+	// DELETE остаются orphan-bindings и FK-violation на самом DELETE agents.
+	// Caller (service.AgentService.Delete) оборачивает это в TransactionManager,
+	// поэтому здесь обе операции атомарны через gormDB(ctx, ...).
+	if err := db.WithContext(ctx).Where("agent_id = ?", id).Delete(&models.AgentToolBinding{}).Error; err != nil {
+		return fmt.Errorf("failed to delete agent tool bindings for %s: %w", id, err)
+	}
 	result := db.WithContext(ctx).Where("id = ?", id).Delete(&models.Agent{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete agent %s: %w", id, result.Error)

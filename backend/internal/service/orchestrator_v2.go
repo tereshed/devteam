@@ -279,9 +279,16 @@ func (o *Orchestrator) scheduleCancelNotify(taskID uuid.UUID) func(context.Conte
 // ─────────────────────────────────────────────────────────────────────────────
 
 func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *models.Task) (RouterState, error) {
-	// Все enabled-агенты (Router их видит в реестре).
+	// Все enabled-агенты, ИМЕЮЩИЕ непустое role_description. Без этого фильтра
+	// в каталог попадают: (a) leaked-агенты, созданные тестами через POST /agents
+	// без description'а (cost-leak Phase 2: 289 шт. накопилось за день, раздувало
+	// router prompt до 7k+ токенов на каждый вызов), (b) ассистент (он не pipeline-
+	// агент, router его не выбирает). LLM не может ничего полезного с агентом
+	// без description'а, поэтому исключаем их из каталога целиком.
 	var agents []*models.Agent
-	if err := tx.WithContext(ctx).Where("is_active = ?", true).Find(&agents).Error; err != nil {
+	if err := tx.WithContext(ctx).
+		Where("is_active = ? AND role_description IS NOT NULL AND role_description <> ''", true).
+		Find(&agents).Error; err != nil {
 		return RouterState{}, fmt.Errorf("load agents: %w", err)
 	}
 

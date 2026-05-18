@@ -135,11 +135,23 @@ type listWorktreesQuery struct {
 // @Param only_ready query bool false "только status='ready' (default false — включая superseded)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} apierror.ErrorResponse
+// @Failure 403 {object} apierror.ErrorResponse "no access to task"
+// @Failure 404 {object} apierror.ErrorResponse "task not found"
 // @Router /tasks/{id}/artifacts [get]
 func (h *OrchestrationV2Handler) ListArtifacts(c *gin.Context) {
+	userID, userRole, ok := requireAuth(c)
+	if !ok {
+		return
+	}
 	taskID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid task id")
+		return
+	}
+	// Ownership check — без этого любой авторизованный пользователь мог
+	// прочитать артефакты чужой задачи (Sprint 17 review #2).
+	if _, err := h.taskSvc.GetByID(c.Request.Context(), userID, userRole, taskID); err != nil {
+		writeTaskServiceError(c, err)
 		return
 	}
 	onlyReady := c.Query("only_ready") == "true"
@@ -166,9 +178,14 @@ func (h *OrchestrationV2Handler) ListArtifacts(c *gin.Context) {
 // @Param id path string true "Task UUID"
 // @Param artifactId path string true "Artifact UUID"
 // @Success 200 {object} artifactFullResponse
+// @Failure 403 {object} apierror.ErrorResponse "no access to task"
 // @Failure 404 {object} apierror.ErrorResponse
 // @Router /tasks/{id}/artifacts/{artifactId} [get]
 func (h *OrchestrationV2Handler) GetArtifact(c *gin.Context) {
+	userID, userRole, ok := requireAuth(c)
+	if !ok {
+		return
+	}
 	taskID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid task id")
@@ -177,6 +194,11 @@ func (h *OrchestrationV2Handler) GetArtifact(c *gin.Context) {
 	artifactID, err := uuid.Parse(c.Param("artifactId"))
 	if err != nil {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid artifact id")
+		return
+	}
+	// Ownership check (Sprint 17 review #2).
+	if _, err := h.taskSvc.GetByID(c.Request.Context(), userID, userRole, taskID); err != nil {
+		writeTaskServiceError(c, err)
 		return
 	}
 	art, err := h.artifactRepo.GetByID(c.Request.Context(), artifactID)
@@ -209,11 +231,22 @@ func (h *OrchestrationV2Handler) GetArtifact(c *gin.Context) {
 // @Param id path string true "Task UUID"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} apierror.ErrorResponse
+// @Failure 403 {object} apierror.ErrorResponse "no access to task"
+// @Failure 404 {object} apierror.ErrorResponse
 // @Router /tasks/{id}/router-decisions [get]
 func (h *OrchestrationV2Handler) ListRouterDecisions(c *gin.Context) {
+	userID, userRole, ok := requireAuth(c)
+	if !ok {
+		return
+	}
 	taskID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid task id")
+		return
+	}
+	// Ownership check (Sprint 17 review #2).
+	if _, err := h.taskSvc.GetByID(c.Request.Context(), userID, userRole, taskID); err != nil {
+		writeTaskServiceError(c, err)
 		return
 	}
 	// withRawResponse=false — repository не загружает encrypted_raw_response.

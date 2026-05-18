@@ -1,4 +1,8 @@
 COMPOSE_FILE := docker-compose.yml
+# Тестовый overlay — добавляется только в test-features* таргетах.
+# Gitea (порт 3001) + всё что нужно для PR-gate smoke-тестов.
+COMPOSE_TEST_FILE := docker-compose.test.yml
+COMPOSE_TEST := docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_TEST_FILE)
 
 # Поддерживаемые stem для sandbox-build-<stem> (deployment/sandbox/<stem>/).
 # Sprint 16: добавлен hermes — Hermes Agent (Nous Research, MIT).
@@ -14,7 +18,8 @@ SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 	frontend-analyze frontend-codegen frontend-codegen-watch frontend-l10n-check \
 	frontend-run-web frontend-run-android frontend-run-ios \
 	frontend-build-web frontend-build-android frontend-build-ios \
-	swagger rules
+	swagger rules \
+	test-features test-features-up test-features-backend test-features-frontend test-features-real test-features-down
 
 # === Управление сервисами ===
 build:
@@ -40,6 +45,60 @@ test-unit:
 
 test-integration:
 	cd backend && go test -race -tags=integration ./... -v
+
+# === Feature-smoke (интеграционные пирамида, см. docs/integration-tests-plan.md) ===
+# Самодостаточные таргеты: сами поднимают yugabyte + gitea через docker-compose.test.yml,
+# ждут healthcheck, прогоняют тесты. Tenant-изоляция (UUID user/project), а не DROP SCHEMA.
+#
+# test-features          — backend + frontend (web) smoke в mock-режиме.
+# test-features-backend  — только Go featuresmoke-пакет.
+# test-features-frontend — только Flutter integration_test (web).
+# test-features-real     — real LLM/Git (FEATURESMOKE_MODE=real, требует ключей в .env).
+# test-features-down     — стоп контейнеров + удаление volumes (очистка БД).
+
+test-features-up: check-docker
+	@echo ">> Поднимаем тестовый stack (yugabytedb + gitea)..."
+	$(COMPOSE_TEST) up -d yugabytedb gitea
+	@echo ">> Ждём healthcheck (до 120s)..."
+	@deadline=$$(( $$(date +%s) + 120 )); \
+	while true; do \
+		yb=$$($(COMPOSE_TEST) ps --format json yugabytedb 2>/dev/null | grep -o '"Health":"healthy"' | head -1); \
+		gt=$$($(COMPOSE_TEST) ps --format json gitea 2>/dev/null | grep -o '"Health":"healthy"' | head -1); \
+		if [ -n "$$yb" ] && [ -n "$$gt" ]; then echo ">> healthy"; break; fi; \
+		if [ $$(date +%s) -gt $$deadline ]; then echo ">> ERROR: timeout waiting healthcheck" >&2; $(COMPOSE_TEST) ps; exit 1; fi; \
+		sleep 2; \
+	done
+
+test-features-backend: test-features-up
+	# КРИТИЧНО: env -u снимает реальные LLM-ключи из родительского окружения.
+	# Защита от cost-leak: harness.go в mock-режиме поднимает FakeLLM и подсовывает
+	# dummy-ключи в child-process; но если он сломается, без -u backend подхватит
+	# твой настоящий ANTHROPIC_API_KEY из shell/.env и пойдёт жечь токены
+	# (см. инцидент Phase 2: 5,271 calls / 15M tokens утекло так за день).
+	cd backend && env \
+		-u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u DEEPSEEK_API_KEY \
+		-u GEMINI_API_KEY -u QWEN_API_KEY -u OPENROUTER_API_KEY \
+		-u CLAUDE_CODE_OAUTH_ACCESS_TOKEN \
+		FEATURESMOKE_ENABLED=1 \
+		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		FEATURESMOKE_GITEA_URL=http://localhost:3001 \
+		go test -tags featuresmoke -race -timeout 600s ./test/featuresmoke/... -count=1 -v
+
+test-features-frontend: test-features-up
+	cd frontend && flutter pub get && \
+		dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n && \
+		flutter test -d web-server integration_test/
+
+test-features: test-features-backend test-features-frontend
+
+test-features-real: test-features-up
+	cd backend && FEATURESMOKE_ENABLED=1 FEATURESMOKE_MODE=real \
+		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		go test -tags featuresmoke -race -timeout 1800s ./test/featuresmoke/... -count=1 -v
+
+test-features-down:
+	@echo ">> Останавливаем тестовый stack и удаляем volumes..."
+	$(COMPOSE_TEST) down -v --remove-orphans
 
 # Pipeline agent prompts (task 6.8): YAML vs backend/prompts/prompt_schema.json
 validate-agent-prompts:

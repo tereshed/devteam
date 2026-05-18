@@ -409,10 +409,18 @@ func (r *RouterService) buildUserPrompt(state RouterState, correction string) st
 
 	b.WriteString("# Available Agents\n")
 	for _, a := range state.Agents {
+		desc := derefString(a.RoleDescription)
+		// Defence-in-depth: даже если loadRouterState отдал агента без описания
+		// (например, через тестовый stub), не пихаем его в каталог — LLM не может
+		// с ним работать. См. cost-leak инцидент Phase 2: 289 пустых записей
+		// раздувают prompt до 7k+ токенов на каждый Router-вызов.
+		if desc == "" {
+			continue
+		}
 		fmt.Fprintf(&b, "- %s (kind=%s): %s\n",
 			a.Name,
 			a.ExecutionKind,
-			derefString(a.RoleDescription),
+			desc,
 		)
 	}
 	b.WriteString("\n")

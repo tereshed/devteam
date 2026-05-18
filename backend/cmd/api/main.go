@@ -549,7 +549,21 @@ func main() {
 	// Sprint 17 / Orchestration v2 — запуск пулов воркеров и retention.
 	// Пулы: step=5, agent_llm=20, agent_sandbox=2 (план §2.7, дефолт для VPS 8-16GB).
 	// Если в config будут per-env overrides — подключить через cfg.Orchestrator.{...}.
+	//
+	// ORCHESTRATOR_V2_WORKERS_ENABLED=false — тест-конфигурация для PR-gate
+	// smoke-сьюита (см. docs/integration-tests-plan.md, backend/test/featuresmoke).
+	// Это НЕ хак на SQLSTATE 40001 — для него есть retry в repository.TransactionManager.
+	// Это изоляция: PR-gate смоук проверяет CRUD/API-контракт, а не реальный pipeline;
+	// крутить воркеров впустую (они валятся на ненастроенный LLM) — лишний шум в логах
+	// и постоянная гонка с пользовательскими операциями pause/cancel. Nightly
+	// real-режим (feature-e2e-real.yml) флаг не выставляет — там воркеры нужны для
+	// прогона полного pipeline.
 	// ─────────────────────────────────────────────────────────────────────────
+	v2WorkersEnabled := !strings.EqualFold(strings.TrimSpace(os.Getenv("ORCHESTRATOR_V2_WORKERS_ENABLED")), "false") &&
+		!strings.EqualFold(strings.TrimSpace(os.Getenv("ORCHESTRATOR_V2_WORKERS_ENABLED")), "0")
+	if !v2WorkersEnabled {
+		log.Println("Orchestrator v2 workers DISABLED via ORCHESTRATOR_V2_WORKERS_ENABLED=false (smoke-test isolation)")
+	} else {
 	const (
 		stepWorkersCount         = 5
 		agentWorkersCount        = 22 // 20 llm + 2 sandbox; пул общий, ClaimNext sequencing уже разводит
@@ -599,6 +613,7 @@ func main() {
 		}
 	}()
 	log.Println("Orchestrator v2 retention service started")
+	} // конец if v2WorkersEnabled
 
 	// Sprint 21 — Global Assistant (правая боковая панель).
 	// Собираем agentloop.Executor с публичными константами AssistantMax* (см. assistant_service.go),

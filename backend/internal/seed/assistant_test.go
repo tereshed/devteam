@@ -60,7 +60,7 @@ func TestSeedAssistantAgent_CreatesOnEmptyDB(t *testing.T) {
 	assert.Equal(t, models.AgentRoleAssistant, agent.Role)
 	assert.Equal(t, models.AgentExecutionKindLLM, agent.ExecutionKind)
 	require.NotNil(t, agent.Model)
-	assert.Equal(t, "claude-sonnet-4-6", *agent.Model)
+	assert.Equal(t, "claude-haiku-4-5-20251001", *agent.Model)
 	require.NotNil(t, agent.ProviderKind)
 	assert.Equal(t, models.AgentProviderKindAnthropic, *agent.ProviderKind)
 	require.NotNil(t, agent.SystemPrompt)

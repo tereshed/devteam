@@ -194,6 +194,16 @@ func (r *memSecretRepo) Delete(_ context.Context, id uuid.UUID) error {
 	delete(r.secrets, id)
 	return nil
 }
+func (r *memSecretRepo) DeleteByAgentID(_ context.Context, agentID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, s := range r.secrets {
+		if s.AgentID == agentID {
+			delete(r.secrets, id)
+		}
+	}
+	return nil
+}
 
 // makeAESEncryptor — реальный AES-GCM encryptor для тестов с проверяемой длиной blob.
 func makeAESEncryptor(t *testing.T) Encryptor {

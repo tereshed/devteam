@@ -76,6 +76,66 @@ func (m *mockWorktreeRepo) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Mock ArtifactRepository / RouterDecisionRepository — для тестов ownership-check
+// на ListArtifacts / GetArtifact / ListRouterDecisions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type mockArtifactRepo struct{ mock.Mock }
+
+func (m *mockArtifactRepo) Create(ctx context.Context, art *models.Artifact) error {
+	return m.Called(ctx, art).Error(0)
+}
+func (m *mockArtifactRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Artifact, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Artifact), args.Error(1)
+}
+func (m *mockArtifactRepo) ListByTaskID(ctx context.Context, taskID uuid.UUID, onlyReady bool) ([]models.Artifact, error) {
+	args := m.Called(ctx, taskID, onlyReady)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Artifact), args.Error(1)
+}
+func (m *mockArtifactRepo) ListMetadataByTaskID(ctx context.Context, taskID uuid.UUID, onlyReady bool) ([]models.Artifact, error) {
+	args := m.Called(ctx, taskID, onlyReady)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Artifact), args.Error(1)
+}
+func (m *mockArtifactRepo) SupersedePrevious(ctx context.Context, taskID uuid.UUID, parentID *uuid.UUID, kind models.ArtifactKind) (int64, error) {
+	args := m.Called(ctx, taskID, parentID, kind)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+type mockRouterDecisionRepo struct{ mock.Mock }
+
+func (m *mockRouterDecisionRepo) Create(ctx context.Context, d *models.RouterDecision) error {
+	return m.Called(ctx, d).Error(0)
+}
+func (m *mockRouterDecisionRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.RouterDecision, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.RouterDecision), args.Error(1)
+}
+func (m *mockRouterDecisionRepo) ListByTaskID(ctx context.Context, taskID uuid.UUID, withRawResponse bool) ([]models.RouterDecision, error) {
+	args := m.Called(ctx, taskID, withRawResponse)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.RouterDecision), args.Error(1)
+}
+func (m *mockRouterDecisionRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	args := m.Called(ctx, cutoff)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Test helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -86,6 +146,30 @@ func setupOrchestrationV2Router(
 	userRole models.UserRole,
 ) *gin.Engine {
 	return setupOrchestrationV2RouterWithMgr(wtRepo, taskSvc, nil, userID, userRole)
+}
+
+// setupOrchestrationV2RouterWithArtifacts — версия с полностью подключёнными
+// репозиториями. Используется тестами на ListArtifacts / GetArtifact /
+// ListRouterDecisions (ownership-check).
+func setupOrchestrationV2RouterWithArtifacts(
+	artRepo repository.ArtifactRepository,
+	decRepo repository.RouterDecisionRepository,
+	taskSvc service.TaskService,
+	userID uuid.UUID,
+	userRole models.UserRole,
+) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := NewOrchestrationV2Handler(artRepo, decRepo, nil, taskSvc, nil)
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", userID)
+		c.Set("userRole", string(userRole))
+		c.Next()
+	})
+	r.GET("/tasks/:id/artifacts", h.ListArtifacts)
+	r.GET("/tasks/:id/artifacts/:artifactId", h.GetArtifact)
+	r.GET("/tasks/:id/router-decisions", h.ListRouterDecisions)
+	return r
 }
 
 // setupOrchestrationV2RouterWithMgr — версия для ReleaseWorktree-тестов: позволяет
@@ -487,4 +571,137 @@ func TestReleaseWorktree_HappyPath_Returns200WithReleasedState(t *testing.T) {
 	assert.Equal(t, wtID.String(), resp["id"])
 	assert.Equal(t, "released", resp["state"], "response должен отражать новое состояние, чтобы UI обновил tile без refetch")
 	wtRepo.AssertExpectations(t)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListArtifacts / GetArtifact / ListRouterDecisions — ownership check
+// (Sprint 17 review #2). До фикса любой авторизованный юзер мог прочитать
+// артефакты чужой задачи; теперь — taskSvc.GetByID проверяет членство в проекте.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestListArtifacts_NoAccess_Returns403(t *testing.T) {
+	taskID := uuid.New()
+	userID := uuid.New()
+
+	artRepo := new(mockArtifactRepo)
+	decRepo := new(mockRouterDecisionRepo)
+	taskSvc := new(MockTaskService)
+
+	taskSvc.On("GetByID", mock.Anything, userID, models.UserRole(models.RoleUser), taskID).
+		Return(nil, service.ErrProjectForbidden)
+
+	r := setupOrchestrationV2RouterWithArtifacts(artRepo, decRepo, taskSvc, userID, models.RoleUser)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String()+"/artifacts", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	// Repo НЕ должен быть дёрнут — security short-circuit ДО data-load.
+	artRepo.AssertNotCalled(t, "ListMetadataByTaskID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestListArtifacts_TaskNotFound_Returns404(t *testing.T) {
+	taskID := uuid.New()
+	userID := uuid.New()
+
+	artRepo := new(mockArtifactRepo)
+	decRepo := new(mockRouterDecisionRepo)
+	taskSvc := new(MockTaskService)
+
+	taskSvc.On("GetByID", mock.Anything, userID, models.UserRole(models.RoleUser), taskID).
+		Return(nil, service.ErrTaskNotFound)
+
+	r := setupOrchestrationV2RouterWithArtifacts(artRepo, decRepo, taskSvc, userID, models.RoleUser)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String()+"/artifacts", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	artRepo.AssertNotCalled(t, "ListMetadataByTaskID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestListArtifacts_OwnedTask_Returns200(t *testing.T) {
+	taskID := uuid.New()
+	userID := uuid.New()
+
+	artRepo := new(mockArtifactRepo)
+	decRepo := new(mockRouterDecisionRepo)
+	taskSvc := new(MockTaskService)
+
+	taskSvc.On("GetByID", mock.Anything, userID, models.UserRole(models.RoleUser), taskID).
+		Return(&models.Task{ID: taskID}, nil)
+	artRepo.On("ListMetadataByTaskID", mock.Anything, taskID, false).
+		Return([]models.Artifact{}, nil)
+
+	r := setupOrchestrationV2RouterWithArtifacts(artRepo, decRepo, taskSvc, userID, models.RoleUser)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String()+"/artifacts", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	artRepo.AssertExpectations(t)
+}
+
+func TestGetArtifact_NoAccess_Returns403(t *testing.T) {
+	taskID := uuid.New()
+	artifactID := uuid.New()
+	userID := uuid.New()
+
+	artRepo := new(mockArtifactRepo)
+	decRepo := new(mockRouterDecisionRepo)
+	taskSvc := new(MockTaskService)
+
+	taskSvc.On("GetByID", mock.Anything, userID, models.UserRole(models.RoleUser), taskID).
+		Return(nil, service.ErrProjectForbidden)
+
+	r := setupOrchestrationV2RouterWithArtifacts(artRepo, decRepo, taskSvc, userID, models.RoleUser)
+	req := httptest.NewRequest(http.MethodGet,
+		"/tasks/"+taskID.String()+"/artifacts/"+artifactID.String(), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	artRepo.AssertNotCalled(t, "GetByID", mock.Anything, mock.Anything)
+}
+
+func TestListRouterDecisions_NoAccess_Returns403(t *testing.T) {
+	taskID := uuid.New()
+	userID := uuid.New()
+
+	artRepo := new(mockArtifactRepo)
+	decRepo := new(mockRouterDecisionRepo)
+	taskSvc := new(MockTaskService)
+
+	taskSvc.On("GetByID", mock.Anything, userID, models.UserRole(models.RoleUser), taskID).
+		Return(nil, service.ErrProjectForbidden)
+
+	r := setupOrchestrationV2RouterWithArtifacts(artRepo, decRepo, taskSvc, userID, models.RoleUser)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String()+"/router-decisions", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	decRepo.AssertNotCalled(t, "ListByTaskID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestListRouterDecisions_OwnedTask_Returns200(t *testing.T) {
+	taskID := uuid.New()
+	userID := uuid.New()
+
+	artRepo := new(mockArtifactRepo)
+	decRepo := new(mockRouterDecisionRepo)
+	taskSvc := new(MockTaskService)
+
+	taskSvc.On("GetByID", mock.Anything, userID, models.UserRole(models.RoleUser), taskID).
+		Return(&models.Task{ID: taskID}, nil)
+	decRepo.On("ListByTaskID", mock.Anything, taskID, false).
+		Return([]models.RouterDecision{}, nil)
+
+	r := setupOrchestrationV2RouterWithArtifacts(artRepo, decRepo, taskSvc, userID, models.RoleUser)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String()+"/router-decisions", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	decRepo.AssertExpectations(t)
 }

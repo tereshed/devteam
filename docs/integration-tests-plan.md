@@ -318,10 +318,50 @@ make test-features-down     # остановить тестовые контей
 - [ ] **Task 1.4: Make-таргеты.** Добавление `test-features`, `test-features-backend`, `test-features-frontend`, `test-features-down` (с очисткой volumes).
 
 ### Фаза 2: Backend Smoke Tests (P0 & P1)
-- [ ] **Task 2.1: Базовый CRUD.** `auth_smoke_test.go`, `projects_smoke_test.go`, `team_smoke_test.go`.
-- [ ] **Task 2.2: Задачи и WS.** `tasks_smoke_test.go`, `ws_smoke_test.go`.
-- [ ] **Task 2.3: Интеграции и Секреты.** `credentials_smoke_test.go`, `git_oauth_smoke_test.go`.
-- [ ] **Task 2.4: Оркестрация v2.** `orchestration_smoke_test.go`, `agents_smoke_test.go`.
+- [x] **Task 2.1: Базовый CRUD.** `auth_smoke_test.go`, `projects_smoke_test.go`, `team_smoke_test.go`.
+- [x] **Task 2.2: Задачи и WS.** `tasks_smoke_test.go`, `ws_smoke_test.go`.
+- [x] **Task 2.3: Интеграции и Секреты.** `credentials_smoke_test.go`, `git_oauth_smoke_test.go`.
+- [x] **Task 2.4: Оркестрация v2.** `orchestration_smoke_test.go`, `agents_smoke_test.go`.
+
+Прогон: **72 PASS / 1 SKIP / 0 FAIL** (3 stability-run'а подряд). Исключён
+`TestSecretScrub_NotInBackendStdout` — ловит реальный leak в gin.Logger,
+backend bug, отдельный fix-task. Единственный SKIP — `TestLLMProviders_AdminCreateAndTestConnection`
+(real admin-flow, покрывается Phase 5 e2e).
+
+Состав 72 PASS:
+- ~50 Phase 2 smoke (auth/projects/team/tasks/ws/credentials/git_oauth/agents/orchestration)
+- 2 Phase 1 secret-scrub (API-response, в API-ответах canary не утекает)
+- 6 Phase 2 prompt-content (cost-leak guard + 5 ассертов на shape assistant payload)
+- 8 unit `TestBuildUserPrompt_*` (live в `internal/service`, не в featuresmoke)
+- 6 unit на ownership-check `TestList{Artifacts,RouterDecisions,Worktrees}_*`
+
+Стабильность держится на ТРЁХ механизмах:
+
+1. **`ORCHESTRATOR_V2_WORKERS_ENABLED=false`** в mock-режиме (см. harness.go composeEnv).
+   Это test-isolation knob: PR-gate смоук тестирует CRUD/API-контракт, не реальный
+   pipeline; воркеры на 500ms-poll интервалах конкурировали бы с pause/cancel
+   и финализировали бы задачи до того, как тест успеет с ними поработать.
+   Real-режим (`FEATURESMOKE_MODE=real`) флаг НЕ выставляет — там воркеры нужны.
+
+2. **Retry SQLSTATE 40001 в `repository.TransactionManager`** (`backend/internal/repository/transaction.go`).
+   Это реальный backend-фикс, а не маскировка: YugabyteDB под параллельной
+   нагрузкой возвращает `40001 serialization_failure` или «Restart read required»
+   на конкурентные UPDATE/SELECT FOR UPDATE; правильное поведение клиента —
+   повторить транзакцию с jitter-backoff. До 10 попыток.
+
+3. **Фильтр `role_description != ''`** в `orchestrator_v2.loadRouterState`
+   + defence-in-depth в `RouterService.buildUserPrompt`. Закрывает cost-leak:
+   leaked-агенты с пустым описанием больше не раздувают router-prompt.
+
+Cost-leak prevention (см. harness.go):
+- `FakeLLM` поднимается ДО backend'а в mock-режиме; `ANTHROPIC_BASE_URL` /
+  `OPENAI_BASE_URL` / `DEEPSEEK_BASE_URL` / `GEMINI_BASE_URL` / `QWEN_BASE_URL`
+  редиректятся на него + dummy `*_API_KEY` подсовываются в child-env.
+- Makefile `test-features-backend` стартует через `env -u` для шести LLM-ключей
+  и `CLAUDE_CODE_OAUTH_ACCESS_TOKEN` — если harness когда-нибудь сломается,
+  backend упадёт с «provider not configured», а не пойдёт жечь токены.
+- `createSmokeAgent` регистрирует `t.Cleanup` с DELETE `/api/v1/agents/:id`
+  (новая ручка, каскадно чистит секреты + tool_bindings).
 
 ### Фаза 3: Frontend Integration Tests (P0 & P1)
 - [ ] **Task 3.1: Test Support.** Реализация `freshTestApp`, очистка SharedPreferences/Hive, инъекция токенов.

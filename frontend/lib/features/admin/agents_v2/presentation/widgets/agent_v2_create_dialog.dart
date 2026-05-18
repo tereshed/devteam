@@ -153,7 +153,7 @@ class _AgentV2CreateDialogState extends ConsumerState<AgentV2CreateDialog> {
                     controller: _modelCtrl,
                     decoration: InputDecoration(
                         labelText: l10n.agentsV2FieldModel,
-                        hintText: 'claude-sonnet-4-6'),
+                        hintText: 'claude-haiku-4-5-20251001'),
                     validator: (v) => isLlm && (v == null || v.trim().isEmpty)
                         ? l10n.commonRequiredField
                         : null,

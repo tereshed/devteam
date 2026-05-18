@@ -397,3 +397,29 @@ func (s *AgentService) DeleteSecret(ctx context.Context, secretID uuid.UUID) err
 	}
 	return nil
 }
+
+// Delete — hard-delete агента из реестра. Hard-delete потому что у нас уже
+// есть soft-disable через is_active=false (для backward-compat с in-flight задачами).
+// Кейс использования: cleanup тестовых агентов через `t.Cleanup` в featuresmoke,
+// плюс ручное удаление никем не использующейся записи через UI.
+//
+// Sprint 5: репозиторий сам каскадно не чистит agent_secrets / agent_tool_bindings —
+// сделать это надо в service-слое в одной транзакции, иначе останутся orphan-записи.
+func (s *AgentService) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Сначала секреты (FK на agents.id мог быть с RESTRICT — точно не знаем).
+		if err := s.secretRepo.DeleteByAgentID(txCtx, id); err != nil {
+			if !errors.Is(err, repository.ErrAgentSecretNotFound) {
+				return fmt.Errorf("delete agent secrets: %w", err)
+			}
+		}
+		// Затем сам агент.
+		if err := s.agentRepo.Delete(txCtx, id); err != nil {
+			if errors.Is(err, repository.ErrAgentNotFound) {
+				return ErrAgentNotInRegistry
+			}
+			return fmt.Errorf("delete agent %s: %w", id, err)
+		}
+		return nil
+	})
+}

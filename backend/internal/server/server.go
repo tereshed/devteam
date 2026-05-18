@@ -180,6 +180,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				agentsV2.GET("/:id", deps.AgentV2Handler.Get)
 				agentsV2.POST("", deps.AgentV2Handler.Create)
 				agentsV2.PUT("/:id", deps.AgentV2Handler.Update)
+				agentsV2.DELETE("/:id", deps.AgentV2Handler.Delete)
 				agentsV2.POST("/:id/secrets", deps.AgentV2Handler.SetSecret)
 				agentsV2.DELETE("/secrets/:secret_id", deps.AgentV2Handler.DeleteSecret)
 			}

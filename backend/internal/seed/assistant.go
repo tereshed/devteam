@@ -28,14 +28,16 @@ const assistantDefaultSystemPrompt = `Ты — ассистент платфор
 
 // Дефолтные параметры LLM для assistant-агента.
 //
-// Модель выбираем sonnet-4-6 — тот же класс, что у router/planner/reviewer
-// (миграция 038). Provider — anthropic; для других провайдеров оператор
-// должен явно переключить через UI после первого старта.
+// Модель — claude-haiku-4-5-20251001 (cheap: $1/$5 vs Sonnet 4.6 $3/$15).
+// Ассистент гоняет до AssistantMaxIterations=12 итераций на одно user-сообщение,
+// поэтому каждый процент экономии на модели даёт большой эффект. Оператор
+// может перебить через UI / `PUT /api/v1/agents/:id` если хочется качества.
+// Provider — anthropic; для других провайдеров оператор переключает явно.
 //
 // Температура низкая (0.2): assistant — управляющий агент, нам нужны
 // предсказуемые tool_call'ы, а не креативные ответы.
 const (
-	assistantDefaultModel        = "claude-sonnet-4-6"
+	assistantDefaultModel        = "claude-haiku-4-5-20251001"
 	assistantDefaultProviderKind = models.AgentProviderKindAnthropic
 )
 
