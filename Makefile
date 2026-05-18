@@ -85,9 +85,29 @@ test-features-backend: test-features-up
 		go test -tags featuresmoke -race -timeout 600s ./test/featuresmoke/... -count=1 -v
 
 test-features-frontend: test-features-up
+	# Phase 3 Flutter integration_test/ прогоняется через Go-обёртку
+	# (`backend/test/featuresmoke/frontend_e2e_test.go`): она поднимает backend
+	# на ПОРТУ 8080 (зашитом в `lib/core/api/dio_providers.dart`), редиректит LLM
+	# на FakeLLM, спавнит `flutter test` и проверяет, что `llm_logs` не выросла —
+	# cost-leak guard на этом уровне обязателен (Phase 3 не должна жечь токены).
+	#
+	# Codegen + l10n запускаем СНАРУЖИ обёртки: Go-тест Stream'ит flutter test, но
+	# build_runner — это отдельный длительный шаг, лучше держать его прозрачным.
 	cd frontend && flutter pub get && \
-		dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n && \
-		flutter test -d web-server integration_test/
+		dart run build_runner build --delete-conflicting-outputs && flutter gen-l10n
+	# КРИТИЧНО (cost-leak prevention, как в test-features-backend): env -u
+	# снимает реальные LLM-ключи родительского окружения. Если harness в mock-
+	# режиме сломается, backend упадёт с "provider not configured", а не пойдёт
+	# на api.anthropic.com с настоящим ключом.
+	cd backend && env \
+		-u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u DEEPSEEK_API_KEY \
+		-u GEMINI_API_KEY -u QWEN_API_KEY -u OPENROUTER_API_KEY \
+		-u CLAUDE_CODE_OAUTH_ACCESS_TOKEN \
+		FEATURESMOKE_ENABLED=1 FEATURESMOKE_FORCE_PORT=8080 \
+		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		FEATURESMOKE_GITEA_URL=http://localhost:3001 \
+		go test -tags "featuresmoke featuresmoke_frontend" -timeout 1800s \
+			./test/featuresmoke/... -run TestFrontendIntegration_Phase3 -count=1 -v
 
 test-features: test-features-backend test-features-frontend
 

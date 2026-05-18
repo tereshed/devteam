@@ -39,6 +39,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -190,9 +191,9 @@ func bootstrapServer() (string, func(), error) {
 		registerGlobalCleanup(globalFakeLLM.Close)
 	}
 
-	port, err := freePort()
+	port, err := pickServerPort()
 	if err != nil {
-		return "", nil, fmt.Errorf("freePort: %w", err)
+		return "", nil, fmt.Errorf("pickServerPort: %w", err)
 	}
 
 	binPath, err := buildBinary()
@@ -403,6 +404,32 @@ func freePort() (int, error) {
 	}
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// pickServerPort выбирает порт для backend'а:
+//   - если выставлен `FEATURESMOKE_FORCE_PORT` (например, 8080) — используем его;
+//     это нужно для Flutter integration_test, где `lib/core/api/dio_providers.dart`
+//     зашит на `http://localhost:8080/api/v1` и не читает dart-define.
+//   - иначе — случайный свободный порт (поведение по умолчанию).
+//
+// Проверяем, что forced-port реально свободен: если нет — фейлимся явно
+// (ошибка «port busy» лучше, чем тихое падение Flutter-теста на TCP-RST).
+func pickServerPort() (int, error) {
+	if raw := strings.TrimSpace(os.Getenv("FEATURESMOKE_FORCE_PORT")); raw != "" {
+		p, err := strconv.Atoi(raw)
+		if err != nil || p <= 0 || p > 65535 {
+			return 0, fmt.Errorf("FEATURESMOKE_FORCE_PORT=%q: not a valid port", raw)
+		}
+		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+		if err != nil {
+			return 0, fmt.Errorf("port %d is busy (FEATURESMOKE_FORCE_PORT): %w; "+
+				"остановите wibe_backend (`docker compose down app`) или выберите другой порт",
+				p, err)
+		}
+		_ = l.Close()
+		return p, nil
+	}
+	return freePort()
 }
 
 // killTree — graceful shutdown через os.Interrupt (SIGINT на Unix, CTRL_BREAK
