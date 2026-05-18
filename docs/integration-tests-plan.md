@@ -402,9 +402,12 @@ Cost-leak prevention (см. harness.go):
 дальше смотрит ревьюер глазами через `psql llm_logs`.
 
 ### Фаза 5: CI/CD и Дашборд
-- [ ] **Task 5.1: PR-gate Workflow.** Настройка `feature-smoke.yml` (разделение на ubuntu-latest для backend/web и macos-latest для iOS/macOS).
-- [ ] **Task 5.2: Nightly Workflow & E2E Rewrite.** Переписывание `scripts/e2e_smoke.sh` на Go (`e2e_real_test.go` с тегом `e2ereal`). Настройка `feature-e2e-real.yml` с реальными LLM и GitHub.
-- [ ] **Task 5.3: Dashboard.** Интеграция генератора отчетов (HTML/Markdown) из результатов `go test -json` и `flutter test`. Публикация матрицы статусов фич в PR и/или GitHub Pages.
+- [x] **Task 5.1: PR-gate Workflow.** `.github/workflows/feature-smoke.yml` (две джобы:
+  `backend-and-web` на ubuntu-latest с docker-compose.test stack-ом + Flutter web; `macos-frontend` на macos-latest с замоканным backend'ом и swagger-gate'ом). PR-комментарий с матрицей делается через gh api с маркером, чтобы апдейтить один комментарий на каждый push.
+- [x] **Task 5.2: Nightly Workflow & E2E Rewrite.** `backend/test/featuresmoke/e2e_real_test.go` (build tag `featuresmoke && e2ereal`) переиспользует harness.go: SQL-seed агентов через `directDB`, seed-секретов через `exec.CommandContext("go run ./cmd/seed_*")`, GitHub API через `net/http`. Без вызовов `git exec` — flag-injection невозможен по построению. `.github/workflows/feature-e2e-real.yml` запускается по cron `0 3 * * *` + workflow_dispatch, гоняет real-featuresmoke + e2e_real + Flutter integration над real-backend.
+- [x] **Task 5.3: Dashboard.** `backend/cmd/feature_report/main.go` — генератор Markdown + HTML матрицы фич из `go test -json` и `flutter test --machine`. Без внешних зависимостей (stdlib only). PR-gate комментирует Markdown в PR; nightly публикует HTML в GitHub Pages через `actions/deploy-pages@v4`. Тесты репортера: `backend/cmd/feature_report/main_test.go` (5 тестов — парсинг go-test JSON, парсинг flutter machine-format с hidden=true фильтром, red-first сортировка, rendering).
+
+Прогон Phase 5: dashboard-tests **5/5 PASS**, `featuresmoke` + `e2ereal` build-tag комбинации компилируются, sanity-run 3-х представительских тестов (`TestAuth_RegisterLoginMe`, `TestProjects_CreateReadUpdateDelete`, `TestSecretScrub_NotInAPIErrorResponses`) — все зелёные через новый JSON-output путь. `scripts/e2e_smoke.sh` помечен как deprecated (см. шапку файла) — оставлен для istoricheskoy reference, новая работа идёт через `make test-features-e2e-real`.
 
 ## Решения, зафиксированные с пользователем
 

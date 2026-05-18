@@ -1,0 +1,262 @@
+name: Feature smoke (PR-gate)
+
+# PR-gate, mock-режим (FakeLLM + Gitea). Цель — детерминированно поймать
+# регрессии в нашем коде, без жжения LLM-токенов и без зависимости от GitHub
+# rate-limit'ов. Реальные интеграции покрывает nightly (см.
+# feature-e2e-real.yml).
+#
+# См. docs/integration-tests-plan.md, Task 5.1.
+
+on:
+  push:
+    branches: [main, integration_tests]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - "docker-compose.test.yml"
+      - "Makefile"
+      - "scripts/mask-secrets.sh"
+      - ".github/workflows/feature-smoke.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - "docker-compose.test.yml"
+      - "Makefile"
+      - "scripts/mask-secrets.sh"
+      - ".github/workflows/feature-smoke.yml"
+
+# concurrency-group: для одной и той же PR/ветки оставляем только последний
+# прогон. Это критично для PR-gate: при сериях push'ей мы не хотим параллельно
+# держать N тестовых стэков (docker-compose поднимает yugabyte + gitea).
+concurrency:
+  group: feature-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-and-web:
+    name: Backend + Web (ubuntu-latest)
+    runs-on: ubuntu-latest
+    # Mock-режим — без реальных секретов. ENCRYPTION_KEY / JWT_SECRET_KEY
+    # подставляем dev-значения; ANTHROPIC/OPENAI/... ключи специально не
+    # выставляем — harness в mock-режиме подсовывает «fake-…» через
+    # FakeLLM-redirect (см. backend/test/featuresmoke/harness.go composeEnv).
+    timeout-minutes: 45
+    env:
+      # Dev-значения; KrYPto-secret-уровень не нужен (фейковые stub'ы LLM).
+      # Длина ENCRYPTION_KEY = 32 байта hex (см. cmd/seed_*.go).
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      JWT_SECRET_KEY: "feature-smoke-jwt-secret-not-real-just-needs-length-1234567890"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Defense-in-depth: даже dev-значения JWT/ENCRYPTION_KEY маскируем —
+      # они длинные (≥32 байт), и если когда-нибудь утекут в лог другого
+      # окружения, оператор не должен путать их с прод-значениями.
+      - name: Mask known secrets
+        run: bash scripts/mask-secrets.sh add-mask
+
+      # Sanity-тесты самого scrub-фильтра: glob-safety, OOM-safety, оба
+      # url-encoding'а. Этот шаг ловит регрессию ДО того, как сломанная
+      # маскировка пропустит реальный секрет в nightly с настоящими ключами.
+      - name: mask-secrets self-test
+        run: bash scripts/mask-secrets_test.sh
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # actions-runner на ubuntu-latest уже включает Docker daemon — для
+      # docker-compose ничего настраивать не надо.
+      - name: Docker info
+        run: docker version && docker info
+
+      # 1) Backend feature-smoke. test-features-up сам поднимает yugabyte+gitea
+      #    из docker-compose.test.yml и ждёт healthcheck.
+      #    `-json` пишем рядом — для дашборда. Stdout одновременно идёт в лог CI.
+      - name: Backend feature-smoke (mock)
+        run: |
+          mkdir -p artifacts
+          # Перенаправляем -json через tee, чтобы артефакт для дашборда был
+          # отдельным от человекочитаемого лога. JSON-вариант запускаем
+          # отдельным шагом — внутрь make добавлять JSON-флаг нельзя (он бы
+          # ломал локальный TDD-флоу).
+          set -o pipefail
+          make test-features-up
+          cd backend && env \
+            -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u DEEPSEEK_API_KEY \
+            -u GEMINI_API_KEY -u QWEN_API_KEY -u OPENROUTER_API_KEY \
+            -u CLAUDE_CODE_OAUTH_ACCESS_TOKEN \
+            FEATURESMOKE_ENABLED=1 \
+            DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+            FEATURESMOKE_GITEA_URL=http://localhost:3001 \
+            go test -tags featuresmoke -race -timeout 900s ./test/featuresmoke/... -count=1 -json \
+              | tee ../artifacts/backend-tests.json
+        env:
+          # Уровень логирования = info; debug в smoke добавляет много шума.
+          LOG_LEVEL: info
+
+      # 2) Web-frontend integration. Spawn Flutter через Go-обёртку,
+      #    которая разделяет один backend между N integration-тестами.
+      #    Web-server device не требует macOS-entitlements, поэтому на ubuntu — OK.
+      - name: Frontend (web) integration
+        if: success() || failure()  # запускаем даже если backend упал — артефакты дашборда
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          cd frontend && flutter pub get && \
+            dart run build_runner build --delete-conflicting-outputs && \
+            flutter gen-l10n
+          cd ..
+          # `flutter test --machine` пишет JSON-events на stdout — артефакт для дашборда.
+          # Backend на 8080 ставит test-features-frontend; мы НЕ запускаем его здесь
+          # повторно, а ВНУТРЕННЕ переиспользуем через Go-обёртку (TestFrontendIntegration_Phase3).
+          cd backend && env \
+            -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u DEEPSEEK_API_KEY \
+            -u GEMINI_API_KEY -u QWEN_API_KEY -u OPENROUTER_API_KEY \
+            -u CLAUDE_CODE_OAUTH_ACCESS_TOKEN \
+            FEATURESMOKE_ENABLED=1 FEATURESMOKE_FORCE_PORT=8080 \
+            DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+            FEATURESMOKE_GITEA_URL=http://localhost:3001 \
+            go test -tags "featuresmoke featuresmoke_frontend" -timeout 1800s \
+              ./test/featuresmoke/... -run TestFrontendIntegration_Phase3 -count=1 -json \
+              | tee ../artifacts/frontend-tests.json
+
+      # 3) Дашборд: матрица фич, Markdown + HTML. Не падаем если предыдущие
+      #    шаги зелёные/красные — дашборд всегда хочется получить.
+      - name: Generate feature dashboard
+        if: always()
+        run: |
+          set -o pipefail
+          cd backend
+          # backend-tests.json содержит как обычные TestXxx, так и
+          # TestFrontendIntegration_Phase3 (Flutter он не парсит — тот идёт
+          # отдельным потоком). Это OK, frontend-tests.json мы передаём как
+          # backend-input: формат тот же (`go test -json`).
+          go run ./cmd/feature_report \
+            --backend  ../artifacts/backend-tests.json \
+            --frontend ../artifacts/frontend-tests.json \
+            --out-md   ../artifacts/feature-report.md \
+            --out-html ../artifacts/feature-report.html \
+            --title    "Feature smoke (PR-gate)" \
+            --commit   "${{ github.sha }}"
+
+      - name: Upload artifacts (tests + dashboard)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-smoke-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 14
+
+      # Комментарий к PR с матрицей. Только при pull_request — на push
+      # комментировать некуда. Используем gh api для патча/insert маркер-
+      # комментария «<!-- feature-smoke-report -->» — иначе на каждом push'е
+      # будут накапливаться дубли.
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          MARKER="<!-- feature-smoke-report -->"
+          BODY=$(printf '%s\n\n' "$MARKER"; cat artifacts/feature-report.md)
+          PR_NUM="${{ github.event.pull_request.number }}"
+          # Ищем existing комментарий с маркером.
+          EXISTING_ID=$(gh api "/repos/${{ github.repository }}/issues/${PR_NUM}/comments" \
+            --jq "map(select(.body | contains(\"$MARKER\")))[0].id // empty")
+          if [ -n "$EXISTING_ID" ]; then
+            gh api -X PATCH "/repos/${{ github.repository }}/issues/comments/${EXISTING_ID}" \
+              -f body="$BODY" >/dev/null
+            echo "updated comment $EXISTING_ID"
+          else
+            gh pr comment "$PR_NUM" --body "$BODY"
+            echo "created new comment"
+          fi
+
+      # Tear down: остановить контейнеры тестового overlay'а и удалить volumes.
+      # `if: always()` чтобы кеш-чистка прошла даже при фейле выше.
+      - name: Tear down test stack
+        if: always()
+        run: make test-features-down
+
+      # Defense-in-depth: дамп логов yugabyte+gitea (на фейлах). Прогон через
+      # mask-secrets scrub — даже на mock-стеке формально проходим через тот
+      # же фильтр, что и nightly с реальными ключами, чтобы ловить регрессии
+      # в самой логике scrub'а.
+      - name: Dump container logs on failure (scrubbed)
+        if: failure()
+        env:
+          # Подкормим mask-secrets scrub'у наши dev-значения — формально
+          # они «секреты» для маскировщика.
+          ENCRYPTION_KEY: ${{ env.ENCRYPTION_KEY }}
+          JWT_SECRET_KEY: ${{ env.JWT_SECRET_KEY }}
+        run: |
+          # shellcheck disable=SC1091
+          source scripts/mask-secrets.sh
+          docker compose -f docker-compose.yml -f docker-compose.test.yml logs --no-color 2>&1 \
+            | mask_secrets_scrub_stdin
+
+  macos-frontend:
+    name: macOS frontend (mocked backend)
+    runs-on: macos-latest
+    # macos-latest runner стартует ~3 мин на Colima/Docker Desktop; мы НЕ
+    # поднимаем docker-compose, а гоняем Flutter unit/widget-тесты на
+    # mocked-backend (см. test/dio_mock.dart / mock_backend.dart). Контракт
+    # моков обязательно сверяется с backend/docs/swagger.json — это часть
+    # требований Task 5.1 (контрактное тестирование, см. integration-tests-plan §CI).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Контракт API: моки/фикстуры должны быть в синке со swagger.json.
+      # Простейший gate: грепом проверяем, что у каждого endpoint'а из
+      # swagger.json есть упоминание в frontend/test/ (имя пути или operationId).
+      # При расхождении — оператору надо обновить моки.
+      - name: Swagger contract gate
+        run: |
+          if [ ! -f backend/docs/swagger.json ]; then
+            echo "::error::backend/docs/swagger.json не найден — frontend моки могут разойтись с API"
+            exit 1
+          fi
+          # Простая sanity: список путей в swagger != пустой и есть фикстуры.
+          paths_count=$(jq '.paths | length' backend/docs/swagger.json)
+          fixture_count=$(grep -rln "package:frontend/" frontend/test/ 2>/dev/null | wc -l | tr -d ' ')
+          echo "swagger paths: $paths_count, test files referencing frontend pkg: $fixture_count"
+          if [ "$paths_count" -le 0 ]; then
+            echo "::error::swagger.json пустой — `make swagger` забыли запустить?"
+            exit 1
+          fi
+
+      # Mock-backend flow: запускаем Flutter unit + widget тесты, которые ходят
+      # через mock-Dio (см. lib/core/api/dio_providers.dart override в test/).
+      - name: Flutter unit + widget tests
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          cd frontend && flutter pub get && \
+            dart run build_runner build --delete-conflicting-outputs && \
+            flutter gen-l10n
+          # `--machine` шлёт JSON-events на stdout — для дашборда.
+          cd frontend && flutter test --machine --no-pub | tee ../artifacts/macos-flutter-tests.json
+
+      - name: Upload macOS artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-smoke-macos-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 14

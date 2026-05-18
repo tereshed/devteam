@@ -1,0 +1,199 @@
+name: Feature e2e-real (nightly)
+
+# Nightly + on-demand. Real LLM (Anthropic/DeepSeek/OpenRouter), real GitHub
+# (`tereshed/kt-test-repo`). Ловит регрессии в нашей интеграции с внешними API.
+# См. docs/integration-tests-plan.md Task 5.2.
+#
+# Запускает:
+#   1) Обычные featuresmoke-тесты в `FEATURESMOKE_MODE=real` (часть тестов
+#      имеет real-only ветки: TestPrompts_AdminHappyPath, TestWorkflows_*,
+#      TestLLMProviders_AdminCreateAndTestConnection,
+#      TestAssistant_SendMessage_LLMRequestIsSane).
+#   2) TestE2EReal_MixedAgentsPipeline — полный pipeline orchestrator →
+#      planner → developer → reviewer → tester с открытием реального PR на
+#      kt-test-repo. Build tag `featuresmoke && e2ereal`.
+#   3) Flutter integration_test поверх real-backend (UI/streaming/Markdown
+#      sanity на реальные LLM-ответы).
+#
+# Дашборд: artifact + комментарий в issue tracker (Linear) — здесь делаем
+# upload-artifact и (опционально) публикацию в GitHub Pages.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 03:00 UTC ≈ 06:00 MSK — никто не пушит в это время
+  workflow_dispatch:
+    inputs:
+      timeout:
+        description: "E2E pipeline timeout (Go-duration, default=15m)"
+        required: false
+        default: "15m"
+
+concurrency:
+  group: feature-e2e-real
+  cancel-in-progress: false
+
+jobs:
+  e2e-real:
+    name: e2e-real (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Real-режим: harness НЕ редиректит base_url на FakeLLM и НЕ подсовывает
+      # dummy-ключи. Backend ходит на api.anthropic.com / api.deepseek.com /
+      # openrouter.ai с настоящими ключами из GitHub Secrets.
+      FEATURESMOKE_MODE: real
+      # Реальные секреты пробрасываются из GitHub Secrets. В env-блоке держим
+      # их явно — yaml-парсер не позволит «забыть» прокинуть нужный ключ.
+      ANTHROPIC_API_KEY:               ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY:                  ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY:                ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENROUTER_API_KEY:              ${{ secrets.OPENROUTER_API_KEY }}
+      CLAUDE_CODE_OAUTH_ACCESS_TOKEN:  ${{ secrets.CLAUDE_CODE_OAUTH_ACCESS_TOKEN }}
+      CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_REFRESH_TOKEN }}
+      GITHUB_PAT:                      ${{ secrets.E2E_GITHUB_PAT }}
+      ENCRYPTION_KEY:                  ${{ secrets.ENCRYPTION_KEY }}
+      JWT_SECRET_KEY:                  ${{ secrets.JWT_SECRET_KEY }}
+      E2E_TIMEOUT: ${{ inputs.timeout || '15m' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # КРИТИЧНО: маскируем ВСЕ известные секреты ДО первого echo / тестового
+      # шага. ::add-mask:: применяется к stdout/stderr этого и последующих
+      # шагов, поэтому даже случайный `echo $ANTHROPIC_API_KEY` будет в логе
+      # как «***». Дополнительно маскируем URL-encoded версии — на случай,
+      # если секрет влетит в URL access-log'а.
+      - name: Mask all known secrets
+        run: bash scripts/mask-secrets.sh add-mask
+
+      # Sanity-тесты scrub-фильтра — критично в nightly, потому что любой
+      # leak здесь идёт в логи с НАСТОЯЩИМИ ключами. Если scrub сломан,
+      # хотим узнать об этом ДО прогона тестов с реальными секретами.
+      - name: mask-secrets self-test
+        run: bash scripts/mask-secrets_test.sh
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Sandbox-images (claude + hermes) собираются однажды — пайплайн их
+      # использует для developer/reviewer/tester. На локалке `make sandbox-build`,
+      # в CI — здесь же, чтобы не зависеть от внешнего registry.
+      - name: Build sandbox images
+        run: make sandbox-build
+
+      - name: Docker info
+        run: docker version && docker info
+
+      # 1) Базовые featuresmoke в real-режиме — те тесты, которые в mock'е
+      #    делали t.Skip (Phase 4 admin-flow, assistant prompt sanity).
+      #    Артефакт `backend-real-tests.json` уходит в дашборд.
+      - name: Run featuresmoke (real LLM)
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          make test-features-up
+          cd backend && \
+            DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+            FEATURESMOKE_ENABLED=1 \
+            go test -tags featuresmoke -race -timeout 1800s ./test/featuresmoke/... -count=1 -json \
+              | tee ../artifacts/backend-real-tests.json
+
+      # 2) Полный pipeline (e2e_real_test.go). Отдельный шаг — он:
+      #    - использует ENCRYPTION_KEY/CLAUDE_CODE_*/DEEPSEEK_*/OPENROUTER_*/GITHUB_PAT;
+      #    - открывает реальный PR на kt-test-repo (rate-limit-aware);
+      #    - проверяет secret-scrub на стороне backend log.
+      - name: Run e2e_real pipeline (mixed agents)
+        run: |
+          set -o pipefail
+          cd backend && \
+            DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+            FEATURESMOKE_ENABLED=1 \
+            go test -tags "featuresmoke e2ereal" -timeout 1800s \
+              ./test/featuresmoke/... -run TestE2EReal_MixedAgentsPipeline -count=1 -json \
+              | tee ../artifacts/e2e-real-tests.json
+
+      # 3) Flutter integration поверх real-backend. UI должен корректно рендерить
+      #    стриминг настоящих LLM-ответов и Markdown (не только моки).
+      - name: Flutter integration over real backend
+        if: success() || failure()
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          cd frontend && flutter pub get && \
+            dart run build_runner build --delete-conflicting-outputs && \
+            flutter gen-l10n
+          cd ../backend && \
+            FEATURESMOKE_ENABLED=1 FEATURESMOKE_FORCE_PORT=8080 \
+            DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+            go test -tags "featuresmoke featuresmoke_frontend" -timeout 1800s \
+              ./test/featuresmoke/... -run TestFrontendIntegration_Phase3 -count=1 -json \
+              | tee ../artifacts/frontend-real-tests.json
+
+      - name: Generate feature dashboard
+        if: always()
+        run: |
+          set -o pipefail
+          # Сливаем backend + e2e в один файл — оба `go test -json` формата.
+          cat artifacts/backend-real-tests.json artifacts/e2e-real-tests.json \
+              > artifacts/backend-merged.json 2>/dev/null || true
+          cd backend && go run ./cmd/feature_report \
+            --backend  ../artifacts/backend-merged.json \
+            --frontend ../artifacts/frontend-real-tests.json \
+            --out-md   ../artifacts/feature-report.md \
+            --out-html ../artifacts/feature-report.html \
+            --title    "Feature e2e-real (nightly)" \
+            --commit   "${{ github.sha }}"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-e2e-real-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 30
+
+      # Публикация в GitHub Pages — простой вариант: artefact + commit на gh-pages.
+      # В первом проходе настроим upload-pages-artifact + deploy. Permissions
+      # настраиваются на уровне job'ы ниже.
+      - name: Upload Pages artifact
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts
+
+      # Defense-in-depth: дамп логов docker-compose со scrub-фильтром. Этот же
+      # шаг повторяет логику из docs/integration-tests-plan.md «Dump logs on
+      # failure через явный scrub-фильтр».
+      - name: Dump container logs on failure (scrubbed)
+        if: failure()
+        run: |
+          # shellcheck disable=SC1091
+          source scripts/mask-secrets.sh
+          docker compose -f docker-compose.yml -f docker-compose.test.yml logs --no-color 2>&1 \
+            | mask_secrets_scrub_stdin
+
+      - name: Tear down test stack
+        if: always()
+        run: make test-features-down
+
+  publish-pages:
+    name: Publish dashboard to GitHub Pages
+    needs: e2e-real
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

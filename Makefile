@@ -19,7 +19,8 @@ SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 	frontend-run-web frontend-run-android frontend-run-ios \
 	frontend-build-web frontend-build-android frontend-build-ios \
 	swagger rules \
-	test-features test-features-up test-features-backend test-features-frontend test-features-real test-features-down
+	test-features test-features-up test-features-backend test-features-frontend test-features-real test-features-e2e-real test-features-down \
+	feature-report
 
 # === Управление сервисами ===
 build:
@@ -115,6 +116,42 @@ test-features-real: test-features-up
 	cd backend && FEATURESMOKE_ENABLED=1 FEATURESMOKE_MODE=real \
 		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
 		go test -tags featuresmoke -race -timeout 1800s ./test/featuresmoke/... -count=1 -v
+
+# test-features-e2e-real (Task 5.2, Phase 5): полный pipeline orchestrator →
+# planner → developer → reviewer → tester с реальным PR на kt-test-repo.
+# Тег `e2ereal` нужен в дополнение к `featuresmoke` — он gate'ит файл
+# `e2e_real_test.go`. Так как тест открывает реальный PR в github и тратит
+# заметные деньги на LLM (~10-15 центов за прогон), запускается ТОЛЬКО
+# nightly + on-demand (см. feature-e2e-real.yml). Локально — для проверки
+# регрессий в самом тесте перед merge'ом workflow.
+#
+# Требует в env: ANTHROPIC_API_KEY (обычно через backend/.env) +
+# CLAUDE_CODE_OAUTH_ACCESS_TOKEN, DEEPSEEK_API_KEY, OPENROUTER_API_KEY,
+# GITHUB_PAT, ENCRYPTION_KEY. Без них тест делает t.Skip с понятным сообщением.
+test-features-e2e-real: test-features-up
+	cd backend && FEATURESMOKE_ENABLED=1 FEATURESMOKE_MODE=real \
+		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		go test -tags "featuresmoke e2ereal" -timeout 1800s \
+			./test/featuresmoke/... -run TestE2EReal_MixedAgentsPipeline -count=1 -v
+
+# feature-report (Task 5.3, Phase 5): локальный прогон дашборда поверх
+# артефактов go test -json / flutter test --machine. CI вызывает аналогично
+# (см. .github/workflows/feature-smoke.yml). Удобно для локальной отладки
+# самого репортера: положи свои JSON-файлы в ./artifacts и запусти.
+#
+# Пример:
+#   make feature-report BACKEND_JSON=./artifacts/backend.json FRONTEND_JSON=./artifacts/frontend.json
+BACKEND_JSON  ?= ./artifacts/backend-tests.json
+FRONTEND_JSON ?= ./artifacts/frontend-tests.json
+feature-report:
+	mkdir -p artifacts
+	cd backend && go run ./cmd/feature_report \
+		--backend  ../$(BACKEND_JSON) \
+		--frontend ../$(FRONTEND_JSON) \
+		--out-md   ../artifacts/feature-report.md \
+		--out-html ../artifacts/feature-report.html \
+		--title    "Feature smoke (local)" \
+		--commit   "$(shell git rev-parse --short HEAD)"
 
 test-features-down:
 	@echo ">> Останавливаем тестовый stack и удаляем volumes..."

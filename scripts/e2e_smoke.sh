@@ -1,4 +1,22 @@
 #!/usr/bin/env bash
+# DEPRECATED (Phase 5 / Task 5.2, см. docs/integration-tests-plan.md):
+# Этот bash-скрипт заменён на Go-тест `backend/test/featuresmoke/e2e_real_test.go`
+# (build tag `featuresmoke && e2ereal`). Новая входная точка:
+#
+#     make test-features-e2e-real
+#
+# Go-вариант:
+#   - переиспользует harness.go (бутстрап backend, /auth/register, directDB);
+#   - не зависит от docker exec wibe_backend / wibe_yugabytedb;
+#   - даёт `go test -json` output для генератора feature-report'а;
+#   - проходит по тому же scrub-фильтру, что и остальные featuresmoke тесты.
+#
+# Этот скрипт оставлен read-only как историческая reference для миграции.
+# Если ты читаешь это и думаешь дописать сюда новую логику — НЕ нужно,
+# добавляй в Go-тест.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # Full-stack smoke test (Sprint 14.7 + Sprint 15.e2e + Sprint 16 per-agent backends).
 #
 # Один прогон через единственный pipeline проверяет ВСЕ способы подключения
