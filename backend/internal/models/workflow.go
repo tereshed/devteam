@@ -189,6 +189,8 @@ type Agent struct {
 	Role        AgentRole      `gorm:"type:varchar(50);not null" json:"role"`
 	TeamID      *uuid.UUID     `gorm:"type:uuid" json:"team_id"`
 	Team        *Team          `gorm:"foreignKey:TeamID" json:"team,omitempty"`
+	UserID      *uuid.UUID     `gorm:"type:uuid" json:"user_id"`
+	User        *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Model       *string        `gorm:"type:varchar(255)" json:"model"`
 	PromptID    *uuid.UUID     `gorm:"type:uuid" json:"prompt_id"`
 	Prompt      *Prompt        `gorm:"foreignKey:PromptID" json:"prompt,omitempty"`

@@ -20,6 +20,10 @@ func (m *mockAgentLoader) GetAgentByName(ctx context.Context, name string) (*mod
 	return m.agent, m.err
 }
 
+func (m *mockAgentLoader) GetAgentByUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
+	return m.agent, m.err
+}
+
 type assistantMockUserLlmCredentialService struct {
 	key string
 	err error

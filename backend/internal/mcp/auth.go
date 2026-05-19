@@ -145,9 +145,11 @@ func NewAuthMiddleware(next http.Handler, apiKeyService service.ApiKeyService) h
 			return
 		}
 
-		// TODO: проверка scopes — убедиться что ключ имеет scope "*" или "mcp".
-		// Сейчас все валидные ключи получают полный доступ ко всем MCP-инструментам.
-		// При добавлении granular scopes — добавить проверку здесь.
+		if !scopeAllowsMCP(apiKey.Scopes) {
+			writeAuthError(w, http.StatusForbidden, "SCOPE_DENIED",
+				"API key scope does not permit MCP access")
+			return
+		}
 
 		// Помещаем данные пользователя в context
 		ctx := r.Context()
@@ -195,6 +197,21 @@ func isValidKeyFormat(key string) bool {
 		return false
 	}
 	return true
+}
+
+// scopeAllowsMCP checks if an API key's scope permits MCP access.
+// Empty or wildcard "*" allows everything; otherwise requires exact "mcp" token.
+func scopeAllowsMCP(scopes string) bool {
+	if scopes == "" || scopes == "*" || scopes == `"*"` {
+		return true
+	}
+	cleaned := strings.Trim(scopes, `"`)
+	for _, scope := range strings.Fields(strings.ReplaceAll(cleaned, ",", " ")) {
+		if scope == "mcp" {
+			return true
+		}
+	}
+	return false
 }
 
 // handleValidationError маппит ошибки ApiKeyService в HTTP-ответы.

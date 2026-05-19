@@ -30,7 +30,6 @@ import (
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/internal/ws"
 	"github.com/devteam/backend/pkg/agentprompts"
-	"github.com/devteam/backend/pkg/agentsloader"
 	"github.com/devteam/backend/pkg/crypto"
 	"github.com/devteam/backend/pkg/gitprovider"
 	"github.com/devteam/backend/pkg/jwt"
@@ -133,6 +132,16 @@ func main() {
 	llmRepo := repository.NewLLMRepository(db)
 	llmModelRepo := repository.NewLLMModelRepository(db)
 
+	// Phase 2 — AgentService (created early: needed by AuthService and ProjectService).
+	rolePromptRepo := repository.NewAgentRolePromptRepository(db)
+	agentSvcV2 := service.NewAgentService(
+		repository.NewAgentRepository(db),
+		repository.NewAgentSecretRepository(db),
+		encryptor,
+		txManager,
+	)
+	agentSvcV2.WithRolePromptRepo(rolePromptRepo).WithApiKeyRepo(apiKeyRepo)
+
 	// Загрузка промптов из файлов
 	log.Println("Loading prompts from backend/prompts...")
 	promptsLoader := promptsloader.New(promptRepo)
@@ -157,12 +166,10 @@ func main() {
 		log.Printf("Failed to load schedules: %v", err)
 	}
 
-	// Sprint 21 §6 — bootstrap глобального assistant-агента (role='assistant').
-	// Идемпотентно: ON CONFLICT (name) WHERE team_id IS NULL DO NOTHING.
-	// Без этой записи AssistantService.runAgentLoop возвращает
-	// ErrAssistantAgentNotConfigured и правая боковая панель не работает.
-	if err := seed.SeedAssistantAgent(context.Background(), db, slog.Default()); err != nil {
-		log.Printf("Failed to seed assistant agent: %v", err)
+	// Phase 1 §1.4 — seed дефолтных промптов для ролей агентов.
+	// ON CONFLICT DO NOTHING: уважаем правки админа.
+	if err := seed.SeedRolePrompts(context.Background(), db, slog.Default()); err != nil {
+		log.Printf("Failed to seed role prompts: %v", err)
 	}
 
 	// Services
@@ -199,7 +206,7 @@ func main() {
 	}()
 
 	jwtManager := jwt.NewManager(cfg.JWT.SecretKey, cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
-	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager, eventBus)
+	authService := service.NewAuthServiceWithAgents(userRepo, refreshTokenRepo, jwtManager, eventBus, agentSvcV2, txManager)
 	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo)
 	promptService := service.NewPromptService(promptRepo)
 	gitFactory := gitprovider.NewFactory()
@@ -213,7 +220,7 @@ func main() {
 	// использует его для fallback на OAuth-токен при создании проекта без явного
 	// git_credential_id.
 	gitIntegrationRepo := repository.NewGitIntegrationCredentialRepository(db)
-	projectService := service.NewProjectService(
+	projectService := service.WithAgentService(service.NewProjectService(
 		projectRepo,
 		teamRepo,
 		gitCredRepo,
@@ -224,7 +231,7 @@ func main() {
 		eventBus,
 		codeIndexer,
 		cfg.Git.ImportDir,
-	)
+	), agentSvcV2)
 	toolDefinitionService := service.NewToolDefinitionService(toolDefRepo)
 	teamService := service.NewTeamService(teamRepo, toolDefRepo)
 	taskIndexer := indexer.NewTaskIndexer(taskRepo, taskMsgRepo, vectorRepo, slog.Default())
@@ -302,15 +309,6 @@ func main() {
 	// Sprint 17 / Orchestration v2 — legacy PipelineEngine удалён.
 	// Новый Orchestrator (orchestrator_v2.go) подключается ниже.
 
-	agentConfigCache, err := agentsloader.NewCache("agents", "prompts")
-	if err != nil {
-		log.Fatalf("agent YAML configs: %v", err)
-	}
-	if err := agentConfigCache.ValidateRequiredAgents(); err != nil {
-		log.Fatalf("agent YAML validation: %v", err)
-	}
-	log.Println("Agent default configs: loaded and validated (backend/agents)")
-
 	var pipelinePromptComposer service.PipelinePromptComposer
 	if pc, err := agentprompts.NewComposer("prompts"); err != nil {
 		log.Printf("Pipeline agent prompts (YAML) not active: %v", err)
@@ -363,7 +361,7 @@ func main() {
 
 	// Sprint 15.M7 — функциональная опция вместо type-assertion-шима WithSandboxAuthResolver.
 	orchestratorContextBuilder := service.NewContextBuilderFull(
-		encryptor, pipelinePromptComposer, agentConfigCache, sandboxSecrets, taskMsgRepo,
+		encryptor, pipelinePromptComposer, sandboxSecrets, taskMsgRepo,
 		service.WithSandboxAuthResolverOption(sandboxAuthResolver),
 		// Sprint 16.C — без этой опции AgentSettingsBundle никогда не доезжает
 		// до sandbox-runner'а: hermes-config/skills/permission-mode становятся мёртвым кодом.
@@ -389,15 +387,6 @@ func main() {
 	artifactRepoV2 := repository.NewArtifactRepository(db)
 	routerDecisionRepoV2 := repository.NewRouterDecisionRepository(db)
 	worktreeRepoV2 := repository.NewWorktreeRepository(db)
-
-	// V2 AgentService — единый инстанс, переиспользуется и для HTTP-хендлера (Sprint 5F.3),
-	// и для MCP-инструментов (Sprint 5). Сервис stateless, безопасен для шаринга.
-	agentSvcV2 := service.NewAgentService(
-		repository.NewAgentRepository(db),
-		repository.NewAgentSecretRepository(db),
-		encryptor,
-		txManager,
-	)
 
 	// Logger с redact-обёрткой для всех v2-компонентов.
 	v2Logger := slog.New(logging.NewHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
@@ -700,6 +689,9 @@ func main() {
 
 		// Sprint 17 / Sprint 5F.3 — HTTP API для v2 admin (Frontend Agents Management).
 		AgentV2Handler: handler.NewAgentV2Handler(agentSvcV2),
+
+		// Phase 1 §1.4 — admin API для дефолтных промптов ролей агентов.
+		AgentRolePromptHandler: handler.NewAgentRolePromptHandler(rolePromptRepo),
 
 		// Sprint 17 / Orchestration v2 — read-only API + manual unstick (POST /worktrees/:id/release).
 		// taskService нужен ListWorktrees'у для task-ownership check'а (см. Sprint 17 / 6.2).

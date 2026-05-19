@@ -83,6 +83,7 @@ type projectService struct {
 	eventBus        events.EventBus
 	indexer         indexer.CodeIndexer
 	importDir       string
+	agentService    *AgentService
 }
 
 // NewProjectService создаёт сервис проектов.
@@ -114,6 +115,14 @@ func NewProjectService(
 		indexer:         indexer,
 		importDir:       importDir,
 	}
+}
+
+// WithAgentService sets the AgentService for auto-creating project agents.
+func WithAgentService(svc ProjectService, agentSvc *AgentService) ProjectService {
+	if ps, ok := svc.(*projectService); ok {
+		ps.agentService = agentSvc
+	}
+	return svc
 }
 
 func (s *projectService) checkProjectAccess(project *models.Project, userID uuid.UUID, userRole models.UserRole) error {
@@ -385,7 +394,13 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 			ProjectID: project.ID,
 			Type:      models.TeamTypeDevelopment,
 		}
-		return s.teamRepo.Create(txCtx, team)
+		if err := s.teamRepo.Create(txCtx, team); err != nil {
+			return err
+		}
+		if s.agentService != nil {
+			return s.agentService.CreateDefaultProjectAgents(txCtx, team.ID)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err

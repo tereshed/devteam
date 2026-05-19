@@ -141,10 +141,11 @@ type WSBroadcaster interface {
 	SendToUser(userID, msgType string, payload []byte) error
 }
 
-// AssistantAgentLoader — узкий интерфейс для лукапа agent по name.
-// Используется существующий *DBAgentLoader (см. v2_di_adapters.go).
+// AssistantAgentLoader — узкий интерфейс для лукапа agent.
+// Phase 2: prefer per-user agent (GetAgentByUserRole); fallback to global (GetAgentByName).
 type AssistantAgentLoader interface {
 	GetAgentByName(ctx context.Context, name string) (*models.Agent, error)
+	GetAgentByUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,7 +253,7 @@ func (s *assistantService) GetStatus(ctx context.Context, userID uuid.UUID) (*dt
 	if userID == uuid.Nil {
 		return nil, ErrAssistantInvalidInput
 	}
-	agent, err := s.deps.AgentLoader.GetAgentByName(ctx, AssistantAgentName)
+	agent, err := s.deps.AgentLoader.GetAgentByUserRole(ctx, userID, string(models.AgentRoleAssistant))
 	if err != nil {
 		return nil, fmt.Errorf("load assistant agent: %w", err)
 	}

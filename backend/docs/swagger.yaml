@@ -1296,6 +1296,21 @@ definitions:
         example: file_ops
         type: string
     type: object
+  handler.agentRolePromptResponse:
+    properties:
+      content:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      role:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
   handler.artifactFullResponse:
     properties:
       content:
@@ -1372,6 +1387,15 @@ definitions:
         type: string
       temperature:
         type: number
+    type: object
+  handler.updateRolePromptRequest:
+    properties:
+      content:
+        type: string
+      description:
+        type: string
+    required:
+    - content
     type: object
   handler.worktreeResponse:
     properties:
@@ -1593,6 +1617,10 @@ definitions:
           $ref: '#/definitions/models.AgentToolBinding'
         type: array
       updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
         type: string
     type: object
   models.AgentExecutionKind:
@@ -1964,6 +1992,123 @@ info:
   title: Backend API
   version: "1.0"
 paths:
+  /admin/agent-role-prompts:
+    get:
+      description: Возвращает реестр дефолтных системных промптов для каждой роли
+        агента. Используется в админке для просмотра и редактирования.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.agentRolePromptResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List default role prompts
+      tags:
+      - admin-role-prompts
+  /admin/agent-role-prompts/{role}:
+    get:
+      description: Возвращает дефолтный системный промпт для указанной роли агента.
+      parameters:
+      - description: Роль агента (assistant, orchestrator, router, planner, ...)
+        in: path
+        name: role
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.agentRolePromptResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get role prompt by role
+      tags:
+      - admin-role-prompts
+    put:
+      consumes:
+      - application/json
+      description: Обновляет content и description дефолтного промпта. Только для
+        admin. Сброс к дефолту = удалить запись в БД + перезапустить backend (seed
+        пересоздаст).
+      parameters:
+      - description: Роль агента
+        in: path
+        name: role
+        required: true
+        type: string
+      - description: Новый промпт
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.updateRolePromptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.agentRolePromptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update role prompt
+      tags:
+      - admin-role-prompts
   /agents:
     get:
       description: Реестр LLM/sandbox-агентов с фильтрами (only_active, execution_kind,

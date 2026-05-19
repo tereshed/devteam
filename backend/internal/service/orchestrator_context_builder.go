@@ -12,8 +12,6 @@ import (
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
-	"github.com/devteam/backend/pkg/agentsloader"
-	"github.com/devteam/backend/pkg/llm"
 )
 
 // ContextBuilder собирает и фильтрует контекст для выполнения задачи агентом.
@@ -37,7 +35,6 @@ const previousStepMessagesLimit = 6
 type contextBuilder struct {
 	encryptor      Encryptor
 	composer       PipelinePromptComposer
-	agentCfg       *agentsloader.Cache
 	sandboxSecrets map[string]string
 	taskMsgRepo    repository.TaskMessageRepository
 	// Sprint 15.18: динамический резолвер аутентификации sandbox-а (OAuth/proxy/api-key).
@@ -49,12 +46,11 @@ type contextBuilder struct {
 	agentSettings AgentSettingsService
 }
 
-// NewContextBuilder создаёт сборщик контекста. agentCfg — предзагруженный кэш backend/agents (6.9); nil в тестах.
-func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptComposer, agentCfg *agentsloader.Cache) ContextBuilder {
+// NewContextBuilder создаёт сборщик контекста.
+func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptComposer) ContextBuilder {
 	return &contextBuilder{
 		encryptor: encryptor,
 		composer:  promptComposer,
-		agentCfg:  agentCfg,
 	}
 }
 
@@ -62,7 +58,7 @@ func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptCompose
 // которые попадут в EnvSecrets для агентов с CodeBackend != "" (Developer/Tester в sandbox).
 // Используется для проброса ANTHROPIC_API_KEY и т.п. в entrypoint sandbox-контейнера.
 // Пустые значения и nil-карта игнорируются.
-func NewContextBuilderWithSandboxSecrets(encryptor Encryptor, promptComposer PipelinePromptComposer, agentCfg *agentsloader.Cache, sandboxSecrets map[string]string) ContextBuilder {
+func NewContextBuilderWithSandboxSecrets(encryptor Encryptor, promptComposer PipelinePromptComposer, sandboxSecrets map[string]string) ContextBuilder {
 	cleaned := make(map[string]string, len(sandboxSecrets))
 	for k, v := range sandboxSecrets {
 		if k == "" || v == "" {
@@ -73,7 +69,6 @@ func NewContextBuilderWithSandboxSecrets(encryptor Encryptor, promptComposer Pip
 	return &contextBuilder{
 		encryptor:      encryptor,
 		composer:       promptComposer,
-		agentCfg:       agentCfg,
 		sandboxSecrets: cleaned,
 	}
 }
@@ -98,13 +93,9 @@ func WithAgentSettingsServiceOption(svc AgentSettingsService) ContextBuilderOpti
 // NewContextBuilderFull — полная конфигурация: секреты sandbox + репозиторий сообщений
 // (для подмешивания результата предыдущего шага pipeline в prompt следующего агента).
 // Если taskMsgRepo == nil, история не подтягивается (поведение как у двух предыдущих конструкторов).
-//
-// Sprint 15.M7: для подключения резолвера используется ContextBuilderOption (см. WithSandboxAuthResolverOption);
-// type-assertion-обёртка WithSandboxAuthResolver сохраняется как deprecated-shim для обратной совместимости.
 func NewContextBuilderFull(
 	encryptor Encryptor,
 	promptComposer PipelinePromptComposer,
-	agentCfg *agentsloader.Cache,
 	sandboxSecrets map[string]string,
 	taskMsgRepo repository.TaskMessageRepository,
 	opts ...ContextBuilderOption,
@@ -119,7 +110,6 @@ func NewContextBuilderFull(
 	cb := &contextBuilder{
 		encryptor:      encryptor,
 		composer:       promptComposer,
-		agentCfg:       agentCfg,
 		sandboxSecrets: cleaned,
 		taskMsgRepo:    taskMsgRepo,
 	}
@@ -172,26 +162,28 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		input.Provider = string(*assignedAgent.ProviderKind)
 	}
 
-	var yamlModel string
-	if b.agentCfg != nil {
-		if cfg := b.resolveDefaultAgentConfig(assignedAgent); cfg != nil {
-			yamlModel = cfg.ModelConfig.Model
-			input.PromptName = cfg.PromptName
-			input.Temperature = llm.Float64Ptr(cfg.ModelConfig.Temperature)
-			if cfg.ModelConfig.MaxTokens > 0 {
-				input.MaxTokens = llm.IntPtr(cfg.ModelConfig.MaxTokens)
-			}
-		}
+	// Phase 1 §1.5: БД — единственный source of truth для model, temperature, max_tokens, system_prompt.
+	if assignedAgent.Model != nil && *assignedAgent.Model != "" {
+		input.Model = *assignedAgent.Model
 	}
-	input.Model = resolveInputModel(yamlModel, assignedAgent)
+	if assignedAgent.Temperature != nil {
+		input.Temperature = assignedAgent.Temperature
+	}
+	if assignedAgent.MaxTokens != nil {
+		input.MaxTokens = assignedAgent.MaxTokens
+	}
 
-	// Системный промпт агента (из БД; при наличии композера pipeline — переопределяется YAML base+role)
-	if assignedAgent.Prompt != nil {
+	// Системный промпт: DB agent.SystemPrompt > DB agent.Prompt (versioned).
+	if assignedAgent.SystemPrompt != nil && strings.TrimSpace(*assignedAgent.SystemPrompt) != "" {
+		input.PromptSystem = *assignedAgent.SystemPrompt
+	} else if assignedAgent.Prompt != nil {
 		input.PromptSystem = assignedAgent.Prompt.Template
 	}
 	if b.composer != nil {
 		if sys, err := b.composer.ComposeSystem(string(assignedAgent.Role)); err == nil && strings.TrimSpace(sys) != "" {
-			input.PromptSystem = sys
+			if input.PromptSystem == "" {
+				input.PromptSystem = sys
+			}
 		} else if err != nil {
 			slog.Warn("pipeline prompt compose failed; keeping DB system prompt", "role", assignedAgent.Role, "error", err)
 		}
@@ -331,23 +323,6 @@ func (b *contextBuilder) appendPipelineHandoff(ctx context.Context, input *agent
 	}
 }
 
-func (b *contextBuilder) resolveDefaultAgentConfig(agent *models.Agent) *agentsloader.AgentConfig {
-	if b.agentCfg == nil {
-		return nil
-	}
-	switch agent.Role {
-	case models.AgentRoleOrchestrator, models.AgentRolePlanner, models.AgentRoleDeveloper,
-		models.AgentRoleReviewer, models.AgentRoleTester:
-		if cfg, ok := b.agentCfg.GetByPipelineRole(string(agent.Role)); ok {
-			return cfg
-		}
-	}
-	if cfg, ok := b.agentCfg.GetByName(agent.Name); ok {
-		return cfg
-	}
-	return nil
-}
-
 func (b *contextBuilder) scrubJSON(data []byte) json.RawMessage {
 	if len(data) == 0 {
 		return json.RawMessage("{}")
@@ -462,35 +437,3 @@ func (b *contextBuilder) WithCodeChunks(input *agent.ExecutionInput, chunks []in
 	return nil
 }
 
-// resolveInputModel — Sprint 16: правила выбора модели для ExecutionInput.
-//
-//	yamlModel        — `model:` из backend/agents/<role>.yaml (Sprint 6.9)
-//	agent.Model      — из БД (PATCH-эндпоинт + UI / seed)
-//	agent.CodeBackend — определяет, какой бэкенд исполняет агента
-//
-// Контракт:
-//   - claude-code/aider/custom/nil: YAML > DB (historical behaviour). YAML
-//     задаёт sensible default; DB-Model используется только если YAML пуст.
-//   - hermes: DB > YAML. YAML default'ы (типа "claude-haiku-4-5-...") некорректны
-//     для Hermes — он ждёт `provider/model` форму, которую может задать только
-//     пользователь через UI/SQL.
-//
-// Это узкое исключение, а не глобальная инверсия — чтобы не сломать поведение
-// уже существующих claude-code/aider агентов.
-func resolveInputModel(yamlModel string, agent *models.Agent) string {
-	if agent == nil {
-		return yamlModel
-	}
-	dbModel := ""
-	if agent.Model != nil {
-		dbModel = *agent.Model
-	}
-	hermes := agent.CodeBackend != nil && *agent.CodeBackend == models.CodeBackendHermes
-	if hermes && dbModel != "" {
-		return dbModel
-	}
-	if yamlModel != "" {
-		return yamlModel
-	}
-	return dbModel
-}

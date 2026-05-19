@@ -272,6 +272,67 @@ func TestNewAuthMiddleware_Success(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
+// --- Scope enforcement ---
+
+func TestNewAuthMiddleware_ScopeDenied(t *testing.T) {
+	svc := new(mockApiKeyService)
+	apiKey := &models.ApiKey{ID: uuid.New(), UserID: uuid.New(), Scopes: `"admin_only"`}
+	user := &models.User{ID: apiKey.UserID, Role: models.RoleUser}
+	svc.On("ValidateKey", mock.Anything, testValidKey).Return(apiKey, user, nil)
+
+	handler := NewAuthMiddleware(dummyHandler, svc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("X-API-Key", testValidKey)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assertAuthError(t, w, "SCOPE_DENIED")
+}
+
+func TestNewAuthMiddleware_ScopeMCPAllowed(t *testing.T) {
+	svc := new(mockApiKeyService)
+	apiKey := &models.ApiKey{ID: uuid.New(), UserID: uuid.New(), Scopes: `"mcp"`}
+	user := &models.User{ID: apiKey.UserID, Role: models.RoleUser}
+	svc.On("ValidateKey", mock.Anything, testValidKey).Return(apiKey, user, nil)
+
+	handler := NewAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), svc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("X-API-Key", testValidKey)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestScopeAllowsMCP_ExactMatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		scopes  string
+		allowed bool
+	}{
+		{"empty", "", true},
+		{"wildcard", "*", true},
+		{"quoted wildcard", `"*"`, true},
+		{"exact mcp", "mcp", true},
+		{"quoted mcp", `"mcp"`, true},
+		{"csv with mcp", "read,mcp,write", true},
+		{"space-separated with mcp", "read mcp write", true},
+		{"no_mcp must NOT match", "no_mcp", false},
+		{"mcp_readonly must NOT match", "mcp_readonly", false},
+		{"disable-mcp must NOT match", "disable-mcp", false},
+		{"admin_only", `"admin_only"`, false},
+		{"supermcp must NOT match", "supermcp", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.allowed, scopeAllowsMCP(tt.scopes))
+		})
+	}
+}
+
 // --- Security headers ---
 
 func TestNewAuthMiddleware_SecurityHeaders(t *testing.T) {

@@ -252,10 +252,6 @@ func (s *gitIntegrationService) HandleCallback(ctx context.Context, code, state,
 			"provider", string(pending.Provider),
 			"reason", mapErrReason(err),
 			"error_summary", logging.SafeRawAttr([]byte(err.Error())),
-			// err.Error() для OAuth-провайдеров содержит лишь error/error_description от
-			// провайдера + нашу обёртку — без секретов. Полезно для диагностики
-			// (invalid_client vs invalid_grant, redirect_uri mismatch, expired code).
-			"err_text", err.Error(),
 		)
 		s.publishStatus(persistCtx, pending.UserID, pending.Provider, events.IntegrationStatusError, mapErrReason(err), nil, nil, false)
 		return nil, err

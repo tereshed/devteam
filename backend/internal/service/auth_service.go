@@ -38,6 +38,8 @@ type authService struct {
 	refreshTokenRepo repository.RefreshTokenRepository
 	jwtManager       *jwt.Manager
 	eventBus         events.EventBus
+	agentService     *AgentService
+	transactions     repository.TransactionManager
 }
 
 // NewAuthService создает новый сервис авторизации
@@ -52,6 +54,25 @@ func NewAuthService(
 		refreshTokenRepo: refreshTokenRepo,
 		jwtManager:       jwtManager,
 		eventBus:         eventBus,
+	}
+}
+
+// NewAuthServiceWithAgents creates auth service with agent auto-creation on registration.
+func NewAuthServiceWithAgents(
+	userRepo repository.UserRepository,
+	refreshTokenRepo repository.RefreshTokenRepository,
+	jwtManager *jwt.Manager,
+	eventBus events.EventBus,
+	agentService *AgentService,
+	transactions repository.TransactionManager,
+) AuthService {
+	return &authService{
+		userRepo:         userRepo,
+		refreshTokenRepo: refreshTokenRepo,
+		jwtManager:       jwtManager,
+		eventBus:         eventBus,
+		agentService:     agentService,
+		transactions:     transactions,
 	}
 }
 
@@ -77,6 +98,22 @@ func (s *authService) Register(ctx context.Context, email, password string) (*mo
 		Email:        email,
 		PasswordHash: passwordHash,
 		Role:         models.RoleUser,
+	}
+
+	if s.agentService != nil && s.transactions != nil {
+		err = s.transactions.WithTransaction(ctx, func(txCtx context.Context) error {
+			if err := s.userRepo.Create(txCtx, user); err != nil {
+				if errors.Is(err, repository.ErrUserExists) {
+					return ErrUserAlreadyExists
+				}
+				return err
+			}
+			return s.agentService.CreateDefaultAssistant(txCtx, user.ID)
+		})
+		if err != nil {
+			return nil, err
+		}
+		return user, nil
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {

@@ -243,19 +243,19 @@ func TestAgentService_Create_LLMHappyPath(t *testing.T) {
 	}
 }
 
-func TestAgentService_Create_RejectsLLMWithoutModel(t *testing.T) {
+// Phase 1 §1.3: LLM-агент может быть создан без model ("не сконфигурирован").
+func TestAgentService_Create_LLMWithoutModel_Allowed(t *testing.T) {
 	svc := newAgentSvcForTest(t)
-	_, err := svc.Create(context.Background(), CreateAgentInput{
-		Name:          "bad",
+	a, err := svc.Create(context.Background(), CreateAgentInput{
+		Name:          "unconfigured",
 		Role:          models.AgentRoleReviewer,
 		ExecutionKind: models.AgentExecutionKindLLM,
-		// Model missing
 	})
-	if !errors.Is(err, ErrAgentValidation) {
-		t.Fatalf("expected ErrAgentValidation, got %v", err)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "model") {
-		t.Errorf("error must mention model, got: %v", err)
+	if a.Model != nil {
+		t.Errorf("expected model=nil, got %v", *a.Model)
 	}
 }
 
@@ -617,5 +617,243 @@ func TestAgentService_DeleteSecret(t *testing.T) {
 	secrets, _ := secretRepo.ListByAgentID(context.Background(), out.AgentID)
 	if len(secrets) != 0 {
 		t.Errorf("secret should be removed, got %d remaining", len(secrets))
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2: Factory methods — CreateDefaultAssistant, CreateDefaultProjectAgents
+// ─────────────────────────────────────────────────────────────────────────────
+
+type memRolePromptRepo struct {
+	mu      sync.Mutex
+	byRole  map[string]*models.AgentRolePrompt
+}
+
+func newMemRolePromptRepo() *memRolePromptRepo {
+	return &memRolePromptRepo{byRole: map[string]*models.AgentRolePrompt{}}
+}
+
+func (r *memRolePromptRepo) seed(role, content string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byRole[role] = &models.AgentRolePrompt{
+		ID:      uuid.New(),
+		Role:    role,
+		Content: content,
+	}
+}
+
+func (r *memRolePromptRepo) GetByRole(_ context.Context, role string) (*models.AgentRolePrompt, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.byRole[role]
+	if !ok {
+		return nil, repository.ErrAgentRolePromptNotFound
+	}
+	cp := *p
+	return &cp, nil
+}
+func (r *memRolePromptRepo) List(_ context.Context) ([]models.AgentRolePrompt, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]models.AgentRolePrompt, 0, len(r.byRole))
+	for _, p := range r.byRole {
+		out = append(out, *p)
+	}
+	return out, nil
+}
+func (r *memRolePromptRepo) Upsert(_ context.Context, p *models.AgentRolePrompt) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := *p
+	r.byRole[p.Role] = &cp
+	return nil
+}
+
+type memApiKeyRepo struct {
+	mu   sync.Mutex
+	keys map[uuid.UUID]*models.ApiKey
+}
+
+func newMemApiKeyRepo() *memApiKeyRepo {
+	return &memApiKeyRepo{keys: map[uuid.UUID]*models.ApiKey{}}
+}
+
+func (r *memApiKeyRepo) Create(_ context.Context, k *models.ApiKey) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if k.ID == uuid.Nil {
+		k.ID = uuid.New()
+	}
+	cp := *k
+	r.keys[k.ID] = &cp
+	return nil
+}
+func (r *memApiKeyRepo) GetByKeyHash(_ context.Context, _ string) (*models.ApiKey, error) {
+	return nil, repository.ErrApiKeyNotFound
+}
+func (r *memApiKeyRepo) GetByID(_ context.Context, id uuid.UUID) (*models.ApiKey, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	k, ok := r.keys[id]
+	if !ok {
+		return nil, repository.ErrApiKeyNotFound
+	}
+	cp := *k
+	return &cp, nil
+}
+func (r *memApiKeyRepo) ListByUserID(_ context.Context, userID uuid.UUID) ([]models.ApiKey, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []models.ApiKey
+	for _, k := range r.keys {
+		if k.UserID == userID {
+			out = append(out, *k)
+		}
+	}
+	return out, nil
+}
+func (r *memApiKeyRepo) Revoke(_ context.Context, _ uuid.UUID) error    { return nil }
+func (r *memApiKeyRepo) RevokeAllForUser(_ context.Context, _ uuid.UUID) error { return nil }
+func (r *memApiKeyRepo) UpdateLastUsed(_ context.Context, _ uuid.UUID) error   { return nil }
+func (r *memApiKeyRepo) Delete(_ context.Context, _ uuid.UUID) error           { return nil }
+
+func newAgentSvcWithFactories(t *testing.T) (*AgentService, *memAgentRepo, *memSecretRepo, *memApiKeyRepo) {
+	t.Helper()
+	agentRepo := newMemAgentRepo()
+	secretRepo := newMemSecretRepo()
+	apiKeyRepo := newMemApiKeyRepo()
+	rolePromptRepo := newMemRolePromptRepo()
+	rolePromptRepo.seed(string(models.AgentRoleAssistant), "You are the assistant.")
+	rolePromptRepo.seed(string(models.AgentRoleOrchestrator), "You are the orchestrator.")
+	rolePromptRepo.seed(string(models.AgentRoleRouter), "You are the router.")
+
+	svc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
+	svc.WithRolePromptRepo(rolePromptRepo).WithApiKeyRepo(apiKeyRepo)
+	return svc, agentRepo, secretRepo, apiKeyRepo
+}
+
+func TestAgentService_CreateDefaultAssistant_HappyPath(t *testing.T) {
+	svc, agentRepo, secretRepo, apiKeyRepo := newAgentSvcWithFactories(t)
+	userID := uuid.New()
+
+	if err := svc.CreateDefaultAssistant(context.Background(), userID); err != nil {
+		t.Fatalf("CreateDefaultAssistant: %v", err)
+	}
+
+	// Agent created with correct attributes.
+	agents, _, _ := agentRepo.List(context.Background(), repository.AgentFilter{UserID: &userID})
+	if len(agents) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(agents))
+	}
+	a := agents[0]
+	if a.Name != "assistant" {
+		t.Errorf("name=%q, want assistant", a.Name)
+	}
+	if a.Role != models.AgentRoleAssistant {
+		t.Errorf("role=%q, want assistant", a.Role)
+	}
+	if a.UserID == nil || *a.UserID != userID {
+		t.Errorf("user_id mismatch")
+	}
+	if a.Model != nil {
+		t.Errorf("model should be nil (unconfigured), got %v", *a.Model)
+	}
+
+	// Scoped MCP key created.
+	keys, _ := apiKeyRepo.ListByUserID(context.Background(), userID)
+	if len(keys) != 1 {
+		t.Fatalf("expected 1 api key, got %d", len(keys))
+	}
+	if keys[0].Scopes != `"mcp"` {
+		t.Errorf("scopes=%q, want %q", keys[0].Scopes, `"mcp"`)
+	}
+
+	// Encrypted secret DEVTEAM_MCP_TOKEN created.
+	secrets, _ := secretRepo.ListByAgentID(context.Background(), a.ID)
+	if len(secrets) != 1 {
+		t.Fatalf("expected 1 secret, got %d", len(secrets))
+	}
+	if secrets[0].KeyName != "DEVTEAM_MCP_TOKEN" {
+		t.Errorf("key_name=%q, want DEVTEAM_MCP_TOKEN", secrets[0].KeyName)
+	}
+}
+
+func TestAgentService_CreateDefaultAssistant_PromptCopied(t *testing.T) {
+	svc, agentRepo, _, _ := newAgentSvcWithFactories(t)
+	userID := uuid.New()
+
+	if err := svc.CreateDefaultAssistant(context.Background(), userID); err != nil {
+		t.Fatalf("CreateDefaultAssistant: %v", err)
+	}
+
+	a, err := agentRepo.GetByName(context.Background(), "assistant")
+	if err != nil {
+		t.Fatalf("GetByName: %v", err)
+	}
+	if a.SystemPrompt == nil || *a.SystemPrompt != "You are the assistant." {
+		t.Errorf("system_prompt not copied from role_prompts")
+	}
+}
+
+func TestAgentService_CreateDefaultProjectAgents_HappyPath(t *testing.T) {
+	svc, agentRepo, _, _ := newAgentSvcWithFactories(t)
+	teamID := uuid.New()
+
+	if err := svc.CreateDefaultProjectAgents(context.Background(), teamID); err != nil {
+		t.Fatalf("CreateDefaultProjectAgents: %v", err)
+	}
+
+	agents, total, _ := agentRepo.List(context.Background(), repository.AgentFilter{TeamID: &teamID})
+	if total != 2 {
+		t.Fatalf("expected 2 agents, got %d", total)
+	}
+
+	roles := map[models.AgentRole]bool{}
+	for _, a := range agents {
+		roles[a.Role] = true
+		if a.TeamID == nil || *a.TeamID != teamID {
+			t.Errorf("agent %s: team_id mismatch", a.Name)
+		}
+		if a.SystemPrompt == nil || *a.SystemPrompt == "" {
+			t.Errorf("agent %s: system_prompt should be set", a.Name)
+		}
+		if a.Model != nil {
+			t.Errorf("agent %s: model should be nil (unconfigured)", a.Name)
+		}
+	}
+	if !roles[models.AgentRoleOrchestrator] {
+		t.Error("orchestrator not created")
+	}
+	if !roles[models.AgentRoleRouter] {
+		t.Error("router not created")
+	}
+}
+
+func TestAgentService_CreateDefaultAssistant_MissingPrompt(t *testing.T) {
+	agentRepo := newMemAgentRepo()
+	secretRepo := newMemSecretRepo()
+	emptyPromptRepo := newMemRolePromptRepo() // no prompts seeded
+
+	svc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
+	svc.WithRolePromptRepo(emptyPromptRepo).WithApiKeyRepo(newMemApiKeyRepo())
+
+	err := svc.CreateDefaultAssistant(context.Background(), uuid.New())
+	if err == nil {
+		t.Fatal("expected error for missing prompt")
+	}
+	if !strings.Contains(err.Error(), "default prompt for assistant") {
+		t.Errorf("error should mention missing prompt, got: %v", err)
+	}
+}
+
+func TestAgentService_CreateDefaultAssistant_NoRolePromptRepo(t *testing.T) {
+	svc := newAgentSvcForTest(t) // no rolePromptRepo set
+	err := svc.CreateDefaultAssistant(context.Background(), uuid.New())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "rolePromptRepo") {
+		t.Errorf("error should mention rolePromptRepo, got: %v", err)
 	}
 }

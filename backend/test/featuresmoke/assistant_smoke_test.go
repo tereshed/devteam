@@ -387,8 +387,8 @@ func TestAssistant_SendMessage_LLMRequestIsSane(t *testing.T) {
 	}
 
 	// 2. Snapshot обязан содержать system prompt assistant'а — это инвариант
-	//    seed.SeedAssistantAgent. Если он пропал, ассистент будет работать
-	//    «как general chatbot», что ломает product-behavior.
+	//    AgentService.CreateDefaultAssistant. Если он пропал, ассистент будет
+	//    работать «как general chatbot», что ломает product-behavior.
 	if !strings.Contains(gotSnap, "ассистент платформы") &&
 		!strings.Contains(gotSnap, "ассистент") {
 		t.Fatalf("llm_logs: prompt_snapshot не содержит assistant system prompt. "+

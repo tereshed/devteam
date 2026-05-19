@@ -115,10 +115,22 @@ func startAssistantHarness(t *testing.T) *assistantHarness {
 	gdb, err := gorm.Open(gormpostgres.New(gormpostgres.Config{DSN: dsn}), &gorm.Config{})
 	require.NoError(t, err)
 
-	// Seed: создаём пользователя и agent role='assistant'.
+	// Seed: создаём пользователя и per-user agent role='assistant'.
 	userID := seedTestUser(t, gdb)
 	logger := slog.New(logging.NewHandler(slog.NewTextHandler(io.Discard, nil)))
-	require.NoError(t, seed.SeedAssistantAgent(ctx, gdb, logger), "seed assistant agent")
+	_ = logger
+	require.NoError(t, seed.SeedRolePrompts(ctx, gdb, nil), "seed role prompts")
+	{
+		agentSvc := service.NewAgentService(
+			repository.NewAgentRepository(gdb),
+			repository.NewAgentSecretRepository(gdb),
+			service.NoopEncryptor{},
+			repository.NewTransactionManager(gdb),
+		)
+		agentSvc.WithRolePromptRepo(repository.NewAgentRolePromptRepository(gdb)).
+			WithApiKeyRepo(repository.NewApiKeyRepository(gdb))
+		require.NoError(t, agentSvc.CreateDefaultAssistant(ctx, userID), "create assistant")
+	}
 
 	h := &assistantHarness{
 		t:         t,

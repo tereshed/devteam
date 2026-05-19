@@ -90,6 +90,15 @@ func (m *MockAssistantService) ListActiveTasks(ctx context.Context, userID uuid.
 	return tasks, args.Error(1)
 }
 
+func (m *MockAssistantService) GetStatus(ctx context.Context, userID uuid.UUID) (*dto.AssistantStatusResponse, error) {
+	args := m.Called(ctx, userID)
+	var resp *dto.AssistantStatusResponse
+	if args.Get(0) != nil {
+		resp = args.Get(0).(*dto.AssistantStatusResponse)
+	}
+	return resp, args.Error(1)
+}
+
 func (m *MockAssistantService) StartStaleRecovery(ctx context.Context) {
 	m.Called(ctx)
 }

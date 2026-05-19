@@ -76,10 +76,10 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	}()
 
 	// 1) Загружаем agent (system prompt + model + provider).
-	agent, err := s.deps.AgentLoader.GetAgentByName(ctx, AssistantAgentName)
+	agent, err := s.deps.AgentLoader.GetAgentByUserRole(ctx, userID, string(models.AgentRoleAssistant))
 	if err != nil {
 		s.deps.Logger.ErrorContext(ctx, "assistant: load agent failed",
-			slog.String("agent_name", AssistantAgentName),
+			slog.String("user_id", userID.String()),
 			slog.String("error", err.Error()),
 		)
 		s.appendErrorMessage(ctx, sessionID, userID, "ассистент не настроен (нет agent role='assistant')")

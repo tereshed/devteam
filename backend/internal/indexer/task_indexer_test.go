@@ -34,6 +34,14 @@ func (m *MockTaskRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Task,
 	return args.Get(0).(*models.Task), args.Error(1)
 }
 
+func (m *MockTaskRepo) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Task, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
+}
+
 func (m *MockTaskRepo) List(ctx context.Context, filter repository.TaskFilter) ([]models.Task, int64, error) {
 	args := m.Called(ctx, filter)
 	return args.Get(0).([]models.Task), args.Get(1).(int64), args.Error(2)
@@ -57,6 +65,11 @@ func (m *MockTaskRepo) CountByProjectID(ctx context.Context, projectID uuid.UUID
 func (m *MockTaskRepo) ListByParentID(ctx context.Context, parentTaskID uuid.UUID) ([]models.Task, error) {
 	args := m.Called(ctx, parentTaskID)
 	return args.Get(0).([]models.Task), args.Error(1)
+}
+
+func (m *MockTaskRepo) ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error) {
+	args := m.Called(ctx, userID, states, limit)
+	return args.Get(0).([]repository.ActiveTaskRow), args.Error(1)
 }
 
 // MockTaskMessageRepo is a mock of TaskMessageRepository

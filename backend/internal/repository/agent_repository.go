@@ -45,6 +45,12 @@ type AgentFilter struct {
 	Role *models.AgentRole
 	// NameLike — частичный поиск по name (case-insensitive LIKE с escape).
 	NameLike string
+	// UserID — фильтр по владельцу (user-level агенты). nil = не фильтровать.
+	UserID *uuid.UUID
+	// TeamID — фильтр по команде (team-level агенты). nil = не фильтровать.
+	TeamID *uuid.UUID
+	// SystemOnly — true вернёт только системных агентов (user_id IS NULL AND team_id IS NULL).
+	SystemOnly bool
 	// Limit/Offset — пагинация. Limit<=0 — default 50; >200 — clamp to 200.
 	Limit  int
 	Offset int
@@ -77,7 +83,7 @@ type AgentRepository interface {
 // agentListColumns — НЕ включаем system_prompt (может быть большим);
 // при необходимости caller вызывает GetByID/GetByName.
 const agentListColumns = `
-	id, name, role, team_id, model, prompt_id, skills,
+	id, name, role, team_id, user_id, model, prompt_id, skills,
 	code_backend, settings, model_config,
 	provider_kind, code_backend_settings, sandbox_permissions,
 	is_active, requires_code_context,
@@ -170,6 +176,15 @@ func (r *agentRepository) List(ctx context.Context, filter AgentFilter) ([]model
 		pattern := "%" + escapeILIKEWildcards(filter.NameLike) + "%"
 		q = q.Where(`name ILIKE ? ESCAPE '\'`, pattern)
 	}
+	if filter.UserID != nil {
+		q = q.Where("user_id = ?", *filter.UserID)
+	}
+	if filter.TeamID != nil {
+		q = q.Where("team_id = ?", *filter.TeamID)
+	}
+	if filter.SystemOnly {
+		q = q.Where("user_id IS NULL AND team_id IS NULL")
+	}
 
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -201,6 +216,7 @@ func (r *agentRepository) Update(ctx context.Context, a *models.Agent, expectedU
 		"name":                   a.Name,
 		"role":                   a.Role,
 		"team_id":                a.TeamID,
+		"user_id":                a.UserID,
 		"model":                  a.Model,
 		"prompt_id":              a.PromptID,
 		"skills":                 a.Skills,

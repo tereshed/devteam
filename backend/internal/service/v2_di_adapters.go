@@ -94,6 +94,21 @@ func (l *DBAgentLoader) GetAgentByName(ctx context.Context, name string) (*model
 	return &a, nil
 }
 
+// GetAgentByUserRole finds a user-owned agent by role (e.g. per-user assistant).
+// Falls back to GetAgentByName for backward compatibility with global agents.
+func (l *DBAgentLoader) GetAgentByUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
+	if l == nil || l.db == nil {
+		return nil, errors.New("DBAgentLoader: db is not configured")
+	}
+	var a models.Agent
+	err := l.db.WithContext(ctx).Where("user_id = ? AND role = ?", userID, role).First(&a).Error
+	if err == nil {
+		return &a, nil
+	}
+	// Fallback to global (system-level) agent by name for backward compat.
+	return l.GetAgentByName(ctx, role)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AssistantLLMClientAdapter — Sprint 21. Реализует AssistantLLMClientResolver,
 // оборачивая свежесозданный llm.Provider (с ключом пользователя) в llm.Client через

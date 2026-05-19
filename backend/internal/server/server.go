@@ -75,6 +75,9 @@ type Dependencies struct {
 
 	// Sprint 21 — глобальный ассистент правой панели (docs/tasks/21-assistant-sidebar.md §4).
 	AssistantHandler *handler.AssistantHandler
+
+	// Phase 1 §1.4 — admin API для дефолтных промптов ролей агентов.
+	AgentRolePromptHandler *handler.AgentRolePromptHandler
 }
 
 // New создает новый экземпляр сервера
@@ -357,6 +360,18 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			webhooksGroup.PUT("/:id", deps.WebhookHandler.Update)
 			webhooksGroup.DELETE("/:id", deps.WebhookHandler.Delete)
 			webhooksGroup.GET("/:id/logs", deps.WebhookHandler.GetLogs)
+		}
+
+		// Phase 1 §1.4 — admin API для дефолтных промптов ролей агентов.
+		if deps.AgentRolePromptHandler != nil {
+			rolePrompts := api.Group("/admin/agent-role-prompts")
+			rolePrompts.Use(authMW)
+			rolePrompts.Use(middleware.AdminOnlyMiddleware())
+			{
+				rolePrompts.GET("", deps.AgentRolePromptHandler.List)
+				rolePrompts.GET("/:role", deps.AgentRolePromptHandler.GetByRole)
+				rolePrompts.PUT("/:role", deps.AgentRolePromptHandler.Update)
+			}
 		}
 
 		// Sprint 21 — глобальный ассистент (правая панель).

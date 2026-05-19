@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -9,6 +12,7 @@ import (
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/crypto"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 // agent_service.go — Sprint 17 / Sprint 5 review fix #1 (layer violation).
@@ -46,11 +50,14 @@ type CreateAgentInput struct {
 	ExecutionKind   models.AgentExecutionKind
 	RoleDescription *string
 	SystemPrompt    *string
-	Model           *string             // обязательно для llm; запрещено для sandbox
+	Model           *string                    // для llm; запрещено для sandbox. nil допустим ("не сконфигурирован").
+	ProviderKind    *models.AgentProviderKind
 	CodeBackend     *models.CodeBackend // обязательно для sandbox; запрещено для llm
 	Temperature     *float64
 	MaxTokens       *int
 	IsActive        *bool
+	TeamID          *uuid.UUID
+	UserID          *uuid.UUID
 }
 
 // UpdateAgentInput — патч-параметры. Все поля опциональные; nil = не менять.
@@ -60,6 +67,7 @@ type UpdateAgentInput struct {
 	RoleDescription *string
 	SystemPrompt    *string
 	Model           *string
+	ProviderKind    *models.AgentProviderKind
 	CodeBackend     *models.CodeBackend // Sprint 5 review fix #4: можно менять для sandbox-агента
 	Temperature     *float64
 	MaxTokens       *int
@@ -75,10 +83,12 @@ type UpdateAgentInput struct {
 // Sprint 5 review fix #2: txManager используется для атомарных операций (SetSecret,
 // Update). Без него Read-Modify-Write образует TOCTOU гонку.
 type AgentService struct {
-	agentRepo  repository.AgentRepository
-	secretRepo repository.AgentSecretRepository
-	encryptor  Encryptor
-	txManager  repository.TransactionManager
+	agentRepo      repository.AgentRepository
+	secretRepo     repository.AgentSecretRepository
+	rolePromptRepo repository.AgentRolePromptRepository
+	apiKeyRepo     repository.ApiKeyRepository
+	encryptor      Encryptor
+	txManager      repository.TransactionManager
 }
 
 // NewAgentService — конструктор. encryptor может быть nil — тогда set/delete
@@ -96,6 +106,18 @@ func NewAgentService(
 		encryptor:  encryptor,
 		txManager:  txManager,
 	}
+}
+
+// WithRolePromptRepo sets the AgentRolePromptRepository (needed for factory methods).
+func (s *AgentService) WithRolePromptRepo(repo repository.AgentRolePromptRepository) *AgentService {
+	s.rolePromptRepo = repo
+	return s
+}
+
+// WithApiKeyRepo sets the ApiKeyRepository (needed for MCP key provisioning).
+func (s *AgentService) WithApiKeyRepo(repo repository.ApiKeyRepository) *AgentService {
+	s.apiKeyRepo = repo
+	return s
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,8 +159,11 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 		ExecutionKind:   in.ExecutionKind,
 		RoleDescription: in.RoleDescription,
 		SystemPrompt:    in.SystemPrompt,
+		ProviderKind:    in.ProviderKind,
 		Temperature:     in.Temperature,
 		MaxTokens:       in.MaxTokens,
+		TeamID:          in.TeamID,
+		UserID:          in.UserID,
 		IsActive:        true,
 	}
 	if in.IsActive != nil {
@@ -146,11 +171,10 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 	}
 
 	// Mutual exclusivity (зеркалит CHECK chk_agents_kind_requirements).
+	// Phase 1 §1.3: LLM-агент может иметь model=nil ("не сконфигурирован").
+	// Валидация полноты (model+provider_kind) — при попытке запуска, не при создании.
 	switch in.ExecutionKind {
 	case models.AgentExecutionKindLLM:
-		if in.Model == nil || *in.Model == "" {
-			return nil, fmt.Errorf("%w: llm-agent requires non-empty model", ErrAgentValidation)
-		}
 		if in.CodeBackend != nil {
 			return nil, fmt.Errorf("%w: llm-agent must NOT have code_backend", ErrAgentValidation)
 		}
@@ -240,15 +264,18 @@ func (s *AgentService) applyUpdatePatch(current *models.Agent, in UpdateAgentInp
 		current.SystemPrompt = in.SystemPrompt
 	}
 
-	// Model — только для llm-агентов.
+	// Model — только для llm-агентов. Phase 1 §1.3: допускаем nil (сброс к "не сконфигурирован").
 	if in.Model != nil {
 		if current.ExecutionKind != models.AgentExecutionKindLLM {
 			return fmt.Errorf("%w: model is allowed only for llm-agents (current kind=%s)", ErrAgentValidation, current.ExecutionKind)
 		}
-		if *in.Model == "" {
-			return fmt.Errorf("%w: model must be non-empty when set", ErrAgentValidation)
-		}
 		current.Model = in.Model
+	}
+	if in.ProviderKind != nil {
+		if !in.ProviderKind.IsValid() {
+			return fmt.Errorf("%w: invalid provider_kind %q", ErrAgentValidation, *in.ProviderKind)
+		}
+		current.ProviderKind = in.ProviderKind
 	}
 
 	// Sprint 5 review fix #4: CodeBackend — только для sandbox-агентов.
@@ -422,4 +449,135 @@ func (s *AgentService) Delete(ctx context.Context, id uuid.UUID) error {
 		}
 		return nil
 	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2: Factory methods — auto-creation of agents
+// ─────────────────────────────────────────────────────────────────────────────
+
+// newBaseAgent builds an Agent with all NOT NULL JSONB defaults filled in.
+func newBaseAgent(name string, role models.AgentRole, kind models.AgentExecutionKind, prompt *string) *models.Agent {
+	return &models.Agent{
+		Name:                name,
+		Role:                role,
+		ExecutionKind:       kind,
+		IsActive:            true,
+		SystemPrompt:        prompt,
+		Skills:              datatypes.JSON([]byte(`[]`)),
+		Settings:            datatypes.JSON([]byte(`{}`)),
+		ModelConfig:         datatypes.JSON([]byte(`{}`)),
+		CodeBackendSettings: datatypes.JSON([]byte(`{}`)),
+		SandboxPermissions:  datatypes.JSON([]byte(`{}`)),
+	}
+}
+
+// CreateDefaultAssistant creates a per-user assistant with system prompt from
+// agent_role_prompts and a scoped MCP API key. LLM settings (provider_kind,
+// model) are left NULL — user configures them via UI.
+func (s *AgentService) CreateDefaultAssistant(ctx context.Context, userID uuid.UUID) error {
+	if s.rolePromptRepo == nil {
+		return fmt.Errorf("AgentService: rolePromptRepo is required for CreateDefaultAssistant")
+	}
+
+	prompt, err := s.rolePromptRepo.GetByRole(ctx, string(models.AgentRoleAssistant))
+	if err != nil {
+		return fmt.Errorf("default prompt for assistant: %w", err)
+	}
+
+	agent := newBaseAgent("assistant", models.AgentRoleAssistant, models.AgentExecutionKindLLM, &prompt.Content)
+	agent.UserID = &userID
+
+	if err := s.agentRepo.Create(ctx, agent); err != nil {
+		return fmt.Errorf("create assistant agent: %w", err)
+	}
+
+	return s.provisionMCPKey(ctx, agent.ID, userID)
+}
+
+// CreateDefaultProjectAgents creates orchestrator + router for a team.
+// Each gets a system prompt from agent_role_prompts. LLM settings are left NULL.
+func (s *AgentService) CreateDefaultProjectAgents(ctx context.Context, teamID uuid.UUID) error {
+	if s.rolePromptRepo == nil {
+		return fmt.Errorf("AgentService: rolePromptRepo is required for CreateDefaultProjectAgents")
+	}
+
+	roles := []struct {
+		name string
+		role models.AgentRole
+	}{
+		{"orchestrator", models.AgentRoleOrchestrator},
+		{"router", models.AgentRoleRouter},
+	}
+	for _, r := range roles {
+		prompt, err := s.rolePromptRepo.GetByRole(ctx, string(r.role))
+		if err != nil {
+			return fmt.Errorf("default prompt for %s: %w", r.role, err)
+		}
+
+		agent := newBaseAgent(r.name, r.role, models.AgentExecutionKindLLM, &prompt.Content)
+		agent.TeamID = &teamID
+
+		if err := s.agentRepo.Create(ctx, agent); err != nil {
+			return fmt.Errorf("create %s agent: %w", r.name, err)
+		}
+	}
+	return nil
+}
+
+// provisionMCPKey generates a scoped API key for the assistant's MCP access.
+func (s *AgentService) provisionMCPKey(ctx context.Context, agentID, userID uuid.UUID) error {
+	if s.apiKeyRepo == nil {
+		return fmt.Errorf("AgentService: apiKeyRepo is required for provisionMCPKey")
+	}
+	if s.encryptor == nil {
+		return ErrEncryptorNotConfigured
+	}
+
+	rawKey, err := generateMCPKey()
+	if err != nil {
+		return fmt.Errorf("generate MCP key: %w", err)
+	}
+
+	keyHash := hashMCPKey(rawKey)
+	keyPrefix := rawKey[:12]
+
+	apiKey := &models.ApiKey{
+		UserID:    userID,
+		Name:      fmt.Sprintf("assistant-mcp-%s", agentID),
+		KeyHash:   keyHash,
+		KeyPrefix: keyPrefix,
+		Scopes:    `"mcp"`,
+	}
+	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
+		return fmt.Errorf("create MCP api key: %w", err)
+	}
+
+	secret := &models.AgentSecret{
+		ID:      uuid.New(),
+		AgentID: agentID,
+		KeyName: "DEVTEAM_MCP_TOKEN",
+	}
+	blob, err := s.encryptor.Encrypt([]byte(rawKey), []byte(secret.ID.String()))
+	if err != nil {
+		return fmt.Errorf("encrypt MCP key: %w", err)
+	}
+	secret.EncryptedValue = blob
+
+	if err := s.secretRepo.Create(ctx, secret); err != nil {
+		return fmt.Errorf("persist MCP secret: %w", err)
+	}
+	return nil
+}
+
+func generateMCPKey() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return "wibe_" + hex.EncodeToString(bytes), nil
+}
+
+func hashMCPKey(rawKey string) string {
+	hash := sha256.Sum256([]byte(rawKey))
+	return hex.EncodeToString(hash[:])
 }
