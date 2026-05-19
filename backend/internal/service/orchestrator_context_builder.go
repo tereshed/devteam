@@ -163,6 +163,14 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		Role:        string(assignedAgent.Role),
 		EnvSecrets:  make(map[string]string),
 	}
+	// Phase 5: пробрасываем agent.ProviderKind в ExecutionInput.Provider.
+	// Без этого LLMAgentExecutor оставлял llm.Request.Provider="" и
+	// llmService.Generate всегда уходил в defaultProvider (openai),
+	// независимо от того, что в БД у агента написан provider_kind=anthropic
+	// или provider_kind=openrouter. См. e2e_real seed orchestrator/planner.
+	if assignedAgent.ProviderKind != nil {
+		input.Provider = string(*assignedAgent.ProviderKind)
+	}
 
 	var yamlModel string
 	if b.agentCfg != nil {

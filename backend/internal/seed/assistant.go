@@ -28,17 +28,21 @@ const assistantDefaultSystemPrompt = `Ты — ассистент платфор
 
 // Дефолтные параметры LLM для assistant-агента.
 //
-// Модель — claude-haiku-4-5-20251001 (cheap: $1/$5 vs Sonnet 4.6 $3/$15).
-// Ассистент гоняет до AssistantMaxIterations=12 итераций на одно user-сообщение,
-// поэтому каждый процент экономии на модели даёт большой эффект. Оператор
-// может перебить через UI / `PUT /api/v1/agents/:id` если хочется качества.
-// Provider — anthropic; для других провайдеров оператор переключает явно.
+// Phase 5 review: переехал с anthropic+claude-haiku-4-5 на
+// openrouter+deepseek/deepseek-v4-flash. Причина — assistant гоняет до
+// AssistantMaxIterations=12 итераций на одно user-сообщение, и v4-flash
+// (~$0.0000001/M tokens, ~10× быстрее haiku) даёт по-другому ощутимое UX:
+// первый ответ за <1s вместо ~5s, плюс существенная экономия токенов.
+// Качество tool-calling сопоставимо для управляющих задач уровня assistant'а.
+//
+// Оператор может перебить через UI / `PUT /api/v1/agents/:id` если нужна
+// другая модель — seed уважает существующую запись (ON CONFLICT DO NOTHING).
 //
 // Температура низкая (0.2): assistant — управляющий агент, нам нужны
 // предсказуемые tool_call'ы, а не креативные ответы.
 const (
-	assistantDefaultModel        = "claude-haiku-4-5-20251001"
-	assistantDefaultProviderKind = models.AgentProviderKindAnthropic
+	assistantDefaultModel        = "deepseek/deepseek-v4-flash"
+	assistantDefaultProviderKind = models.AgentProviderKindOpenRouter
 )
 
 var (

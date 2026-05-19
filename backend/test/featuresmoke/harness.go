@@ -70,6 +70,12 @@ const (
 	TestModelAnthropic = "claude-haiku-4-5-20251001"
 	TestModelOpenAI    = "gpt-4o-mini"
 	TestModelDeepSeek  = "deepseek-chat"
+	// TestModelOpenRouter — после Phase 5 review (см. integration-tests-plan):
+	// assistant + orchestrator + planner переехали на OpenRouter+v4-flash для
+	// сокращения времени pipeline. Один и тот же ID в mock-режиме (FakeLLM
+	// принимает любую модель) и в real-режиме (~$0.0000001/M tokens, дешевле
+	// чем haiku в десятки раз).
+	TestModelOpenRouter = "deepseek/deepseek-v4-flash"
 )
 
 // CurrentMode возвращает активный режим.
@@ -292,6 +298,12 @@ func composeEnv(port int) []string {
 		overrides["DEEPSEEK_BASE_URL"] = globalFakeLLMURL + "/v1"
 		overrides["GEMINI_BASE_URL"] = globalFakeLLMURL
 		overrides["QWEN_BASE_URL"] = globalFakeLLMURL + "/v1"
+		// OpenRouter (Phase 5 review): без редиректа backend на openrouter ходил
+		// бы на реальный openrouter.ai с fake-key → 401 → llm_logs grow → frontend
+		// cost-leak guard падает. FakeLLM матчит по суффиксу `*/chat/completions`,
+		// поэтому /api/v1/chat/completions из OpenRouter-клиента попадает в OpenAI-
+		// ветку handler'а автоматически.
+		overrides["OPENROUTER_BASE_URL"] = globalFakeLLMURL + "/api/v1"
 		// Dummy-ключи. Без них config.go.createProvider не зарегистрирует провайдеров
 		// (`if pCfg.APIKey != ""`). Префикс «fake-» делает их распознаваемыми в логах
 		// и грепе. РОДИТЕЛЬСКИЕ настоящие ключи перетираются — это и есть защита.

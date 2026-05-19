@@ -56,6 +56,35 @@ func NewAssistantHandler(svc service.AssistantService) *AssistantHandler {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Status
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GetStatus возвращает статус конфигурации ассистента.
+// @Summary Статус ассистента
+// @Description Возвращает статус конфигурации ассистента (настроены ли ключи).
+// @Tags assistant
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} dto.AssistantStatusResponse
+// @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
+// @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
+// @Router /assistant/status [get]
+func (h *AssistantHandler) GetStatus(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+
+	status, err := h.service.GetStatus(c.Request.Context(), uid)
+	if err != nil {
+		h.respondAssistantError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sessions
 // ─────────────────────────────────────────────────────────────────────────────
 

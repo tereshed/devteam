@@ -114,6 +114,16 @@ type AssistantMessageListResponse struct {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Responses — status
+// ─────────────────────────────────────────────────────────────────────────────
+
+// AssistantStatusResponse — статус конфигурации ассистента для UI.
+type AssistantStatusResponse struct {
+	IsConfigured     bool   `json:"is_configured"`
+	RequiredProvider string `json:"required_provider"`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Responses — active tasks (Tasks-tab правой панели)
 // ─────────────────────────────────────────────────────────────────────────────
 

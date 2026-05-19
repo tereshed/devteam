@@ -198,6 +198,15 @@ type RunRequest struct {
 	Temperature  *float64
 	MaxTokens    *int
 
+	// Provider — kind LLM-провайдера (openai/anthropic/openrouter/...).
+	// Пустая строка → Executor оставит llm.Request.Provider="" и llmService
+	// упадёт на defaultProvider. Заполнять обязательно для агентов с
+	// фиксированным provider_kind (assistant, orchestrator, planner).
+	// Тип — string, а не llm.ProviderType, чтобы агентный код мог скастить
+	// из models.AgentProviderKind без импорта pkg/llm. Executor сам приведёт
+	// к llm.ProviderType.
+	Provider string
+
 	// History — полная история сессии в хронологическом порядке (старые → новые).
 	// Executor сам прогоняет её через history.go (truncation/sliding window) перед
 	// сборкой llm.Request.Messages.

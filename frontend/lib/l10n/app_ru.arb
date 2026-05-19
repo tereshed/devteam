@@ -1467,11 +1467,21 @@
   "assistantMessageRoleAssistant": "Ассистент",
   "assistantMessageRoleSystem": "Система",
 
+  "assistantLockScreenMessage": "Ассистент не настроен. Для начала работы укажите ключи доступа к LLM.",
+  "assistantLockScreenButton": "Перейти к настройке ключей",
+
   "assistantTaskStateActive": "В работе",
   "assistantTaskStateDone": "Готово",
   "assistantTaskStateFailed": "Ошибка",
   "assistantTaskStateCancelled": "Отменена",
   "assistantTaskStateNeedsHuman": "Нужна помощь",
-  "assistantTaskStatePaused": "Пауза"
+  "assistantTaskStatePaused": "Пауза",
+  "assistantStatusError": "Ошибка загрузки статуса: {error}",
+  "@assistantStatusError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "assistantStatusAdminSetup": "Ассистент требует настройки администратором."
 }
 

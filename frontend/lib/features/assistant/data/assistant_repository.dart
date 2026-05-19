@@ -6,6 +6,7 @@ import 'package:frontend/features/assistant/data/assistant_exceptions.dart';
 import 'package:frontend/features/assistant/domain/assistant_active_task_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
+import 'package:frontend/features/assistant/domain/assistant_status_model.dart';
 
 /// Максимальная длина текста user-сообщения (символы), синхронно с бэкендом
 /// (assistant_handler.go `assistantMaxMessageLength = 4096`).
@@ -58,6 +59,23 @@ class AssistantRepository {
         onInvalid: (msg, code) =>
             throw AssistantApiException(msg, statusCode: code),
       );
+
+  // ──────────────────────────── Status ────────────────────────────
+
+  /// `GET /assistant/status` — проверить статус конфигурации.
+  Future<AssistantStatusModel> getStatus({
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/assistant/status',
+        cancelToken: cancelToken,
+      );
+      return AssistantStatusModel.fromJson(_jsonBody(response));
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
 
   // ──────────────────────────── Sessions ────────────────────────────
 

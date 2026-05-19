@@ -275,6 +275,47 @@
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Hard-delete агента + cascade на agent_secrets и agent_tool_bindings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents-v2"
+                ],
+                "summary": "Delete v2 agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Agent UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/agents/{id}/secrets": {
@@ -1015,6 +1056,43 @@
                     },
                     "415": {
                         "description": "Неверный Content-Type",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/assistant/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает статус конфигурации ассистента (настроены ли ключи).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Статус ассистента",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantStatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
                         "schema": {
                             "$ref": "#/definitions/apierror.ErrorResponse"
                         }
@@ -4989,6 +5067,18 @@
                         "schema": {
                             "$ref": "#/definitions/apierror.ErrorResponse"
                         }
+                    },
+                    "403": {
+                        "description": "no access to task",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "task not found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -5028,6 +5118,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/handler.artifactFullResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "no access to task",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
                         }
                     },
                     "404": {
@@ -5515,6 +5611,18 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "no access to task",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/apierror.ErrorResponse"
                         }
@@ -6386,6 +6494,17 @@
                     "type": "string"
                 },
                 "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AssistantStatusResponse": {
+            "type": "object",
+            "properties": {
+                "is_configured": {
+                    "type": "boolean"
+                },
+                "required_provider": {
                     "type": "string"
                 }
             }
@@ -8527,7 +8646,8 @@
                 "devops",
                 "router",
                 "decomposer",
-                "merger"
+                "merger",
+                "assistant"
             ],
             "x-enum-varnames": [
                 "AgentRoleWorker",
@@ -8540,7 +8660,8 @@
                 "AgentRoleDevOps",
                 "AgentRoleRouter",
                 "AgentRoleDecomposer",
-                "AgentRoleMerger"
+                "AgentRoleMerger",
+                "AgentRoleAssistant"
             ]
         },
         "models.AgentSkill": {

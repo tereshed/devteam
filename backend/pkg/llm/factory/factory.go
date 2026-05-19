@@ -8,6 +8,7 @@ import (
 	"github.com/devteam/backend/pkg/llm/providers/deepseek"
 	"github.com/devteam/backend/pkg/llm/providers/gemini"
 	"github.com/devteam/backend/pkg/llm/providers/openai"
+	"github.com/devteam/backend/pkg/llm/providers/openrouter"
 	"github.com/devteam/backend/pkg/llm/providers/qwen"
 )
 
@@ -36,6 +37,12 @@ func New() *Factory {
 	})
 	f.RegisterProvider(llm.ProviderQwen, func(c llm.Config) (llm.Provider, error) {
 		return qwen.NewClient(c)
+	})
+	// OpenRouter — глобальный провайдер для assistant/orchestrator/planner
+	// (см. Phase 5 review). Зарегистрирован через NewFromLLMConfig, который
+	// падёт-обратно на DefaultBaseURL если c.BaseURL пуст.
+	f.RegisterProvider(llm.ProviderOpenRouter, func(c llm.Config) (llm.Provider, error) {
+		return openrouter.NewFromLLMConfig(c)
 	})
 
 	return f

@@ -184,10 +184,17 @@ func seedAgentsForTeam(t *testing.T, teamID string) string {
 	// Параметризованный INSERT — никакого SQL-injection даже теоретически.
 	// Идентификаторы команды и моделей подставляем как $-параметры.
 	// `is_active=true, requires_code_context=false, skills='[]', settings='{}'`
-	// идентичны bash-скрипту.
+	//
+	// Phase 5 review: orchestrator + planner переехали на OpenRouter+v4-flash
+	// для скорости pipeline (см. orchestrator.yaml / planner.yaml). YAML model
+	// перетирает DB.Model для LLM-executor агентов (см. resolveInputModel
+	// orchestrator_context_builder.go:472), поэтому здесь главное — выставить
+	// provider_kind="openrouter", чтобы LLM-диспатчер пошёл в правильный backend.
+	// Sandbox-агенты (developer/reviewer/tester) — без изменений, покрытие
+	// auth-resolver матрицы сохранено.
 	rows := [][]any{
-		{"orchestrator", "orchestrator", TestModelAnthropic, nil, nil},
-		{"planner", "planner", TestModelAnthropic, nil, nil},
+		{"orchestrator", "orchestrator", TestModelOpenRouter, nil, "openrouter"},
+		{"planner", "planner", TestModelOpenRouter, nil, "openrouter"},
 		{"developer", "developer", TestModelAnthropic, "claude-code", "anthropic_oauth"},
 		{"reviewer", "reviewer", TestModelDeepSeek, "claude-code", "deepseek"},
 		{"tester", "tester", hermesModel, "hermes", "openrouter"},

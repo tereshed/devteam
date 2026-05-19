@@ -91,7 +91,7 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	}
 
 	// 2) Резолвим LLM-клиента.
-	client, err := s.deps.LLMResolver.ResolveAssistantClient(ctx, agent)
+	client, err := s.deps.LLMResolver.ResolveAssistantClient(ctx, agent, userID)
 	if err != nil {
 		s.deps.Logger.ErrorContext(ctx, "assistant: resolve llm client failed",
 			slog.String("error", err.Error()),
@@ -122,8 +122,18 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	if agent.SystemPrompt != nil {
 		sysPrompt = *agent.SystemPrompt
 	}
+	// Phase 5: пробрасываем agent.ProviderKind в RunRequest.Provider. Без
+	// этого llmService.Generate уходил в defaultProvider (openai) независимо
+	// от того, что у seed assistant'а написано provider_kind=anthropic/
+	// openrouter. agentloop сам переименует тип в llm.ProviderType при
+	// сборке запроса (см. executor.go).
+	providerKind := ""
+	if agent.ProviderKind != nil {
+		providerKind = string(*agent.ProviderKind)
+	}
 	result, runErr := s.deps.Executor.Run(ctx, agentloop.RunRequest{
 		Client:       client,
+		Provider:     providerKind,
 		Model:        model,
 		SystemPrompt: sysPrompt,
 		Temperature:  agent.Temperature,

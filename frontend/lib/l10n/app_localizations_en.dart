@@ -2242,6 +2242,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get assistantMessageRoleSystem => 'System';
 
   @override
+  String get assistantLockScreenMessage =>
+      'The assistant is not configured. Please set up your LLM access keys to start.';
+
+  @override
+  String get assistantLockScreenButton => 'Go to key settings';
+
+  @override
   String get assistantTaskStateActive => 'Active';
 
   @override
@@ -2258,4 +2265,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get assistantTaskStatePaused => 'Paused';
+
+  @override
+  String assistantStatusError(String error) {
+    return 'Error loading status: $error';
+  }
+
+  @override
+  String get assistantStatusAdminSetup =>
+      'The assistant requires configuration by an administrator.';
 }

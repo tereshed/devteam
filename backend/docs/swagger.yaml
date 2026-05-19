@@ -183,6 +183,13 @@ definitions:
       user_id:
         type: string
     type: object
+  dto.AssistantStatusResponse:
+    properties:
+      is_configured:
+        type: boolean
+      required_provider:
+        type: string
+    type: object
   dto.AuthResponse:
     properties:
       access_token:
@@ -1636,6 +1643,7 @@ definitions:
     - router
     - decomposer
     - merger
+    - assistant
     type: string
     x-enum-varnames:
     - AgentRoleWorker
@@ -1649,6 +1657,7 @@ definitions:
     - AgentRoleRouter
     - AgentRoleDecomposer
     - AgentRoleMerger
+    - AgentRoleAssistant
   models.AgentSkill:
     properties:
       agent_id:
@@ -2037,6 +2046,32 @@ paths:
       tags:
       - agents-v2
   /agents/{id}:
+    delete:
+      description: Hard-delete агента + cascade на agent_secrets и agent_tool_bindings.
+      parameters:
+      - description: Agent UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete v2 agent
+      tags:
+      - agents-v2
     get:
       parameters:
       - description: Agent UUID
@@ -2601,6 +2636,29 @@ paths:
       - ApiKeyAuth: []
       - OAuth2Password: []
       summary: Отправка сообщения ассистенту
+      tags:
+      - assistant
+  /assistant/status:
+    get:
+      description: Возвращает статус конфигурации ассистента (настроены ли ключи).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AssistantStatusResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Статус ассистента
       tags:
       - assistant
   /auth/api-keys:
@@ -5066,6 +5124,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: no access to task
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: task not found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List task artifacts (metadata)
@@ -5091,6 +5157,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/handler.artifactFullResponse'
+        "403":
+          description: no access to task
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -5398,6 +5468,14 @@ paths:
             type: object
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: no access to task
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/apierror.ErrorResponse'
       security:

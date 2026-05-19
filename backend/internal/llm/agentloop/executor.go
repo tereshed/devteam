@@ -101,6 +101,7 @@ func (e *Executor) Run(ctx context.Context, req RunRequest) (Result, error) {
 
 		// (b) Сборка запроса.
 		llmReq := llm.Request{
+			Provider:     llm.ProviderType(req.Provider),
 			Model:        req.Model,
 			SystemPrompt: req.SystemPrompt,
 			Messages:     buildLLMMessages(history, e.cfg),

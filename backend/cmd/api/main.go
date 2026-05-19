@@ -642,7 +642,8 @@ func main() {
 		Repo:        assistantSessionRepo,
 		TaskRepo:    taskRepo,
 		AgentLoader: service.NewDBAgentLoader(db),
-		LLMResolver: service.NewAssistantLLMClientAdapter(llmService),
+		LLMResolver: service.NewAssistantLLMClientAdapter(llmCredSvc, llmFactory),
+		UserCreds:   llmCredSvc,
 		ToolCatalog: assistantToolCatalog,
 		Hub:         hub,
 		Executor:    assistantExecutor,
@@ -871,8 +872,17 @@ func ensureAdmin(ctx context.Context, userRepo repository.UserRepository, cfg co
 
 // initDatabase инициализирует подключение к базе данных
 func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {
+	gormLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             gormSlowThresholdFromEnv(),
+			LogLevel:                  gormLogLevelFromEnv(),
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+		},
+	)
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
-		Logger: logger.Default.LogMode(gormLogLevelFromEnv()),
+		Logger: gormLogger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -910,6 +920,21 @@ func gormLogLevelFromEnv() logger.LogLevel {
 	default:
 		return logger.Warn
 	}
+}
+
+// gormSlowThresholdFromEnv читает GORM_SLOW_THRESHOLD (например, "1s", "500ms").
+// По умолчанию 2s — на Yugabyte распределённые запросы (FOR UPDATE SKIP LOCKED
+// в task_events поллинге) регулярно тратят 200-500ms и засоряют логи.
+func gormSlowThresholdFromEnv() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("GORM_SLOW_THRESHOLD"))
+	if raw == "" {
+		return 2 * time.Second
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 2 * time.Second
+	}
+	return d
 }
 
 // Sprint 17 / Orchestration v2 — stub удалён. Используется реальный

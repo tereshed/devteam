@@ -368,6 +368,9 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			{
 				// Tasks-tab правой панели — live-список in-progress задач юзера.
 				assistant.GET("/active-tasks", deps.AssistantHandler.ListActiveTasks)
+				
+				// Статус конфигурации ассистента (есть ли ключи у пользователя).
+				assistant.GET("/status", deps.AssistantHandler.GetStatus)
 
 				// Сессии: CRUD + история + send + confirm.
 				assistant.POST("/sessions", deps.AssistantHandler.CreateSession)

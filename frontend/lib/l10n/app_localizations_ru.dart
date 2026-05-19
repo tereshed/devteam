@@ -2260,6 +2260,13 @@ class AppLocalizationsRu extends AppLocalizations {
   String get assistantMessageRoleSystem => 'Система';
 
   @override
+  String get assistantLockScreenMessage =>
+      'Ассистент не настроен. Для начала работы укажите ключи доступа к LLM.';
+
+  @override
+  String get assistantLockScreenButton => 'Перейти к настройке ключей';
+
+  @override
   String get assistantTaskStateActive => 'В работе';
 
   @override
@@ -2276,4 +2283,13 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get assistantTaskStatePaused => 'Пауза';
+
+  @override
+  String assistantStatusError(String error) {
+    return 'Ошибка загрузки статуса: $error';
+  }
+
+  @override
+  String get assistantStatusAdminSetup =>
+      'Ассистент требует настройки администратором.';
 }

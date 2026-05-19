@@ -32,6 +32,12 @@ type ExecutionInput struct {
 	Role      string
 
 	Model        string
+	// Provider — kind LLM-провайдера (openai/anthropic/openrouter/...).
+	// Заполняется ContextBuilder'ом из agent.ProviderKind. Пустая строка →
+	// llmService.Generate упадёт на defaultProvider. Тип — string, чтобы
+	// internal/agent не тащил pkg/llm import; преобразование выполняется
+	// в llm_executor.go при сборке llm.Request.
+	Provider     string
 	PromptSystem string
 	PromptUser   string
 	// PromptName — идентификатор промпта из backend/agents/*.yaml (задача 6.9).

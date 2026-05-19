@@ -7,7 +7,9 @@ import (
 
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/llm"
+	"github.com/devteam/backend/pkg/llm/factory"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -94,29 +96,55 @@ func (l *DBAgentLoader) GetAgentByName(ctx context.Context, name string) (*model
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AssistantLLMClientAdapter — Sprint 21. Реализует AssistantLLMClientResolver,
-// оборачивая существующий llm.Provider (llmService) в llm.Client через
-// ProviderAdapter. Этого достаточно для agentloop.Executor: ему нужны только
-// Chat() и (опционально) HealthCheck/ResolveBaseURL. Конкретный backend
-// (anthropic/openai/...) выбирается внутри llmService.Generate по
-// req.Provider/Model, проброшенным из agent.ProviderKind/Model.
+// оборачивая свежесозданный llm.Provider (с ключом пользователя) в llm.Client через
+// ProviderAdapter.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AssistantLLMClientAdapter struct {
-	provider llm.Provider
+	credsSvc UserLlmCredentialService
+	factory  *factory.Factory
 }
 
 // NewAssistantLLMClientAdapter — конструктор.
-func NewAssistantLLMClientAdapter(provider llm.Provider) *AssistantLLMClientAdapter {
-	return &AssistantLLMClientAdapter{provider: provider}
+func NewAssistantLLMClientAdapter(credsSvc UserLlmCredentialService, f *factory.Factory) *AssistantLLMClientAdapter {
+	return &AssistantLLMClientAdapter{credsSvc: credsSvc, factory: f}
 }
 
-// ResolveAssistantClient реализует AssistantLLMClientResolver. Agent игнорируется —
-// llmService сам выбирает backend по req.Provider (см. llmService.Generate).
-func (r *AssistantLLMClientAdapter) ResolveAssistantClient(ctx context.Context, a *models.Agent) (llm.Client, error) {
-	if r == nil || r.provider == nil {
-		return nil, errors.New("AssistantLLMClientAdapter: provider is not configured")
+// ResolveAssistantClient реализует AssistantLLMClientResolver.
+func (r *AssistantLLMClientAdapter) ResolveAssistantClient(ctx context.Context, a *models.Agent, userID uuid.UUID) (llm.Client, error) {
+	if r == nil || r.credsSvc == nil || r.factory == nil {
+		return nil, errors.New("AssistantLLMClientAdapter: not configured")
 	}
-	return &llm.ProviderAdapter{Provider: r.provider}, nil
+
+	if a.ProviderKind == nil || !a.ProviderKind.IsValid() {
+		return nil, errors.New("assistant agent has no valid provider_kind configured")
+	}
+
+	provKind := *a.ProviderKind
+	userProvider := provKind.UserLLMProvider()
+	if userProvider == "" {
+		return nil, fmt.Errorf("provider kind %q has no user credential mapping", provKind)
+	}
+
+	key, err := r.credsSvc.GetPlaintext(ctx, userID, userProvider)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserLlmCredentialNotFound) {
+			return nil, ErrAssistantNotConfiguredForUser
+		}
+		return nil, fmt.Errorf("failed to fetch user llm credential: %w", err)
+	}
+	if key == "" {
+		return nil, ErrAssistantNotConfiguredForUser
+	}
+
+	provider, err := r.factory.CreateProvider(llm.ProviderType(provKind), llm.Config{
+		APIKey: key,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create llm provider: %w", err)
+	}
+
+	return &llm.ProviderAdapter{Provider: provider}, nil
 }
 
 // Compile-time проверки соответствия интерфейсам.

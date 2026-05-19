@@ -32,6 +32,7 @@ import (
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/ws"
 	"github.com/devteam/backend/pkg/llm"
+	"github.com/devteam/backend/internal/handler/dto"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,6 +113,8 @@ var (
 	// ErrAssistantAgentNotConfigured — в БД нет agent с role='assistant'.
 	// Handler → 500 (это конфиг-ошибка деплоя).
 	ErrAssistantAgentNotConfigured = errors.New("assistant: agent registry entry is missing")
+	// ErrAssistantNotConfiguredForUser — у пользователя не настроен API ключ для выбранного провайдера.
+	ErrAssistantNotConfiguredForUser = errors.New("assistant: not configured for user (missing api key)")
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,7 +125,7 @@ var (
 // Реализуется в cmd/api/main.go поверх существующего LLMProviderResolver +
 // internallm.NewLLMClient.
 type AssistantLLMClientResolver interface {
-	ResolveAssistantClient(ctx context.Context, agent *models.Agent) (llm.Client, error)
+	ResolveAssistantClient(ctx context.Context, agent *models.Agent, userID uuid.UUID) (llm.Client, error)
 }
 
 // AssistantToolCatalogProvider — источник agentloop.Tool[] для assistant'а.
@@ -157,6 +160,9 @@ type AssistantService interface {
 
 	// GetHistory — курсорная пагинация (см. репозиторий ListMessages).
 	GetHistory(ctx context.Context, sessionID, userID uuid.UUID, limit int, beforeCreatedAt time.Time, beforeID uuid.UUID) ([]*models.AssistantMessage, error)
+
+	// GetStatus возвращает статус конфигурации ассистента для UI.
+	GetStatus(ctx context.Context, userID uuid.UUID) (*dto.AssistantStatusResponse, error)
 
 	// SendMessage — 202 Accepted: записывает user-сообщение (идемпотентно
 	// по clientMsgID), захватывает busy и стартует агент-петлю в горутине.
@@ -193,6 +199,7 @@ type AssistantServiceDeps struct {
 	TaskRepo    repository.TaskRepository
 	AgentLoader AssistantAgentLoader
 	LLMResolver AssistantLLMClientResolver
+	UserCreds   UserLlmCredentialService
 	ToolCatalog AssistantToolCatalogProvider
 	Hub         WSBroadcaster
 	Executor    *agentloop.Executor
@@ -240,6 +247,37 @@ type assistantService struct {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sessions CRUD.
 // ─────────────────────────────────────────────────────────────────────────────
+
+func (s *assistantService) GetStatus(ctx context.Context, userID uuid.UUID) (*dto.AssistantStatusResponse, error) {
+	if userID == uuid.Nil {
+		return nil, ErrAssistantInvalidInput
+	}
+	agent, err := s.deps.AgentLoader.GetAgentByName(ctx, AssistantAgentName)
+	if err != nil {
+		return nil, fmt.Errorf("load assistant agent: %w", err)
+	}
+	if agent == nil || !agent.IsActive || agent.ProviderKind == nil || !agent.ProviderKind.IsValid() {
+		// По дефолту требуем OpenRouter, если агент сломан/не настроен
+		return &dto.AssistantStatusResponse{IsConfigured: false, RequiredProvider: string(models.UserLLMProviderOpenRouter)}, nil
+	}
+
+	userProvider := agent.ProviderKind.UserLLMProvider()
+	if userProvider == "" {
+		// Провайдер не поддерживает per-user ключи, значит ассистент недоступен для UI-конфигурации
+		return &dto.AssistantStatusResponse{IsConfigured: false, RequiredProvider: "admin_setup_required"}, nil
+	}
+
+	// Проверяем наличие ключа
+	key, err := s.deps.UserCreds.GetPlaintext(ctx, userID, userProvider)
+	if err != nil && !errors.Is(err, repository.ErrUserLlmCredentialNotFound) {
+		return nil, fmt.Errorf("check user creds: %w", err)
+	}
+
+	return &dto.AssistantStatusResponse{
+		IsConfigured:     key != "",
+		RequiredProvider: string(userProvider),
+	}, nil
+}
 
 func (s *assistantService) CreateSession(ctx context.Context, userID uuid.UUID) (*models.AssistantSession, error) {
 	if userID == uuid.Nil {

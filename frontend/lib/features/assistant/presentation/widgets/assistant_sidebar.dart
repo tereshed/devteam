@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:frontend/core/l10n/require.dart';
+import 'package:frontend/core/routing/app_route_paths.dart';
+import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/presentation/controllers/assistant_sidebar_controller.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_chat_panel.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_tasks_panel.dart';
@@ -18,6 +21,7 @@ class AssistantSidebar extends ConsumerWidget {
     final l10n = requireAppLocalizations(context, where: 'AssistantSidebar');
     final sidebar = ref.watch(assistantSidebarControllerProvider);
     final notifier = ref.read(assistantSidebarControllerProvider.notifier);
+    final statusAsync = ref.watch(assistantStatusProvider);
     final theme = Theme.of(context);
 
     return Material(
@@ -47,24 +51,39 @@ class AssistantSidebar extends ConsumerWidget {
               ],
             ),
           ),
-          _AssistantTabBar(
-            current: sidebar.tab,
-            onChanged: notifier.setTab,
-            chatLabel: l10n.assistantTabChat,
-            tasksLabel: l10n.assistantTabTasks,
-          ),
-          const Divider(height: 1),
           Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 160),
-              child: switch (sidebar.tab) {
-                AssistantSidebarTab.chat => const AssistantChatPanel(
-                    key: ValueKey('assistant_chat_panel'),
-                  ),
-                AssistantSidebarTab.tasks => const AssistantTasksPanel(
-                    key: ValueKey('assistant_tasks_panel'),
-                  ),
+            child: statusAsync.when(
+              data: (status) {
+                if (!status.isConfigured) {
+                  return _AssistantLockScreen(requiredProvider: status.requiredProvider);
+                }
+                return Column(
+                  children: [
+                    _AssistantTabBar(
+                      current: sidebar.tab,
+                      onChanged: notifier.setTab,
+                      chatLabel: l10n.assistantTabChat,
+                      tasksLabel: l10n.assistantTabTasks,
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 160),
+                        child: switch (sidebar.tab) {
+                          AssistantSidebarTab.chat => const AssistantChatPanel(
+                              key: ValueKey('assistant_chat_panel'),
+                            ),
+                          AssistantSidebarTab.tasks => const AssistantTasksPanel(
+                              key: ValueKey('assistant_tasks_panel'),
+                            ),
+                        },
+                      ),
+                    ),
+                  ],
+                );
               },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, st) => Center(child: Text(l10n.assistantStatusError(err.toString()))),
             ),
           ),
         ],
@@ -110,6 +129,44 @@ class _AssistantTabBar extends StatelessWidget {
         onChanged(set.first);
       },
       showSelectedIcon: false,
+    );
+  }
+}
+
+class _AssistantLockScreen extends StatelessWidget {
+  const _AssistantLockScreen({required this.requiredProvider});
+  final String requiredProvider;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = requireAppLocalizations(context, where: 'AssistantSidebar');
+    final theme = Theme.of(context);
+    final isAdminSetup = requiredProvider == 'admin_setup_required';
+    
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline, size: 48, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(
+            isAdminSetup ? l10n.assistantStatusAdminSetup : l10n.assistantLockScreenMessage,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyLarge,
+          ),
+          if (!isAdminSetup) ...[
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () {
+                context.goNamed(AppRoutePaths.globalSettings);
+              },
+              icon: const Icon(Icons.settings),
+              label: Text(l10n.assistantLockScreenButton),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

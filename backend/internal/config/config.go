@@ -196,6 +196,18 @@ func Load() (*Config, error) {
 				BaseURL: getEnv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
 				Model:   getEnv("QWEN_MODEL", "qwen-turbo"),
 			},
+			// OpenRouter — глобальный провайдер для assistant/orchestrator/planner.
+			// Введён после Phase 5 review: дешёвая v4-flash модель (~$0.0000001/M
+			// токенов) ускоряет цепочку router-decisions в pipeline в разы по
+			// сравнению с anthropic+haiku при сопоставимом качестве на простых
+			// roвертикальных задачах. Эндпоинт совпадает с OpenAI-форматом,
+			// поэтому FakeLLM перехватывает запросы тем же handler'ом, что и
+			// /v1/chat/completions (см. test/featuresmoke/fakes/llm_server.go).
+			OpenRouter: ProviderConfig{
+				APIKey:  getEnv("OPENROUTER_API_KEY", getEnv("OPENROUTER_KEY", "")),
+				BaseURL: getEnv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+				Model:   getEnv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash"),
+			},
 		},
 		Admin: AdminConfig{
 			Email:    getEnv("ADMIN_EMAIL", ""),
@@ -365,12 +377,17 @@ func DecodeEncryptionKeyHex(s string) ([]byte, error) {
 // LLMConfig содержит конфигурацию для LLM провайдеров
 type LLMConfig struct {
 	DefaultProvider  string
-	OpenRouterAPIKey string // Специальный ключ для OpenRouter API (получение моделей)
+	OpenRouterAPIKey string // Специальный ключ для OpenRouter API (legacy: получение моделей через /models)
 	OpenAI           ProviderConfig
 	Anthropic        ProviderConfig
 	Gemini           ProviderConfig
 	Deepseek         ProviderConfig
 	Qwen             ProviderConfig
+	// OpenRouter — полноценный ProviderConfig для использования как backend
+	// глобальными LLM-агентами (assistant/orchestrator/planner). APIKey
+	// совпадает с OpenRouterAPIKey, но мы держим поля раздельно: историческое
+	// поле осталось для models-listing, а ProviderConfig — для Generate().
+	OpenRouter ProviderConfig
 }
 
 // ProviderConfig содержит конфигурацию конкретного провайдера

@@ -3,5 +3,8 @@ role: orchestrator
 prompt_name: orchestrator_prompt
 model_config:
   temperature: 0.1
-  model: "claude-haiku-4-5-20251001"
+  # Phase 5 review: deepseek/deepseek-v4-flash через OpenRouter — ~10× быстрее
+  # claude-haiku и сопоставимо по качеству на router-decisions / planner-loop
+  # задачах. Pairs с agent.provider_kind="openrouter" (см. seed/SQL).
+  model: "deepseek/deepseek-v4-flash"
 is_active: true

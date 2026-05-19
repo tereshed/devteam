@@ -3,5 +3,8 @@ role: planner
 prompt_name: planner_prompt
 model_config:
   temperature: 0.2
-  model: "claude-haiku-4-5-20251001"
+  # Phase 5 review: deepseek/deepseek-v4-flash через OpenRouter — см.
+  # orchestrator.yaml для обоснования. Pairs с provider_kind="openrouter"
+  # в записи агента (см. seed/SQL).
+  model: "deepseek/deepseek-v4-flash"
 is_active: true

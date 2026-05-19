@@ -52,6 +52,10 @@ func NewLLMService(factory *factory.Factory, cfg config.LLMConfig, repo reposito
 	createProvider(llm.ProviderGemini, cfg.Gemini)
 	createProvider(llm.ProviderDeepseek, cfg.Deepseek)
 	createProvider(llm.ProviderQwen, cfg.Qwen)
+	// OpenRouter — глобальный провайдер для assistant/orchestrator/planner
+	// (см. Phase 5 review). Без этой регистрации `req.Provider="openrouter"`
+	// падал с «unsupported provider», даже если OPENROUTER_API_KEY был в env.
+	createProvider(llm.ProviderOpenRouter, cfg.OpenRouter)
 
 	return &llmService{
 		providers:       providers,

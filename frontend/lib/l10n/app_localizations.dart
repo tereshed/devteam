@@ -4130,6 +4130,18 @@ abstract class AppLocalizations {
   /// **'Система'**
   String get assistantMessageRoleSystem;
 
+  /// No description provided for @assistantLockScreenMessage.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент не настроен. Для начала работы укажите ключи доступа к LLM.'**
+  String get assistantLockScreenMessage;
+
+  /// No description provided for @assistantLockScreenButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Перейти к настройке ключей'**
+  String get assistantLockScreenButton;
+
   /// No description provided for @assistantTaskStateActive.
   ///
   /// In ru, this message translates to:
@@ -4165,6 +4177,18 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Пауза'**
   String get assistantTaskStatePaused;
+
+  /// No description provided for @assistantStatusError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка загрузки статуса: {error}'**
+  String assistantStatusError(String error);
+
+  /// No description provided for @assistantStatusAdminSetup.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент требует настройки администратором.'**
+  String get assistantStatusAdminSetup;
 }
 
 class _AppLocalizationsDelegate

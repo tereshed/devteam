@@ -1194,6 +1194,11 @@
   "assistantMessageRoleSystem": "System",
   "@assistantMessageRoleSystem": { "description": "Sprint 21 §8 — bubble header label for system role" },
 
+  "assistantLockScreenMessage": "The assistant is not configured. Please set up your LLM access keys to start.",
+  "@assistantLockScreenMessage": { "description": "Lock screen text when assistant is unconfigured" },
+  "assistantLockScreenButton": "Go to key settings",
+  "@assistantLockScreenButton": { "description": "Button to open global settings for LLM keys" },
+
   "assistantTaskStateActive": "Active",
   "@assistantTaskStateActive": { "description": "Sprint 21 §11 — V2 task state chip label: active" },
   "assistantTaskStateDone": "Done",
@@ -1205,6 +1210,14 @@
   "assistantTaskStateNeedsHuman": "Needs human",
   "@assistantTaskStateNeedsHuman": { "description": "Sprint 21 §11 — V2 task state chip label: needs_human" },
   "assistantTaskStatePaused": "Paused",
-  "@assistantTaskStatePaused": { "description": "Sprint 21 §11 — V2 task state chip label: paused" }
+  "@assistantTaskStatePaused": { "description": "Sprint 21 §11 — V2 task state chip label: paused" },
+  "assistantStatusError": "Error loading status: {error}",
+  "@assistantStatusError": {
+    "description": "Error message when assistant status fails to load",
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "assistantStatusAdminSetup": "The assistant requires configuration by an administrator."
 }
 

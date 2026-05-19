@@ -44,6 +44,11 @@ func (e *LLMAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (*Exe
 	userPrompt := e.buildUserPrompt(in)
 
 	req := llm.Request{
+		// Provider — Phase 5: пробрасываем agent.ProviderKind, иначе
+		// llmService.Generate уходил в defaultProvider (openai) независимо
+		// от того, что записано у агента в БД. Пустая строка остаётся
+		// «не задано» — backward-compat для тестов без явного provider'а.
+		Provider:     llm.ProviderType(in.Provider),
 		Model:        in.Model,
 		SystemPrompt: in.PromptSystem,
 		Messages: []llm.Message{
