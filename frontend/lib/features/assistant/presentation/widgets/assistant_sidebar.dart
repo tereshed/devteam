@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/core/l10n/require.dart';
-import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/presentation/controllers/assistant_sidebar_controller.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_chat_panel.dart';
@@ -159,7 +158,7 @@ class _AssistantLockScreen extends StatelessWidget {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () {
-                context.goNamed(AppRouteNames.globalSettings);
+                context.goNamed('integrations_llm');
               },
               icon: const Icon(Icons.settings),
               label: Text(l10n.assistantLockScreenButton),
