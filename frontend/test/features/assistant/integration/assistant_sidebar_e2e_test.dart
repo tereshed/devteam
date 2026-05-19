@@ -46,6 +46,7 @@ import 'package:frontend/features/assistant/data/assistant_repository.dart';
 import 'package:frontend/features/assistant/domain/assistant_active_task_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
+import 'package:frontend/features/assistant/domain/assistant_status_model.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_sidebar.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:mockito/annotations.dart';
@@ -100,6 +101,11 @@ void main() {
   }
 
   void stubBootstrap({List<AssistantMessageModel> history = const []}) {
+    when(mockRepo.getStatus(cancelToken: anyNamed('cancelToken')))
+        .thenAnswer((_) async => const AssistantStatusModel(
+              isConfigured: true,
+              requiredProvider: 'anthropic',
+            ));
     when(mockRepo.listSessions(
       limit: anyNamed('limit'),
       includeArchived: anyNamed('includeArchived'),
