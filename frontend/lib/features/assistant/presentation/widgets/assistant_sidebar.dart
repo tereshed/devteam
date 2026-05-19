@@ -159,7 +159,7 @@ class _AssistantLockScreen extends StatelessWidget {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () {
-                context.goNamed(AppRoutePaths.globalSettings);
+                context.goNamed(AppRouteNames.globalSettings);
               },
               icon: const Icon(Icons.settings),
               label: Text(l10n.assistantLockScreenButton),
