@@ -53,11 +53,13 @@ type AgentUpdateParams struct {
 	RoleDescription *string  `json:"role_description,omitempty"`
 	SystemPrompt    *string  `json:"system_prompt,omitempty"`
 	Model           *string  `json:"model,omitempty" jsonschema:"description=Только для llm-агентов"`
+	ProviderKind    *string  `json:"provider_kind,omitempty" jsonschema:"description=anthropic/deepseek/zhipu/openrouter"`
 	// Sprint 5 review fix #4: CodeBackend для sandbox-агентов (например, перейти с claude-code на aider).
-	CodeBackend     *string  `json:"code_backend,omitempty" jsonschema:"description=Только для sandbox-агентов (claude-code/aider/hermes/custom)"`
-	Temperature     *float64 `json:"temperature,omitempty"`
-	MaxTokens       *int     `json:"max_tokens,omitempty"`
-	IsActive        *bool    `json:"is_active,omitempty"`
+	CodeBackend        *string  `json:"code_backend,omitempty" jsonschema:"description=Только для sandbox-агентов (claude-code/aider/hermes/custom)"`
+	Temperature        *float64 `json:"temperature,omitempty"`
+	MaxTokens          *int     `json:"max_tokens,omitempty"`
+	IsActive           *bool    `json:"is_active,omitempty"`
+	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty" jsonschema:"description=Подключить внутренний MCP DevTeam"`
 }
 
 type AgentSetSecretParams struct {
@@ -205,12 +207,17 @@ func makeAgentUpdateHandler(svc *service.AgentService) func(context.Context, *mc
 			return ValidationErr("invalid agent_id (must be UUID)")
 		}
 		in := service.UpdateAgentInput{
-			RoleDescription: p.RoleDescription,
-			SystemPrompt:    p.SystemPrompt,
-			Model:           p.Model,
-			Temperature:     p.Temperature,
-			MaxTokens:       p.MaxTokens,
-			IsActive:        p.IsActive,
+			RoleDescription:    p.RoleDescription,
+			SystemPrompt:       p.SystemPrompt,
+			Model:              p.Model,
+			Temperature:        p.Temperature,
+			MaxTokens:          p.MaxTokens,
+			IsActive:           p.IsActive,
+			InternalMCPEnabled: p.InternalMCPEnabled,
+		}
+		if p.ProviderKind != nil && *p.ProviderKind != "" {
+			pk := models.AgentProviderKind(*p.ProviderKind)
+			in.ProviderKind = &pk
 		}
 		if p.CodeBackend != nil && *p.CodeBackend != "" {
 			cb := models.CodeBackend(*p.CodeBackend)

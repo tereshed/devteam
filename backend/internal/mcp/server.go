@@ -78,6 +78,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	// Sprint 17 / Sprint 5 — v2 orchestration tools (опционально, через service-слой).
 	if deps.AgentSvcV2 != nil {
 		RegisterAgentV2Tools(server, deps.AgentSvcV2)
+		RegisterAgentMyTools(server, deps.AgentSvcV2)
 	}
 	if deps.OrchestrationQuerySvcV2 != nil {
 		RegisterOrchestrationV2Tools(server, deps.OrchestrationQuerySvcV2, deps.TaskLifecycleV2, deps.WorktreeMgrV2)

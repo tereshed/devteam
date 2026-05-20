@@ -65,13 +65,15 @@ type createAgentRequest struct {
 }
 
 type updateAgentRequest struct {
-	RoleDescription *string  `json:"role_description,omitempty"`
-	SystemPrompt    *string  `json:"system_prompt,omitempty"`
-	Model           *string  `json:"model,omitempty"`
-	CodeBackend     *string  `json:"code_backend,omitempty"`
-	Temperature     *float64 `json:"temperature,omitempty"`
-	MaxTokens       *int     `json:"max_tokens,omitempty"`
-	IsActive        *bool    `json:"is_active,omitempty"`
+	RoleDescription    *string  `json:"role_description,omitempty"`
+	SystemPrompt       *string  `json:"system_prompt,omitempty"`
+	Model              *string  `json:"model,omitempty"`
+	ProviderKind       *string  `json:"provider_kind,omitempty"`
+	CodeBackend        *string  `json:"code_backend,omitempty"`
+	Temperature        *float64 `json:"temperature,omitempty"`
+	MaxTokens          *int     `json:"max_tokens,omitempty"`
+	IsActive           *bool    `json:"is_active,omitempty"`
+	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty"`
 }
 
 type setSecretRequest struct {
@@ -238,12 +240,17 @@ func (h *AgentV2Handler) Update(c *gin.Context) {
 		return
 	}
 	in := service.UpdateAgentInput{
-		RoleDescription: req.RoleDescription,
-		SystemPrompt:    req.SystemPrompt,
-		Model:           req.Model,
-		Temperature:     req.Temperature,
-		MaxTokens:       req.MaxTokens,
-		IsActive:        req.IsActive,
+		RoleDescription:    req.RoleDescription,
+		SystemPrompt:       req.SystemPrompt,
+		Model:              req.Model,
+		Temperature:        req.Temperature,
+		MaxTokens:          req.MaxTokens,
+		IsActive:           req.IsActive,
+		InternalMCPEnabled: req.InternalMCPEnabled,
+	}
+	if req.ProviderKind != nil && *req.ProviderKind != "" {
+		pk := models.AgentProviderKind(*req.ProviderKind)
+		in.ProviderKind = &pk
 	}
 	if req.CodeBackend != nil && *req.CodeBackend != "" {
 		cb := models.CodeBackend(*req.CodeBackend)

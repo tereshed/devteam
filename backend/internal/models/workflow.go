@@ -219,6 +219,9 @@ type Agent struct {
 	Temperature     *float64           `gorm:"type:numeric(4,3)" json:"temperature"`
 	MaxTokens       *int               `gorm:"type:integer" json:"max_tokens"`
 
+	// Phase 4 §4.1 — подключить внутренний MCP DevTeam (для управления сущностями).
+	InternalMCPEnabled bool `gorm:"default:false" json:"internal_mcp_enabled"`
+
 	CreatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
 	UpdatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
 

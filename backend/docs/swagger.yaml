@@ -1375,15 +1375,45 @@ definitions:
     properties:
       code_backend:
         type: string
+      internal_mcp_enabled:
+        type: boolean
       is_active:
         type: boolean
       max_tokens:
         type: integer
       model:
         type: string
+      provider_kind:
+        type: string
       role_description:
         type: string
       system_prompt:
+        type: string
+      temperature:
+        type: number
+    type: object
+  handler.updateMyAgentRequest:
+    properties:
+      execution_kind:
+        type: string
+      internal_mcp_enabled:
+        type: boolean
+      is_active:
+        type: boolean
+      max_tokens:
+        type: integer
+      model:
+        type: string
+      provider_kind:
+        type: string
+      role:
+        type: string
+      role_description:
+        type: string
+      system_prompt:
+        type: string
+      team_id:
+        description: Запрещённые поля — early-return 400 если переданы.
         type: string
       temperature:
         type: number
@@ -1566,6 +1596,10 @@ definitions:
           Temperature, MaxTokens — параметры LLM (только для llm-агентов).
       id:
         type: string
+      internal_mcp_enabled:
+        description: Phase 4 §4.1 — подключить внутренний MCP DevTeam (для управления
+          сущностями).
+        type: boolean
       is_active:
         type: boolean
       max_tokens:
@@ -4104,6 +4138,97 @@ paths:
       summary: Список логов LLM
       tags:
       - llm
+  /me/agents:
+    get:
+      description: Список user-level агентов текущего пользователя (assistant и т.д.).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List my agents
+      tags:
+      - my-agents
+  /me/agents/{id}:
+    get:
+      parameters:
+      - description: Agent UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get my agent by ID
+      tags:
+      - my-agents
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Agent UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: patch fields
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.updateMyAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update my agent
+      tags:
+      - my-agents
   /me/llm-credentials:
     get:
       description: Возвращает masked_preview по каждому провайдеру (без has_key, без

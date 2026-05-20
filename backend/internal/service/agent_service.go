@@ -64,14 +64,15 @@ type CreateAgentInput struct {
 // Name/Role/ExecutionKind НЕ меняются через update (требуют пересоздания —
 // смена runtime-режима меняет инвариант, какой executor использовать).
 type UpdateAgentInput struct {
-	RoleDescription *string
-	SystemPrompt    *string
-	Model           *string
-	ProviderKind    *models.AgentProviderKind
-	CodeBackend     *models.CodeBackend // Sprint 5 review fix #4: можно менять для sandbox-агента
-	Temperature     *float64
-	MaxTokens       *int
-	IsActive        *bool
+	RoleDescription    *string
+	SystemPrompt       *string
+	Model              *string
+	ProviderKind       *models.AgentProviderKind
+	CodeBackend        *models.CodeBackend // Sprint 5 review fix #4: можно менять для sandbox-агента
+	Temperature        *float64
+	MaxTokens          *int
+	IsActive           *bool
+	InternalMCPEnabled *bool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,11 +83,15 @@ type UpdateAgentInput struct {
 //
 // Sprint 5 review fix #2: txManager используется для атомарных операций (SetSecret,
 // Update). Без него Read-Modify-Write образует TOCTOU гонку.
+// ErrAgentProviderNotConnected — пользователь не подключил требуемый LLM-провайдер.
+var ErrAgentProviderNotConnected = errors.New("LLM provider not connected")
+
 type AgentService struct {
 	agentRepo      repository.AgentRepository
 	secretRepo     repository.AgentSecretRepository
 	rolePromptRepo repository.AgentRolePromptRepository
 	apiKeyRepo     repository.ApiKeyRepository
+	llmCredRepo    repository.UserLlmCredentialRepository
 	encryptor      Encryptor
 	txManager      repository.TransactionManager
 }
@@ -117,6 +122,12 @@ func (s *AgentService) WithRolePromptRepo(repo repository.AgentRolePromptReposit
 // WithApiKeyRepo sets the ApiKeyRepository (needed for MCP key provisioning).
 func (s *AgentService) WithApiKeyRepo(repo repository.ApiKeyRepository) *AgentService {
 	s.apiKeyRepo = repo
+	return s
+}
+
+// WithLlmCredRepo sets the UserLlmCredentialRepository (needed for §4.3 provider validation).
+func (s *AgentService) WithLlmCredRepo(repo repository.UserLlmCredentialRepository) *AgentService {
+	s.llmCredRepo = repo
 	return s
 }
 
@@ -301,6 +312,9 @@ func (s *AgentService) applyUpdatePatch(current *models.Agent, in UpdateAgentInp
 	if in.IsActive != nil {
 		current.IsActive = *in.IsActive
 	}
+	if in.InternalMCPEnabled != nil {
+		current.InternalMCPEnabled = *in.InternalMCPEnabled
+	}
 	return nil
 }
 
@@ -449,6 +463,39 @@ func (s *AgentService) Delete(ctx context.Context, id uuid.UUID) error {
 		}
 		return nil
 	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4 §4.3 — provider validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ValidateProviderConnected проверяет что у пользователя подключён LLM-провайдер
+// соответствующий agent.ProviderKind. Для anthropic_oauth проверка не требуется
+// (ключ из claude_code_subscriptions, не из user_llm_credentials).
+func (s *AgentService) ValidateProviderConnected(ctx context.Context, userID uuid.UUID, providerKind *models.AgentProviderKind) error {
+	if providerKind == nil {
+		return nil
+	}
+	if s.llmCredRepo == nil {
+		return nil
+	}
+	if *providerKind == models.AgentProviderKindAnthropicOAuth {
+		return nil
+	}
+
+	llmProvider := providerKind.UserLLMProvider()
+	if llmProvider == "" {
+		return nil
+	}
+
+	_, err := s.llmCredRepo.GetByUserAndProvider(ctx, userID, llmProvider)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserLlmCredentialNotFound) {
+			return fmt.Errorf("%w: provider %s is not connected — configure it in settings", ErrAgentProviderNotConnected, *providerKind)
+		}
+		return fmt.Errorf("check provider credentials: %w", err)
+	}
+	return nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

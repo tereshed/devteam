@@ -857,3 +857,159 @@ func TestAgentService_CreateDefaultAssistant_NoRolePromptRepo(t *testing.T) {
 		t.Errorf("error should mention rolePromptRepo, got: %v", err)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4 §4.1 — InternalMCPEnabled update
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestAgentService_Update_InternalMCPEnabled(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	model := "claude-sonnet-4-6"
+	created, err := svc.Create(context.Background(), CreateAgentInput{
+		Name:          "assistant-mcp-test",
+		Role:          models.AgentRoleAssistant,
+		ExecutionKind: models.AgentExecutionKindLLM,
+		Model:         &model,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.InternalMCPEnabled {
+		t.Fatal("InternalMCPEnabled should default to false")
+	}
+
+	enable := true
+	updated, err := svc.Update(context.Background(), created.ID, UpdateAgentInput{
+		InternalMCPEnabled: &enable,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if !updated.InternalMCPEnabled {
+		t.Error("InternalMCPEnabled should be true after update")
+	}
+
+	disable := false
+	updated2, err := svc.Update(context.Background(), updated.ID, UpdateAgentInput{
+		InternalMCPEnabled: &disable,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated2.InternalMCPEnabled {
+		t.Error("InternalMCPEnabled should be false after second update")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4 §4.3 — Provider validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+type agentMemLlmCredRepo struct {
+	mu    sync.Mutex
+	creds map[string]*models.UserLlmCredential // key: "userID:provider"
+}
+
+func newAgentMemLlmCredRepo() *agentMemLlmCredRepo {
+	return &agentMemLlmCredRepo{creds: map[string]*models.UserLlmCredential{}}
+}
+
+func (r *agentMemLlmCredRepo) seed(userID uuid.UUID, provider models.UserLLMProvider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := userID.String() + ":" + string(provider)
+	r.creds[key] = &models.UserLlmCredential{
+		ID:       uuid.New(),
+		UserID:   userID,
+		Provider: provider,
+	}
+}
+
+func (r *agentMemLlmCredRepo) GetByUserAndProvider(_ context.Context, userID uuid.UUID, provider models.UserLLMProvider) (*models.UserLlmCredential, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := userID.String() + ":" + string(provider)
+	c, ok := r.creds[key]
+	if !ok {
+		return nil, repository.ErrUserLlmCredentialNotFound
+	}
+	cp := *c
+	return &cp, nil
+}
+
+func (r *agentMemLlmCredRepo) ListByUserID(_ context.Context, userID uuid.UUID) ([]models.UserLlmCredential, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []models.UserLlmCredential
+	for _, c := range r.creds {
+		if c.UserID == userID {
+			out = append(out, *c)
+		}
+	}
+	return out, nil
+}
+
+func (r *agentMemLlmCredRepo) Create(_ context.Context, _ *models.UserLlmCredential) error { return nil }
+func (r *agentMemLlmCredRepo) Update(_ context.Context, _ *models.UserLlmCredential) error { return nil }
+func (r *agentMemLlmCredRepo) DeleteByUserAndProvider(_ context.Context, _ uuid.UUID, _ models.UserLLMProvider) (int64, error) {
+	return 0, nil
+}
+func (r *agentMemLlmCredRepo) CreateAudit(_ context.Context, _ *models.UserLlmCredentialAudit) error {
+	return nil
+}
+
+func TestAgentService_ValidateProviderConnected_HappyPath(t *testing.T) {
+	llmCredRepo := newAgentMemLlmCredRepo()
+	svc := newAgentSvcForTest(t)
+	svc.WithLlmCredRepo(llmCredRepo)
+
+	userID := uuid.New()
+	llmCredRepo.seed(userID, models.UserLLMProviderAnthropic)
+
+	pk := models.AgentProviderKindAnthropic
+	if err := svc.ValidateProviderConnected(context.Background(), userID, &pk); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+func TestAgentService_ValidateProviderConnected_NotConnected(t *testing.T) {
+	llmCredRepo := newAgentMemLlmCredRepo()
+	svc := newAgentSvcForTest(t)
+	svc.WithLlmCredRepo(llmCredRepo)
+
+	userID := uuid.New()
+	// NOT seeding any credentials
+
+	pk := models.AgentProviderKindAnthropic
+	err := svc.ValidateProviderConnected(context.Background(), userID, &pk)
+	if !errors.Is(err, ErrAgentProviderNotConnected) {
+		t.Fatalf("expected ErrAgentProviderNotConnected, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "not connected") {
+		t.Errorf("error should mention 'not connected', got: %v", err)
+	}
+}
+
+func TestAgentService_ValidateProviderConnected_NilProvider(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	if err := svc.ValidateProviderConnected(context.Background(), uuid.New(), nil); err != nil {
+		t.Fatalf("nil provider should be OK, got %v", err)
+	}
+}
+
+func TestAgentService_ValidateProviderConnected_AnthropicOAuth(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	pk := models.AgentProviderKindAnthropicOAuth
+	if err := svc.ValidateProviderConnected(context.Background(), uuid.New(), &pk); err != nil {
+		t.Fatalf("anthropic_oauth should skip validation, got %v", err)
+	}
+}
+
+func TestAgentService_ValidateProviderConnected_NilRepo(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	// llmCredRepo not set — should be no-op
+	pk := models.AgentProviderKindAnthropic
+	if err := svc.ValidateProviderConnected(context.Background(), uuid.New(), &pk); err != nil {
+		t.Fatalf("nil repo should be no-op, got %v", err)
+	}
+}

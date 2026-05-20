@@ -340,6 +340,9 @@ func main() {
 	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
 	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
 
+	// Phase 4 §4.3 — wire llmCredRepo for provider validation.
+	agentSvcV2.WithLlmCredRepo(llmCredRepo)
+
 	// Sprint 15.18 — динамический резолвер аутентификации sandbox (OAuth subscription / per-user creds / api key).
 	sandboxAuthResolver := service.NewSandboxAuthEnvResolver(
 		claudeCodeAuthSvc,
@@ -687,6 +690,9 @@ func main() {
 
 		// Sprint 17 / Sprint 5F.3 — HTTP API для v2 admin (Frontend Agents Management).
 		AgentV2Handler: handler.NewAgentV2Handler(agentSvcV2),
+
+		// Phase 4 §4.2 — /me/agents — user-level агенты.
+		AgentMyHandler: handler.NewAgentMyHandler(agentSvcV2),
 
 		// Phase 1 §1.4 — admin API для дефолтных промптов ролей агентов.
 		AgentRolePromptHandler: handler.NewAgentRolePromptHandler(rolePromptRepo),

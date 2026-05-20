@@ -64,6 +64,9 @@ type Dependencies struct {
 	// Sprint 17 / Sprint 5F.3 — CRUD + секреты для реестра агентов v2.
 	AgentV2Handler *handler.AgentV2Handler
 
+	// Phase 4 §4.2 — user-level агенты (/me/agents).
+	AgentMyHandler *handler.AgentMyHandler
+
 	// Sprint 17 / Orchestration v2 — read-only API для DAG / Router timeline / Worktrees.
 	OrchestrationV2Handler *handler.OrchestrationV2Handler
 
@@ -163,6 +166,17 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			me.PATCH("/llm-credentials", deps.LlmCredentialsPatchRL.Handler(), deps.UserLlmCredentialHandler.Patch)
 		}
 
+		// Phase 4 §4.2 — /me/agents — user-level агенты.
+		if deps.AgentMyHandler != nil {
+			meAgents := api.Group("/me/agents")
+			meAgents.Use(authMW)
+			{
+				meAgents.GET("", deps.AgentMyHandler.List)
+				meAgents.GET("/:id", deps.AgentMyHandler.Get)
+				meAgents.PUT("/:id", deps.AgentMyHandler.Update)
+			}
+		}
+
 		// Каталог tool_definitions (тот же auth, что у /projects)
 		api.GET("/tool-definitions", authMW, deps.ToolDefinitionHandler.List)
 
@@ -182,10 +196,10 @@ func (s *Server) setupRoutes(deps Dependencies) {
 		}
 
 		// Agents v2 — Sprint 17 / Sprint 5F.3 — CRUD + секреты для реестра агентов v2.
-		// Параллель MCP-инструментам tools_agents_v2.go; используется фронтендом.
+		// Admin-only: проектные агенты управляются через этот API; без AdminOnly — IDOR.
 		if deps.AgentV2Handler != nil {
 			agentsV2 := api.Group("/agents")
-			agentsV2.Use(authMW)
+			agentsV2.Use(authMW, middleware.AdminOnlyMiddleware())
 			{
 				agentsV2.GET("", deps.AgentV2Handler.List)
 				agentsV2.GET("/:id", deps.AgentV2Handler.Get)

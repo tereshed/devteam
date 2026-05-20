@@ -3381,6 +3381,150 @@
                 }
             }
         },
+        "/me/agents": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Список user-level агентов текущего пользователя (assistant и т.д.).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "my-agents"
+                ],
+                "summary": "List my agents",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/agents/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "my-agents"
+                ],
+                "summary": "Get my agent by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Agent UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Agent"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "my-agents"
+                ],
+                "summary": "Update my agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Agent UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "patch fields",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.updateMyAgentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Agent"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/me/llm-credentials": {
             "get": {
                 "security": [
@@ -8455,6 +8599,9 @@
                 "code_backend": {
                     "type": "string"
                 },
+                "internal_mcp_enabled": {
+                    "type": "boolean"
+                },
                 "is_active": {
                     "type": "boolean"
                 },
@@ -8464,10 +8611,52 @@
                 "model": {
                     "type": "string"
                 },
+                "provider_kind": {
+                    "type": "string"
+                },
                 "role_description": {
                     "type": "string"
                 },
                 "system_prompt": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                }
+            }
+        },
+        "handler.updateMyAgentRequest": {
+            "type": "object",
+            "properties": {
+                "execution_kind": {
+                    "type": "string"
+                },
+                "internal_mcp_enabled": {
+                    "type": "boolean"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider_kind": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "role_description": {
+                    "type": "string"
+                },
+                "system_prompt": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "description": "Запрещённые поля — early-return 400 если переданы.",
                     "type": "string"
                 },
                 "temperature": {
@@ -8723,6 +8912,10 @@
                 },
                 "id": {
                     "type": "string"
+                },
+                "internal_mcp_enabled": {
+                    "description": "Phase 4 §4.1 — подключить внутренний MCP DevTeam (для управления сущностями).",
+                    "type": "boolean"
                 },
                 "is_active": {
                     "type": "boolean"
