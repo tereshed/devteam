@@ -1,8 +1,0 @@
-name: researcher_agent
-role: worker
-prompt_name: researcher_prompt
-model_config:
-  temperature: 0.3
-  model: "gpt-4o-mini"
-is_active: true
-

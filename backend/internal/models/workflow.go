@@ -317,7 +317,8 @@ type WorkflowConfig struct {
 // StepConfig конфигурация одного шага
 type StepConfig struct {
 	Type            StepType          `json:"type"`                       // 'llm', 'condition', 'loop', 'api_call'
-	AgentID         string            `json:"agent_id,omitempty"`         // Для type=llm
+	AgentID         string            `json:"agent_id,omitempty"`         // Legacy: конкретный UUID агента
+	AgentRole       string            `json:"agent_role,omitempty"`       // Роль агента — резолвится в реального агента при исполнении
 	Next            *string           `json:"next,omitempty"`             // ID следующего шага (если линейно)
 	ConditionPrompt string            `json:"condition_prompt,omitempty"` // Для type=condition
 	Routes          map[string]string `json:"routes,omitempty"`           // map[Response]NextStepID
@@ -331,11 +332,12 @@ type StepConfig struct {
 
 // LoopConfig конфигурация цикла
 type LoopConfig struct {
-	BodyStepID     string `json:"body_step_id"`               // Шаг, который выполняется в цикле
-	MaxIterations  int    `json:"max_iterations"`             // Максимум итераций (защита от бесконечного цикла)
-	ExitCondition  string `json:"exit_condition"`             // Промпт для LLM: "Should we exit? Answer YES or NO"
-	ExitAgentID    string `json:"exit_agent_id,omitempty"`    // Агент для проверки условия (опционально)
-	ExitOnResponse string `json:"exit_on_response,omitempty"` // При каком ответе выходить (default: "YES")
+	BodyStepID     string `json:"body_step_id"`                // Шаг, который выполняется в цикле
+	MaxIterations  int    `json:"max_iterations"`              // Максимум итераций (защита от бесконечного цикла)
+	ExitCondition  string `json:"exit_condition"`              // Промпт для LLM: "Should we exit? Answer YES or NO"
+	ExitAgentID    string `json:"exit_agent_id,omitempty"`     // Legacy: UUID агента для проверки условия
+	ExitAgentRole  string `json:"exit_agent_role,omitempty"`   // Роль агента для проверки условия выхода
+	ExitOnResponse string `json:"exit_on_response,omitempty"`  // При каком ответе выходить (default: "YES")
 }
 
 // APICallConfig конфигурация вызова внешнего API

@@ -9,7 +9,7 @@ max_steps: 10
 steps:
   generate:
     type: llm
-    agent_name: writer_agent
+    agent_role: worker
     next: notify
 
   notify:
@@ -28,4 +28,3 @@ steps:
         }
       timeout_sec: 10
     next: null
-

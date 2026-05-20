@@ -15,11 +15,10 @@ steps:
       headers:
         Accept: "application/json"
       timeout_sec: 30
-      extract_path: "articles.0.title"  # Извлекаем заголовок первой статьи
+      extract_path: "articles.0.title"
     next: summarize
 
   summarize:
     type: llm
-    agent_name: writer_agent
+    agent_role: worker
     next: null
-

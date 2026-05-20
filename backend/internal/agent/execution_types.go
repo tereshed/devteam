@@ -40,9 +40,9 @@ type ExecutionInput struct {
 	Provider     string
 	PromptSystem string
 	PromptUser   string
-	// PromptName — идентификатор промпта из backend/agents/*.yaml (задача 6.9).
+	// PromptName — идентификатор промпта (задача 6.9).
 	PromptName string
-	// Temperature / MaxTokens — параметры LLM из предзагруженного YAML-конфига агента (nil = не заданы).
+	// Temperature / MaxTokens — параметры LLM из БД агента (nil = не заданы).
 	Temperature *float64
 	MaxTokens   *int
 

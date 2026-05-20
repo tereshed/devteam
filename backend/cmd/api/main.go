@@ -134,8 +134,9 @@ func main() {
 
 	// Phase 2 — AgentService (created early: needed by AuthService and ProjectService).
 	rolePromptRepo := repository.NewAgentRolePromptRepository(db)
+	agentRepo := repository.NewAgentRepository(db)
 	agentSvcV2 := service.NewAgentService(
-		repository.NewAgentRepository(db),
+		agentRepo,
 		repository.NewAgentSecretRepository(db),
 		encryptor,
 		txManager,
@@ -152,12 +153,9 @@ func main() {
 		log.Println("Prompts loaded successfully")
 	}
 
-	// Загрузка workflows и агентов
-	log.Println("Loading workflows and agents...")
-	wfLoader := workflowloader.New(workflowRepo, promptRepo, db)
-	if err := wfLoader.LoadAgents(context.Background(), "agents"); err != nil {
-		log.Printf("Failed to load agents: %v", err)
-	}
+	// Загрузка workflows и расписаний (агенты создаются через БД, YAML-конфиги удалены — Phase 3)
+	log.Println("Loading workflows...")
+	wfLoader := workflowloader.New(workflowRepo)
 	if err := wfLoader.LoadWorkflows(context.Background(), "workflows"); err != nil {
 		log.Printf("Failed to load workflows: %v", err)
 	}
@@ -278,7 +276,7 @@ func main() {
 	llmHandler := handler.NewLLMHandler(llmService)
 
 	// Workflow Engine
-	workflowEngine := service.NewWorkflowEngine(workflowRepo, llmService)
+	workflowEngine := service.NewWorkflowEngine(workflowRepo, agentRepo, llmService)
 
 	// Docker Client for Sandbox
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())

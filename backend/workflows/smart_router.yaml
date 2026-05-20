@@ -14,20 +14,19 @@ steps:
       CODE: handle_code
       WRITING: handle_writing
       RESEARCH: handle_research
-    next: null  # Не используется для condition
+    next: null
 
   handle_code:
     type: llm
-    agent_name: coder_agent
+    agent_role: developer
     next: null
 
   handle_writing:
     type: llm
-    agent_name: writer_agent
+    agent_role: worker
     next: null
 
   handle_research:
     type: llm
-    agent_name: researcher_agent
+    agent_role: worker
     next: null
-

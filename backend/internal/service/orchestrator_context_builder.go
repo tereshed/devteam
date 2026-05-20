@@ -54,22 +54,26 @@ func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptCompose
 	}
 }
 
-// NewContextBuilderWithSandboxSecrets — тот же ContextBuilder, плюс набор секретов,
-// которые попадут в EnvSecrets для агентов с CodeBackend != "" (Developer/Tester в sandbox).
-// Используется для проброса ANTHROPIC_API_KEY и т.п. в entrypoint sandbox-контейнера.
-// Пустые значения и nil-карта игнорируются.
-func NewContextBuilderWithSandboxSecrets(encryptor Encryptor, promptComposer PipelinePromptComposer, sandboxSecrets map[string]string) ContextBuilder {
-	cleaned := make(map[string]string, len(sandboxSecrets))
-	for k, v := range sandboxSecrets {
+func cleanSecrets(secrets map[string]string) map[string]string {
+	cleaned := make(map[string]string, len(secrets))
+	for k, v := range secrets {
 		if k == "" || v == "" {
 			continue
 		}
 		cleaned[k] = v
 	}
+	return cleaned
+}
+
+// NewContextBuilderWithSandboxSecrets — тот же ContextBuilder, плюс набор секретов,
+// которые попадут в EnvSecrets для агентов с CodeBackend != "" (Developer/Tester в sandbox).
+// Используется для проброса ANTHROPIC_API_KEY и т.п. в entrypoint sandbox-контейнера.
+// Пустые значения и nil-карта игнорируются.
+func NewContextBuilderWithSandboxSecrets(encryptor Encryptor, promptComposer PipelinePromptComposer, sandboxSecrets map[string]string) ContextBuilder {
 	return &contextBuilder{
 		encryptor:      encryptor,
 		composer:       promptComposer,
-		sandboxSecrets: cleaned,
+		sandboxSecrets: cleanSecrets(sandboxSecrets),
 	}
 }
 
@@ -100,17 +104,10 @@ func NewContextBuilderFull(
 	taskMsgRepo repository.TaskMessageRepository,
 	opts ...ContextBuilderOption,
 ) ContextBuilder {
-	cleaned := make(map[string]string, len(sandboxSecrets))
-	for k, v := range sandboxSecrets {
-		if k == "" || v == "" {
-			continue
-		}
-		cleaned[k] = v
-	}
 	cb := &contextBuilder{
 		encryptor:      encryptor,
 		composer:       promptComposer,
-		sandboxSecrets: cleaned,
+		sandboxSecrets: cleanSecrets(sandboxSecrets),
 		taskMsgRepo:    taskMsgRepo,
 	}
 	for _, o := range opts {

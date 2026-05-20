@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/llm"
 	"gorm.io/datatypes"
 )
@@ -40,25 +42,14 @@ func (m *MockWorkflowRepository) GetWorkflowByName(ctx context.Context, name str
 	return args.Get(0).(*models.Workflow), args.Error(1)
 }
 
-func (m *MockWorkflowRepository) CreateAgent(ctx context.Context, agent *models.Agent) error {
-	args := m.Called(ctx, agent)
+func (m *MockWorkflowRepository) UpsertWorkflow(ctx context.Context, wf *models.Workflow) error {
+	args := m.Called(ctx, wf)
 	return args.Error(0)
 }
 
-func (m *MockWorkflowRepository) GetAgentByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
-	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*models.Agent), args.Error(1)
-}
-
-func (m *MockWorkflowRepository) GetAgentByName(ctx context.Context, name string) (*models.Agent, error) {
-	args := m.Called(ctx, name)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*models.Agent), args.Error(1)
+func (m *MockWorkflowRepository) UpsertScheduledWorkflow(ctx context.Context, schedule *models.ScheduledWorkflow) error {
+	args := m.Called(ctx, schedule)
+	return args.Error(0)
 }
 
 func (m *MockWorkflowRepository) CreateExecution(ctx context.Context, exec *models.Execution) error {
@@ -143,12 +134,60 @@ func (m *MockLLMService) ListLogs(ctx context.Context, limit, offset int) ([]mod
 	return args.Get(0).([]models.LLMLog), args.Get(1).(int64), args.Error(2)
 }
 
+// --- MockAgentRepository ---
+
+type MockAgentRepository struct {
+	mock.Mock
+}
+
+func (m *MockAgentRepository) Create(ctx context.Context, agent *models.Agent) error {
+	return m.Called(ctx, agent).Error(0)
+}
+
+func (m *MockAgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *MockAgentRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *MockAgentRepository) GetByName(ctx context.Context, name string) (*models.Agent, error) {
+	args := m.Called(ctx, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *MockAgentRepository) List(ctx context.Context, filter repository.AgentFilter) ([]models.Agent, int64, error) {
+	args := m.Called(ctx, filter)
+	return args.Get(0).([]models.Agent), args.Get(1).(int64), args.Error(2)
+}
+
+func (m *MockAgentRepository) Update(ctx context.Context, agent *models.Agent, expectedUpdatedAt time.Time) error {
+	return m.Called(ctx, agent, expectedUpdatedAt).Error(0)
+}
+
+func (m *MockAgentRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	return m.Called(ctx, id).Error(0)
+}
+
 // --- Tests ---
 
 func TestStartWorkflow(t *testing.T) {
 	repo := new(MockWorkflowRepository)
+	agentRepo := new(MockAgentRepository)
 	llmService := new(MockLLMService)
-	engine := NewWorkflowEngine(repo, llmService)
+	engine := NewWorkflowEngine(repo, agentRepo, llmService)
 
 	wfName := "test_workflow"
 	input := "test input"
@@ -192,8 +231,9 @@ func TestStartWorkflow(t *testing.T) {
 
 func TestStartWorkflow_NotFound(t *testing.T) {
 	repo := new(MockWorkflowRepository)
+	agentRepo := new(MockAgentRepository)
 	llmService := new(MockLLMService)
-	engine := NewWorkflowEngine(repo, llmService)
+	engine := NewWorkflowEngine(repo, agentRepo, llmService)
 
 	wfName := "unknown"
 	repo.On("GetWorkflowByName", mock.Anything, wfName).Return(nil, assert.AnError)

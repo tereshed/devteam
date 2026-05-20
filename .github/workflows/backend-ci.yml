@@ -40,8 +40,6 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Validate agent prompts
         run: go test ./pkg/agentprompts -run TestValidateAllYAMLAgainstSchema -count=1
-      - name: Validate agent configs
-        run: go test ./pkg/agentsloader -run TestValidateAgentConfigs -count=1
       - name: Unit tests
         # Integration-tagged tests are excluded by build tag, so we don't need
         # -short here. -race is mandatory per DoD §9.

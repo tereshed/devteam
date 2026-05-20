@@ -26,14 +26,16 @@ type WorkflowEngine interface {
 }
 
 type workflowEngine struct {
-	repo       repository.WorkflowRepository
+	repo      repository.WorkflowRepository
+	agentRepo repository.AgentRepository
 	llmService LLMService
 	httpClient *httpclient.Client
 }
 
-func NewWorkflowEngine(repo repository.WorkflowRepository, llmService LLMService) WorkflowEngine {
+func NewWorkflowEngine(repo repository.WorkflowRepository, agentRepo repository.AgentRepository, llmService LLMService) WorkflowEngine {
 	return &workflowEngine{
 		repo:       repo,
+		agentRepo:  agentRepo,
 		llmService: llmService,
 		httpClient: httpclient.New(),
 	}
@@ -198,14 +200,36 @@ type stepExecutionResult struct {
 	context    datatypes.JSON
 }
 
+// resolveAgent находит агента по role (приоритет) или legacy agent_id.
+func (e *workflowEngine) resolveAgent(ctx context.Context, agentRole, agentID string) (*models.Agent, error) {
+	if agentRole != "" {
+		role := models.AgentRole(agentRole)
+		agents, _, err := e.agentRepo.List(ctx, repository.AgentFilter{
+			Role:       &role,
+			OnlyActive: true,
+			Limit:      1,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("agent lookup by role %q: %w", agentRole, err)
+		}
+		if len(agents) == 0 {
+			return nil, fmt.Errorf("no active agent with role %q", agentRole)
+		}
+		return &agents[0], nil
+	}
+	if agentID != "" {
+		id, err := uuid.Parse(agentID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid agent id: %w", err)
+		}
+		return e.agentRepo.GetByID(ctx, id)
+	}
+	return nil, fmt.Errorf("step has neither agent_role nor agent_id")
+}
+
 // executeLLMStep выполняет шаг с вызовом LLM
 func (e *workflowEngine) executeLLMStep(ctx context.Context, exec *models.Execution, stepConfig models.StepConfig) (*stepExecutionResult, error) {
-	agentID, err := uuid.Parse(stepConfig.AgentID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid agent id: %w", err)
-	}
-
-	agent, err := e.repo.GetAgentByID(ctx, agentID)
+	agent, err := e.resolveAgent(ctx, stepConfig.AgentRole, stepConfig.AgentID)
 	if err != nil {
 		return nil, fmt.Errorf("agent not found: %w", err)
 	}
@@ -447,20 +471,12 @@ func (e *workflowEngine) checkLoopExitCondition(ctx context.Context, exec *model
 		exitOnResponse = "YES"
 	}
 
-	var agentID *uuid.UUID
-	if loopConfig.ExitAgentID != "" {
-		id, err := uuid.Parse(loopConfig.ExitAgentID)
-		if err == nil {
-			agentID = &id
-		}
-	}
-
 	var systemPrompt string
 	var modelName string
-	var temperature float64 = 0.0 // Низкая для детерминированного ответа
+	var temperature float64 = 0.0
 
-	if agentID != nil {
-		agent, err := e.repo.GetAgentByID(ctx, *agentID)
+	if loopConfig.ExitAgentRole != "" || loopConfig.ExitAgentID != "" {
+		agent, err := e.resolveAgent(ctx, loopConfig.ExitAgentRole, loopConfig.ExitAgentID)
 		if err == nil && agent.Prompt != nil {
 			systemPrompt = agent.Prompt.Template
 			var modelConfig struct {
@@ -528,19 +544,16 @@ Respond with ONLY one of the options listed above.`,
 
 	var agentID *uuid.UUID
 	var modelName string
-	if stepConfig.AgentID != "" {
-		id, err := uuid.Parse(stepConfig.AgentID)
+	if stepConfig.AgentRole != "" || stepConfig.AgentID != "" {
+		agent, err := e.resolveAgent(ctx, stepConfig.AgentRole, stepConfig.AgentID)
 		if err == nil {
-			agentID = &id
-			agent, err := e.repo.GetAgentByID(ctx, id)
-			if err == nil {
-				var modelConfig struct {
-					Model string `json:"model"`
-				}
-				if len(agent.ModelConfig) > 0 {
-					json.Unmarshal(agent.ModelConfig, &modelConfig)
-					modelName = modelConfig.Model
-				}
+			agentID = &agent.ID
+			var modelConfig struct {
+				Model string `json:"model"`
+			}
+			if len(agent.ModelConfig) > 0 {
+				json.Unmarshal(agent.ModelConfig, &modelConfig)
+				modelName = modelConfig.Model
 			}
 		}
 	}

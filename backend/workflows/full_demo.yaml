@@ -1,9 +1,9 @@
 # ============================================================================
 # ДЕМО WORKFLOW: Использует ВСЕ типы узлов
 # ============================================================================
-# 
+#
 # Сценарий: "Умный генератор контента с публикацией"
-# 
+#
 # 1. Классифицирует запрос пользователя (condition)
 # 2. В зависимости от типа — направляет к нужному агенту (llm)
 # 3. Итеративно улучшает контент до качества (loop)
@@ -85,17 +85,17 @@ steps:
   # ═══════════════════════════════════════════════════════════════════════════
   generate_code:
     type: llm
-    agent_name: coder_agent
+    agent_role: developer
     next: quality_loop
 
   generate_writing:
     type: llm
-    agent_name: writer_agent
+    agent_role: worker
     next: quality_loop
 
   generate_research:
     type: llm
-    agent_name: researcher_agent
+    agent_role: worker
     next: quality_loop
 
   # ═══════════════════════════════════════════════════════════════════════════
@@ -110,14 +110,14 @@ steps:
         Evaluate the content quality on a scale of 1-10.
         If the score is 8 or higher, respond YES.
         If lower, respond NO.
-      exit_agent_name: reviewer_agent
+      exit_agent_role: reviewer
       exit_on_response: "YES"
     next: fetch_metadata
 
   improve_content:
     type: llm
-    agent_name: writer_agent
-    next: quality_loop  # Возврат к проверке
+    agent_role: worker
+    next: quality_loop
 
   # ═══════════════════════════════════════════════════════════════════════════
   # STEP 4: API CALL — Получение метаданных
@@ -126,12 +126,11 @@ steps:
     type: api_call
     api_call:
       method: GET
-      # Пример: получаем текущую дату/время из публичного API
       url: "https://worldtimeapi.org/api/timezone/Europe/Moscow"
       headers:
         Accept: "application/json"
       timeout_sec: 10
-      extract_path: "datetime"  # Извлекаем только дату
+      extract_path: "datetime"
     next: finalize
 
   # ═══════════════════════════════════════════════════════════════════════════
@@ -139,7 +138,7 @@ steps:
   # ═══════════════════════════════════════════════════════════════════════════
   finalize:
     type: llm
-    agent_name: finalizer_agent
+    agent_role: worker
     next: publish
 
   # ═══════════════════════════════════════════════════════════════════════════
@@ -149,7 +148,6 @@ steps:
     type: api_call
     api_call:
       method: POST
-      # Webhook для тестирования (замените на реальный)
       url: "https://webhook.site/your-unique-id"
       headers:
         Content-Type: "application/json"
@@ -162,5 +160,4 @@ steps:
           "generated_at": "{{.Input}}"
         }
       timeout_sec: 15
-    next: null  # Конец потока
-
+    next: null

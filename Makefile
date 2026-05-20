@@ -10,7 +10,6 @@ SANDBOX_BUILDABLE_STEMS := claude hermes
 SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 
 .PHONY: help build up down logs test test-unit test-integration test-all validate-agent-prompts \
-	validate-agent-configs \
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
 	free-claude-proxy-build free-claude-proxy-check-ref \
 	migrate-create migrate-up migrate-down migrate-status \
@@ -161,10 +160,6 @@ test-features-down:
 validate-agent-prompts:
 	cd backend && go test ./pkg/agentprompts -run TestValidateAllYAMLAgainstSchema -count=1
 
-# Agent configs (task 6.9): YAML vs backend/agents/agent_schema.json + in-memory cache
-validate-agent-configs:
-	cd backend && go test ./pkg/agentsloader -run TestValidateAgentConfigs -count=1
-
 # --- Sandbox images (task 5.12, docs/tasks/5.12-makefile-sandbox-build.md) ---
 # Сборка через docker build, не сервис в docker-compose: образы — эфемерные CI/тестовые
 # артефакты; compose описывает долгоживущий стек (API, БД). См. раздел Compliance в задаче 5.12.
@@ -303,7 +298,6 @@ help:
 	@echo "  make test-unit       - Backend tests without //go:build integration (faster)"
 	@echo "  make test-integration - Full backend test suite (-tags=integration ./...)"
 	@echo "  make validate-agent-prompts - Validate backend/prompts/*.yaml against prompt_schema.json"
-	@echo "  make validate-agent-configs - Validate backend/agents/*.yaml against agent_schema.json"
 	@echo "  make test-all        - Same as test-integration"
 	@echo "  make sandbox-build    - Build default sandbox image (Claude, devteam/sandbox-claude:local)"
 	@echo "  make sandbox-build-<stem> - Build a specific sandbox image (e.g. sandbox-build-claude)"

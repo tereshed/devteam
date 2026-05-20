@@ -6,19 +6,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type WorkflowRepository interface {
 	// Workflow
 	CreateWorkflow(ctx context.Context, wf *models.Workflow) error
+	UpsertWorkflow(ctx context.Context, wf *models.Workflow) error
 	GetWorkflowByID(ctx context.Context, id uuid.UUID) (*models.Workflow, error)
 	GetWorkflowByName(ctx context.Context, name string) (*models.Workflow, error)
 	ListWorkflows(ctx context.Context) ([]models.Workflow, error)
-
-	// Agent
-	CreateAgent(ctx context.Context, agent *models.Agent) error
-	GetAgentByID(ctx context.Context, id uuid.UUID) (*models.Agent, error)
-	GetAgentByName(ctx context.Context, name string) (*models.Agent, error)
 
 	// Execution
 	CreateExecution(ctx context.Context, exec *models.Execution) error
@@ -31,6 +28,7 @@ type WorkflowRepository interface {
 
 	// Schedule
 	CreateScheduledWorkflow(ctx context.Context, schedule *models.ScheduledWorkflow) error
+	UpsertScheduledWorkflow(ctx context.Context, schedule *models.ScheduledWorkflow) error
 	ListActiveSchedules(ctx context.Context) ([]models.ScheduledWorkflow, error)
 	UpdateSchedule(ctx context.Context, schedule *models.ScheduledWorkflow) error
 }
@@ -47,6 +45,13 @@ func NewWorkflowRepository(db *gorm.DB) WorkflowRepository {
 
 func (r *workflowRepository) CreateWorkflow(ctx context.Context, wf *models.Workflow) error {
 	return r.db.WithContext(ctx).Create(wf).Error
+}
+
+func (r *workflowRepository) UpsertWorkflow(ctx context.Context, wf *models.Workflow) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "name"}},
+		DoUpdates: clause.AssignmentColumns([]string{"description", "configuration", "is_active", "updated_at"}),
+	}).Create(wf).Error
 }
 
 func (r *workflowRepository) GetWorkflowByID(ctx context.Context, id uuid.UUID) (*models.Workflow, error) {
@@ -71,28 +76,6 @@ func (r *workflowRepository) ListWorkflows(ctx context.Context) ([]models.Workfl
 		return nil, err
 	}
 	return wfs, nil
-}
-
-// --- Agent ---
-
-func (r *workflowRepository) CreateAgent(ctx context.Context, agent *models.Agent) error {
-	return r.db.WithContext(ctx).Create(agent).Error
-}
-
-func (r *workflowRepository) GetAgentByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
-	var agent models.Agent
-	if err := r.db.WithContext(ctx).Preload("Prompt").First(&agent, "id = ?", id).Error; err != nil {
-		return nil, err
-	}
-	return &agent, nil
-}
-
-func (r *workflowRepository) GetAgentByName(ctx context.Context, name string) (*models.Agent, error) {
-	var agent models.Agent
-	if err := r.db.WithContext(ctx).Preload("Prompt").First(&agent, "name = ?", name).Error; err != nil {
-		return nil, err
-	}
-	return &agent, nil
 }
 
 // --- Execution ---
@@ -164,6 +147,13 @@ func (r *workflowRepository) GetNextPendingExecution(ctx context.Context) (*mode
 
 func (r *workflowRepository) CreateScheduledWorkflow(ctx context.Context, schedule *models.ScheduledWorkflow) error {
 	return r.db.WithContext(ctx).Create(schedule).Error
+}
+
+func (r *workflowRepository) UpsertScheduledWorkflow(ctx context.Context, schedule *models.ScheduledWorkflow) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "name"}},
+		DoUpdates: clause.AssignmentColumns([]string{"workflow_name", "cron_expression", "input_template", "is_active", "updated_at"}),
+	}).Create(schedule).Error
 }
 
 func (r *workflowRepository) ListActiveSchedules(ctx context.Context) ([]models.ScheduledWorkflow, error) {
