@@ -25,6 +25,8 @@ go.work
 backend/bin/
 backend/dist/
 backend/build/
+backend/api
+backend/feature_report
 
 # Air (live reload) tmp files
 tmp/
