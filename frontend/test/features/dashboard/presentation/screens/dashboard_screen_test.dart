@@ -12,6 +12,8 @@ import 'package:frontend/features/auth/domain/models.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/dashboard/presentation/providers/dashboard_summary_provider.dart';
 import 'package:frontend/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:frontend/features/onboarding/data/onboarding_providers.dart';
+import 'package:frontend/features/onboarding/domain/onboarding_state.dart';
 import 'package:frontend/features/tasks/domain/models.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -76,6 +78,14 @@ Future<void> _pump(
         // Стабы для зависимых провайдеров (вдруг activated в фоне).
         agentsV2ListProvider.overrideWith(
           (ref) async => const AgentV2Page(total: 0, items: [], limit: 0, offset: 0),
+        ),
+        // Phase 7: onboarding banner — скрыт в тестах dashboard (не тестируем здесь).
+        onboardingStateProvider.overrideWithValue(
+          const OnboardingState(
+            loading: false,
+            hasLlmProviders: true,
+            assistantConfigured: true,
+          ),
         ),
       ],
       child: MaterialApp.router(

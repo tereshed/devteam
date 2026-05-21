@@ -1406,6 +1406,17 @@
   "rolePromptsCancelButton": "Cancel",
   "@rolePromptsCancelButton": { "description": "Phase 5: role prompt dialog cancel" },
   "rolePromptsSaveButton": "Save",
-  "@rolePromptsSaveButton": { "description": "Phase 5: role prompt dialog save" }
+  "@rolePromptsSaveButton": { "description": "Phase 5: role prompt dialog save" },
+
+  "onboardingConnectLlmProvider": "To get started, connect an LLM provider and select a model for your assistant. Without this, the assistant cannot process messages.",
+  "@onboardingConnectLlmProvider": { "description": "Phase 7: onboarding banner after registration — no LLM provider connected" },
+  "onboardingConfigureAssistant": "Your assistant is almost ready! Select an LLM provider and model in the settings to start working.",
+  "@onboardingConfigureAssistant": { "description": "Phase 7: onboarding banner after registration — LLM provider exists but assistant not configured" },
+  "onboardingGoToSettings": "Go to settings",
+  "@onboardingGoToSettings": { "description": "Phase 7: onboarding banner CTA — navigate to settings" },
+  "onboardingConfigureProjectAgents": "Configure the orchestrator and router agents — select an LLM provider and model for each so that task orchestration can begin.",
+  "@onboardingConfigureProjectAgents": { "description": "Phase 7: onboarding banner after project creation — agents not configured" },
+  "onboardingGoToTeam": "Configure agents",
+  "@onboardingGoToTeam": { "description": "Phase 7: onboarding banner CTA — navigate to team agents" }
 }
 

@@ -2553,4 +2553,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get rolePromptsSaveButton => 'Save';
+
+  @override
+  String get onboardingConnectLlmProvider =>
+      'To get started, connect an LLM provider and select a model for your assistant. Without this, the assistant cannot process messages.';
+
+  @override
+  String get onboardingConfigureAssistant =>
+      'Your assistant is almost ready! Select an LLM provider and model in the settings to start working.';
+
+  @override
+  String get onboardingGoToSettings => 'Go to settings';
+
+  @override
+  String get onboardingConfigureProjectAgents =>
+      'Configure the orchestrator and router agents — select an LLM provider and model for each so that task orchestration can begin.';
+
+  @override
+  String get onboardingGoToTeam => 'Configure agents';
 }

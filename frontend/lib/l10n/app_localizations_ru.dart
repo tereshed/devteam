@@ -2572,4 +2572,22 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get rolePromptsSaveButton => 'Сохранить';
+
+  @override
+  String get onboardingConnectLlmProvider =>
+      'Для начала работы подключите LLM-провайдера и выберите модель для ассистента. Без этого ассистент не сможет обрабатывать сообщения.';
+
+  @override
+  String get onboardingConfigureAssistant =>
+      'Ваш ассистент почти готов! Выберите LLM-провайдера и модель в настройках, чтобы начать работу.';
+
+  @override
+  String get onboardingGoToSettings => 'Перейти в настройки';
+
+  @override
+  String get onboardingConfigureProjectAgents =>
+      'Настройте агентов orchestrator и router — выберите LLM-провайдера и модель для каждого, чтобы запустить оркестрацию задач.';
+
+  @override
+  String get onboardingGoToTeam => 'Настроить агентов';
 }

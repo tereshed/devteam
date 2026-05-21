@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
+import 'package:frontend/features/onboarding/presentation/widgets/project_onboarding_banner.dart';
 import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_card.dart';
@@ -52,6 +53,7 @@ class TeamScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: _TeamHeaderBlock(team: team),
         ),
+        ProjectOnboardingBanner(projectId: projectId),
         Expanded(
           child: RefreshIndicator(
             onRefresh: onRefresh,

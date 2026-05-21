@@ -1579,6 +1579,12 @@
   "rolePromptsEditTitle": "Редактировать промпт роли",
   "rolePromptsContentLabel": "Содержание промпта",
   "rolePromptsCancelButton": "Отмена",
-  "rolePromptsSaveButton": "Сохранить"
+  "rolePromptsSaveButton": "Сохранить",
+
+  "onboardingConnectLlmProvider": "Для начала работы подключите LLM-провайдера и выберите модель для ассистента. Без этого ассистент не сможет обрабатывать сообщения.",
+  "onboardingConfigureAssistant": "Ваш ассистент почти готов! Выберите LLM-провайдера и модель в настройках, чтобы начать работу.",
+  "onboardingGoToSettings": "Перейти в настройки",
+  "onboardingConfigureProjectAgents": "Настройте агентов orchestrator и router — выберите LLM-провайдера и модель для каждого, чтобы запустить оркестрацию задач.",
+  "onboardingGoToTeam": "Настроить агентов"
 }
 

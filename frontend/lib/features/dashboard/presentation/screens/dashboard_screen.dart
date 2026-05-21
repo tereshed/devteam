@@ -4,6 +4,7 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/dashboard/presentation/providers/dashboard_summary_provider.dart';
 import 'package:frontend/features/dashboard/presentation/widgets/stat_card.dart';
+import 'package:frontend/features/onboarding/presentation/widgets/dashboard_onboarding_banner.dart';
 import 'package:frontend/features/tasks/domain/models.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -42,6 +43,7 @@ class DashboardScreen extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
           ),
+          const DashboardOnboardingBanner(),
           const SizedBox(height: 24),
           _StatGrid(summary: summary, l10n: l10n),
           const SizedBox(height: 32),

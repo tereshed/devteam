@@ -4735,6 +4735,36 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Сохранить'**
   String get rolePromptsSaveButton;
+
+  /// No description provided for @onboardingConnectLlmProvider.
+  ///
+  /// In ru, this message translates to:
+  /// **'Для начала работы подключите LLM-провайдера и выберите модель для ассистента. Без этого ассистент не сможет обрабатывать сообщения.'**
+  String get onboardingConnectLlmProvider;
+
+  /// No description provided for @onboardingConfigureAssistant.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ваш ассистент почти готов! Выберите LLM-провайдера и модель в настройках, чтобы начать работу.'**
+  String get onboardingConfigureAssistant;
+
+  /// No description provided for @onboardingGoToSettings.
+  ///
+  /// In ru, this message translates to:
+  /// **'Перейти в настройки'**
+  String get onboardingGoToSettings;
+
+  /// No description provided for @onboardingConfigureProjectAgents.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройте агентов orchestrator и router — выберите LLM-провайдера и модель для каждого, чтобы запустить оркестрацию задач.'**
+  String get onboardingConfigureProjectAgents;
+
+  /// No description provided for @onboardingGoToTeam.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настроить агентов'**
+  String get onboardingGoToTeam;
 }
 
 class _AppLocalizationsDelegate
