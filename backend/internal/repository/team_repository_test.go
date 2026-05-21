@@ -114,14 +114,16 @@ func TestTeamRepository_GetByID_Success(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		role models.AgentRole
+		ek   models.AgentExecutionKind
 	}{
-		{"w", models.AgentRoleWorker},
-		{"d", models.AgentRoleDeveloper},
-		{"p", models.AgentRolePlanner},
+		{"w", models.AgentRoleWorker, models.AgentExecutionKindLLM},
+		{"d", models.AgentRoleDeveloper, models.AgentExecutionKindLLM},
+		{"p", models.AgentRolePlanner, models.AgentExecutionKindLLM},
 	} {
 		a := &models.Agent{
 			Name:     tc.name,
 			Role:     tc.role,
+			ExecutionKind: tc.ek,
 			TeamID:   &team.ID,
 			Skills:   skills,
 			Settings: settings,
@@ -209,6 +211,7 @@ func TestTeamRepository_GetByProjectID_WithAgents(t *testing.T) {
 		a := &models.Agent{
 			Name:     string(rune('a' + i)),
 			Role:     role,
+			ExecutionKind: models.AgentExecutionKindLLM,
 			TeamID:   &team.ID,
 			Skills:   skills,
 			Settings: settings,
@@ -275,6 +278,7 @@ func TestTeamRepository_Delete_AgentsSetNull(t *testing.T) {
 	a := &models.Agent{
 		Name:     "stay",
 		Role:     models.AgentRoleWorker,
+		ExecutionKind: models.AgentExecutionKindLLM,
 		TeamID:   &team.ID,
 		Skills:   skills,
 		Settings: settings,

@@ -36,6 +36,7 @@ func taskRepoTestAgent(t *testing.T, db *gorm.DB, projectID uuid.UUID) *models.A
 	a := &models.Agent{
 		Name:     "ag-" + uuid.NewString()[:8],
 		Role:     models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
 		TeamID:   &team.ID,
 		Skills:   skills,
 		Settings: settings,
@@ -234,7 +235,7 @@ func TestTaskRepository_List_FilterByState(t *testing.T) {
 	t1 := newTestTask(p.ID, user.ID, "ip")
 	t1.State = models.TaskStateActive
 	t2 := newTestTask(p.ID, user.ID, "pend")
-	t2.State = models.TaskStateActive
+	t2.State = models.TaskStateDone
 	require.NoError(t, repo.Create(ctx, t1))
 	require.NoError(t, repo.Create(ctx, t2))
 
