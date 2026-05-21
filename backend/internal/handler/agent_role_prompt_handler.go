@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/apierror"
@@ -144,7 +145,11 @@ func (h *AgentRolePromptHandler) Update(c *gin.Context) {
 		return
 	}
 
-	userID := getUserIDFromContext(c)
+	uid, ok := middleware.GetUserID(c)
+	var userID *uuid.UUID
+	if ok {
+		userID = &uid
+	}
 	existing.Content = req.Content
 	existing.Description = req.Description
 	existing.UpdatedBy = userID
@@ -158,21 +163,3 @@ func (h *AgentRolePromptHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, toRolePromptResponse(existing))
 }
 
-func getUserIDFromContext(c *gin.Context) *uuid.UUID {
-	raw, exists := c.Get("user_id")
-	if !exists {
-		return nil
-	}
-	switch v := raw.(type) {
-	case uuid.UUID:
-		return &v
-	case string:
-		id, err := uuid.Parse(v)
-		if err != nil {
-			return nil
-		}
-		return &id
-	default:
-		return nil
-	}
-}

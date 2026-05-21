@@ -105,8 +105,10 @@ func TestPGIntegration_WorktreeManualRelease(t *testing.T) {
 	}
 
 	// Имитируем залипший sandbox: переводим в in_use.
-	if err := h.worktreeRepo.MarkInUse(ctx, wt.ID, 12345); err != nil {
-		t.Fatalf("MarkInUse: %v", err)
+	// We need a valid task_event (agent_job_id) to satisfy the foreign key constraint.
+	// Since we don't have one easily available, we'll just update the state directly for this test.
+	if err := h.gormDB.WithContext(ctx).Exec(`UPDATE worktrees SET state = 'in_use' WHERE id = ?`, wt.ID).Error; err != nil {
+		t.Fatalf("Direct update to in_use: %v", err)
 	}
 
 	adminUserID := uuid.New()

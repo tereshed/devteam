@@ -77,28 +77,6 @@ void main() {
         updatedAt: DateTime.utc(2026, 5, 17),
       );
 
-  AssistantMessageModel msg({
-    required String id,
-    required String role,
-    String? content,
-    String? toolCallId,
-    String? toolName,
-    Map<String, dynamic>? toolArguments,
-    Map<String, dynamic>? toolResult,
-    DateTime? createdAt,
-  }) {
-    return AssistantMessageModel(
-      id: id,
-      sessionId: sessionId,
-      role: role,
-      content: content,
-      toolCallId: toolCallId,
-      toolName: toolName,
-      toolArguments: toolArguments,
-      toolResult: toolResult,
-      createdAt: createdAt ?? DateTime.utc(2026, 5, 17, 12, 0),
-    );
-  }
 
   void stubBootstrap({List<AssistantMessageModel> history = const []}) {
     when(mockRepo.getStatus(cancelToken: anyNamed('cancelToken')))

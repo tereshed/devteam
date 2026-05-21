@@ -3,7 +3,6 @@
 @Tags(['widget'])
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_confirm_dialog.dart';

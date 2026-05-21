@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/widgets/breadcrumb.dart';
 import 'package:frontend/l10n/app_localizations.dart';
-import 'package:frontend/l10n/app_localizations_en.dart';
 
 void main() {
   late AppLocalizations l10n;

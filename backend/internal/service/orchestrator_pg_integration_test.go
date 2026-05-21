@@ -309,10 +309,10 @@ func (h *pgHarness) createMinimalActiveTask(t *testing.T) uuid.UUID {
 	type idRow struct{ ID string }
 	var u, p, ta idRow
 
-	if err := h.gormDB.WithContext(ctx).Raw(
-		`INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
-		 VALUES (gen_random_uuid(), 'int@test', 'x', 'user', NOW(), NOW()) RETURNING id`,
-	).Scan(&u).Error; err != nil {
+		if err := h.gormDB.WithContext(ctx).Raw(
+			`INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
+			 VALUES (gen_random_uuid(), gen_random_uuid() || '@test', 'x', 'user', NOW(), NOW()) RETURNING id`,
+		).Scan(&u).Error; err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
 	if err := h.gormDB.WithContext(ctx).Raw(

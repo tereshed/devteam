@@ -4,7 +4,6 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
 import 'package:frontend/features/admin/agents_v2/data/role_prompts_providers.dart';
-import 'package:frontend/features/admin/agents_v2/data/role_prompts_repository.dart';
 import 'package:frontend/features/team/domain/models/agent_config_model.dart';
 
 class AgentRolePromptsScreen extends ConsumerWidget {

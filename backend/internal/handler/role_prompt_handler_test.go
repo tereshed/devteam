@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devteam/backend/internal/middleware"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/gin-gonic/gin"
@@ -47,25 +48,18 @@ func (m *MockAgentRolePromptRepo) Upsert(ctx context.Context, prompt *models.Age
 
 // --- Router helper ---
 
-func setupRolePromptRouter(h *AgentRolePromptHandler, userID uuid.UUID, role string) *gin.Engine {
+func setupRolePromptRouter(h *AgentRolePromptHandler, userID uuid.UUID, role models.UserRole) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
-		c.Set("user_id", userID)
-		c.Set("user_role", role)
+		c.Set("userID", userID)
+		c.Set("userRole", string(role))
 		c.Next()
 	})
-	admin := r.Group("/admin")
-	admin.Use(func(c *gin.Context) {
-		if c.GetString("user_role") != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-			return
-		}
-		c.Next()
-	})
-	admin.GET("/agent-role-prompts", h.List)
-	admin.GET("/agent-role-prompts/:role", h.GetByRole)
-	admin.PUT("/agent-role-prompts/:role", h.Update)
+	r.Use(middleware.AdminOnlyMiddleware())
+	r.GET("/admin/agent-role-prompts", h.List)
+	r.GET("/admin/agent-role-prompts/:role", h.GetByRole)
+	r.PUT("/admin/agent-role-prompts/:role", h.Update)
 	return r
 }
 
@@ -75,7 +69,7 @@ func TestRolePrompt_RBAC_NonAdmin_Forbidden(t *testing.T) {
 	repo := new(MockAgentRolePromptRepo)
 	h := NewAgentRolePromptHandler(repo)
 	userID := uuid.New()
-	router := setupRolePromptRouter(h, userID, "member")
+	router := setupRolePromptRouter(h, userID, models.RoleUser)
 
 	endpoints := []struct {
 		method string
@@ -108,7 +102,7 @@ func TestRolePrompt_List_OK(t *testing.T) {
 	repo.On("List", mock.Anything).Return(prompts, nil)
 
 	h := NewAgentRolePromptHandler(repo)
-	router := setupRolePromptRouter(h, uuid.New(), "admin")
+	router := setupRolePromptRouter(h, uuid.New(), models.RoleAdmin)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/admin/agent-role-prompts", nil)
@@ -130,7 +124,7 @@ func TestRolePrompt_GetByRole_OK(t *testing.T) {
 	repo.On("GetByRole", mock.Anything, "router").Return(p, nil)
 
 	h := NewAgentRolePromptHandler(repo)
-	router := setupRolePromptRouter(h, uuid.New(), "admin")
+	router := setupRolePromptRouter(h, uuid.New(), models.RoleAdmin)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/admin/agent-role-prompts/router", nil)
@@ -150,7 +144,7 @@ func TestRolePrompt_GetByRole_NotFound(t *testing.T) {
 	repo.On("GetByRole", mock.Anything, "nonexistent").Return(nil, repository.ErrAgentRolePromptNotFound)
 
 	h := NewAgentRolePromptHandler(repo)
-	router := setupRolePromptRouter(h, uuid.New(), "admin")
+	router := setupRolePromptRouter(h, uuid.New(), models.RoleAdmin)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/admin/agent-role-prompts/nonexistent", nil)
@@ -170,7 +164,7 @@ func TestRolePrompt_Update_OK(t *testing.T) {
 
 	userID := uuid.New()
 	h := NewAgentRolePromptHandler(repo)
-	router := setupRolePromptRouter(h, userID, "admin")
+	router := setupRolePromptRouter(h, userID, models.RoleAdmin)
 
 	body, _ := json.Marshal(updateRolePromptRequest{Content: "new content"})
 	w := httptest.NewRecorder()
@@ -192,7 +186,7 @@ func TestRolePrompt_Update_OK(t *testing.T) {
 func TestRolePrompt_Update_EmptyContent_400(t *testing.T) {
 	repo := new(MockAgentRolePromptRepo)
 	h := NewAgentRolePromptHandler(repo)
-	router := setupRolePromptRouter(h, uuid.New(), "admin")
+	router := setupRolePromptRouter(h, uuid.New(), models.RoleAdmin)
 
 	body := []byte(`{"content":""}`)
 	w := httptest.NewRecorder()

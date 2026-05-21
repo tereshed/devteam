@@ -29,7 +29,6 @@ import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/features/assistant/data/assistant_exceptions.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
-import 'package:frontend/features/assistant/data/assistant_repository.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_chat_panel.dart';

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/team/data/agent_config_providers.dart';
-import 'package:frontend/features/team/data/project_secret_repository.dart';
 import 'package:frontend/features/team/domain/models/agent_config_model.dart';
 
 class ProjectVariablesSection extends ConsumerWidget {

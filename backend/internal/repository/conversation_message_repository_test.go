@@ -277,39 +277,76 @@ func TestConversationMessageRepository_Delete_Success(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMessageNotFound)
 }
 
-func TestConversationMessageRepository_ListByProjectID_Success(t *testing.T) {
-	db := setupTestDB(t)
-	tx := db.Begin()
-	defer tx.Rollback()
-
-	_, project, conv := createMsgTestConv(t, tx, "m9@example.com")
-	repo := NewConversationMessageRepository(tx)
-	ctx := context.Background()
-
-	// Create 5 messages
-	var lastMsgID uuid.UUID
-	for i := 0; i < 5; i++ {
-		msg := &models.ConversationMessage{
-			ConversationID: conv.ID,
-			Role:           models.ConversationRoleUser,
-			Content:        fmt.Sprintf("Msg %d", i),
+	func TestConversationMessageRepository_ListByProjectID_Success(t *testing.T) {
+		db := setupTestDB(t)
+		tx := db.Begin()
+		defer tx.Rollback()
+	
+		// Create a unique project for this test to avoid cross-test contamination
+		user := &models.User{
+			Email:        fmt.Sprintf("listbyprojectid_%d@example.com", time.Now().UnixNano()),
+			PasswordHash: "hash",
+			Role:         models.RoleUser,
 		}
-		require.NoError(t, repo.Create(ctx, msg))
-		if i == 1 {
-			lastMsgID = msg.ID
+		require.NoError(t, tx.Create(user).Error)
+	
+		project := &models.Project{
+			Name:   fmt.Sprintf("test_proj_%d", time.Now().UnixNano()),
+			Status: models.ProjectStatusActive,
+			UserID: user.ID,
 		}
-		time.Sleep(10 * time.Millisecond) // Ensure different timestamps
+		require.NoError(t, tx.Create(project).Error)
+	
+		conv := &models.Conversation{
+			ProjectID: project.ID,
+			UserID:    user.ID,
+			Title:     "test conv",
+			Status:    models.ConversationStatusActive,
+		}
+		require.NoError(t, tx.Create(conv).Error)
+	
+		repo := NewConversationMessageRepository(tx)
+		ctx := context.Background()
+	
+		// Create 5 messages
+		var lastMsgID uuid.UUID
+		for i := 0; i < 5; i++ {
+			msg := &models.ConversationMessage{
+				ConversationID: conv.ID,
+				Role:           models.ConversationRoleUser,
+				Content:        fmt.Sprintf("Msg %d", i),
+			}
+			require.NoError(t, repo.Create(ctx, msg))
+			
+			// In YugabyteDB, time.Now() might be identical for consecutive inserts 
+			// if they happen very fast, so we need to force distinct created_at values
+			// or rely on ID ordering for the cursor if created_at is identical.
+			// Let's manually set created_at to ensure distinct ordering.
+			msg.CreatedAt = time.Now().Add(time.Duration(i) * time.Second)
+			require.NoError(t, tx.Save(msg).Error)
+			
+			if i == 1 {
+				lastMsgID = msg.ID
+			}
+		}
+	
+		t.Run("All messages", func(t *testing.T) {
+			list, err := repo.ListByProjectID(ctx, project.ID, nil, 10, false)
+			require.NoError(t, err)
+			assert.Len(t, list, 5)
+		})
+	
+		t.Run("With cursor", func(t *testing.T) {
+			list, err := repo.ListByProjectID(ctx, project.ID, &lastMsgID, 10, false)
+			require.NoError(t, err)
+			
+			// We expect 3 messages after the 2nd one (index 1).
+			// If there are more, let's print them to see where they came from.
+			if len(list) != 3 {
+				for i, m := range list {
+					t.Logf("Message %d: ID=%s, Content=%s, CreatedAt=%v", i, m.ID, m.Content, m.CreatedAt)
+				}
+			}
+			assert.Len(t, list, 3) // Messages after the 2nd one (index 1)
+		})
 	}
-
-	t.Run("All messages", func(t *testing.T) {
-		list, err := repo.ListByProjectID(ctx, project.ID, nil, 10, false)
-		require.NoError(t, err)
-		assert.Len(t, list, 5)
-	})
-
-	t.Run("With cursor", func(t *testing.T) {
-		list, err := repo.ListByProjectID(ctx, project.ID, &lastMsgID, 10, false)
-		require.NoError(t, err)
-		assert.Len(t, list, 2) // Messages after the 2nd one (index 1)
-	})
-}
