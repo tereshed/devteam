@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
+import 'package:frontend/features/integrations/llm/presentation/widgets/assistant_settings_card.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/connect_api_key_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/connect_claude_code_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/llm_provider_cards.dart';
@@ -126,6 +127,11 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
                     for (final p in available)
                       _wrapCard(_buildCard(context, p, state)),
                   ],
+                ),
+                const SizedBox(height: 32),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 656),
+                  child: const AssistantSettingsCard(),
                 ),
               ],
             ],

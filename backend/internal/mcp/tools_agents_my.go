@@ -16,19 +16,19 @@ import (
 // Аналог agent_update, но с ABAC-проверкой agent.UserID == currentUser.ID.
 
 type AgentUpdateMyParams struct {
-	AgentID            string   `json:"agent_id" jsonschema:"required,description=UUID агента"`
+	AgentID            string   `json:"agent_id" jsonschema:"UUID агента"`
 	RoleDescription    *string  `json:"role_description,omitempty"`
 	SystemPrompt       *string  `json:"system_prompt,omitempty"`
-	Model              *string  `json:"model,omitempty" jsonschema:"description=Только для llm-агентов"`
-	ProviderKind       *string  `json:"provider_kind,omitempty" jsonschema:"description=anthropic/deepseek/zhipu/openrouter"`
+	Model              *string  `json:"model,omitempty" jsonschema:"Только для llm-агентов"`
+	ProviderKind       *string  `json:"provider_kind,omitempty" jsonschema:"anthropic/deepseek/zhipu/openrouter"`
 	Temperature        *float64 `json:"temperature,omitempty"`
 	MaxTokens          *int     `json:"max_tokens,omitempty"`
 	IsActive           *bool    `json:"is_active,omitempty"`
-	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty" jsonschema:"description=Подключить внутренний MCP DevTeam"`
+	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty" jsonschema:"Подключить внутренний MCP DevTeam"`
 }
 
 type AgentGetMyParams struct {
-	AgentID string `json:"agent_id" jsonschema:"required,description=UUID агента"`
+	AgentID string `json:"agent_id" jsonschema:"UUID агента"`
 }
 
 type AgentListMyParams struct {

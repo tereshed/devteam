@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -76,7 +77,7 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	}()
 
 	// 1) Загружаем agent (system prompt + model + provider).
-	agent, err := s.deps.AgentLoader.GetAgentByUserRole(ctx, userID, string(models.AgentRoleAssistant))
+	agent, err := s.getOrProvisionAssistantAgent(ctx, userID)
 	if err != nil {
 		s.deps.Logger.ErrorContext(ctx, "assistant: load agent failed",
 			slog.String("user_id", userID.String()),
@@ -165,6 +166,8 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 			slog.String("session_id", sessionID.String()),
 			slog.Int("iterations", result.Iterations),
 		)
+		// Запуск автогенерации названия сессии в фоне
+		go s.autoGenerateSessionTitleIfNeeded(context.Background(), sessionID, userID, client, agent)
 
 	case agentloop.StatusParked:
 		if result.ParkedCall == nil {
@@ -446,3 +449,128 @@ func derefStringEmpty(p *string) string {
 func isCtxTimeoutErr(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
+
+func (s *assistantService) autoGenerateSessionTitleIfNeeded(bgCtx context.Context, sessionID, userID uuid.UUID, client llm.Client, agent *models.Agent) {
+	ctx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
+	defer cancel()
+
+	// 1. Fetch session to verify it doesn't already have a title
+	sess, err := s.deps.Repo.GetSession(ctx, sessionID, userID)
+	if err != nil {
+		s.deps.Logger.ErrorContext(ctx, "assistant: auto-title failed to get session",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	// We only generate title if it is currently nil, empty, or default placeholder.
+	hasTitle := false
+	if sess.Title != nil && *sess.Title != "" {
+		t := *sess.Title
+		if t != "Без названия" && t != "Untitled chat" {
+			hasTitle = true
+		}
+	}
+	if hasTitle {
+		return
+	}
+
+	// 2. Fetch messages to get the first user message
+	messages, err := s.deps.Repo.ListMessages(ctx, sessionID, 100, time.Time{}, uuid.Nil)
+	if err != nil {
+		s.deps.Logger.ErrorContext(ctx, "assistant: auto-title failed to list messages",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	var firstUserMsg *models.AssistantMessage
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == models.AssistantMessageRoleUser && messages[i].Content != nil && *messages[i].Content != "" {
+			firstUserMsg = messages[i]
+			break
+		}
+	}
+
+	if firstUserMsg == nil {
+		s.deps.Logger.DebugContext(ctx, "assistant: auto-title no user messages found",
+			slog.String("session_id", sessionID.String()),
+		)
+		return
+	}
+
+	userContent := *firstUserMsg.Content
+	var generatedTitle string
+
+	// 3. Call LLM to generate title
+	if client != nil && agent != nil {
+		providerKind := ""
+		if agent.ProviderKind != nil {
+			providerKind = string(*agent.ProviderKind)
+		}
+		model := ""
+		if agent.Model != nil {
+			model = *agent.Model
+		}
+
+		prompt := "Generate a short, concise title (4-5 words maximum) for a chat session based on the following user's first message. Do not use quotes, punctuation, or any introductory text (like 'Title:'). Respond strictly in the same language as the user's message.\n\nUser's message:\n" + userContent
+
+		llmReq := llm.Request{
+			Provider:     llm.ProviderType(providerKind),
+			Model:        model,
+			SystemPrompt: "You are a helpful assistant that generates short chat titles.",
+			Messages: []llm.Message{
+				{
+					Role:    llm.RoleUser,
+					Content: prompt,
+				},
+			},
+			Temperature: ptrFloat64(0.5),
+			MaxTokens:    ptrInt(30),
+		}
+
+		resp, err := client.Chat(ctx, llmReq)
+		if err == nil && resp != nil && resp.Content != "" {
+			generatedTitle = strings.TrimSpace(resp.Content)
+			// Remove surrounding quotes if model generated them
+			generatedTitle = strings.Trim(generatedTitle, `"'«»`)
+			generatedTitle = strings.TrimSpace(generatedTitle)
+		} else {
+			s.deps.Logger.WarnContext(ctx, "assistant: auto-title LLM generation failed, falling back to truncation",
+				slog.String("session_id", sessionID.String()),
+				slog.Any("error", err),
+			)
+		}
+	}
+
+	// 4. Fallback if LLM failed or not configured
+	if generatedTitle == "" {
+		runes := []rune(userContent)
+		if len(runes) > 40 {
+			generatedTitle = string(runes[:40]) + "..."
+		} else {
+			generatedTitle = string(runes)
+		}
+	}
+
+	// 5. Save and broadcast
+	err = s.deps.Repo.UpdateSessionTitle(ctx, sessionID, userID, generatedTitle)
+	if err != nil {
+		s.deps.Logger.ErrorContext(ctx, "assistant: auto-title failed to update session",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	// Fetch updated session and broadcast
+	updatedSess, err := s.deps.Repo.GetSession(ctx, sessionID, userID)
+	if err == nil {
+		s.broadcastSessionUpdated(userID, updatedSess)
+	}
+}
+
+func ptrFloat64(f float64) *float64 { return &f }
+func ptrInt(i int) *int             { return &i }

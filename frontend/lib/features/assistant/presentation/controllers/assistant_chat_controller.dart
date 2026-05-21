@@ -7,6 +7,7 @@ import 'package:frontend/features/assistant/data/assistant_exceptions.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
+import 'package:frontend/features/assistant/presentation/widgets/assistant_session_picker.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'assistant_chat_controller.g.dart';
@@ -130,6 +131,8 @@ class AssistantChatState {
 @Riverpod(keepAlive: true)
 class AssistantChatController extends _$AssistantChatController {
   StreamSubscription<WsClientEvent>? _wsSubscription;
+  Timer? _pollingTimer;
+  bool _pollingInFlight = false;
 
   @override
   AssistantChatState build() {
@@ -138,6 +141,7 @@ class AssistantChatController extends _$AssistantChatController {
     ref.onDispose(() {
       unawaited(_wsSubscription?.cancel());
       _wsSubscription = null;
+      _pollingTimer?.cancel();
     });
     return const AssistantChatState();
   }
@@ -171,6 +175,7 @@ class AssistantChatController extends _$AssistantChatController {
         session = sessions.sessions.first;
       } else {
         session = await repo.createSession();
+        ref.invalidate(assistantSessionsListProvider);
       }
       await _selectSession(session);
       return session.id;
@@ -203,6 +208,7 @@ class AssistantChatController extends _$AssistantChatController {
     try {
       final repo = ref.read(assistantRepositoryProvider);
       final session = await repo.createSession();
+      ref.invalidate(assistantSessionsListProvider);
       await _selectSession(session);
       return session.id;
     } on AssistantRepositoryException catch (e) {
@@ -220,6 +226,7 @@ class AssistantChatController extends _$AssistantChatController {
     final repo = ref.read(assistantRepositoryProvider);
     try {
       await repo.archiveSession(sessionId);
+      ref.invalidate(assistantSessionsListProvider);
       if (state.currentSessionId == sessionId) {
         state = const AssistantChatState();
       }
@@ -232,12 +239,19 @@ class AssistantChatController extends _$AssistantChatController {
   Future<void> _selectSession(AssistantSessionModel session) async {
     // Сбрасываем всё, что было от предыдущей сессии (включая pendingConfirm —
     // иначе при switch'е остался бы зависший диалог).
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+    _pollingInFlight = false;
+
     state = AssistantChatState(
       currentSessionId: session.id,
       session: session,
       loadingHistory: true,
     );
     await _loadInitialHistory(session.id);
+    if (state.session?.busy == true) {
+      _startPollingIfBusy();
+    }
   }
 
   Future<void> _loadInitialHistory(String sessionId) async {
@@ -323,7 +337,11 @@ class AssistantChatController extends _$AssistantChatController {
       // идемпотентен. Сам флаг `duplicate` влияет только на typing-индикатор
       // (UI смотрит на него отдельно через state.sending).
       _appendOrUpdateMessage(resp.message);
+      if (state.session != null) {
+        state = state.copyWith(session: state.session!.copyWith(busy: true));
+      }
       state = state.copyWith(sending: false);
+      _startPollingIfBusy();
     } on AssistantRepositoryException catch (e) {
       state = state.copyWith(sending: false, error: e);
     }
@@ -349,9 +367,17 @@ class AssistantChatController extends _$AssistantChatController {
       // Снимаем pendingConfirm только при успехе. Параллельный confirm
       // (already_confirmed) тоже считаем «UI больше не должен показывать
       // карточку» — рассматриваем как успех.
-      state = state.copyWith(pendingConfirm: null);
+      state = state.copyWith(
+        pendingConfirm: null,
+        session: state.session?.copyWith(busy: true),
+      );
+      _startPollingIfBusy();
     } on AssistantAlreadyConfirmedException {
-      state = state.copyWith(pendingConfirm: null);
+      state = state.copyWith(
+        pendingConfirm: null,
+        session: state.session?.copyWith(busy: true),
+      );
+      _startPollingIfBusy();
     } on AssistantRepositoryException catch (e) {
       state = state.copyWith(error: e);
     }
@@ -375,6 +401,7 @@ class AssistantChatController extends _$AssistantChatController {
     if (ev is! WsClientEventServer) return;
     ev.event.maybeMap(
       assistantSessionUpdated: (e) {
+        ref.invalidate(assistantSessionsListProvider);
         if (!_matchesCurrent(e.value.sessionId)) return null;
         _applySessionUpdated(e.value);
         return null;
@@ -416,6 +443,7 @@ class AssistantChatController extends _$AssistantChatController {
   void _applySessionUpdated(WsAssistantSessionUpdatedEvent ev) {
     final s = state.session;
     if (s == null) return;
+    final titleChanged = ev.title != null && ev.title != s.title;
     final updated = s.copyWith(
       title: ev.title ?? s.title,
       status: ev.status,
@@ -424,6 +452,12 @@ class AssistantChatController extends _$AssistantChatController {
       updatedAt: ev.updatedAt,
     );
     state = state.copyWith(session: updated);
+    if (titleChanged) {
+      ref.invalidate(assistantSessionsListProvider);
+    }
+    if (updated.busy) {
+      _startPollingIfBusy();
+    }
   }
 
   void _applyMessageEvent(WsAssistantMessageEvent ev) {
@@ -548,6 +582,96 @@ class AssistantChatController extends _$AssistantChatController {
     final insertAt = list.lastIndexWhere((m) => !m.createdAt.isAfter(msg.createdAt)) + 1;
     final newList = [...list]..insert(insertAt, msg);
     state = state.copyWith(messages: newList);
+  }
+
+  void _startPollingIfBusy() {
+    if (_pollingTimer != null) return;
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) return;
+    if (state.session?.busy != true) return;
+
+    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      final currentId = state.currentSessionId;
+      if (currentId != sessionId || state.session?.busy != true) {
+        timer.cancel();
+        if (_pollingTimer == timer) {
+          _pollingTimer = null;
+        }
+        return;
+      }
+
+      if (_pollingInFlight) return;
+      _pollingInFlight = true;
+
+      try {
+        final repo = ref.read(assistantRepositoryProvider);
+        final futureSession = repo.getSession(sessionId);
+        final futureMessages = repo.getMessages(sessionId);
+
+        final updatedSession = await futureSession;
+        final messagesResponse = await futureMessages;
+
+        if (state.currentSessionId != sessionId) {
+          timer.cancel();
+          if (_pollingTimer == timer) {
+            _pollingTimer = null;
+          }
+          return;
+        }
+
+        // Upsert all fetched messages
+        for (final msg in messagesResponse.messages) {
+          _appendOrUpdateMessage(msg);
+        }
+
+        // Handle confirmation prompts based on pendingToolCallId
+        final pendingId = updatedSession.pendingToolCallId;
+        if (pendingId != null && pendingId.isNotEmpty) {
+          if (state.pendingConfirm == null ||
+              state.pendingConfirm!.toolCallId != pendingId) {
+            final toolMsgIdx =
+                state.messages.indexWhere((m) => m.toolCallId == pendingId);
+            if (toolMsgIdx >= 0) {
+              final toolMsg = state.messages[toolMsgIdx];
+              final confirmEvent = WsAssistantConfirmRequestEvent(
+                ts: toolMsg.createdAt,
+                v: 1,
+                userId: updatedSession.userId,
+                sessionId: sessionId,
+                toolCallId: pendingId,
+                toolName: toolMsg.toolName ?? '',
+                arguments: toolMsg.toolArguments ?? const <String, dynamic>{},
+                summary: toolMsg.content,
+              );
+              state = state.copyWith(
+                pendingConfirm: confirmEvent,
+                session: updatedSession,
+              );
+            } else {
+              state = state.copyWith(session: updatedSession);
+            }
+          } else {
+            state = state.copyWith(session: updatedSession);
+          }
+        } else {
+          state = state.copyWith(
+            session: updatedSession,
+            pendingConfirm: null,
+          );
+        }
+
+        if (!updatedSession.busy) {
+          timer.cancel();
+          if (_pollingTimer == timer) {
+            _pollingTimer = null;
+          }
+        }
+      } catch (e) {
+        // Ignore errors to retry on the next interval
+      } finally {
+        _pollingInFlight = false;
+      }
+    });
   }
 }
 

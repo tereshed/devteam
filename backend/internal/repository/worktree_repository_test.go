@@ -19,7 +19,18 @@ import (
 // от порядка DELETE в cleanupProjectIntegrationDB.)
 func cleanupWorktrees(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	require.NoError(t, db.Exec("DELETE FROM worktrees").Error)
+	var kTereshinID string
+	_ = db.Raw("SELECT id FROM users WHERE email = 'k.tereshin@icloud.com'").Scan(&kTereshinID).Error
+
+	if kTereshinID != "" {
+		require.NoError(t, db.Exec(`DELETE FROM worktrees WHERE task_id NOT IN (
+			SELECT id FROM tasks WHERE project_id IN (
+				SELECT id FROM projects WHERE user_id = ?
+			)
+		)`, kTereshinID).Error)
+	} else {
+		require.NoError(t, db.Exec("DELETE FROM worktrees").Error)
+	}
 }
 
 func createWorktreeTestTask(t *testing.T, db *gorm.DB) *models.Task {

@@ -69,30 +69,33 @@ const (
 // просто не попадает в каталог (это позволяет постепенно расширять
 // поверхность без блокировки всего сервиса).
 type AuthorizedExecutor struct {
-	projectSvc service.ProjectService
-	taskSvc    service.TaskService
-	convSvc    service.ConversationService
-	agentSvc   *service.AgentService
-	querySvc   *service.OrchestrationQueryService
+	projectSvc        service.ProjectService
+	taskSvc           service.TaskService
+	convSvc           service.ConversationService
+	agentSvc          *service.AgentService
+	querySvc          *service.OrchestrationQueryService
+	gitIntegrationSvc service.GitIntegrationService
 }
 
 // AuthorizedExecutorDeps — DI-структура (для удобства main.go).
 type AuthorizedExecutorDeps struct {
-	ProjectService      service.ProjectService
-	TaskService         service.TaskService
-	ConversationService service.ConversationService
-	AgentService        *service.AgentService
-	QueryService        *service.OrchestrationQueryService
+	ProjectService        service.ProjectService
+	TaskService           service.TaskService
+	ConversationService   service.ConversationService
+	AgentService          *service.AgentService
+	QueryService          *service.OrchestrationQueryService
+	GitIntegrationService service.GitIntegrationService
 }
 
 // NewAuthorizedExecutor — конструктор.
 func NewAuthorizedExecutor(deps AuthorizedExecutorDeps) *AuthorizedExecutor {
 	return &AuthorizedExecutor{
-		projectSvc: deps.ProjectService,
-		taskSvc:    deps.TaskService,
-		convSvc:    deps.ConversationService,
-		agentSvc:   deps.AgentService,
-		querySvc:   deps.QueryService,
+		projectSvc:        deps.ProjectService,
+		taskSvc:           deps.TaskService,
+		convSvc:           deps.ConversationService,
+		agentSvc:          deps.AgentService,
+		querySvc:          deps.QueryService,
+		gitIntegrationSvc: deps.GitIntegrationService,
 	}
 }
 
@@ -249,6 +252,30 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 		)
 	}
 
+	if e.gitIntegrationSvc != nil {
+		tools = append(tools,
+			agentloop.Tool{
+				Name:        "list_git_integrations",
+				Description: "Возвращает список подключённых git-провайдеров (GitHub / GitLab) для текущего пользователя. Read-only.",
+				InputSchema: schemaGitIntegrationList,
+				Handler:     e.listGitIntegrations,
+			},
+			agentloop.Tool{
+				Name:        "list_git_repositories",
+				Description: "Возвращает список репозиториев подключённого git-провайдера (GitHub или GitLab) для текущего пользователя.",
+				InputSchema: schemaGitRepositoryList,
+				Handler:     e.listGitRepositories,
+			},
+			agentloop.Tool{
+				Name:                 "create_git_repository",
+				Description:          "Создаёт новый репозиторий у подключённого git-провайдера (GitHub или GitLab) для текущего пользователя. Требует подтверждения.",
+				InputSchema:          schemaGitRepositoryCreate,
+				RequiresConfirmation: true,
+				Handler:              e.createGitRepository,
+			},
+		)
+	}
+
 	// Tools без зависимостей — всегда в каталоге.
 	tools = append(tools,
 		agentloop.Tool{
@@ -342,6 +369,8 @@ func mapServiceErr(err error) (json.RawMessage, error) {
 		return businessErr("not_found", "задача не найдена")
 	case errors.Is(err, service.ErrProjectNameExists):
 		return businessErr("validation", "проект с таким именем уже существует")
+	case errors.Is(err, repository.ErrGitIntegrationNotFound):
+		return businessErr("validation", "git-интеграция не найдена (сначала подключите её в настройках)")
 	case errors.Is(err, repository.ErrInvalidInput):
 		return businessErr("validation", "некорректные аргументы")
 	default:
@@ -926,6 +955,79 @@ func (e *AuthorizedExecutor) appNavigate(_ context.Context, _ agentloop.AuthCont
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Handlers: git_*
+// ─────────────────────────────────────────────────────────────────────────────
+
+func (e *AuthorizedExecutor) listGitIntegrations(ctx context.Context, auth agentloop.AuthContext, _ json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	items, err := e.gitIntegrationSvc.ListStatuses(ctx, uid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"integrations": items})
+}
+
+type listGitRepositoriesArgs struct {
+	Provider string `json:"provider"`
+}
+
+func (e *AuthorizedExecutor) listGitRepositories(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a listGitRepositoriesArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if a.Provider == "" {
+		return businessErr("validation", "provider is required")
+	}
+	provider := models.GitIntegrationProvider(a.Provider)
+	if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
+		return businessErr("validation", "invalid provider, must be 'github' or 'gitlab'")
+	}
+	repos, err := e.gitIntegrationSvc.ListRepositories(ctx, uid, provider)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"repositories": repos})
+}
+
+type createGitRepositoryArgs struct {
+	Provider    string `json:"provider"`
+	Name        string `json:"name"`
+	Private     bool   `json:"private"`
+	Description string `json:"description,omitempty"`
+}
+
+func (e *AuthorizedExecutor) createGitRepository(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a createGitRepositoryArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if a.Provider == "" || a.Name == "" {
+		return businessErr("validation", "provider and name are required")
+	}
+	provider := models.GitIntegrationProvider(a.Provider)
+	if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
+		return businessErr("validation", "invalid provider, must be 'github' or 'gitlab'")
+	}
+	repo, err := e.gitIntegrationSvc.CreateRepository(ctx, uid, provider, a.Name, a.Private, a.Description)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(map[string]any{"repository": repo})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // JSON-schemas (inline; короткие — magic JSON допустим)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -949,6 +1051,9 @@ var (
 	schemaArtifactList = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"}}}`)
 	schemaArtifactGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо artifact_id (UUID артефакта)."}`)
 	schemaAppNavigate       = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
+	schemaGitIntegrationList = json.RawMessage(`{"type":"object","properties":{}}`)
+	schemaGitRepositoryList  = json.RawMessage(`{"type":"object","required":["provider"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"}}}`)
+	schemaGitRepositoryCreate = json.RawMessage(`{"type":"object","required":["provider","name"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"},"name":{"type":"string","description":"Имя нового репозитория"},"private":{"type":"boolean","description":"Сделать ли репозиторий приватным"},"description":{"type":"string","description":"Описание нового репозитория"}}}`)
 )
 
 func maxInt(a, b int) int {

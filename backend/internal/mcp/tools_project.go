@@ -13,27 +13,27 @@ import (
 
 // ProjectListParams — параметры project_list (фильтры как у HTTP GET /projects).
 type ProjectListParams struct {
-	Status      *string `json:"status,omitempty" jsonschema:"description=Фильтр по статусу (active, paused, archived)"`
-	GitProvider *string `json:"git_provider,omitempty" jsonschema:"description=Фильтр по git-провайдеру"`
-	Search      *string `json:"search,omitempty" jsonschema:"description=Поиск по имени проекта"`
-	Limit       *int    `json:"limit,omitempty" jsonschema:"description=Лимит (1–100; по умолчанию 20)"`
-	Offset      *int    `json:"offset,omitempty" jsonschema:"description=Смещение"`
-	OrderBy     string  `json:"order_by,omitempty" jsonschema:"description=Поле сортировки"`
-	OrderDir    string  `json:"order_dir,omitempty" jsonschema:"description=Направление сортировки"`
+	Status      *string `json:"status,omitempty" jsonschema:"Фильтр по статусу (active, paused, archived)"`
+	GitProvider *string `json:"git_provider,omitempty" jsonschema:"Фильтр по git-провайдеру"`
+	Search      *string `json:"search,omitempty" jsonschema:"Поиск по имени проекта"`
+	Limit       *int    `json:"limit,omitempty" jsonschema:"Лимит (1–100; по умолчанию 20)"`
+	Offset      *int    `json:"offset,omitempty" jsonschema:"Смещение"`
+	OrderBy     string  `json:"order_by,omitempty" jsonschema:"Поле сортировки"`
+	OrderDir    string  `json:"order_dir,omitempty" jsonschema:"Направление сортировки"`
 }
 
 // ProjectGetParams — параметры project_get.
 type ProjectGetParams struct {
-	ProjectID string `json:"project_id" jsonschema:"description=UUID проекта,required"`
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
 }
 
 // ProjectCreateParams — параметры project_create (как POST /projects без продвинутых полей).
 type ProjectCreateParams struct {
-	Name             string  `json:"name" jsonschema:"required,description=Название проекта"`
-	Description      *string `json:"description,omitempty" jsonschema:"description=Описание проекта"`
-	GitProvider      *string `json:"git_provider,omitempty" jsonschema:"description=Git-провайдер (local, github, gitlab, bitbucket)"`
-	GitURL           *string `json:"git_url,omitempty" jsonschema:"description=URL git-репозитория"`
-	GitDefaultBranch *string `json:"git_default_branch,omitempty" jsonschema:"description=Ветка по умолчанию (default: main)"`
+	Name             string  `json:"name" jsonschema:"Название проекта"`
+	Description      *string `json:"description,omitempty" jsonschema:"Описание проекта"`
+	GitProvider      *string `json:"git_provider,omitempty" jsonschema:"Git-провайдер (local, github, gitlab, bitbucket)"`
+	GitURL           *string `json:"git_url,omitempty" jsonschema:"URL git-репозитория"`
+	GitDefaultBranch *string `json:"git_default_branch,omitempty" jsonschema:"Ветка по умолчанию (default: main)"`
 }
 
 // RegisterProjectTools регистрирует MCP-инструменты для проектов (список, карточка, создание).

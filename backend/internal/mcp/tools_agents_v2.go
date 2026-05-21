@@ -23,53 +23,53 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AgentListParams struct {
-	OnlyActive    *bool   `json:"only_active,omitempty" jsonschema:"description=Только is_active=true агенты"`
-	ExecutionKind *string `json:"execution_kind,omitempty" jsonschema:"description=Фильтр: llm | sandbox"`
-	Role          *string `json:"role,omitempty" jsonschema:"description=Фильтр по роли"`
-	NameLike      *string `json:"name_like,omitempty" jsonschema:"description=Частичный поиск по name"`
-	Limit         *int    `json:"limit,omitempty" jsonschema:"description=Лимит 1-200 (default 50)"`
-	Offset        *int    `json:"offset,omitempty" jsonschema:"description=Смещение (default 0)"`
+	OnlyActive    *bool   `json:"only_active,omitempty" jsonschema:"Только is_active=true агенты"`
+	ExecutionKind *string `json:"execution_kind,omitempty" jsonschema:"Фильтр: llm | sandbox"`
+	Role          *string `json:"role,omitempty" jsonschema:"Фильтр по роли"`
+	NameLike      *string `json:"name_like,omitempty" jsonschema:"Частичный поиск по name"`
+	Limit         *int    `json:"limit,omitempty" jsonschema:"Лимит 1-200 (default 50)"`
+	Offset        *int    `json:"offset,omitempty" jsonschema:"Смещение (default 0)"`
 }
 
 type AgentGetParams struct {
-	AgentID string `json:"agent_id" jsonschema:"required,description=UUID агента"`
+	AgentID string `json:"agent_id" jsonschema:"UUID агента"`
 }
 
 type AgentCreateParams struct {
-	Name            string   `json:"name" jsonschema:"required,description=Уникальное имя агента"`
-	Role            string   `json:"role" jsonschema:"required,description=Роль (router/planner/decomposer/reviewer/developer/merger/tester/...)"`
-	ExecutionKind   string   `json:"execution_kind" jsonschema:"required,description=llm или sandbox"`
+	Name            string   `json:"name" jsonschema:"Уникальное имя агента"`
+	Role            string   `json:"role" jsonschema:"Роль (router/planner/decomposer/reviewer/developer/merger/tester/...)"`
+	ExecutionKind   string   `json:"execution_kind" jsonschema:"llm или sandbox"`
 	RoleDescription *string  `json:"role_description,omitempty"`
 	SystemPrompt    *string  `json:"system_prompt,omitempty"`
-	Model           *string  `json:"model,omitempty" jsonschema:"description=Обязателен для llm; запрещён для sandbox"`
-	CodeBackend     *string  `json:"code_backend,omitempty" jsonschema:"description=Обязателен для sandbox (claude-code/aider/hermes/custom); запрещён для llm"`
+	Model           *string  `json:"model,omitempty" jsonschema:"Обязателен для llm; запрещён для sandbox"`
+	CodeBackend     *string  `json:"code_backend,omitempty" jsonschema:"Обязателен для sandbox (claude-code/aider/hermes/custom); запрещён для llm"`
 	Temperature     *float64 `json:"temperature,omitempty"`
 	MaxTokens       *int     `json:"max_tokens,omitempty"`
 	IsActive        *bool    `json:"is_active,omitempty"`
 }
 
 type AgentUpdateParams struct {
-	AgentID         string   `json:"agent_id" jsonschema:"required,description=UUID агента"`
+	AgentID         string   `json:"agent_id" jsonschema:"UUID агента"`
 	RoleDescription *string  `json:"role_description,omitempty"`
 	SystemPrompt    *string  `json:"system_prompt,omitempty"`
-	Model           *string  `json:"model,omitempty" jsonschema:"description=Только для llm-агентов"`
-	ProviderKind    *string  `json:"provider_kind,omitempty" jsonschema:"description=anthropic/deepseek/zhipu/openrouter"`
+	Model           *string  `json:"model,omitempty" jsonschema:"Только для llm-агентов"`
+	ProviderKind    *string  `json:"provider_kind,omitempty" jsonschema:"anthropic/deepseek/zhipu/openrouter"`
 	// Sprint 5 review fix #4: CodeBackend для sandbox-агентов (например, перейти с claude-code на aider).
-	CodeBackend        *string  `json:"code_backend,omitempty" jsonschema:"description=Только для sandbox-агентов (claude-code/aider/hermes/custom)"`
+	CodeBackend        *string  `json:"code_backend,omitempty" jsonschema:"Только для sandbox-агентов (claude-code/aider/hermes/custom)"`
 	Temperature        *float64 `json:"temperature,omitempty"`
 	MaxTokens          *int     `json:"max_tokens,omitempty"`
 	IsActive           *bool    `json:"is_active,omitempty"`
-	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty" jsonschema:"description=Подключить внутренний MCP DevTeam"`
+	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty" jsonschema:"Подключить внутренний MCP DevTeam"`
 }
 
 type AgentSetSecretParams struct {
-	AgentID string `json:"agent_id" jsonschema:"required,description=UUID агента"`
-	KeyName string `json:"key_name" jsonschema:"required,description=Имя env-переменной (UPPERCASE_WITH_UNDERSCORES)"`
-	Value   string `json:"value" jsonschema:"required,description=Plaintext-значение секрета (зашифруется; back-read невозможен)"`
+	AgentID string `json:"agent_id" jsonschema:"UUID агента"`
+	KeyName string `json:"key_name" jsonschema:"Имя env-переменной (UPPERCASE_WITH_UNDERSCORES)"`
+	Value   string `json:"value" jsonschema:"Plaintext-значение секрета (зашифруется; back-read невозможен)"`
 }
 
 type AgentDeleteSecretParams struct {
-	SecretID string `json:"secret_id" jsonschema:"required,description=UUID записи agent_secrets"`
+	SecretID string `json:"secret_id" jsonschema:"UUID записи agent_secrets"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

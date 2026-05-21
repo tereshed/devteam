@@ -184,6 +184,16 @@ func (r *projectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldS
 
 // Delete удаляет проект (жёстко; каскады в БД)
 func (r *projectRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	var team models.Team
+	err := r.db.WithContext(ctx).Select("id").Where("project_id = ?", id).First(&team).Error
+	if err == nil {
+		if err := r.db.WithContext(ctx).Delete(&models.Agent{}, "team_id = ?", team.ID).Error; err != nil {
+			return fmt.Errorf("failed to delete team agents: %w", err)
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("failed to find project team: %w", err)
+	}
+
 	if err := r.db.WithContext(ctx).Delete(&models.Project{}, "id = ?", id).Error; err != nil {
 		return fmt.Errorf("failed to delete project: %w", err)
 	}

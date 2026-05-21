@@ -25,24 +25,24 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ArtifactListParams struct {
-	TaskID    string `json:"task_id" jsonschema:"required,description=UUID задачи"`
-	OnlyReady *bool  `json:"only_ready,omitempty" jsonschema:"description=true (default) — только status=ready"`
+	TaskID    string `json:"task_id" jsonschema:"UUID задачи"`
+	OnlyReady *bool  `json:"only_ready,omitempty" jsonschema:"true (default) — только status=ready"`
 }
 
 type ArtifactGetParams struct {
-	ArtifactID string `json:"artifact_id" jsonschema:"required,description=UUID артефакта"`
+	ArtifactID string `json:"artifact_id" jsonschema:"UUID артефакта"`
 }
 
 type RouterDecisionListParams struct {
-	TaskID string `json:"task_id" jsonschema:"required,description=UUID задачи"`
+	TaskID string `json:"task_id" jsonschema:"UUID задачи"`
 }
 
 type WorktreeListParams struct {
-	TaskID string `json:"task_id" jsonschema:"required,description=UUID задачи"`
+	TaskID string `json:"task_id" jsonschema:"UUID задачи"`
 }
 
 type TaskCancelV2Params struct {
-	TaskID string `json:"task_id" jsonschema:"required,description=UUID задачи (только active можно отменить)"`
+	TaskID string `json:"task_id" jsonschema:"UUID задачи (только active можно отменить)"`
 }
 
 // WorktreeReleaseParams — параметры для деструктивного worktree_release.
@@ -56,8 +56,8 @@ type TaskCancelV2Params struct {
 // (а не только владельца ключа — у одного админа может быть несколько ключей
 // для разных автоматизаций).
 type WorktreeReleaseParams struct {
-	WorktreeID string `json:"worktree_id" jsonschema:"required,description=UUID worktree для принудительного освобождения"`
-	Confirm    bool   `json:"confirm" jsonschema:"required,description=Должно быть true. Подтверждение деструктивной операции (git worktree remove --force, потеря uncommitted changes агента)."`
+	WorktreeID string `json:"worktree_id" jsonschema:"UUID worktree для принудительного освобождения"`
+	Confirm    bool   `json:"confirm" jsonschema:"Должно быть true. Подтверждение деструктивной операции (git worktree remove --force, потеря uncommitted changes агента)."`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

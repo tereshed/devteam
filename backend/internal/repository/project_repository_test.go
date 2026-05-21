@@ -19,32 +19,86 @@ import (
 
 func cleanupProjectIntegrationDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	err := db.Exec(`
-		DELETE FROM conversation_messages;
-		DELETE FROM conversations;
-		DELETE FROM task_messages;
-		DELETE FROM tasks;
-		DELETE FROM agent_mcp_bindings;
-		DELETE FROM mcp_server_configs;
-		DELETE FROM teams;
-		DELETE FROM projects;
-		DELETE FROM git_credentials;
-		DELETE FROM user_llm_credential_audit;
-		DELETE FROM user_llm_credentials;
-		DELETE FROM llm_logs;
-		DELETE FROM scheduled_workflows;
-		DELETE FROM execution_steps;
-		DELETE FROM executions;
-		DELETE FROM workflows;
-		DELETE FROM agent_tool_bindings;
-		DELETE FROM agents;
-		DELETE FROM tool_definitions;
-		DELETE FROM users;
-		DELETE FROM prompts;
-		DELETE FROM refresh_tokens;
-		DELETE FROM api_keys;
-	`).Error
-	require.NoError(t, err)
+	var kTereshinID string
+	_ = db.Raw("SELECT id FROM users WHERE email = 'k.tereshin@icloud.com'").Scan(&kTereshinID).Error
+
+	if kTereshinID != "" {
+		// Preserve user k.tereshin@icloud.com and their resources
+		require.NoError(t, db.Exec(`DELETE FROM conversation_messages WHERE conversation_id NOT IN (SELECT id FROM conversations WHERE user_id = ?)`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM conversations WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM task_messages WHERE task_id NOT IN (SELECT id FROM tasks WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?))`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM tasks WHERE project_id NOT IN (SELECT id FROM projects WHERE user_id = ?)`, kTereshinID).Error)
+
+		// Delete agents and their bindings first, before deleting teams or projects, to avoid leaving orphaned agents with team_id set to NULL.
+		require.NoError(t, db.Exec(`DELETE FROM agent_mcp_bindings WHERE agent_id NOT IN (
+			SELECT id FROM agents 
+			WHERE (team_id IS NULL AND user_id IS NULL AND name IN ('router', 'planner', 'decomposer', 'reviewer', 'developer', 'merger', 'tester'))
+			   OR user_id = ?
+			   OR team_id IN (SELECT id FROM teams WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?))
+		)`, kTereshinID, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM agent_tool_bindings WHERE agent_id NOT IN (
+			SELECT id FROM agents 
+			WHERE (team_id IS NULL AND user_id IS NULL AND name IN ('router', 'planner', 'decomposer', 'reviewer', 'developer', 'merger', 'tester'))
+			   OR user_id = ?
+			   OR team_id IN (SELECT id FROM teams WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?))
+		)`, kTereshinID, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM llm_logs WHERE agent_id IS NULL OR agent_id NOT IN (
+			SELECT id FROM agents 
+			WHERE (team_id IS NULL AND user_id IS NULL AND name IN ('router', 'planner', 'decomposer', 'reviewer', 'developer', 'merger', 'tester'))
+			   OR user_id = ?
+			   OR team_id IN (SELECT id FROM teams WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?))
+		)`, kTereshinID, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM agents WHERE 
+			(user_id IS NULL OR user_id != ?)
+			AND (team_id IS NULL OR team_id NOT IN (SELECT id FROM teams WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)))
+			AND NOT (team_id IS NULL AND user_id IS NULL AND name IN ('router', 'planner', 'decomposer', 'reviewer', 'developer', 'merger', 'tester'))`, kTereshinID, kTereshinID).Error)
+
+		require.NoError(t, db.Exec(`DELETE FROM mcp_server_configs WHERE project_id NOT IN (SELECT id FROM projects WHERE user_id = ?)`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM teams WHERE project_id NOT IN (SELECT id FROM projects WHERE user_id = ?)`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM projects WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM git_credentials WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM user_llm_credential_audit WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM user_llm_credentials WHERE user_id != ?`, kTereshinID).Error)
+
+		require.NoError(t, db.Exec(`DELETE FROM scheduled_workflows WHERE name = 'daily_run'`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM execution_steps WHERE execution_id NOT IN (
+			SELECT id FROM executions WHERE workflow_id IN (SELECT id FROM workflows WHERE name IN ('test_wf', 'wf1'))
+		)`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM executions WHERE workflow_id IN (SELECT id FROM workflows WHERE name IN ('test_wf', 'wf1'))`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM workflows WHERE name IN ('test_wf', 'wf1')`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM tool_definitions WHERE is_builtin = false`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM users WHERE email != 'k.tereshin@icloud.com'`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM prompts WHERE name LIKE 'tp-%' OR name IN ('test_prompt', 'unique_name')`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM refresh_tokens WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM api_keys WHERE user_id != ?`, kTereshinID).Error)
+	} else {
+		err := db.Exec(`
+			DELETE FROM conversation_messages;
+			DELETE FROM conversations;
+			DELETE FROM task_messages;
+			DELETE FROM tasks;
+			DELETE FROM agent_mcp_bindings;
+			DELETE FROM mcp_server_configs;
+			DELETE FROM teams;
+			DELETE FROM projects;
+			DELETE FROM git_credentials;
+			DELETE FROM user_llm_credential_audit;
+			DELETE FROM user_llm_credentials;
+			DELETE FROM llm_logs;
+			DELETE FROM scheduled_workflows;
+			DELETE FROM execution_steps;
+			DELETE FROM executions;
+			DELETE FROM workflows;
+			DELETE FROM agent_tool_bindings;
+			DELETE FROM agents;
+			DELETE FROM tool_definitions;
+			DELETE FROM users;
+			DELETE FROM prompts;
+			DELETE FROM refresh_tokens;
+			DELETE FROM api_keys;
+		`).Error
+		require.NoError(t, err)
+	}
 }
 
 func createProjectTestUser(t *testing.T, db *gorm.DB, email string) *models.User {
@@ -168,10 +222,13 @@ func TestProjectRepository_List_Pagination(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, p))
 	}
 
-	list, total, err := repo.List(ctx, ProjectFilter{Limit: 2, Offset: 0, OrderBy: "name", OrderDir: "ASC"})
+	pagSearch := "-pag"
+	list, total, err := repo.List(ctx, ProjectFilter{Search: &pagSearch, Limit: 2, Offset: 0, OrderBy: "name", OrderDir: "ASC"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), total)
 	require.Len(t, list, 2)
+	assert.Equal(t, "A-pag", list[0].Name)
+	assert.Equal(t, "B-pag", list[1].Name)
 }
 
 func TestProjectRepository_List_FilterByStatus(t *testing.T) {
@@ -186,11 +243,13 @@ func TestProjectRepository_List_FilterByStatus(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, &models.Project{Name: "arch-p", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusArchived}))
 
 	st := models.ProjectStatusArchived
-	list, total, err := repo.List(ctx, ProjectFilter{Status: &st, Limit: 20, Offset: 0})
+	q := "arch-p"
+	list, total, err := repo.List(ctx, ProjectFilter{Status: &st, Search: &q, Limit: 20, Offset: 0})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 	assert.Equal(t, models.ProjectStatusArchived, list[0].Status)
+	assert.Equal(t, "arch-p", list[0].Name)
 }
 
 func TestProjectRepository_List_FilterByGitProvider(t *testing.T) {
@@ -205,11 +264,13 @@ func TestProjectRepository_List_FilterByGitProvider(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, &models.Project{Name: "loc", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
 
 	gp := models.GitProviderGitHub
-	list, total, err := repo.List(ctx, ProjectFilter{GitProvider: &gp, Limit: 20, Offset: 0})
+	q := "gh"
+	list, total, err := repo.List(ctx, ProjectFilter{GitProvider: &gp, Search: &q, Limit: 20, Offset: 0})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 	assert.Equal(t, models.GitProviderGitHub, list[0].GitProvider)
+	assert.Equal(t, "gh", list[0].Name)
 }
 
 func TestProjectRepository_List_Search(t *testing.T) {
@@ -221,9 +282,9 @@ func TestProjectRepository_List_Search(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, repo.Create(ctx, &models.Project{Name: "Alpha", Description: "no match here", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
-	require.NoError(t, repo.Create(ctx, &models.Project{Name: "Beta", Description: "contains QUIRKY text", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
+	require.NoError(t, repo.Create(ctx, &models.Project{Name: "Beta", Description: "contains QUIRKY-psearch-unique-term text", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
 
-	q := "quirky"
+	q := "quirky-psearch-unique-term"
 	list, total, err := repo.List(ctx, ProjectFilter{Search: &q, Limit: 20, Offset: 0})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
@@ -239,15 +300,18 @@ func TestProjectRepository_List_Search_EscapesPercentWildcard(t *testing.T) {
 	repo := NewProjectRepository(db)
 	ctx := context.Background()
 
+	onlyPct := "%"
+	existingList, _, err := repo.List(ctx, ProjectFilter{Search: &onlyPct, Limit: 100, Offset: 0})
+	require.NoError(t, err)
+	existingCount := len(existingList)
+
 	require.NoError(t, repo.Create(ctx, &models.Project{Name: "plain-alpha", Description: "no special", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
 	require.NoError(t, repo.Create(ctx, &models.Project{Name: "has-pct", Description: "discount 50% today", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
 
-	onlyPct := "%"
 	list, total, err := repo.List(ctx, ProjectFilter{Search: &onlyPct, Limit: 20, Offset: 0})
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), total)
-	require.Len(t, list, 1)
-	assert.Equal(t, "has-pct", list[0].Name)
+	assert.Equal(t, int64(existingCount+1), total)
+	assert.NotEmpty(t, list)
 }
 
 func TestProjectRepository_List_Search_EscapesUnderscoreWildcard(t *testing.T) {
@@ -258,15 +322,18 @@ func TestProjectRepository_List_Search_EscapesUnderscoreWildcard(t *testing.T) {
 	repo := NewProjectRepository(db)
 	ctx := context.Background()
 
+	onlyUS := "_"
+	existingList, _, err := repo.List(ctx, ProjectFilter{Search: &onlyUS, Limit: 100, Offset: 0})
+	require.NoError(t, err)
+	existingCount := len(existingList)
+
 	require.NoError(t, repo.Create(ctx, &models.Project{Name: "fooxbar", Description: "x", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
 	require.NoError(t, repo.Create(ctx, &models.Project{Name: "foo_bar", Description: "underscore", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
 
-	onlyUS := "_"
 	list, total, err := repo.List(ctx, ProjectFilter{Search: &onlyUS, Limit: 20, Offset: 0})
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), total)
-	require.Len(t, list, 1)
-	assert.Equal(t, "foo_bar", list[0].Name)
+	assert.Equal(t, int64(existingCount+1), total)
+	assert.NotEmpty(t, list)
 }
 
 func TestProjectRepository_List_LimitZeroUsesDefault(t *testing.T) {
@@ -287,7 +354,8 @@ func TestProjectRepository_List_LimitZeroUsesDefault(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, p))
 	}
 
-	list, total, err := repo.List(ctx, ProjectFilter{Limit: 0, Offset: 0, OrderBy: "name", OrderDir: "ASC"})
+	q := "lim-proj-"
+	list, total, err := repo.List(ctx, ProjectFilter{Search: &q, Limit: 0, Offset: 0, OrderBy: "name", OrderDir: "ASC"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(25), total)
 	require.Len(t, list, 20)
@@ -311,7 +379,8 @@ func TestProjectRepository_List_LimitCappedAtMax(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, p))
 	}
 
-	list, total, err := repo.List(ctx, ProjectFilter{Limit: 500, Offset: 0, OrderBy: "name", OrderDir: "ASC"})
+	q := "cap-proj-"
+	list, total, err := repo.List(ctx, ProjectFilter{Search: &q, Limit: 500, Offset: 0, OrderBy: "name", OrderDir: "ASC"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(120), total)
 	require.Len(t, list, 100)
@@ -429,9 +498,11 @@ func TestProjectRepository_List_OrderBy_Whitelist(t *testing.T) {
 	repo := NewProjectRepository(db)
 	ctx := context.Background()
 
-	require.NoError(t, repo.Create(ctx, &models.Project{Name: "z-last", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
+	require.NoError(t, repo.Create(ctx, &models.Project{Name: "z-last-order-by-whitelist-unique-name", GitProvider: models.GitProviderLocal, UserID: user.ID, Status: models.ProjectStatusActive}))
 
+	q := "z-last-order-by-whitelist-unique-name"
 	filter := ProjectFilter{
+		Search:   &q,
 		OrderBy:  "id; DROP TABLE projects; --",
 		OrderDir: "ASC",
 		Limit:    10,
@@ -441,6 +512,7 @@ func TestProjectRepository_List_OrderBy_Whitelist(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
+	assert.Equal(t, "z-last-order-by-whitelist-unique-name", list[0].Name)
 }
 
 func TestProjectRepository_List_OrderDir_Sanitize(t *testing.T) {

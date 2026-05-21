@@ -14,4 +14,22 @@ class MyAgentsRepository {
     final json = response.data as Map<String, dynamic>;
     return AgentV2Page.fromJson(json);
   }
+
+  Future<AgentV2> update(
+    String id, {
+    String? model,
+    String? providerKind,
+    CancelToken? cancelToken,
+  }) async {
+    final response = await _dio.put(
+      '/me/agents/$id',
+      data: {
+        if (model != null) 'model': model,
+        if (providerKind != null) 'provider_kind': providerKind,
+      },
+      cancelToken: cancelToken,
+    );
+    final json = response.data as Map<String, dynamic>;
+    return AgentV2.fromJson(json);
+  }
 }

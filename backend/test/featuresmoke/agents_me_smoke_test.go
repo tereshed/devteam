@@ -52,8 +52,15 @@ func TestMyAgents_CreatedOnRegistration(t *testing.T) {
 	agent := out.Items[0]
 	require.Equal(t, "assistant", agent.Role, "auto-created agent role")
 	require.Nil(t, agent.Model, "auto-created agent model should be nil (unconfigured)")
-	require.NotNil(t, agent.SystemPrompt, "auto-created agent system_prompt should be set")
-	require.NotEmpty(t, *agent.SystemPrompt, "auto-created agent system_prompt should be non-empty")
+
+	// Fetch details by ID to verify system_prompt, as it is omitted in list view for performance
+	getResp := h.Do(t, "GET", "/api/v1/me/agents/"+agent.ID, nil, user.AccessToken)
+	require.Equal(t, http.StatusOK, getResp.Status, "get my agent: body=%s", truncBody(getResp.Body))
+
+	var detail myAgentRecord
+	getResp.JSON(t, &detail)
+	require.NotNil(t, detail.SystemPrompt, "auto-created agent system_prompt should be set")
+	require.NotEmpty(t, *detail.SystemPrompt, "auto-created agent system_prompt should be non-empty")
 }
 
 // TestMyAgents_GetByID — получение агента по ID через /me/agents/:id.

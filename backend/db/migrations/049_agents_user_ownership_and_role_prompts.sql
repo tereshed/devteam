@@ -61,6 +61,14 @@ CREATE INDEX IF NOT EXISTS idx_agents_user_id
     ON agents (user_id) WHERE user_id IS NOT NULL;
 -- +goose StatementEnd
 
+-- Исправление уникального индекса для глобальных системных агентов:
+-- Он должен распространяться только на агентов, у которых нет ни user_id, ни team_id.
+-- +goose StatementBegin
+DROP INDEX IF EXISTS idx_agents_global_name;
+CREATE UNIQUE INDEX idx_agents_global_name
+    ON agents(name) WHERE team_id IS NULL AND user_id IS NULL;
+-- +goose StatementEnd
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 1.3  Ослабляем chk_agents_kind_requirements
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -119,4 +127,10 @@ ALTER TABLE agents ADD CONSTRAINT chk_agents_kind_requirements CHECK (
 
 -- +goose StatementBegin
 ALTER TABLE agents DROP COLUMN IF EXISTS user_id;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DROP INDEX IF EXISTS idx_agents_global_name;
+CREATE UNIQUE INDEX idx_agents_global_name
+    ON agents(name) WHERE team_id IS NULL;
 -- +goose StatementEnd

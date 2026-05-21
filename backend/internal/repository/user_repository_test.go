@@ -33,21 +33,51 @@ func setupTestDB(t *testing.T) *gorm.DB {
 }
 
 func cleanupTestDB(t *testing.T, db *gorm.DB) {
-	// Очищаем таблицы в правильном порядке (сначала зависимые)
-	db.Exec(`
-		DELETE FROM llm_logs;
-		DELETE FROM scheduled_workflows;
-		DELETE FROM execution_steps;
-		DELETE FROM executions;
-		DELETE FROM workflows;
-		DELETE FROM agents;
-		DELETE FROM user_llm_credential_audit;
-		DELETE FROM user_llm_credentials;
-		DELETE FROM users;
-		DELETE FROM prompts;
-		DELETE FROM refresh_tokens;
-		DELETE FROM api_keys;
-	`)
+	t.Helper()
+	var kTereshinID string
+	_ = db.Raw("SELECT id FROM users WHERE email = 'k.tereshin@icloud.com'").Scan(&kTereshinID).Error
+
+	if kTereshinID != "" {
+		// Preserve user k.tereshin@icloud.com and their resources
+		require.NoError(t, db.Exec(`DELETE FROM llm_logs WHERE agent_id IS NULL OR agent_id NOT IN (
+			SELECT id FROM agents 
+			WHERE (team_id IS NULL AND user_id IS NULL AND name IN ('router', 'planner', 'decomposer', 'reviewer', 'developer', 'merger', 'tester'))
+			   OR user_id = ?
+			   OR team_id IN (SELECT id FROM teams WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?))
+		)`, kTereshinID, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM scheduled_workflows WHERE name = 'daily_run'`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM execution_steps WHERE execution_id NOT IN (
+			SELECT id FROM executions WHERE workflow_id IN (SELECT id FROM workflows WHERE name IN ('test_wf', 'wf1'))
+		)`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM executions WHERE workflow_id IN (SELECT id FROM workflows WHERE name IN ('test_wf', 'wf1'))`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM workflows WHERE name IN ('test_wf', 'wf1')`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM agents WHERE 
+			(user_id IS NULL OR user_id != ?)
+			AND (team_id IS NULL OR team_id NOT IN (SELECT id FROM teams WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)))
+			AND NOT (team_id IS NULL AND user_id IS NULL AND name IN ('router', 'planner', 'decomposer', 'reviewer', 'developer', 'merger', 'tester'))`, kTereshinID, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM user_llm_credential_audit WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM user_llm_credentials WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM users WHERE email != 'k.tereshin@icloud.com'`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM prompts WHERE name LIKE 'tp-%' OR name IN ('test_prompt', 'unique_name')`).Error)
+		require.NoError(t, db.Exec(`DELETE FROM refresh_tokens WHERE user_id != ?`, kTereshinID).Error)
+		require.NoError(t, db.Exec(`DELETE FROM api_keys WHERE user_id != ?`, kTereshinID).Error)
+	} else {
+		// Очищаем таблицы в правильном порядке (сначала зависимые)
+		db.Exec(`
+			DELETE FROM llm_logs;
+			DELETE FROM scheduled_workflows;
+			DELETE FROM execution_steps;
+			DELETE FROM executions;
+			DELETE FROM workflows;
+			DELETE FROM agents;
+			DELETE FROM user_llm_credential_audit;
+			DELETE FROM user_llm_credentials;
+			DELETE FROM users;
+			DELETE FROM prompts;
+			DELETE FROM refresh_tokens;
+			DELETE FROM api_keys;
+		`)
+	}
 }
 
 func TestUserRepository_Create(t *testing.T) {

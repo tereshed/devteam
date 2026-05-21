@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/devteam/backend/internal/handler"
@@ -98,7 +99,7 @@ func New(db *gorm.DB, config ServerConfig, deps Dependencies) *Server {
 	}
 
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(gin.LoggerWithFormatter(customLogFormatter), gin.Recovery())
 
 	// Настраиваем CORS для работы с frontend
 	router.Use(cors.New(cors.Config{
@@ -278,6 +279,13 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				gl.POST("/callback", deps.GitIntegrationHandler.CallbackGitLab)
 				gl.GET("/status", deps.GitIntegrationHandler.StatusGitLab)
 				gl.DELETE("/revoke", deps.GitIntegrationHandler.RevokeGitLab)
+			}
+
+			repos := api.Group("/integrations/:provider/repos")
+			repos.Use(authMW)
+			{
+				repos.GET("", deps.GitIntegrationHandler.ListRepositories)
+				repos.POST("", deps.GitIntegrationHandler.CreateRepository)
 			}
 		}
 
@@ -506,4 +514,40 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	// Здесь можно добавить логику graceful shutdown
 	return nil
+}
+
+func customLogFormatter(param gin.LogFormatterParams) string {
+	var statusColor, methodColor, resetColor string
+	if param.IsOutputColor() {
+		statusColor = param.StatusCodeColor()
+		methodColor = param.MethodColor()
+		resetColor = param.ResetColor()
+	}
+
+	if param.Latency > time.Minute {
+		param.Latency = param.Latency.Truncate(time.Second)
+	}
+
+	rawPath := param.Path
+	u, err := url.ParseRequestURI(rawPath)
+	if err == nil {
+		q := u.Query()
+		if len(q) > 0 {
+			for k := range q {
+				q.Set(k, "REDACTED")
+			}
+			u.RawQuery = q.Encode()
+			rawPath = u.String()
+		}
+	}
+
+	return fmt.Sprintf("[GIN] %v |%s %3d %s| %13v | %15s |%s %-7s %s %#v\n%s",
+		param.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		statusColor, param.StatusCode, resetColor,
+		param.Latency,
+		param.ClientIP,
+		methodColor, param.Method, resetColor,
+		rawPath,
+		param.ErrorMessage,
+	)
 }

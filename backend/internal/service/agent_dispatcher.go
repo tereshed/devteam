@@ -80,9 +80,7 @@ func (d *agentDispatcher) BuildExecutor(ctx context.Context, a *models.Agent) (a
 		if d.llmResolver == nil {
 			return nil, fmt.Errorf("agent dispatcher: llmResolver is not configured (agent=%s)", a.Name)
 		}
-		if a.Model == nil || *a.Model == "" {
-			return nil, fmt.Errorf("agent dispatcher: llm-agent %q has empty model", a.Name)
-		}
+		// a.Model is allowed to be nil/empty (will fallback to default config model at execution time)
 		provider, err := d.llmResolver.ResolveLLMProvider(ctx, a)
 		if err != nil {
 			return nil, fmt.Errorf("agent dispatcher: resolve llm provider for %q: %w", a.Name, err)

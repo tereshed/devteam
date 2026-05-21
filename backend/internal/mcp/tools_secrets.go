@@ -15,23 +15,23 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ProjectSecretSetParams struct {
-	ProjectID string `json:"project_id" jsonschema:"required,description=UUID проекта"`
-	KeyName   string `json:"key_name" jsonschema:"required,description=Имя переменной (UPPERCASE_WITH_UNDERSCORES)"`
-	Value     string `json:"value" jsonschema:"required,description=Plaintext-значение (шифруется AES-256-GCM; back-read невозможен)"`
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+	KeyName   string `json:"key_name" jsonschema:"Имя переменной (UPPERCASE_WITH_UNDERSCORES)"`
+	Value     string `json:"value" jsonschema:"Plaintext-значение (шифруется AES-256-GCM; back-read невозможен)"`
 }
 
 type ProjectSecretDeleteParams struct {
-	ProjectID string `json:"project_id" jsonschema:"required,description=UUID проекта"`
-	SecretID  string `json:"secret_id" jsonschema:"required,description=UUID записи project_secrets"`
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+	SecretID  string `json:"secret_id" jsonschema:"UUID записи project_secrets"`
 }
 
 type UserSecretSetParams struct {
-	KeyName string `json:"key_name" jsonschema:"required,description=Имя переменной (UPPERCASE_WITH_UNDERSCORES)"`
-	Value   string `json:"value" jsonschema:"required,description=Plaintext-значение (шифруется AES-256-GCM; back-read невозможен)"`
+	KeyName string `json:"key_name" jsonschema:"Имя переменной (UPPERCASE_WITH_UNDERSCORES)"`
+	Value   string `json:"value" jsonschema:"Plaintext-значение (шифруется AES-256-GCM; back-read невозможен)"`
 }
 
 type UserSecretDeleteParams struct {
-	SecretID string `json:"secret_id" jsonschema:"required,description=UUID записи user_secrets"`
+	SecretID string `json:"secret_id" jsonschema:"UUID записи user_secrets"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

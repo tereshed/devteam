@@ -100,7 +100,10 @@ func TestLLMService_Generate(t *testing.T) {
 			Messages: []llm.Message{{Role: llm.RoleUser, Content: "Hello"}},
 		}
 		expectedResp := &llm.Response{Content: "OpenAI Response"}
-		mockOpenAI.On("Generate", ctx, req).Return(expectedResp, nil)
+		expectedReq := req
+		expectedReq.Provider = llm.ProviderOpenAI
+		expectedReq.Model = "gpt-4o"
+		mockOpenAI.On("Generate", ctx, expectedReq).Return(expectedResp, nil)
 
 		resp, err := service.Generate(ctx, req)
 		assert.NoError(t, err)
@@ -114,7 +117,9 @@ func TestLLMService_Generate(t *testing.T) {
 			Messages: []llm.Message{{Role: llm.RoleUser, Content: "Hello"}},
 		}
 		expectedResp := &llm.Response{Content: "Anthropic Response"}
-		mockAnthropic.On("Generate", ctx, req).Return(expectedResp, nil)
+		expectedReq := req
+		expectedReq.Model = "claude-3-5-sonnet-20240620"
+		mockAnthropic.On("Generate", ctx, expectedReq).Return(expectedResp, nil)
 
 		resp, err := service.Generate(ctx, req)
 		assert.NoError(t, err)

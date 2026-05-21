@@ -15,44 +15,44 @@ import (
 
 // TaskListParams — параметры task_list (как GET /projects/:id/tasks).
 type TaskListParams struct {
-	ProjectID       string   `json:"project_id" jsonschema:"required,description=UUID проекта"`
-	Status          *string  `json:"status,omitempty" jsonschema:"description=Фильтр по статусу (pending, planning, in_progress, review, changes_requested, testing, paused, completed, failed, cancelled)"`
-	Statuses        []string `json:"statuses,omitempty" jsonschema:"description=Фильтр по нескольким статусам"`
-	Priority        *string  `json:"priority,omitempty" jsonschema:"description=Фильтр по приоритету (critical, high, medium, low)"`
-	AssignedAgentID *string  `json:"assigned_agent_id,omitempty" jsonschema:"description=UUID агента"`
-	RootOnly        bool     `json:"root_only,omitempty" jsonschema:"description=Только корневые задачи (без подзадач)"`
-	Search          *string  `json:"search,omitempty" jsonschema:"description=Поиск по title/description"`
-	Limit           *int     `json:"limit,omitempty" jsonschema:"description=Лимит (1–200; по умолчанию 50)"`
-	Offset          *int     `json:"offset,omitempty" jsonschema:"description=Смещение"`
-	OrderBy         string   `json:"order_by,omitempty" jsonschema:"description=Поле сортировки (created_at, updated_at, priority, status)"`
-	OrderDir        string   `json:"order_dir,omitempty" jsonschema:"description=Направление (asc, desc)"`
+	ProjectID       string   `json:"project_id" jsonschema:"UUID проекта"`
+	Status          *string  `json:"status,omitempty" jsonschema:"Фильтр по статусу (pending, planning, in_progress, review, changes_requested, testing, paused, completed, failed, cancelled)"`
+	Statuses        []string `json:"statuses,omitempty" jsonschema:"Фильтр по нескольким статусам"`
+	Priority        *string  `json:"priority,omitempty" jsonschema:"Фильтр по приоритету (critical, high, medium, low)"`
+	AssignedAgentID *string  `json:"assigned_agent_id,omitempty" jsonschema:"UUID агента"`
+	RootOnly        bool     `json:"root_only,omitempty" jsonschema:"Только корневые задачи (без подзадач)"`
+	Search          *string  `json:"search,omitempty" jsonschema:"Поиск по title/description"`
+	Limit           *int     `json:"limit,omitempty" jsonschema:"Лимит (1–200; по умолчанию 50)"`
+	Offset          *int     `json:"offset,omitempty" jsonschema:"Смещение"`
+	OrderBy         string   `json:"order_by,omitempty" jsonschema:"Поле сортировки (created_at, updated_at, priority, status)"`
+	OrderDir        string   `json:"order_dir,omitempty" jsonschema:"Направление (asc, desc)"`
 }
 
 // TaskGetParams — параметры task_get.
 type TaskGetParams struct {
-	TaskID string `json:"task_id" jsonschema:"required,description=UUID задачи"`
+	TaskID string `json:"task_id" jsonschema:"UUID задачи"`
 }
 
 // TaskCreateParams — параметры task_create.
 type TaskCreateParams struct {
-	ProjectID       string  `json:"project_id" jsonschema:"required,description=UUID проекта"`
-	Title           string  `json:"title" jsonschema:"required,description=Название задачи (1–500 символов)"`
-	Description     *string `json:"description,omitempty" jsonschema:"description=Подробное описание задачи"`
-	Priority        *string `json:"priority,omitempty" jsonschema:"description=Приоритет (critical, high, medium, low). По умолчанию medium."`
-	AssignedAgentID *string `json:"assigned_agent_id,omitempty" jsonschema:"description=UUID агента для назначения (должен быть в команде проекта)"`
-	ParentTaskID    *string `json:"parent_task_id,omitempty" jsonschema:"description=UUID родительской задачи (для создания подзадачи)"`
+	ProjectID       string  `json:"project_id" jsonschema:"UUID проекта"`
+	Title           string  `json:"title" jsonschema:"Название задачи (1–500 символов)"`
+	Description     *string `json:"description,omitempty" jsonschema:"Подробное описание задачи"`
+	Priority        *string `json:"priority,omitempty" jsonschema:"Приоритет (critical, high, medium, low). По умолчанию medium."`
+	AssignedAgentID *string `json:"assigned_agent_id,omitempty" jsonschema:"UUID агента для назначения (должен быть в команде проекта)"`
+	ParentTaskID    *string `json:"parent_task_id,omitempty" jsonschema:"UUID родительской задачи (для создания подзадачи)"`
 }
 
 // TaskUpdateParams — параметры task_update.
 type TaskUpdateParams struct {
-	TaskID             string  `json:"task_id" jsonschema:"required,description=UUID задачи"`
-	Title              *string `json:"title,omitempty" jsonschema:"description=Новое название"`
-	Description        *string `json:"description,omitempty" jsonschema:"description=Новое описание"`
-	Priority           *string `json:"priority,omitempty" jsonschema:"description=Новый приоритет (critical, high, medium, low)"`
-	Status             *string `json:"status,omitempty" jsonschema:"description=Новый статус (допустимые переходы проверяются state machine)"`
-	AssignedAgentID    *string `json:"assigned_agent_id,omitempty" jsonschema:"description=UUID агента для назначения"`
-	ClearAssignedAgent bool    `json:"clear_assigned_agent,omitempty" jsonschema:"description=Снять назначенного агента"`
-	BranchName         *string `json:"branch_name,omitempty" jsonschema:"description=Git-ветка задачи"`
+	TaskID             string  `json:"task_id" jsonschema:"UUID задачи"`
+	Title              *string `json:"title,omitempty" jsonschema:"Новое название"`
+	Description        *string `json:"description,omitempty" jsonschema:"Новое описание"`
+	Priority           *string `json:"priority,omitempty" jsonschema:"Новый приоритет (critical, high, medium, low)"`
+	Status             *string `json:"status,omitempty" jsonschema:"Новый статус (допустимые переходы проверяются state machine)"`
+	AssignedAgentID    *string `json:"assigned_agent_id,omitempty" jsonschema:"UUID агента для назначения"`
+	ClearAssignedAgent bool    `json:"clear_assigned_agent,omitempty" jsonschema:"Снять назначенного агента"`
+	BranchName         *string `json:"branch_name,omitempty" jsonschema:"Git-ветка задачи"`
 }
 
 // RegisterTaskTools регистрирует MCP-инструменты для задач.

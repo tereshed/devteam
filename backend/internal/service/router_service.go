@@ -183,6 +183,7 @@ func (r *RouterService) Decide(ctx context.Context, state RouterState) (Decision
 			AgentName:    a.Name,
 			Role:         string(a.Role),
 			Model:        derefString(a.Model),
+			Provider:     derefProviderKind(a.ProviderKind),
 			PromptSystem: derefString(a.SystemPrompt),
 			PromptUser:   userPrompt,
 			Temperature:  a.Temperature,
@@ -491,6 +492,13 @@ func derefString(p *string) string {
 		return ""
 	}
 	return *p
+}
+
+func derefProviderKind(p *models.AgentProviderKind) string {
+	if p == nil {
+		return ""
+	}
+	return string(*p)
 }
 
 // outcomesAsStrings — обёртка над models.AllRouterDecisionOutcomes для подстановки

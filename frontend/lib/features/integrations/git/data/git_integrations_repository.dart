@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:frontend/features/integrations/git/domain/git_integration_model.dart';
+import 'package:frontend/features/integrations/git/domain/git_repository_model.dart';
 
 /// HTTP-слой экрана Git Integrations (UI Refactoring §5 — Этап 3b).
 ///
@@ -8,6 +9,8 @@ import 'package:frontend/features/integrations/git/domain/git_integration_model.
 ///   * `POST   /integrations/{provider}/auth/callback`
 ///   * `GET    /integrations/{provider}/auth/status`
 ///   * `DELETE /integrations/{provider}/auth/revoke`
+///   * `GET    /integrations/{provider}/repos`
+///   * `POST   /integrations/{provider}/repos`
 ///
 /// Контракт ошибок — узкий [GitIntegrationsException] с `errorCode`+`statusCode`,
 /// чтобы UI различал §4a.5 кейсы (`user_cancelled`/`invalid_state`/`provider_unreachable`/
@@ -16,6 +19,7 @@ class GitIntegrationsRepository {
   GitIntegrationsRepository({required Dio dio}) : _dio = dio;
 
   final Dio _dio;
+
 
   /// Старт OAuth-flow для GitHub или gitlab.com (Shared).
   ///
@@ -119,6 +123,51 @@ class GitIntegrationsRepository {
       );
       final data = resp.data ?? <String, dynamic>{};
       return data['remote_revoke_failed'] == true;
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
+  /// Получить список репозиториев для подключенного провайдера.
+  Future<List<GitRepositoryModel>> fetchRepositories(
+    GitIntegrationProvider provider, {
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.get<List<dynamic>>(
+        '/integrations/${provider.jsonValue}/repos',
+        cancelToken: cancelToken,
+      );
+      final list = resp.data ?? [];
+      return list
+          .map((e) => GitRepositoryModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
+  /// Создать новый репозиторий у подключенного провайдера.
+  Future<GitRepositoryModel> createRepository(
+    GitIntegrationProvider provider,
+    String name, {
+    bool private = true,
+    String? description,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'name': name,
+        'private': private,
+        if (description != null) 'description': description,
+      };
+      final resp = await _dio.post<Map<String, dynamic>>(
+        '/integrations/${provider.jsonValue}/repos',
+        data: body,
+        cancelToken: cancelToken,
+      );
+      final data = resp.data ?? <String, dynamic>{};
+      return GitRepositoryModel.fromJson(data);
     } on DioException catch (e) {
       throw _mapDioError(e);
     }

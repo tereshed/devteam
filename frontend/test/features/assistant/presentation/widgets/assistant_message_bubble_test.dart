@@ -1,18 +1,8 @@
-// Sprint 21 — widget-тест для AssistantMessageBubble.
-//
-// Виджет stateless и не зависит от Riverpod-провайдеров, поэтому достаточно
-// MaterialApp+l10n из общего helper'a [wrapAssistantWidget]. Покрываем матрицу
-// ролей (user/assistant/system) и базовый рендер контента.
-
-// @dart=2.19
-@TestOn('vm')
-@Tags(['widget'])
-library;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_message_bubble.dart';
+import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
 
 import '../../helpers/test_wrappers.dart';
 
@@ -76,9 +66,13 @@ void main() {
 
       expect(find.text('System'), findsOneWidget);
 
-      final body =
-          tester.widget<SelectableText>(find.byType(SelectableText));
-      expect(body.style?.fontStyle, FontStyle.italic);
+      final themeFinder = find.descendant(
+        of: find.byType(AssistantMessageBubble),
+        matching: find.byType(Theme),
+      );
+      expect(themeFinder, findsWidgets);
+      final theme = tester.widget<Theme>(themeFinder.last);
+      expect(theme.data.textTheme.bodyMedium?.fontStyle, FontStyle.italic);
     });
 
     testWidgets('null content rendered as empty string (no crash)',
@@ -89,9 +83,9 @@ void main() {
         ),
       ));
 
-      final body =
-          tester.widget<SelectableText>(find.byType(SelectableText));
-      expect(body.data, '');
+      expect(find.byType(ChatMessage), findsOneWidget);
+      final chatMsg = tester.widget<ChatMessage>(find.byType(ChatMessage));
+      expect(chatMsg.content, '');
     });
 
     testWidgets('unknown role: falls back to raw role string label',

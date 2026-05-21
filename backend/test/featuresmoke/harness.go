@@ -284,6 +284,8 @@ func composeEnv(port int) []string {
 				return "false"
 			}()),
 		"ENV":             "test",
+		"ADMIN_EMAIL":     envOr("ADMIN_EMAIL", "admin@example.com"),
+		"ADMIN_PASSWORD":  envOr("ADMIN_PASSWORD", "admin-featuresmoke-password-123"),
 	}
 
 	// КРИТИЧНО (cost-leak prevention): в mock-режиме редиректим все провайдерские
@@ -629,6 +631,52 @@ func (h *Harness) NewUser(t *testing.T) User {
 	return user
 }
 
+// AdminUser водит админа через POST /api/v1/auth/login.
+func (h *Harness) AdminUser(t *testing.T) User {
+	t.Helper()
+	email := envOr("ADMIN_EMAIL", "admin@example.com")
+	password := envOr("ADMIN_PASSWORD", "admin-featuresmoke-password-123")
+	resp := h.Do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email":    email,
+		"password": password,
+	}, "")
+	if resp.Status != http.StatusOK {
+		t.Fatalf("AdminUser: login failed: status=%d body=%s", resp.Status, truncBody(resp.Body))
+	}
+	var out struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		User         struct {
+			ID    string `json:"id"`
+			Email string `json:"email"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(resp.Body, &out); err != nil {
+		t.Fatalf("AdminUser: decode response: %v body=%s", err, truncBody(resp.Body))
+	}
+	if out.AccessToken == "" {
+		t.Fatalf("AdminUser: пустой access_token в ответе: %s", truncBody(resp.Body))
+	}
+	user := User{
+		ID:           out.User.ID,
+		Email:        email,
+		Password:     password,
+		AccessToken:  out.AccessToken,
+		RefreshToken: out.RefreshToken,
+	}
+	if user.ID == "" {
+		meResp := h.Do(t, "GET", "/api/v1/auth/me", nil, user.AccessToken)
+		if meResp.Status == http.StatusOK {
+			var me struct {
+				ID string `json:"id"`
+			}
+			_ = json.Unmarshal(meResp.Body, &me)
+			user.ID = me.ID
+		}
+	}
+	return user
+}
+
 // WS подключается к /api/v1/projects/:id/ws с Bearer-токеном.
 // t.Cleanup закрывает соединение.
 func (h *Harness) WS(t *testing.T, token, projectID string) *websocket.Conn {
@@ -803,4 +851,76 @@ func truncBody(b []byte) string {
 		return string(b)
 	}
 	return string(b[:max]) + fmt.Sprintf("...(+%d bytes)", len(b)-max)
+}
+
+// ConfigureUserAssistant sets up LLM credentials for the user and configures their assistant agent
+// with a provider and model, so that LLM-based actions (like assistant chat) can proceed.
+func (h *Harness) ConfigureUserAssistant(t *testing.T, user User, providerKind, model string) {
+	t.Helper()
+
+	// 1. PATCH /api/v1/me/llm-credentials to set the fake API key for the provider
+	credField := ""
+	switch providerKind {
+	case "openai":
+		credField = "openai_api_key"
+	case "anthropic":
+		credField = "anthropic_api_key"
+	case "gemini":
+		credField = "gemini_api_key"
+	case "deepseek":
+		credField = "deepseek_api_key"
+	case "qwen":
+		credField = "qwen_api_key"
+	case "openrouter":
+		credField = "openrouter_api_key"
+	default:
+		t.Fatalf("ConfigureUserAssistant: unknown provider_kind %q", providerKind)
+	}
+
+	fakeKey := fmt.Sprintf("sk-%s-featuresmoke-test-fake-key-must-be-long-enough", providerKind)
+	patchResp := h.Do(t, "PATCH", "/api/v1/me/llm-credentials", map[string]any{
+		credField: fakeKey,
+	}, user.AccessToken)
+	if patchResp.Status != http.StatusOK {
+		t.Fatalf("ConfigureUserAssistant: patch credentials failed: status=%d body=%s",
+			patchResp.Status, truncBody(patchResp.Body))
+	}
+
+	// 2. GET /api/v1/me/agents to retrieve assistant's ID
+	listResp := h.Do(t, "GET", "/api/v1/me/agents", nil, user.AccessToken)
+	if listResp.Status != http.StatusOK {
+		t.Fatalf("ConfigureUserAssistant: list agents failed: status=%d body=%s",
+			listResp.Status, truncBody(listResp.Body))
+	}
+
+	var list struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Role string `json:"role"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listResp.Body, &list); err != nil {
+		t.Fatalf("ConfigureUserAssistant: decode list: %v body=%s", err, truncBody(listResp.Body))
+	}
+
+	var assistantID string
+	for _, item := range list.Items {
+		if item.Role == "assistant" {
+			assistantID = item.ID
+			break
+		}
+	}
+	if assistantID == "" {
+		t.Fatalf("ConfigureUserAssistant: assistant agent not found in list")
+	}
+
+	// 3. PUT /api/v1/me/agents/:id to configure provider_kind and model
+	putResp := h.Do(t, "PUT", "/api/v1/me/agents/"+assistantID, map[string]any{
+		"provider_kind": providerKind,
+		"model":         model,
+	}, user.AccessToken)
+	if putResp.Status != http.StatusOK {
+		t.Fatalf("ConfigureUserAssistant: configure assistant agent failed: status=%d body=%s",
+			putResp.Status, truncBody(putResp.Body))
+	}
 }

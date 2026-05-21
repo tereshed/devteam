@@ -54,3 +54,11 @@ type GitIntegrationRevokeResponse struct {
 	Provider           string `json:"provider"`
 	RemoteRevokeFailed bool   `json:"remote_revoke_failed,omitempty"`
 }
+
+// CreateRepositoryRequest — тело POST /integrations/{provider}/repos.
+type CreateRepositoryRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Private     bool   `json:"private"`
+	Description string `json:"description"`
+}
+

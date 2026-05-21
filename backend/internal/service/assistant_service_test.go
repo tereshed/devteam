@@ -9,6 +9,7 @@ import (
 	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm"
 )
 
 type mockAgentLoader struct {
@@ -22,6 +23,28 @@ func (m *mockAgentLoader) GetAgentByName(ctx context.Context, name string) (*mod
 
 func (m *mockAgentLoader) GetAgentByUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
 	return m.agent, m.err
+}
+
+func (m *mockAgentLoader) UpdateAgentProvider(ctx context.Context, agentID uuid.UUID, providerKind models.AgentProviderKind, model string) error {
+	if m.agent != nil && m.agent.ID == agentID {
+		m.agent.ProviderKind = &providerKind
+		m.agent.Model = &model
+	}
+	return m.err
+}
+
+type mockAgentCreator struct {
+	calledWith []uuid.UUID
+	err        error
+	onCall     func(userID uuid.UUID)
+}
+
+func (m *mockAgentCreator) CreateDefaultAssistant(ctx context.Context, userID uuid.UUID) error {
+	m.calledWith = append(m.calledWith, userID)
+	if m.onCall != nil {
+		m.onCall(userID)
+	}
+	return m.err
 }
 
 type assistantMockUserLlmCredentialService struct {
@@ -95,5 +118,44 @@ func TestAssistantService_GetStatus(t *testing.T) {
 		assert.NoError(t, err)
 		assert.False(t, status.IsConfigured)
 		assert.Equal(t, "admin_setup_required", status.RequiredProvider)
+	})
+
+	t.Run("auto-provisioning missing agent", func(t *testing.T) {
+		prov := models.AgentProviderKindOpenRouter
+		agentToProvision := &models.Agent{
+			ID:           uuid.New(),
+			IsActive:     true,
+			ProviderKind: &prov,
+		}
+
+		loader := &mockAgentLoader{
+			agent: nil,
+			err:   gorm.ErrRecordNotFound,
+		}
+
+		creator := &mockAgentCreator{
+			onCall: func(u uuid.UUID) {
+				loader.agent = agentToProvision
+				loader.err = nil
+			},
+		}
+
+		svc := &assistantService{
+			deps: AssistantServiceDeps{
+				AgentLoader:  loader,
+				AgentCreator: creator,
+				UserCreds: &assistantMockUserLlmCredentialService{
+					key: "some-key",
+					err: nil,
+				},
+			},
+		}
+
+		status, err := svc.GetStatus(ctx, userID)
+		assert.NoError(t, err)
+		assert.True(t, status.IsConfigured)
+		assert.Equal(t, "openrouter", status.RequiredProvider)
+		assert.Len(t, creator.calledWith, 1)
+		assert.Equal(t, userID, creator.calledWith[0])
 	})
 }

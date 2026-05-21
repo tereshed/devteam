@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
+import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
 
 /// Bubble user/assistant/system сообщения (Sprint 21 §8 frontend).
 ///
-/// Markdown пока не рендерим (минимизируем сторонние зависимости в фиче;
-/// можно добавить позже параллельно с `features/chat/widgets/chat_message.dart`).
+/// Markdown рендерится через `ChatMessage` с поддержкой fenced code, списков и т.д.
 class AssistantMessageBubble extends StatelessWidget {
   const AssistantMessageBubble({super.key, required this.message});
 
@@ -37,6 +37,13 @@ class AssistantMessageBubble extends StatelessWidget {
       _ => message.role,
     };
 
+    final chatRole = switch (message.role) {
+      assistantMessageRoleUser => 'user',
+      assistantMessageRoleAssistant => 'assistant',
+      assistantMessageRoleSystem => 'system',
+      _ => 'assistant',
+    };
+
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
@@ -59,11 +66,28 @@ class AssistantMessageBubble extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              SelectableText(
-                message.content ?? '',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: fg,
-                  fontStyle: isSystem ? FontStyle.italic : FontStyle.normal,
+              Theme(
+                data: theme.copyWith(
+                  textTheme: theme.textTheme.copyWith(
+                    bodyMedium: theme.textTheme.bodyMedium?.copyWith(
+                      color: fg,
+                      fontStyle: isSystem ? FontStyle.italic : FontStyle.normal,
+                    ),
+                    titleLarge: theme.textTheme.titleLarge?.copyWith(color: fg),
+                    titleMedium: theme.textTheme.titleMedium?.copyWith(color: fg),
+                    titleSmall: theme.textTheme.titleSmall?.copyWith(color: fg),
+                    bodyLarge: theme.textTheme.bodyLarge?.copyWith(color: fg),
+                    bodySmall: theme.textTheme.bodySmall?.copyWith(color: fg),
+                  ),
+                  colorScheme: theme.colorScheme.copyWith(
+                    primary: fg,
+                    onSurface: fg,
+                    onSurfaceVariant: fg.withValues(alpha: 0.8),
+                  ),
+                ),
+                child: ChatMessage(
+                  role: chatRole,
+                  content: message.content ?? '',
                 ),
               ),
             ],

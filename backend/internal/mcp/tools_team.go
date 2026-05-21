@@ -15,13 +15,13 @@ import (
 
 // TeamGetParams — параметры team_get.
 type TeamGetParams struct {
-	ProjectID string `json:"project_id" jsonschema:"description=UUID проекта,required"`
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
 }
 
 // TeamUpdateParams — параметры team_update.
 type TeamUpdateParams struct {
-	ProjectID string  `json:"project_id" jsonschema:"description=UUID проекта,required"`
-	Name      *string `json:"name,omitempty" jsonschema:"description=Новое имя команды"`
+	ProjectID string  `json:"project_id" jsonschema:"UUID проекта"`
+	Name      *string `json:"name,omitempty" jsonschema:"Новое имя команды"`
 }
 
 // RegisterTeamTools регистрирует MCP-инструменты для команды проекта.
@@ -44,20 +44,20 @@ func RegisterTeamTools(server *mcp.Server, projectSvc service.ProjectService, te
 
 // TeamAgentPatchParams — параметры team_agent_patch (типизированные поля вместо сырого JSON).
 type TeamAgentPatchParams struct {
-	ProjectID string `json:"project_id" jsonschema:"description=UUID проекта,required"`
-	AgentID   string `json:"agent_id" jsonschema:"description=UUID агента,required"`
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+	AgentID   string `json:"agent_id" jsonschema:"UUID агента"`
 
-	ClearModel       bool    `json:"clear_model" jsonschema:"description=Сбросить model в NULL (не совмещать с model)"`
-	Model            *string `json:"model" jsonschema:"description=Новое значение model"`
-	ClearPromptID    bool    `json:"clear_prompt_id" jsonschema:"description=Сбросить prompt_id в NULL"`
-	PromptID         *string `json:"prompt_id" jsonschema:"description=UUID промпта"`
-	ClearCodeBackend bool    `json:"clear_code_backend" jsonschema:"description=Сбросить code_backend в NULL"`
-	CodeBackend      *string `json:"code_backend" jsonschema:"description=Значение code_backend"`
-	IsActive         *bool   `json:"is_active" jsonschema:"description=Активен ли агент"`
+	ClearModel       bool    `json:"clear_model" jsonschema:"Сбросить model в NULL (не совмещать с model)"`
+	Model            *string `json:"model" jsonschema:"Новое значение model"`
+	ClearPromptID    bool    `json:"clear_prompt_id" jsonschema:"Сбросить prompt_id в NULL"`
+	PromptID         *string `json:"prompt_id" jsonschema:"UUID промпта"`
+	ClearCodeBackend bool    `json:"clear_code_backend" jsonschema:"Сбросить code_backend в NULL"`
+	CodeBackend      *string `json:"code_backend" jsonschema:"Значение code_backend"`
+	IsActive         *bool   `json:"is_active" jsonschema:"Активен ли агент"`
 
 	// ToolDefinitionIDs — nil: не менять tool_bindings; указатель на пустой срез: снять все;
 	// непустой срез UUID — полная замена набора (объекты {tool_definition_id} в JSON PATCH).
-	ToolDefinitionIDs *[]string `json:"tool_definition_ids,omitempty" jsonschema:"description=Опционально: UUID инструментов для полной замены привязок; [] снимает все; отсутствие ключа — не менять"`
+	ToolDefinitionIDs *[]string `json:"tool_definition_ids,omitempty" jsonschema:"Опционально: UUID инструментов для полной замены привязок; [] снимает все; отсутствие ключа — не менять"`
 }
 
 func teamAgentPatchWireJSON(p *TeamAgentPatchParams) ([]byte, error) {

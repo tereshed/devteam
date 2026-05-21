@@ -156,7 +156,9 @@ void main() {
     await pumpScreen(tester);
     final l10n = l10nForCreateScreen(tester);
     await tester.enterText(find.byType(TextFormField).first, 'G');
-    await tester.tap(find.text(l10n.create));
+    final createBtn = find.text(l10n.create);
+    await tester.ensureVisible(createBtn);
+    await tester.tap(createBtn);
     await tester.pumpAndSettle();
 
     verifyNever(
@@ -350,7 +352,9 @@ void main() {
     final fields = find.byType(TextFormField);
     expect(fields, findsNWidgets(3));
     await tester.enterText(fields.at(2), 'not-a-valid-url');
-    await tester.tap(find.text(l10n.create));
+    final createBtn = find.text(l10n.create);
+    await tester.ensureVisible(createBtn);
+    await tester.tap(createBtn);
     await tester.pumpAndSettle();
     expect(find.text(l10n.gitUrlInvalid), findsOneWidget);
     verifyNever(

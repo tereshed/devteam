@@ -50,6 +50,9 @@ var llmPatchFields = []struct {
 	{models.UserLLMProviderOpenRouter, func(r *dto.PatchLlmCredentialsRequest) (*string, *bool) {
 		return r.OpenRouterAPIKey, r.ClearOpenRouterKey
 	}},
+	{models.UserLLMProviderZhipu, func(r *dto.PatchLlmCredentialsRequest) (*string, *bool) {
+		return r.ZhipuAPIKey, r.ClearZhipuKey
+	}},
 }
 
 // UserLlmCredentialService бизнес-логика пользовательских LLM-ключей.
@@ -148,6 +151,8 @@ func setMaskedPreview(out *dto.LlmCredentialsResponse, p models.UserLLMProvider,
 		out.Qwen.MaskedPreview = preview
 	case models.UserLLMProviderOpenRouter:
 		out.OpenRouter.MaskedPreview = preview
+	case models.UserLLMProviderZhipu:
+		out.Zhipu.MaskedPreview = preview
 	}
 }
 

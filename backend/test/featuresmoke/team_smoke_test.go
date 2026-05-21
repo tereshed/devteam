@@ -210,7 +210,8 @@ func TestTeam_PatchAgentHappyPath(t *testing.T) {
 
 	// Создаём v2-агента: createSmokeAgent живёт в agents_smoke_test.go (общий
 	// файл пакета). is_active по умолчанию = true.
-	created := createSmokeAgent(t, h, user.AccessToken)
+	admin := h.AdminUser(t)
+	created := createSmokeAgent(t, h, admin.AccessToken)
 	attachAgentToTeam(t, created.ID, team.ID)
 
 	// Убедимся, что агент теперь виден в /team.

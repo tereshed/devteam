@@ -412,3 +412,54 @@ func gitStatusToDTO(s service.GitIntegrationStatus) dto.GitIntegrationStatusResp
 		ConnectedAt:  s.ConnectedAt,
 	}
 }
+
+// ListRepositories — GET /integrations/:provider/repos.
+func (h *GitIntegrationHandler) ListRepositories(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+	providerStr := c.Param("provider")
+	provider := models.GitIntegrationProvider(providerStr)
+	if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid git provider")
+		return
+	}
+
+	repos, err := h.svc.ListRepositories(c.Request.Context(), uid, provider)
+	if err != nil {
+		h.mapErr(c, "list_repos", err)
+		return
+	}
+	c.JSON(http.StatusOK, repos)
+}
+
+// CreateRepository — POST /integrations/:provider/repos.
+func (h *GitIntegrationHandler) CreateRepository(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+	providerStr := c.Param("provider")
+	provider := models.GitIntegrationProvider(providerStr)
+	if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid git provider")
+		return
+	}
+
+	var req dto.CreateRepositoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid request body")
+		return
+	}
+
+	repo, err := h.svc.CreateRepository(c.Request.Context(), uid, provider, req.Name, req.Private, req.Description)
+	if err != nil {
+		h.mapErr(c, "create_repo", err)
+		return
+	}
+	c.JSON(http.StatusOK, repo)
+}
+

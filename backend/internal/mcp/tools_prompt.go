@@ -20,15 +20,15 @@ const maxPromptNameLength = 255
 
 // PromptListParams — параметры для prompt_list
 type PromptListParams struct {
-	Limit  *int `json:"limit,omitempty" jsonschema:"description=Макс. количество промптов в ответе (1-100; по умолчанию 50)"`
-	Offset *int `json:"offset,omitempty" jsonschema:"description=Сдвиг для пагинации (по умолчанию 0)"`
+	Limit  *int `json:"limit,omitempty" jsonschema:"Макс. количество промптов в ответе (1-100; по умолчанию 50)"`
+	Offset *int `json:"offset,omitempty" jsonschema:"Сдвиг для пагинации (по умолчанию 0)"`
 }
 
 // PromptGetParams — параметры для prompt_get
 type PromptGetParams struct {
 	// Поиск по UUID или имени — одно из двух обязательно
-	ID   string `json:"id,omitempty" jsonschema:"description=UUID промпта. Укажите id ИЛИ name"`
-	Name string `json:"name,omitempty" jsonschema:"description=Имя промпта (точное совпадение). Укажите id ИЛИ name"`
+	ID   string `json:"id,omitempty" jsonschema:"UUID промпта. Укажите id ИЛИ name"`
+	Name string `json:"name,omitempty" jsonschema:"Имя промпта (точное совпадение). Укажите id ИЛИ name"`
 }
 
 // --- Data ---

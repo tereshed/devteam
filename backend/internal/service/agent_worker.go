@@ -689,6 +689,9 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 		Temperature:       agentRec.Temperature,
 		MaxTokens:         agentRec.MaxTokens,
 	}
+	if agentRec.ProviderKind != nil {
+		in.Provider = string(*agentRec.ProviderKind)
+	}
 	if agentRec.CodeBackend != nil {
 		in.CodeBackend = string(*agentRec.CodeBackend)
 	}

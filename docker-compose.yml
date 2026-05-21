@@ -81,7 +81,6 @@ services:
       # ключи (ANTHROPIC_API_KEY, OPENAI_API_KEY, ...) подхватываются из
       # ./backend/.env через env_file выше — здесь не переопределяем.
       # MCP Server
-      MCP_ENABLED: ${MCP_ENABLED:-false}
       MCP_PORT: 8081
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
     ports:

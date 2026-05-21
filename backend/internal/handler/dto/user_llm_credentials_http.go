@@ -14,7 +14,7 @@ type LlmProviderMaskView struct {
 	MaskedPreview *string `json:"masked_preview" example:"****3Mk9" extensions:"x-nullable"`
 }
 
-// LlmCredentialsResponse — тело GET и успешного PATCH 200 (ровно шесть провайдеров).
+// LlmCredentialsResponse — тело GET и успешного PATCH 200 (ровно семь провайдеров).
 type LlmCredentialsResponse struct {
 	OpenAI     LlmProviderMaskView `json:"openai"`
 	Anthropic  LlmProviderMaskView `json:"anthropic"`
@@ -22,6 +22,7 @@ type LlmCredentialsResponse struct {
 	DeepSeek   LlmProviderMaskView `json:"deepseek"`
 	Qwen       LlmProviderMaskView `json:"qwen"`
 	OpenRouter LlmProviderMaskView `json:"openrouter"`
+	Zhipu      LlmProviderMaskView `json:"zhipu"`
 }
 
 // PatchLlmCredentialsRequest — частичное обновление ключей (write-only поля для Swagger).
@@ -38,6 +39,8 @@ type PatchLlmCredentialsRequest struct {
 	ClearQwenKey       *bool   `json:"clear_qwen_key,omitempty"`
 	OpenRouterAPIKey   *string `json:"openrouter_api_key,omitempty" format:"password" swaggertype:"string"`
 	ClearOpenRouterKey *bool   `json:"clear_openrouter_key,omitempty"`
+	ZhipuAPIKey        *string `json:"zhipu_api_key,omitempty" format:"password" swaggertype:"string"`
+	ClearZhipuKey      *bool   `json:"clear_zhipu_key,omitempty"`
 }
 
 // ErrTrailingJSONInPatchBody — после основного объекта в теле остался ещё JSON.

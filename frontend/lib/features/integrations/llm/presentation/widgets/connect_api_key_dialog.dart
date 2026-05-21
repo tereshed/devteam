@@ -119,7 +119,10 @@ class _ConnectApiKeyDialogState extends ConsumerState<_ConnectApiKeyDialog> {
                   }
                   return null;
                 },
-                onFieldSubmitted: (_) => _save(),
+                onFieldSubmitted: (_) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _save();
+                },
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: 12),

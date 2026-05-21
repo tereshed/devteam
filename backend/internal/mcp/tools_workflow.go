@@ -17,26 +17,26 @@ import (
 
 // WorkflowListParams — параметры для workflow_list
 type WorkflowListParams struct {
-	Limit  *int `json:"limit,omitempty" jsonschema:"description=Макс. количество воркфлоу в ответе (1-100; по умолчанию 50)"`
-	Offset *int `json:"offset,omitempty" jsonschema:"description=Сдвиг для пагинации (по умолчанию 0)"`
+	Limit  *int `json:"limit,omitempty" jsonschema:"Макс. количество воркфлоу в ответе (1-100; по умолчанию 50)"`
+	Offset *int `json:"offset,omitempty" jsonschema:"Сдвиг для пагинации (по умолчанию 0)"`
 }
 
 // WorkflowStartParams — параметры для workflow_start
 type WorkflowStartParams struct {
-	WorkflowName string `json:"workflow_name" jsonschema:"description=Имя воркфлоу для запуска,required"`
-	Input        string `json:"input" jsonschema:"description=Входные данные для воркфлоу (текст),required"`
+	WorkflowName string `json:"workflow_name" jsonschema:"Имя воркфлоу для запуска"`
+	Input        string `json:"input" jsonschema:"Входные данные для воркфлоу (текст)"`
 }
 
 // ExecutionIDParams — общие параметры для workflow_status и workflow_steps
 type ExecutionIDParams struct {
-	ExecutionID string `json:"execution_id" jsonschema:"description=UUID выполнения воркфлоу,required"`
+	ExecutionID string `json:"execution_id" jsonschema:"UUID выполнения воркфлоу"`
 }
 
 // WorkflowStepsParams — параметры для workflow_steps (расширяет ExecutionIDParams пагинацией)
 type WorkflowStepsParams struct {
-	ExecutionID string `json:"execution_id" jsonschema:"description=UUID выполнения воркфлоу,required"`
-	Limit       *int   `json:"limit,omitempty" jsonschema:"description=Макс. количество шагов (1-200; по умолчанию 100)"`
-	Offset      *int   `json:"offset,omitempty" jsonschema:"description=Сдвиг для пагинации (по умолчанию 0)"`
+	ExecutionID string `json:"execution_id" jsonschema:"UUID выполнения воркфлоу"`
+	Limit       *int   `json:"limit,omitempty" jsonschema:"Макс. количество шагов (1-200; по умолчанию 100)"`
+	Offset      *int   `json:"offset,omitempty" jsonschema:"Сдвиг для пагинации (по умолчанию 0)"`
 }
 
 // --- Data ---

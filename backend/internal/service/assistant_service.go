@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	"github.com/devteam/backend/internal/llm/agentloop"
 	"github.com/devteam/backend/internal/logging"
@@ -146,6 +147,7 @@ type WSBroadcaster interface {
 type AssistantAgentLoader interface {
 	GetAgentByName(ctx context.Context, name string) (*models.Agent, error)
 	GetAgentByUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error)
+	UpdateAgentProvider(ctx context.Context, agentID uuid.UUID, providerKind models.AgentProviderKind, model string) error
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,10 +197,18 @@ type ActiveTaskSummary struct {
 
 // AssistantServiceDeps — DI-bag для конструктора. Сделано struct'ом,
 // потому что зависимостей много и позиционная передача стала бы хрупкой.
+// AssistantAgentCreator — узкий интерфейс для создания ассистента по умолчанию.
+type AssistantAgentCreator interface {
+	CreateDefaultAssistant(ctx context.Context, userID uuid.UUID) error
+}
+
+// AssistantServiceDeps — DI-bag для конструктора. Сделано struct'ом,
+// потому что зависимостей много и позиционная передача стала бы хрупкой.
 type AssistantServiceDeps struct {
 	Repo        repository.AssistantSessionRepository
 	TaskRepo    repository.TaskRepository
 	AgentLoader AssistantAgentLoader
+	AgentCreator AssistantAgentCreator
 	LLMResolver AssistantLLMClientResolver
 	UserCreds   UserLlmCredentialService
 	ToolCatalog AssistantToolCatalogProvider
@@ -222,6 +232,9 @@ func NewAssistantService(deps AssistantServiceDeps) (AssistantService, error) {
 	}
 	if deps.AgentLoader == nil {
 		return nil, errors.New("AssistantService: AgentLoader is required")
+	}
+	if deps.AgentCreator == nil {
+		return nil, errors.New("AssistantService: AgentCreator is required")
 	}
 	if deps.LLMResolver == nil {
 		return nil, errors.New("AssistantService: LLMResolver is required")
@@ -249,14 +262,74 @@ type assistantService struct {
 // Sessions CRUD.
 // ─────────────────────────────────────────────────────────────────────────────
 
+func (s *assistantService) getOrProvisionAssistantAgent(ctx context.Context, userID uuid.UUID) (*models.Agent, error) {
+	agent, err := s.deps.AgentLoader.GetAgentByUserRole(ctx, userID, string(models.AgentRoleAssistant))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := s.deps.AgentCreator.CreateDefaultAssistant(ctx, userID); err != nil {
+				return nil, fmt.Errorf("provision default assistant: %w", err)
+			}
+			agent, err = s.deps.AgentLoader.GetAgentByUserRole(ctx, userID, string(models.AgentRoleAssistant))
+			if err != nil {
+				return nil, fmt.Errorf("load assistant agent after provisioning: %w", err)
+			}
+			return agent, nil
+		}
+		return nil, fmt.Errorf("load assistant agent: %w", err)
+	}
+	return agent, nil
+}
+
 func (s *assistantService) GetStatus(ctx context.Context, userID uuid.UUID) (*dto.AssistantStatusResponse, error) {
 	if userID == uuid.Nil {
 		return nil, ErrAssistantInvalidInput
 	}
-	agent, err := s.deps.AgentLoader.GetAgentByUserRole(ctx, userID, string(models.AgentRoleAssistant))
+	agent, err := s.getOrProvisionAssistantAgent(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("load assistant agent: %w", err)
+		return nil, err
 	}
+
+	if agent != nil && agent.IsActive && (agent.ProviderKind == nil || !agent.ProviderKind.IsValid()) {
+		// По дефолту пробуем OpenRouter
+		key, err := s.deps.UserCreds.GetPlaintext(ctx, userID, models.UserLLMProviderOpenRouter)
+		if err == nil && key != "" {
+			pk := models.AgentProviderKindOpenRouter
+			model := "deepseek/deepseek-v4-flash"
+			if err := s.deps.AgentLoader.UpdateAgentProvider(ctx, agent.ID, pk, model); err == nil {
+				agent.ProviderKind = &pk
+				agent.Model = &model
+			}
+		} else {
+			// Проверим другие поддерживаемые per-user провайдеры
+			for _, prov := range []models.UserLLMProvider{
+				models.UserLLMProviderAnthropic,
+				models.UserLLMProviderDeepSeek,
+				models.UserLLMProviderZhipu,
+			} {
+				k, err := s.deps.UserCreds.GetPlaintext(ctx, userID, prov)
+				if err == nil && k != "" {
+					pk := models.AgentProviderKind(prov)
+					var model string
+					switch prov {
+					case models.UserLLMProviderAnthropic:
+						model = "claude-haiku-4-5-20251001"
+					case models.UserLLMProviderDeepSeek:
+						model = "deepseek-chat"
+					case models.UserLLMProviderZhipu:
+						model = "glm-4"
+					}
+					if model != "" {
+						if err := s.deps.AgentLoader.UpdateAgentProvider(ctx, agent.ID, pk, model); err == nil {
+							agent.ProviderKind = &pk
+							agent.Model = &model
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
 	if agent == nil || !agent.IsActive || agent.ProviderKind == nil || !agent.ProviderKind.IsValid() {
 		// По дефолту требуем OpenRouter, если агент сломан/не настроен
 		return &dto.AssistantStatusResponse{IsConfigured: false, RequiredProvider: string(models.UserLLMProviderOpenRouter)}, nil

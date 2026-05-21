@@ -93,7 +93,7 @@ class ChatInput extends StatelessWidget {
               if (!_maySendShortcut(controller.value)) {
                 return null;
               }
-              _dispatchSend();
+              Future.microtask(_dispatchSend);
               return null;
             },
           ),

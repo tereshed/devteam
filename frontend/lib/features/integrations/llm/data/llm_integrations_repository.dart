@@ -212,6 +212,7 @@ class LlmIntegrationsRepository {
       'deepseek': LlmIntegrationProvider.deepseek,
       'qwen': LlmIntegrationProvider.qwen,
       'openrouter': LlmIntegrationProvider.openrouter,
+      'zhipu': LlmIntegrationProvider.zhipu,
     };
     for (final entry in mapping.entries) {
       final raw = data[entry.key];
@@ -261,6 +262,7 @@ class LlmIntegrationsRepository {
       case LlmIntegrationProvider.openrouter:
         return 'openrouter_api_key';
       case LlmIntegrationProvider.zhipu:
+        return 'zhipu_api_key';
       case LlmIntegrationProvider.claudeCodeOAuth:
         throw ArgumentError.value(
           p,
@@ -285,6 +287,7 @@ class LlmIntegrationsRepository {
       case LlmIntegrationProvider.openrouter:
         return 'clear_openrouter_key';
       case LlmIntegrationProvider.zhipu:
+        return 'clear_zhipu_key';
       case LlmIntegrationProvider.claudeCodeOAuth:
         throw ArgumentError.value(
           p,

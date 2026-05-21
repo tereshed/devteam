@@ -7,6 +7,14 @@ import 'package:frontend/l10n/app_localizations.dart';
 import '../../helpers/test_wrappers.dart';
 
 void main() {
+  setUp(() {
+    HardwareKeyboard.instance.clearState();
+  });
+
+  tearDown(() {
+    HardwareKeyboard.instance.clearState();
+  });
+
   /// Как прежний harness: фиксированный logical size (**11.11** / **useViewSize**).
   void bindDefaultView(WidgetTester tester) {
     useViewSize(tester, const Size(800, 1200));
@@ -34,19 +42,25 @@ void main() {
   }
 
   Future<void> sendCtrlEnter(WidgetTester tester) async {
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-    await tester.pump();
+    try {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+    } finally {
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+    }
   }
 
   Future<void> sendMetaEnter(WidgetTester tester) async {
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
-    await tester.pump();
+    try {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+    } finally {
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+    }
   }
 
   testWidgets('chat_input_send_button_disabled_when_empty_or_whitespace', (

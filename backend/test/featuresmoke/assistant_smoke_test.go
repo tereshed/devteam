@@ -310,6 +310,51 @@ func TestAssistant_SendMessage_ReturnsAcceptedEcho(t *testing.T) {
 //   - Snapshot — это ровно то, что backend отправил в LLM, поэтому это и
 //     есть «адекватность запроса», которую ревьюверу нужно глазами смотреть.
 //
+func TestAssistant_GetStatus_AutoConfigure(t *testing.T) {
+	t.Parallel()
+	h := StartServer(t)
+	user := h.NewUser(t)
+
+	// 1. Initially, should not be configured
+	statusResp := h.Do(t, "GET", "/api/v1/assistant/status", nil, user.AccessToken)
+	if statusResp.Status != http.StatusOK {
+		t.Fatalf("get assistant status: status=%d body=%s", statusResp.Status, truncBody(statusResp.Body))
+	}
+	var status struct {
+		IsConfigured     bool   `json:"is_configured"`
+		RequiredProvider string `json:"required_provider"`
+	}
+	statusResp.JSON(t, &status)
+	if status.IsConfigured {
+		t.Fatalf("expected assistant to be unconfigured initially")
+	}
+	if status.RequiredProvider != "openrouter" {
+		t.Fatalf("expected required_provider to be openrouter, got %q", status.RequiredProvider)
+	}
+
+	// 2. Add OpenRouter API key
+	fakeKey := "sk-openrouter-featuresmoke-test-fake-key-must-be-long-enough"
+	patchResp := h.Do(t, "PATCH", "/api/v1/me/llm-credentials", map[string]any{
+		"openrouter_api_key": fakeKey,
+	}, user.AccessToken)
+	if patchResp.Status != http.StatusOK {
+		t.Fatalf("patch credentials failed: status=%d body=%s", patchResp.Status, truncBody(patchResp.Body))
+	}
+
+	// 3. Now GET /api/v1/assistant/status should be configured: true
+	statusResp2 := h.Do(t, "GET", "/api/v1/assistant/status", nil, user.AccessToken)
+	if statusResp2.Status != http.StatusOK {
+		t.Fatalf("get assistant status after credentials: status=%d body=%s", statusResp2.Status, truncBody(statusResp2.Body))
+	}
+	statusResp2.JSON(t, &status)
+	if !status.IsConfigured {
+		t.Fatalf("expected assistant to be configured after adding openrouter key")
+	}
+	if status.RequiredProvider != "openrouter" {
+		t.Fatalf("expected required_provider to be openrouter, got %q", status.RequiredProvider)
+	}
+}
+
 // В mock-режиме (PR-gate) backend ходит на FakeLLM, llm_logs всё равно
 // заполняется (см. LLM repository — INSERT перед/после вызова провайдера).
 // Если запись не появляется в течение 30s — что-то сломалось в сервис-слое
@@ -321,6 +366,7 @@ func TestAssistant_SendMessage_LLMRequestIsSane(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
 	user := h.NewUser(t)
+	h.ConfigureUserAssistant(t, user, "anthropic", "claude-3-5-haiku-20241022")
 	sess := createAssistantSession(t, h, user.AccessToken)
 
 	// Зафиксируем «до»-границу по llm_logs. Параллельные тесты могут

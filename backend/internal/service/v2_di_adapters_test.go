@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/llm/factory"
@@ -25,7 +26,7 @@ func TestAssistantLLMClientAdapter_ResolveAssistantClient(t *testing.T) {
 			err: nil,
 		}
 		
-		adapter := NewAssistantLLMClientAdapter(credsSvc, f)
+		adapter := NewAssistantLLMClientAdapter(credsSvc, f, config.LLMConfig{}, nil, nil)
 		client, err := adapter.ResolveAssistantClient(ctx, agent, userID)
 		
 		assert.NoError(t, err)
@@ -41,7 +42,7 @@ func TestAssistantLLMClientAdapter_ResolveAssistantClient(t *testing.T) {
 			err: repository.ErrUserLlmCredentialNotFound,
 		}
 		
-		adapter := NewAssistantLLMClientAdapter(credsSvc, f)
+		adapter := NewAssistantLLMClientAdapter(credsSvc, f, config.LLMConfig{}, nil, nil)
 		client, err := adapter.ResolveAssistantClient(ctx, agent, userID)
 		
 		assert.ErrorIs(t, err, ErrAssistantNotConfiguredForUser)

@@ -56,6 +56,7 @@ func NewLLMService(factory *factory.Factory, cfg config.LLMConfig, repo reposito
 	// (см. Phase 5 review). Без этой регистрации `req.Provider="openrouter"`
 	// падал с «unsupported provider», даже если OPENROUTER_API_KEY был в env.
 	createProvider(llm.ProviderOpenRouter, cfg.OpenRouter)
+	createProvider(llm.ProviderZhipu, cfg.Zhipu)
 
 	return &llmService{
 		providers:       providers,
@@ -86,6 +87,9 @@ func (s *llmService) Generate(ctx context.Context, req llm.Request) (*llm.Respon
 	if !ok {
 		return nil, fmt.Errorf("provider %s not configured", providerType)
 	}
+
+	req.Provider = providerType
+	req.Model = modelUsed
 
 	startTime := time.Now()
 	resp, err := provider.Generate(ctx, req)

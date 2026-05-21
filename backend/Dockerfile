@@ -45,8 +45,7 @@ COPY --from=builder /app/db/migrations /root/db/migrations
 # Копируем директорию с промптами
 COPY --from=builder /app/prompts /root/prompts
 
-# Копируем агентов и воркфлоу
-COPY --from=builder /app/agents /root/agents
+# Копируем воркфлоу
 COPY --from=builder /app/workflows /root/workflows
 COPY --from=builder /app/schedules /root/schedules
 
@@ -55,4 +54,3 @@ EXPOSE 8080
 
 # Запускаем приложение
 CMD ["./main"]
-

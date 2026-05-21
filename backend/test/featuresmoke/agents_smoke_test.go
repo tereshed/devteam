@@ -107,7 +107,7 @@ func deleteAgentBestEffort(t *testing.T, baseURL, token, agentID string) {
 func TestAgents_ListReturnsItems(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
-	user := h.NewUser(t)
+	user := h.AdminUser(t)
 
 	resp := h.Do(t, "GET", "/api/v1/agents", nil, user.AccessToken)
 	if resp.Status != http.StatusOK {
@@ -127,7 +127,7 @@ func TestAgents_ListReturnsItems(t *testing.T) {
 func TestAgents_CreateAndGet(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
-	user := h.NewUser(t)
+	user := h.AdminUser(t)
 
 	a := createSmokeAgent(t, h, user.AccessToken)
 	if a.Role != "developer" {
@@ -157,7 +157,7 @@ func TestAgents_CreateAndGet(t *testing.T) {
 func TestAgents_GetMissingReturns404(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
-	user := h.NewUser(t)
+	user := h.AdminUser(t)
 
 	resp := h.Do(t, "GET", "/api/v1/agents/"+uuid.NewString(), nil, user.AccessToken)
 	if resp.Status != http.StatusNotFound {
@@ -169,7 +169,7 @@ func TestAgents_GetMissingReturns404(t *testing.T) {
 func TestAgents_UpdatePartial(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
-	user := h.NewUser(t)
+	user := h.AdminUser(t)
 	a := createSmokeAgent(t, h, user.AccessToken)
 
 	resp := h.Do(t, "PUT", "/api/v1/agents/"+a.ID, map[string]any{
@@ -194,7 +194,7 @@ func TestAgents_UpdatePartial(t *testing.T) {
 func TestAgents_SetSecretDoesNotLeakAndDelete(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
-	user := h.NewUser(t)
+	user := h.AdminUser(t)
 	a := createSmokeAgent(t, h, user.AccessToken)
 
 	plaintext := "secret-" + strings.ReplaceAll(uuid.NewString(), "-", "") + "-payload"
@@ -239,7 +239,7 @@ func TestAgents_SetSecretDoesNotLeakAndDelete(t *testing.T) {
 func TestAgents_CreateMissingFieldsReturns400(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
-	user := h.NewUser(t)
+	user := h.AdminUser(t)
 
 	resp := h.Do(t, "POST", "/api/v1/agents", map[string]any{
 		"name": "no-role-and-no-kind-" + uuid.NewString(),
@@ -254,7 +254,7 @@ func TestAgents_CreateMissingFieldsReturns400(t *testing.T) {
 func TestAgents_CreateInvalidRoleReturns400(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
-	user := h.NewUser(t)
+	user := h.AdminUser(t)
 
 	resp := h.Do(t, "POST", "/api/v1/agents", map[string]any{
 		"name":           "bad-role-" + uuid.NewString(),
@@ -271,21 +271,24 @@ func TestAgents_RequiresAuth(t *testing.T) {
 	t.Parallel()
 	h := StartServer(t)
 
-	cases := []struct {
-		method string
-		path   string
-		body   any
-	}{
-		{"GET", "/api/v1/agents", nil},
-		{"POST", "/api/v1/agents", map[string]any{"name": "x", "role": "developer", "execution_kind": "llm", "model": TestModelAnthropic}},
-		{"GET", "/api/v1/agents/" + uuid.NewString(), nil},
-		{"PUT", "/api/v1/agents/" + uuid.NewString(), map[string]any{"is_active": false}},
-	}
-	for _, tc := range cases {
-		resp := h.Do(t, tc.method, tc.path, tc.body, "")
-		if resp.Status != http.StatusUnauthorized {
-			t.Fatalf("%s %s without token: status=%d (ожидали 401)",
-				tc.method, tc.path, resp.Status)
-		}
-	}
+	h.AssertRequiresAuth(t, []EndpointCase{
+		{Method: "GET",  Path: "/api/v1/agents"},
+		{Method: "POST", Path: "/api/v1/agents", Body: map[string]any{"name": "x", "role": "developer", "execution_kind": "llm", "model": TestModelAnthropic}},
+		{Method: "GET",  Path: "/api/v1/agents/" + uuid.NewString()},
+		{Method: "PUT",  Path: "/api/v1/agents/" + uuid.NewString(), Body: map[string]any{"is_active": false}},
+	})
+}
+
+// TestAgents_RequiresAdmin.
+func TestAgents_RequiresAdmin(t *testing.T) {
+	t.Parallel()
+	h := StartServer(t)
+	user := h.NewUser(t)
+
+	h.AssertRequiresAdmin(t, user.AccessToken, []EndpointCase{
+		{Method: "GET",  Path: "/api/v1/agents"},
+		{Method: "POST", Path: "/api/v1/agents", Body: map[string]any{"name": "x", "role": "developer", "execution_kind": "llm", "model": TestModelAnthropic}},
+		{Method: "GET",  Path: "/api/v1/agents/" + uuid.NewString()},
+		{Method: "PUT",  Path: "/api/v1/agents/" + uuid.NewString(), Body: map[string]any{"is_active": false}},
+	})
 }

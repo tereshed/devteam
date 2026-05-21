@@ -77,8 +77,14 @@ func TestWorkflowRepository_Schedule(t *testing.T) {
 	// List
 	schedules, err := repo.ListActiveSchedules(ctx)
 	require.NoError(t, err)
-	assert.Len(t, schedules, 1)
-	assert.Equal(t, schedule.Name, schedules[0].Name)
+	var found bool
+	for _, s := range schedules {
+		if s.Name == schedule.Name {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "daily_run schedule not found in active schedules")
 }
 
 func TestWorkflowRepository_Listings(t *testing.T) {

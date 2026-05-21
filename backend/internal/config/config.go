@@ -208,6 +208,11 @@ func Load() (*Config, error) {
 				BaseURL: getEnv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
 				Model:   getEnv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash"),
 			},
+			Zhipu: ProviderConfig{
+				APIKey:  getEnv("ZHIPU_API_KEY", ""),
+				BaseURL: getEnv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
+				Model:   getEnv("ZHIPU_MODEL", "glm-4-plus"),
+			},
 		},
 		Admin: AdminConfig{
 			Email:    getEnv("ADMIN_EMAIL", ""),
@@ -388,6 +393,7 @@ type LLMConfig struct {
 	// совпадает с OpenRouterAPIKey, но мы держим поля раздельно: историческое
 	// поле осталось для models-listing, а ProviderConfig — для Generate().
 	OpenRouter ProviderConfig
+	Zhipu      ProviderConfig
 }
 
 // ProviderConfig содержит конфигурацию конкретного провайдера

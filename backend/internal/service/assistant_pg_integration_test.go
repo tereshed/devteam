@@ -120,17 +120,15 @@ func startAssistantHarness(t *testing.T) *assistantHarness {
 	logger := slog.New(logging.NewHandler(slog.NewTextHandler(io.Discard, nil)))
 	_ = logger
 	require.NoError(t, seed.SeedRolePrompts(ctx, gdb, nil), "seed role prompts")
-	{
-		agentSvc := service.NewAgentService(
-			repository.NewAgentRepository(gdb),
-			repository.NewAgentSecretRepository(gdb),
-			service.NoopEncryptor{},
-			repository.NewTransactionManager(gdb),
-		)
-		agentSvc.WithRolePromptRepo(repository.NewAgentRolePromptRepository(gdb)).
-			WithApiKeyRepo(repository.NewApiKeyRepository(gdb))
-		require.NoError(t, agentSvc.CreateDefaultAssistant(ctx, userID), "create assistant")
-	}
+	agentSvc := service.NewAgentService(
+		repository.NewAgentRepository(gdb),
+		repository.NewAgentSecretRepository(gdb),
+		service.NoopEncryptor{},
+		repository.NewTransactionManager(gdb),
+	)
+	agentSvc.WithRolePromptRepo(repository.NewAgentRolePromptRepository(gdb)).
+		WithApiKeyRepo(repository.NewApiKeyRepository(gdb))
+	require.NoError(t, agentSvc.CreateDefaultAssistant(ctx, userID), "create assistant")
 
 	h := &assistantHarness{
 		t:         t,
@@ -160,14 +158,15 @@ func startAssistantHarness(t *testing.T) *assistantHarness {
 	}, logger)
 
 	svc, err := service.NewAssistantService(service.AssistantServiceDeps{
-		Repo:        h.repo,
-		TaskRepo:    h.taskRepo,
-		AgentLoader: service.NewDBAgentLoader(gdb),
-		LLMResolver: fixedLLMResolver{client: h.llm},
-		ToolCatalog: h.catalog,
-		Hub:         h.hub,
-		Executor:    exec,
-		Logger:      logger,
+		Repo:         h.repo,
+		TaskRepo:     h.taskRepo,
+		AgentLoader:  service.NewDBAgentLoader(gdb),
+		AgentCreator: agentSvc,
+		LLMResolver:  fixedLLMResolver{client: h.llm},
+		ToolCatalog:  h.catalog,
+		Hub:          h.hub,
+		Executor:     exec,
+		Logger:       logger,
 	})
 	require.NoError(t, err, "NewAssistantService")
 	h.svc = svc
@@ -1019,6 +1018,82 @@ func insertActiveTask(t *testing.T, gdb *gorm.DB, projectID uuid.UUID, title str
 		RETURNING id`, projectID, title, createdBy).Scan(&row).Error
 	require.NoError(t, err)
 	return uuid.MustParse(row.ID)
+}
+
+func TestAssistantE2E_AutoGenerateTitle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	h := startAssistantHarness(t)
+	defer h.Close()
+
+	h.llm.SetResponses(
+		finalTextResponse("Ответ ассистента"),
+		finalTextResponse("Название проекта"),
+	)
+
+	// 1. Create session
+	respCreate := h.post("/api/v1/assistant/sessions", nil)
+	require.Equal(t, http.StatusCreated, respCreate.StatusCode)
+	sess := decodeJSON[dto.AssistantSessionResponse](t, respCreate)
+	assert.Empty(t, sess.Title)
+
+	// 2. Send message
+	respSend := h.post(fmt.Sprintf("/api/v1/assistant/sessions/%s/messages", sess.ID),
+		map[string]any{"content": "Создай мне проект под названием Название проекта"})
+	require.Equal(t, http.StatusAccepted, respSend.StatusCode)
+
+	// 3. Wait for title update
+	waitFor(t, 5*time.Second, "session title is updated", func() bool {
+		s := h.reloadSession(sess.ID)
+		return s.Title != nil && *s.Title != ""
+	})
+
+	// 4. Verify title
+	s := h.reloadSession(sess.ID)
+	require.NotNil(t, s.Title)
+	assert.Equal(t, "Название проекта", *s.Title)
+
+	// 5. Verify broadcast
+	sessionUpdates := h.eventsOfType("assistant.session_updated")
+	require.NotEmpty(t, sessionUpdates)
+	lastUpd := sessionUpdates[len(sessionUpdates)-1]
+	assert.Contains(t, string(lastUpd.Payload), `"title":"Название проекта"`)
+}
+
+func TestAssistantE2E_AutoGenerateTitle_Fallback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	h := startAssistantHarness(t)
+	defer h.Close()
+
+	h.llm.SetResponses(
+		finalTextResponse("Ответ ассистента"),
+	)
+
+	// 1. Create session
+	respCreate := h.post("/api/v1/assistant/sessions", nil)
+	require.Equal(t, http.StatusCreated, respCreate.StatusCode)
+	sess := decodeJSON[dto.AssistantSessionResponse](t, respCreate)
+
+	// 2. Send long message
+	longMsg := "Это очень длинное первое сообщение пользователя, которое должно быть обрезано до сорока символов"
+	respSend := h.post(fmt.Sprintf("/api/v1/assistant/sessions/%s/messages", sess.ID),
+		map[string]any{"content": longMsg})
+	require.Equal(t, http.StatusAccepted, respSend.StatusCode)
+
+	// 3. Wait for title update fallback
+	waitFor(t, 5*time.Second, "session title is updated via fallback", func() bool {
+		s := h.reloadSession(sess.ID)
+		return s.Title != nil && *s.Title != ""
+	})
+
+	// 4. Verify title
+	s := h.reloadSession(sess.ID)
+	require.NotNil(t, s.Title)
+	expectedTitle := string([]rune(longMsg)[:40]) + "..."
+	assert.Equal(t, expectedTitle, *s.Title)
 }
 
 // unused-imports guards (компилятор иначе ругается, если ветка кода не пошла).

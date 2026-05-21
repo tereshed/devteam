@@ -82,6 +82,7 @@ func awaitFakeLLMCall(t *testing.T, fake *fakes.FakeLLM, marker string, timeout 
 // конкретный наш call в общем журнале FakeLLM.
 func triggerAssistantMessage(t *testing.T, h *Harness, user User) string {
 	t.Helper()
+	h.ConfigureUserAssistant(t, user, "anthropic", "claude-3-5-haiku-20241022")
 	createResp := h.Do(t, "POST", "/api/v1/assistant/sessions", nil, user.AccessToken)
 	if createResp.Status != http.StatusCreated && createResp.Status != http.StatusOK {
 		t.Skipf("assistant не доступен: POST /assistant/sessions = %d (%s) — пропускаем prompt-content смоук",

@@ -627,9 +627,10 @@ func main() {
 		PerLLMCallTimeout:  60 * time.Second,
 	}, v2Logger) // v2Logger обёрнут logging.NewHandler — маскирует секреты в промптах/raw_response/tool args (docs/rules/backend.mdc §2.3, review.md §1).
 	assistantToolCatalog := mcpserver.NewAuthorizedExecutor(mcpserver.AuthorizedExecutorDeps{
-		ProjectService: projectService,
-		TaskService:    taskService,
-		AgentService:   agentSvcV2,
+		ProjectService:        projectService,
+		TaskService:           taskService,
+		AgentService:          agentSvcV2,
+		GitIntegrationService: gitIntegrationSvc,
 		QueryService: service.NewOrchestrationQueryService(
 			artifactRepoV2,
 			routerDecisionRepoV2,
@@ -638,15 +639,16 @@ func main() {
 	})
 	assistantSessionRepo := repository.NewAssistantSessionRepository(db)
 	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{
-		Repo:        assistantSessionRepo,
-		TaskRepo:    taskRepo,
-		AgentLoader: service.NewDBAgentLoader(db),
-		LLMResolver: service.NewAssistantLLMClientAdapter(llmCredSvc, llmFactory),
-		UserCreds:   llmCredSvc,
-		ToolCatalog: assistantToolCatalog,
-		Hub:         hub,
-		Executor:    assistantExecutor,
-		Logger:      v2Logger, // redact-обёрнутый; не пускает токены/ключи/пароли в stdout (см. comment выше).
+		Repo:         assistantSessionRepo,
+		TaskRepo:     taskRepo,
+		AgentLoader:  service.NewDBAgentLoader(db),
+		AgentCreator: agentSvcV2,
+		LLMResolver:  service.NewAssistantLLMClientAdapter(llmCredSvc, llmFactory, cfg.LLM, llmRepo, llmModelRepo),
+		UserCreds:    llmCredSvc,
+		ToolCatalog:  assistantToolCatalog,
+		Hub:          hub,
+		Executor:     assistantExecutor,
+		Logger:       v2Logger, // redact-обёрнутый; не пускает токены/ключи/пароли в stdout (см. comment выше).
 	})
 	if err != nil {
 		log.Fatalf("Failed to construct AssistantService: %v", err)

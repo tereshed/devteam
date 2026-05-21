@@ -185,7 +185,10 @@ class _TaskTimeoutDialogState extends ConsumerState<TaskTimeoutDialog> {
                 errorMaxLines: 3,
                 border: const OutlineInputBorder(),
               ),
-              onSubmitted: (_) => unawaited(_onSave()),
+              onSubmitted: (_) {
+                FocusManager.instance.primaryFocus?.unfocus();
+                unawaited(_onSave());
+              },
             ),
           ],
         ),

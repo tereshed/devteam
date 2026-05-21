@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/devteam/backend/internal/agent"
+	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/llm"
@@ -88,7 +92,7 @@ func (l *DBAgentLoader) GetAgentByName(ctx context.Context, name string) (*model
 		return nil, errors.New("DBAgentLoader: db is not configured")
 	}
 	var a models.Agent
-	if err := l.db.WithContext(ctx).Where("name = ?", name).First(&a).Error; err != nil {
+	if err := l.db.WithContext(ctx).Where("name = ? AND user_id IS NULL AND team_id IS NULL", name).First(&a).Error; err != nil {
 		return nil, fmt.Errorf("DBAgentLoader: load agent %q: %w", name, err)
 	}
 	return &a, nil
@@ -109,6 +113,17 @@ func (l *DBAgentLoader) GetAgentByUserRole(ctx context.Context, userID uuid.UUID
 	return l.GetAgentByName(ctx, role)
 }
 
+// UpdateAgentProvider updates the agent's provider kind and model.
+func (l *DBAgentLoader) UpdateAgentProvider(ctx context.Context, agentID uuid.UUID, providerKind models.AgentProviderKind, model string) error {
+	if l == nil || l.db == nil {
+		return errors.New("DBAgentLoader: db is not configured")
+	}
+	return l.db.WithContext(ctx).Model(&models.Agent{}).Where("id = ?", agentID).Updates(map[string]any{
+		"provider_kind": providerKind,
+		"model":         model,
+	}).Error
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AssistantLLMClientAdapter — Sprint 21. Реализует AssistantLLMClientResolver,
 // оборачивая свежесозданный llm.Provider (с ключом пользователя) в llm.Client через
@@ -116,13 +131,28 @@ func (l *DBAgentLoader) GetAgentByUserRole(ctx context.Context, userID uuid.UUID
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AssistantLLMClientAdapter struct {
-	credsSvc UserLlmCredentialService
-	factory  *factory.Factory
+	credsSvc  UserLlmCredentialService
+	factory   *factory.Factory
+	cfg       config.LLMConfig
+	repo      repository.LLMRepository
+	modelRepo repository.LLMModelRepository
 }
 
 // NewAssistantLLMClientAdapter — конструктор.
-func NewAssistantLLMClientAdapter(credsSvc UserLlmCredentialService, f *factory.Factory) *AssistantLLMClientAdapter {
-	return &AssistantLLMClientAdapter{credsSvc: credsSvc, factory: f}
+func NewAssistantLLMClientAdapter(
+	credsSvc UserLlmCredentialService,
+	f *factory.Factory,
+	cfg config.LLMConfig,
+	repo repository.LLMRepository,
+	modelRepo repository.LLMModelRepository,
+) *AssistantLLMClientAdapter {
+	return &AssistantLLMClientAdapter{
+		credsSvc:  credsSvc,
+		factory:   f,
+		cfg:       cfg,
+		repo:      repo,
+		modelRepo: modelRepo,
+	}
 }
 
 // ResolveAssistantClient реализует AssistantLLMClientResolver.
@@ -152,14 +182,134 @@ func (r *AssistantLLMClientAdapter) ResolveAssistantClient(ctx context.Context, 
 		return nil, ErrAssistantNotConfiguredForUser
 	}
 
+	var baseURL string
+	switch provKind {
+	case models.AgentProviderKindAnthropic, models.AgentProviderKindAnthropicOAuth:
+		baseURL = r.cfg.Anthropic.BaseURL
+	case models.AgentProviderKindDeepSeek:
+		baseURL = r.cfg.Deepseek.BaseURL
+	case models.AgentProviderKindZhipu:
+		baseURL = r.cfg.Zhipu.BaseURL
+	case models.AgentProviderKindOpenRouter:
+		baseURL = r.cfg.OpenRouter.BaseURL
+	}
+
 	provider, err := r.factory.CreateProvider(llm.ProviderType(provKind), llm.Config{
-		APIKey: key,
+		APIKey:  key,
+		BaseURL: baseURL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create llm provider: %w", err)
 	}
 
-	return &llm.ProviderAdapter{Provider: provider}, nil
+	client := &llm.ProviderAdapter{Provider: provider}
+
+	return &loggingLLMClient{
+		client:    client,
+		repo:      r.repo,
+		modelRepo: r.modelRepo,
+	}, nil
+}
+
+type loggingLLMClient struct {
+	client    llm.Client
+	repo      repository.LLMRepository
+	modelRepo repository.LLMModelRepository
+}
+
+var _ llm.Client = (*loggingLLMClient)(nil)
+
+func (c *loggingLLMClient) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
+	if c.repo == nil {
+		return c.client.Chat(ctx, req)
+	}
+
+	providerType := req.Provider
+	modelUsed := req.Model
+
+	startTime := time.Now()
+	resp, err := c.client.Chat(ctx, req)
+	duration := time.Since(startTime)
+
+	// Logging (async to not block response)
+	go func() {
+		// Create a detached context for logging
+		logCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		logEntry := &models.LLMLog{
+			Provider:   string(providerType),
+			Model:      modelUsed,
+			DurationMs: int(duration.Milliseconds()),
+			CreatedAt:  startTime,
+		}
+
+		// Extract metadata
+		if req.Metadata != nil {
+			if val, ok := req.Metadata["execution_id"].(string); ok {
+				if id, err := uuid.Parse(val); err == nil {
+					logEntry.WorkflowExecutionID = &id
+				}
+			}
+			if val, ok := req.Metadata["agent_id"].(string); ok {
+				if id, err := uuid.Parse(val); err == nil {
+					logEntry.AgentID = &id
+				}
+			}
+			if val, ok := req.Metadata["step_id"].(string); ok {
+				logEntry.StepID = val
+			}
+		}
+
+		// Snapshots
+		promptJSON, _ := json.Marshal(req)
+		logEntry.PromptSnapshot = string(promptJSON)
+
+		if err != nil {
+			logEntry.ErrorMessage = err.Error()
+		} else {
+			respJSON, _ := json.Marshal(resp)
+			logEntry.ResponseSnapshot = string(respJSON)
+			logEntry.InputTokens = resp.Usage.PromptTokens
+			logEntry.OutputTokens = resp.Usage.CompletionTokens
+			logEntry.TotalTokens = resp.Usage.TotalTokens
+
+			// Calculate Cost
+			if c.modelRepo != nil {
+				modelID := modelUsed
+				model, err := c.modelRepo.GetByID(logCtx, modelID)
+				if err != nil {
+					fullID := fmt.Sprintf("%s/%s", providerType, modelID)
+					model, err = c.modelRepo.GetByID(logCtx, fullID)
+				}
+
+				if err == nil && model != nil {
+					cost := (float64(logEntry.InputTokens) * model.PricingPrompt) +
+						(float64(logEntry.OutputTokens) * model.PricingCompletion) +
+						model.PricingRequest
+					logEntry.Cost = cost
+				}
+			}
+		}
+
+		if logErr := c.repo.CreateLog(logCtx, logEntry); logErr != nil {
+			log.Printf("Failed to create LLM log: %v", logErr)
+		}
+	}()
+
+	return resp, err
+}
+
+func (c *loggingLLMClient) Embed(ctx context.Context, req llm.EmbedRequest) (*llm.EmbedResponse, error) {
+	return c.client.Embed(ctx, req)
+}
+
+func (c *loggingLLMClient) HealthCheck(ctx context.Context) error {
+	return c.client.HealthCheck(ctx)
+}
+
+func (c *loggingLLMClient) ResolveBaseURL() string {
+	return c.client.ResolveBaseURL()
 }
 
 // Compile-time проверки соответствия интерфейсам.

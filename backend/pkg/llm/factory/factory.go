@@ -10,6 +10,7 @@ import (
 	"github.com/devteam/backend/pkg/llm/providers/openai"
 	"github.com/devteam/backend/pkg/llm/providers/openrouter"
 	"github.com/devteam/backend/pkg/llm/providers/qwen"
+	"github.com/devteam/backend/pkg/llm/providers/zhipu"
 )
 
 // Factory creates LLM providers
@@ -37,6 +38,9 @@ func New() *Factory {
 	})
 	f.RegisterProvider(llm.ProviderQwen, func(c llm.Config) (llm.Provider, error) {
 		return qwen.NewClient(c)
+	})
+	f.RegisterProvider(llm.ProviderZhipu, func(c llm.Config) (llm.Provider, error) {
+		return zhipu.NewClient(c)
 	})
 	// OpenRouter — глобальный провайдер для assistant/orchestrator/planner
 	// (см. Phase 5 review). Зарегистрирован через NewFromLLMConfig, который

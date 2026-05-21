@@ -41,12 +41,12 @@ var allowedProvidersList = func() string {
 // LLMGenerateParams — входные параметры инструмента llm_generate.
 // Поля с *float64 / *int позволяют отличить "не передано" (nil) от "передано 0".
 type LLMGenerateParams struct {
-	Prompt       string   `json:"prompt" jsonschema:"description=Текстовый запрос к LLM,required"`
-	Provider     string   `json:"provider,omitempty" jsonschema:"description=LLM провайдер (openai/anthropic/gemini/deepseek/qwen). Если не указан — провайдер по умолчанию"`
-	Model        string   `json:"model,omitempty" jsonschema:"description=Модель провайдера (например gpt-4o). Если не указана — модель по умолчанию"`
-	SystemPrompt string   `json:"system_prompt,omitempty" jsonschema:"description=Системный промпт для задания контекста/роли LLM"`
-	Temperature  *float64 `json:"temperature,omitempty" jsonschema:"description=Температура генерации (0.0-2.0). Не указывайте для дефолта провайдера"`
-	MaxTokens    *int     `json:"max_tokens,omitempty" jsonschema:"description=Максимальное количество токенов в ответе. Не указывайте для дефолта провайдера"`
+	Prompt       string   `json:"prompt" jsonschema:"Текстовый запрос к LLM"`
+	Provider     string   `json:"provider,omitempty" jsonschema:"LLM провайдер (openai/anthropic/gemini/deepseek/qwen). Если не указан — провайдер по умолчанию"`
+	Model        string   `json:"model,omitempty" jsonschema:"Модель провайдера (например gpt-4o). Если не указана — модель по умолчанию"`
+	SystemPrompt string   `json:"system_prompt,omitempty" jsonschema:"Системный промпт для задания контекста/роли LLM"`
+	Temperature  *float64 `json:"temperature,omitempty" jsonschema:"Температура генерации (0.0-2.0). Не указывайте для дефолта провайдера"`
+	MaxTokens    *int     `json:"max_tokens,omitempty" jsonschema:"Максимальное количество токенов в ответе. Не указывайте для дефолта провайдера"`
 }
 
 // --- Data (payload внутри Response.Data) ---

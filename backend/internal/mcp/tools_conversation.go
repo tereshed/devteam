@@ -13,33 +13,33 @@ import (
 
 // ConversationListParams — параметры conversation_list.
 type ConversationListParams struct {
-	ProjectID string `json:"project_id" jsonschema:"description=UUID проекта,required"`
-	Limit     *int   `json:"limit,omitempty" jsonschema:"description=Лимит (1–100; по умолчанию 20)"`
-	Offset    *int   `json:"offset,omitempty" jsonschema:"description=Смещение"`
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+	Limit     *int   `json:"limit,omitempty" jsonschema:"Лимит (1–100; по умолчанию 20)"`
+	Offset    *int   `json:"offset,omitempty" jsonschema:"Смещение"`
 }
 
 // ConversationGetParams — параметры conversation_get.
 type ConversationGetParams struct {
-	ConversationID string `json:"conversation_id" jsonschema:"description=UUID чата,required"`
+	ConversationID string `json:"conversation_id" jsonschema:"UUID чата"`
 }
 
 // ConversationCreateParams — параметры conversation_create.
 type ConversationCreateParams struct {
-	ProjectID string `json:"project_id" jsonschema:"description=UUID проекта,required"`
-	Title     string `json:"title" jsonschema:"required,description=Название чата"`
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+	Title     string `json:"title" jsonschema:"Название чата"`
 }
 
 // MessageSendParams — параметры conversation_send_message.
 type MessageSendParams struct {
-	ConversationID string `json:"conversation_id" jsonschema:"description=UUID чата,required"`
-	Content        string `json:"content" jsonschema:"required,description=Текст сообщения"`
+	ConversationID string `json:"conversation_id" jsonschema:"UUID чата"`
+	Content        string `json:"content" jsonschema:"Текст сообщения"`
 }
 
 // MessageHistoryParams — параметры conversation_history.
 type MessageHistoryParams struct {
-	ConversationID string `json:"conversation_id" jsonschema:"description=UUID чата,required"`
-	Limit          *int   `json:"limit,omitempty" jsonschema:"description=Лимит (1–100; по умолчанию 20)"`
-	Offset         *int   `json:"offset,omitempty" jsonschema:"description=Смещение"`
+	ConversationID string `json:"conversation_id" jsonschema:"UUID чата"`
+	Limit          *int   `json:"limit,omitempty" jsonschema:"Лимит (1–100; по умолчанию 20)"`
+	Offset         *int   `json:"offset,omitempty" jsonschema:"Смещение"`
 }
 
 // RegisterConversationTools регистрирует MCP-инструменты для чатов.

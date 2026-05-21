@@ -32,6 +32,10 @@ type stubGitIntegrationSvc struct {
 	statusErr      error
 	listRes        []service.GitIntegrationStatus
 	listErr        error
+	listReposRes   []service.GitRepository
+	listReposErr   error
+	createRepoRes  *service.GitRepository
+	createRepoErr  error
 }
 
 func (s *stubGitIntegrationSvc) InitGitHub(context.Context, uuid.UUID, string) (*service.GitIntegrationInitResult, error) {
@@ -55,6 +59,12 @@ func (s *stubGitIntegrationSvc) Status(context.Context, uuid.UUID, models.GitInt
 func (s *stubGitIntegrationSvc) ListStatuses(context.Context, uuid.UUID) ([]service.GitIntegrationStatus, error) {
 	return s.listRes, s.listErr
 }
+func (s *stubGitIntegrationSvc) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]service.GitRepository, error) {
+	return s.listReposRes, s.listReposErr
+}
+func (s *stubGitIntegrationSvc) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, name string, private bool, description string) (*service.GitRepository, error) {
+	return s.createRepoRes, s.createRepoErr
+}
 
 func setupGitRouter(t *testing.T, svc service.GitIntegrationService) (*gin.Engine, *bytes.Buffer) {
 	t.Helper()
@@ -73,6 +83,8 @@ func setupGitRouter(t *testing.T, svc service.GitIntegrationService) (*gin.Engin
 	r.GET("/integrations/github/auth/status", h.StatusGitHub)
 	r.DELETE("/integrations/github/auth/revoke", h.RevokeGitHub)
 	r.POST("/integrations/gitlab/auth/init", h.InitGitLab)
+	r.GET("/integrations/:provider/repos", h.ListRepositories)
+	r.POST("/integrations/:provider/repos", h.CreateRepository)
 	return r, logBuf
 }
 
@@ -189,3 +201,43 @@ func TestGitIntegrationHandler_InitGitHub_InternalError(t *testing.T) {
 	r.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }
+
+func TestGitIntegrationHandler_ListRepositories_OK(t *testing.T) {
+	svc := &stubGitIntegrationSvc{
+		listReposRes: []service.GitRepository{
+			{Name: "repo1", FullName: "org/repo1", HTMLURL: "https://github.com/org/repo1", CloneURL: "https://github.com/org/repo1.git", Description: "Desc 1"},
+		},
+	}
+	r, _ := setupGitRouter(t, svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/integrations/github/repos", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var out []service.GitRepository
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
+	require.Len(t, out, 1)
+	assert.Equal(t, "repo1", out[0].Name)
+}
+
+func TestGitIntegrationHandler_CreateRepository_OK(t *testing.T) {
+	svc := &stubGitIntegrationSvc{
+		createRepoRes: &service.GitRepository{
+			Name: "newrepo", FullName: "org/newrepo", HTMLURL: "https://github.com/org/newrepo", CloneURL: "https://github.com/org/newrepo.git", Description: "New Desc",
+		},
+	}
+	r, _ := setupGitRouter(t, svc)
+
+	body, _ := json.Marshal(dto.CreateRepositoryRequest{Name: "newrepo", Private: true, Description: "New Desc"})
+	req := httptest.NewRequest(http.MethodPost, "/integrations/github/repos", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var out service.GitRepository
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
+	assert.Equal(t, "newrepo", out.Name)
+}
+

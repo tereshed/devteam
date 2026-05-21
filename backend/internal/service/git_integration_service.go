@@ -1,9 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -14,8 +17,19 @@ import (
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/google/go-github/v67/github"
 	"github.com/google/uuid"
+	"golang.org/x/oauth2"
 )
+
+// GitRepository представляет метаданные удаленного git-репозитория.
+type GitRepository struct {
+	Name        string `json:"name"`
+	FullName    string `json:"full_name"`
+	HTMLURL     string `json:"html_url"`
+	CloneURL    string `json:"clone_url"`
+	Description string `json:"description"`
+}
 
 // Reason-коды для IntegrationConnectionChanged (Git OAuth) — зеркало §4a.5.
 const (
@@ -84,6 +98,10 @@ type GitIntegrationService interface {
 	Status(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) (*GitIntegrationStatus, error)
 	// ListStatuses — все подключённые провайдеры пользователя.
 	ListStatuses(ctx context.Context, userID uuid.UUID) ([]GitIntegrationStatus, error)
+	// ListRepositories возвращает список репозиториев для подключенного провайдера.
+	ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]GitRepository, error)
+	// CreateRepository создает новый репозиторий у подключенного провайдера.
+	CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, name string, private bool, description string) (*GitRepository, error)
 }
 
 // GitIntegrationServiceDeps — зависимости конструктора.
@@ -520,4 +538,212 @@ func gitlabSharedScopes(c GitOAuthClient) string {
 		return g.cfg.Scopes
 	}
 	return "api read_user"
+}
+
+func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]GitRepository, error) {
+	if userID == uuid.Nil {
+		return nil, errors.New("user id required")
+	}
+	cred, err := s.deps.Repo.GetByUserAndProvider(ctx, userID, provider)
+	if err != nil {
+		return nil, err
+	}
+	accessToken, err := s.decryptToString(cred.AccessTokenEnc, repository.GitIntegrationCredentialAAD(cred.ID))
+	if err != nil {
+		return nil, fmt.Errorf("decrypt token: %w", err)
+	}
+
+	if provider == models.GitIntegrationProviderGitHub {
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken})
+		httpClient := oauth2.NewClient(ctx, ts)
+		client := github.NewClient(httpClient)
+
+		opt := &github.RepositoryListByAuthenticatedUserOptions{
+			ListOptions: github.ListOptions{PerPage: 100},
+			Sort:        "updated",
+		}
+		var allRepos []GitRepository
+		for page := 1; page <= 3; page++ {
+			opt.Page = page
+			repos, resp, err := client.Repositories.ListByAuthenticatedUser(ctx, opt)
+			if err != nil {
+				return nil, fmt.Errorf("github list repos: %w", err)
+			}
+			for _, r := range repos {
+				allRepos = append(allRepos, GitRepository{
+					Name:        r.GetName(),
+					FullName:    r.GetFullName(),
+					HTMLURL:     r.GetHTMLURL(),
+					CloneURL:    r.GetCloneURL(),
+					Description: r.GetDescription(),
+				})
+			}
+			if resp.NextPage == 0 {
+				break
+			}
+		}
+		return allRepos, nil
+	} else if provider == models.GitIntegrationProviderGitLab {
+		baseURL := "https://gitlab.com"
+		var httpClient *http.Client
+		if cred.Host != "" {
+			canonical, allowedIPs, err := s.deps.Validator.ValidateGitProviderHost(ctx, cred.Host)
+			if err != nil {
+				return nil, err
+			}
+			baseURL = canonical
+			httpClient = s.buildSafeHTTPClient(allowedIPs)
+		} else {
+			httpClient = &http.Client{Timeout: 30 * time.Second}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/api/v4/projects?membership=true&simple=true&per_page=100&order_by=updated_at", nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("gitlab request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("gitlab returned HTTP %d", resp.StatusCode)
+		}
+
+		var gitlabProjects []struct {
+			Name              string `json:"name"`
+			PathWithNamespace string `json:"path_with_namespace"`
+			WebURL            string `json:"web_url"`
+			HTTPURLToRepo     string `json:"http_url_to_repo"`
+			Description       string `json:"description"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&gitlabProjects); err != nil {
+			return nil, fmt.Errorf("decode gitlab projects: %w", err)
+		}
+
+		allRepos := make([]GitRepository, 0, len(gitlabProjects))
+		for _, p := range gitlabProjects {
+			allRepos = append(allRepos, GitRepository{
+				Name:        p.Name,
+				FullName:    p.PathWithNamespace,
+				HTMLURL:     p.WebURL,
+				CloneURL:    p.HTTPURLToRepo,
+				Description: p.Description,
+			})
+		}
+		return allRepos, nil
+	}
+
+	return nil, fmt.Errorf("unsupported provider %q", provider)
+}
+
+func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, name string, private bool, description string) (*GitRepository, error) {
+	if userID == uuid.Nil {
+		return nil, errors.New("user id required")
+	}
+	if name == "" {
+		return nil, errors.New("repository name required")
+	}
+	cred, err := s.deps.Repo.GetByUserAndProvider(ctx, userID, provider)
+	if err != nil {
+		return nil, err
+	}
+	accessToken, err := s.decryptToString(cred.AccessTokenEnc, repository.GitIntegrationCredentialAAD(cred.ID))
+	if err != nil {
+		return nil, fmt.Errorf("decrypt token: %w", err)
+	}
+
+	if provider == models.GitIntegrationProviderGitHub {
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken})
+		httpClient := oauth2.NewClient(ctx, ts)
+		client := github.NewClient(httpClient)
+
+		repo := &github.Repository{
+			Name:        github.String(name),
+			Private:     github.Bool(private),
+			Description: github.String(description),
+		}
+		r, _, err := client.Repositories.Create(ctx, "", repo)
+		if err != nil {
+			return nil, fmt.Errorf("github create repo: %w", err)
+		}
+		return &GitRepository{
+			Name:        r.GetName(),
+			FullName:    r.GetFullName(),
+			HTMLURL:     r.GetHTMLURL(),
+			CloneURL:    r.GetCloneURL(),
+			Description: r.GetDescription(),
+		}, nil
+	} else if provider == models.GitIntegrationProviderGitLab {
+		baseURL := "https://gitlab.com"
+		var httpClient *http.Client
+		if cred.Host != "" {
+			canonical, allowedIPs, err := s.deps.Validator.ValidateGitProviderHost(ctx, cred.Host)
+			if err != nil {
+				return nil, err
+			}
+			baseURL = canonical
+			httpClient = s.buildSafeHTTPClient(allowedIPs)
+		} else {
+			httpClient = &http.Client{Timeout: 30 * time.Second}
+		}
+
+		visibility := "private"
+		if !private {
+			visibility = "public"
+		}
+		bodyMap := map[string]string{
+			"name":        name,
+			"visibility":  visibility,
+			"description": description,
+		}
+		bodyBytes, err := json.Marshal(bodyMap)
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", baseURL+"/api/v4/projects", bytes.NewReader(bodyBytes))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("gitlab request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+			bodyErr, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("gitlab returned HTTP %d: %s", resp.StatusCode, string(bodyErr))
+		}
+
+		var p struct {
+			Name              string `json:"name"`
+			PathWithNamespace string `json:"path_with_namespace"`
+			WebURL            string `json:"web_url"`
+			HTTPURLToRepo     string `json:"http_url_to_repo"`
+			Description       string `json:"description"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+			return nil, fmt.Errorf("decode gitlab project: %w", err)
+		}
+
+		return &GitRepository{
+			Name:        p.Name,
+			FullName:    p.PathWithNamespace,
+			HTMLURL:     p.WebURL,
+			CloneURL:    p.HTTPURLToRepo,
+			Description: p.Description,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("unsupported provider %q", provider)
 }

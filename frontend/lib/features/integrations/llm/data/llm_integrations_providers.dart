@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
+import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_repository.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 
@@ -67,12 +68,14 @@ class LlmIntegrationsController extends ChangeNotifier {
   LlmIntegrationsController({
     required LlmIntegrationsRepository repository,
     required Stream<WsClientEvent> wsEvents,
+    this.onConnectionChanged,
   }) : _repository = repository,
        _state = LlmIntegrationsState.initial {
     _wsSubscription = wsEvents.listen(_onWsClientEvent);
   }
 
   final LlmIntegrationsRepository _repository;
+  final VoidCallback? onConnectionChanged;
   StreamSubscription<WsClientEvent>? _wsSubscription;
   LlmIntegrationsState _state;
   bool _needsResyncOnNextServerEvent = false;
@@ -128,6 +131,7 @@ class LlmIntegrationsController extends ChangeNotifier {
           errorMessage: null,
         ),
       );
+      onConnectionChanged?.call();
     } catch (e) {
       if (_disposed || startedAtVersion != _stateVersion) {
         return;
@@ -145,6 +149,7 @@ class LlmIntegrationsController extends ChangeNotifier {
       _state.connections,
     )..[connection.provider] = connection;
     _setState(_state.copyWith(connections: next));
+    onConnectionChanged?.call();
   }
 
   @visibleForTesting
@@ -238,6 +243,9 @@ final llmIntegrationsControllerProvider = Provider<LlmIntegrationsController>((
   final controller = LlmIntegrationsController(
     repository: repo,
     wsEvents: ws.events,
+    onConnectionChanged: () {
+      ref.invalidate(assistantStatusProvider);
+    },
   );
   ref.onDispose(controller.dispose);
   return controller;

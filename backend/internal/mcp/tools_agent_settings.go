@@ -26,7 +26,7 @@ func actorFromMCPContext(ctx context.Context) (service.AgentSettingsActor, bool)
 
 // AgentSettingsGetParams — параметры agent_settings_get.
 type AgentSettingsGetParams struct {
-	AgentID string `json:"agent_id" jsonschema:"required,description=UUID агента"`
+	AgentID string `json:"agent_id" jsonschema:"UUID агента"`
 }
 
 // AgentSettingsUpdateParams — параметры agent_settings_update.
@@ -34,21 +34,21 @@ type AgentSettingsGetParams struct {
 // колонкой agents.llm_provider_id (миграция 029). Для смены провайдера используйте
 // PATCH /projects/:id/team/agents/:agentId c полем `provider_kind`.
 type AgentSettingsUpdateParams struct {
-	AgentID             string          `json:"agent_id" jsonschema:"required,description=UUID агента"`
-	CodeBackend         *string         `json:"code_backend,omitempty" jsonschema:"description=claude-code | aider | custom"`
-	CodeBackendSettings json.RawMessage `json:"code_backend_settings,omitempty" jsonschema:"description=JSON-объект code_backend_settings"`
-	SandboxPermissions  json.RawMessage `json:"sandbox_permissions,omitempty" jsonschema:"description=JSON-объект permissions (allow/deny/defaultMode)"`
+	AgentID             string          `json:"agent_id" jsonschema:"UUID агента"`
+	CodeBackend         *string         `json:"code_backend,omitempty" jsonschema:"claude-code | aider | custom"`
+	CodeBackendSettings json.RawMessage `json:"code_backend_settings,omitempty" jsonschema:"JSON-объект code_backend_settings"`
+	SandboxPermissions  json.RawMessage `json:"sandbox_permissions,omitempty" jsonschema:"JSON-объект permissions (allow/deny/defaultMode)"`
 }
 
 // MCPServerListParams — параметры mcp_server_list.
 type MCPServerListParams struct {
-	OnlyActive bool `json:"only_active,omitempty" jsonschema:"description=Только активные записи (is_active=true)"`
+	OnlyActive bool `json:"only_active,omitempty" jsonschema:"Только активные записи (is_active=true)"`
 }
 
 // SkillListParams — параметры skill_list.
 type SkillListParams struct {
-	AgentID    *string `json:"agent_id,omitempty" jsonschema:"description=Если задан — только Skills этого агента"`
-	OnlyActive bool    `json:"only_active,omitempty" jsonschema:"description=Только активные записи"`
+	AgentID    *string `json:"agent_id,omitempty" jsonschema:"Если задан — только Skills этого агента"`
+	OnlyActive bool    `json:"only_active,omitempty" jsonschema:"Только активные записи"`
 }
 
 // RegisterAgentSettingsTools — Sprint 15.24.

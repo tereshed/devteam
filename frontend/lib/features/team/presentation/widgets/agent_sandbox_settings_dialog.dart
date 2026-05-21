@@ -673,7 +673,10 @@ class _PatternListFieldState extends State<_PatternListField> {
               Expanded(
                 child: TextField(
                   controller: _controller,
-                  onSubmitted: (_) => _add(),
+                  onSubmitted: (_) {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    _add();
+                  },
                   decoration: InputDecoration(
                     hintText: requireAppLocalizations(context,
                             where: 'agentSandboxSettingsDialog.patternHint')
