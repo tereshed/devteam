@@ -167,6 +167,7 @@ func TestTeamRepository_GetByProjectID_Success(t *testing.T) {
 	agent := &models.Agent{
 		Name:     "solo",
 		Role:     models.AgentRoleReviewer,
+		ExecutionKind: models.AgentExecutionKindLLM,
 		TeamID:   &team.ID,
 		PromptID: &pid,
 		Skills:   skills,
@@ -332,6 +333,7 @@ func TestTeamRepository_SaveAgentWithToolBindings_Replace(t *testing.T) {
 	agent := &models.Agent{
 		Name:     "solo",
 		Role:     models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
 		TeamID:   &team.ID,
 		Skills:   skills,
 		Settings: settings,
@@ -375,6 +377,7 @@ func TestTeamRepository_SaveAgentWithToolBindings_RepeatedSameSetTouchesUpdatedA
 	agent := &models.Agent{
 		Name:     "solo",
 		Role:     models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
 		TeamID:   &team.ID,
 		Skills:   skills,
 		Settings: settings,
@@ -419,6 +422,7 @@ func TestTeamRepository_SaveAgentWithToolBindings_RollbackOnFK(t *testing.T) {
 	agent := &models.Agent{
 		Name:     "solo",
 		Role:     models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
 		TeamID:   &team.ID,
 		Skills:   skills,
 		Settings: settings,
@@ -462,6 +466,7 @@ func TestTeamRepository_GetByProjectID_PreloadsToolBindings(t *testing.T) {
 	agent := &models.Agent{
 		Name:     "a1",
 		Role:     models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
 		TeamID:   &team.ID,
 		Skills:   skills,
 		Settings: settings,
