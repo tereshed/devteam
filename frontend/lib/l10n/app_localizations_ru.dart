@@ -2292,4 +2292,284 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get assistantStatusAdminSetup =>
       'Ассистент требует настройки администратором.';
+
+  @override
+  String get navMcpServers => 'MCP-серверы';
+
+  @override
+  String get navRolePrompts => 'Промпты ролей';
+
+  @override
+  String get agentConfigScreenTitle => 'Настройка агента';
+
+  @override
+  String get agentConfigSaveButton => 'Сохранить';
+
+  @override
+  String get agentConfigLoadError => 'Не удалось загрузить конфигурацию агента';
+
+  @override
+  String get agentConfigActiveLabel => 'Активен';
+
+  @override
+  String get agentConfigActiveOn => 'Агент активен и может получать задачи';
+
+  @override
+  String get agentConfigActiveOff =>
+      'Агент неактивен и не будет получать задачи';
+
+  @override
+  String get agentConfigRoleSectionTitle => 'Роль';
+
+  @override
+  String get agentConfigTypeSectionTitle => 'Тип выполнения';
+
+  @override
+  String get agentConfigLLMSectionTitle => 'Настройки LLM';
+
+  @override
+  String get agentConfigMCPSectionTitle => 'MCP-инструменты';
+
+  @override
+  String get agentConfigSkillsSectionTitle => 'Навыки';
+
+  @override
+  String get agentConfigRoleLabel => 'Роль';
+
+  @override
+  String get agentConfigRoleReadOnly => 'Авто-созданная роль (только чтение)';
+
+  @override
+  String get agentConfigTypeAPI => 'API (LLM)';
+
+  @override
+  String get agentConfigTypeSandbox => 'Sandbox';
+
+  @override
+  String get agentConfigProviderLabel => 'LLM-провайдер';
+
+  @override
+  String get agentConfigModelLabel => 'Модель';
+
+  @override
+  String get agentConfigModelHint => 'напр. claude-sonnet-4-20250514';
+
+  @override
+  String get agentConfigTemperatureLabel => 'Temperature';
+
+  @override
+  String get agentConfigTemperatureDefault => 'по умолчанию';
+
+  @override
+  String get agentConfigDevTeamMCP => 'DevTeam MCP';
+
+  @override
+  String get agentConfigDevTeamMCPDesc =>
+      'Встроенные инструменты DevTeam (управление задачами, поиск по коду и т.д.)';
+
+  @override
+  String get agentConfigExternalMCPTitle => 'Внешние MCP-серверы';
+
+  @override
+  String get agentConfigNoExternalMCP => 'Внешние MCP-серверы не настроены';
+
+  @override
+  String get agentConfigAddMCPServer => 'Добавить MCP-сервер';
+
+  @override
+  String get agentConfigNoSkills => 'Навыки не настроены';
+
+  @override
+  String get agentConfigAddSkill => 'Добавить навык';
+
+  @override
+  String get agentConfigSaveSuccess => 'Конфигурация агента сохранена';
+
+  @override
+  String get agentConfigSaveError => 'Не удалось сохранить конфигурацию агента';
+
+  @override
+  String get projectVariablesTitle => 'Переменные проекта';
+
+  @override
+  String get projectVariablesHint =>
+      'Секреты в рамках проекта. Агенты подставляют их через плейсхолдеры в настройках.';
+
+  @override
+  String get projectVariablesLoadError =>
+      'Не удалось загрузить секреты проекта';
+
+  @override
+  String get projectVariablesEmpty => 'Секретов проекта пока нет';
+
+  @override
+  String get projectVariablesAddButton => 'Добавить секрет';
+
+  @override
+  String get projectVariablesEditTitle => 'Редактировать секрет';
+
+  @override
+  String get projectVariablesAddTitle => 'Добавить секрет';
+
+  @override
+  String get projectVariablesKeyLabel => 'Имя ключа';
+
+  @override
+  String get projectVariablesKeyRequired => 'Имя ключа обязательно';
+
+  @override
+  String get projectVariablesKeyInvalid =>
+      'Должен начинаться с A-Z, далее A-Z 0-9 _ (макс. 128)';
+
+  @override
+  String get projectVariablesValueLabel => 'Значение';
+
+  @override
+  String get projectVariablesValueRequired => 'Значение обязательно';
+
+  @override
+  String get projectVariablesCancelButton => 'Отмена';
+
+  @override
+  String get projectVariablesSaveButton => 'Сохранить';
+
+  @override
+  String get projectVariablesDeleteTitle => 'Удалить секрет';
+
+  @override
+  String get projectVariablesDeleteConfirm => 'Безвозвратно удалить секрет';
+
+  @override
+  String get projectVariablesDeleteButton => 'Удалить';
+
+  @override
+  String get userVariablesTitle => 'Личные переменные';
+
+  @override
+  String get userVariablesHint =>
+      'Секреты вашего аккаунта. Доступны всем агентам, работающим от вашего имени.';
+
+  @override
+  String get userVariablesLoadError => 'Не удалось загрузить личные секреты';
+
+  @override
+  String get userVariablesEmpty => 'Личных секретов пока нет';
+
+  @override
+  String get userVariablesAddButton => 'Добавить секрет';
+
+  @override
+  String get userVariablesAddTitle => 'Добавить личный секрет';
+
+  @override
+  String get userVariablesKeyLabel => 'Имя ключа';
+
+  @override
+  String get userVariablesKeyRequired => 'Имя ключа обязательно';
+
+  @override
+  String get userVariablesKeyInvalid =>
+      'Должен начинаться с A-Z, далее A-Z 0-9 _ (макс. 128)';
+
+  @override
+  String get userVariablesValueLabel => 'Значение';
+
+  @override
+  String get userVariablesValueRequired => 'Значение обязательно';
+
+  @override
+  String get userVariablesCancelButton => 'Отмена';
+
+  @override
+  String get userVariablesSaveButton => 'Сохранить';
+
+  @override
+  String get userVariablesDeleteTitle => 'Удалить секрет';
+
+  @override
+  String get userVariablesDeleteConfirm => 'Безвозвратно удалить секрет';
+
+  @override
+  String get userVariablesDeleteButton => 'Удалить';
+
+  @override
+  String get mcpRegistryScreenTitle => 'Реестр MCP-серверов';
+
+  @override
+  String get mcpRegistryRefreshTooltip => 'Обновить';
+
+  @override
+  String get mcpRegistryLoadError => 'Не удалось загрузить MCP-серверы';
+
+  @override
+  String get mcpRegistryEmpty => 'MCP-серверы ещё не зарегистрированы';
+
+  @override
+  String get mcpRegistryDeleteTitle => 'Удалить MCP-сервер';
+
+  @override
+  String get mcpRegistryDeleteConfirm => 'Деактивировать MCP-сервер';
+
+  @override
+  String get mcpRegistryCancelButton => 'Отмена';
+
+  @override
+  String get mcpRegistryDeleteButton => 'Удалить';
+
+  @override
+  String get mcpRegistryAddTitle => 'Добавить MCP-сервер';
+
+  @override
+  String get mcpRegistryEditTitle => 'Редактировать MCP-сервер';
+
+  @override
+  String get mcpRegistryNameLabel => 'Имя';
+
+  @override
+  String get mcpRegistryNameRequired => 'Имя обязательно';
+
+  @override
+  String get mcpRegistryDescLabel => 'Описание';
+
+  @override
+  String get mcpRegistryTransportLabel => 'Транспорт';
+
+  @override
+  String get mcpRegistryCommandLabel => 'Команда';
+
+  @override
+  String get mcpRegistryURLLabel => 'URL';
+
+  @override
+  String get mcpRegistryScopeLabel => 'Область';
+
+  @override
+  String get mcpRegistryActiveLabel => 'Активен';
+
+  @override
+  String get mcpRegistrySaveButton => 'Сохранить';
+
+  @override
+  String get rolePromptsScreenTitle => 'Промпты ролей агентов';
+
+  @override
+  String get rolePromptsRefreshTooltip => 'Обновить';
+
+  @override
+  String get rolePromptsLoadError => 'Не удалось загрузить промпты ролей';
+
+  @override
+  String get rolePromptsEmpty => 'Промпты ролей ещё не настроены';
+
+  @override
+  String get rolePromptsEditTitle => 'Редактировать промпт роли';
+
+  @override
+  String get rolePromptsContentLabel => 'Содержание промпта';
+
+  @override
+  String get rolePromptsCancelButton => 'Отмена';
+
+  @override
+  String get rolePromptsSaveButton => 'Сохранить';
 }

@@ -4189,6 +4189,552 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Ассистент требует настройки администратором.'**
   String get assistantStatusAdminSetup;
+
+  /// No description provided for @navMcpServers.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-серверы'**
+  String get navMcpServers;
+
+  /// No description provided for @navRolePrompts.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпты ролей'**
+  String get navRolePrompts;
+
+  /// No description provided for @agentConfigScreenTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройка агента'**
+  String get agentConfigScreenTitle;
+
+  /// No description provided for @agentConfigSaveButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get agentConfigSaveButton;
+
+  /// No description provided for @agentConfigLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить конфигурацию агента'**
+  String get agentConfigLoadError;
+
+  /// No description provided for @agentConfigActiveLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Активен'**
+  String get agentConfigActiveLabel;
+
+  /// No description provided for @agentConfigActiveOn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Агент активен и может получать задачи'**
+  String get agentConfigActiveOn;
+
+  /// No description provided for @agentConfigActiveOff.
+  ///
+  /// In ru, this message translates to:
+  /// **'Агент неактивен и не будет получать задачи'**
+  String get agentConfigActiveOff;
+
+  /// No description provided for @agentConfigRoleSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Роль'**
+  String get agentConfigRoleSectionTitle;
+
+  /// No description provided for @agentConfigTypeSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тип выполнения'**
+  String get agentConfigTypeSectionTitle;
+
+  /// No description provided for @agentConfigLLMSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки LLM'**
+  String get agentConfigLLMSectionTitle;
+
+  /// No description provided for @agentConfigMCPSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-инструменты'**
+  String get agentConfigMCPSectionTitle;
+
+  /// No description provided for @agentConfigSkillsSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Навыки'**
+  String get agentConfigSkillsSectionTitle;
+
+  /// No description provided for @agentConfigRoleLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Роль'**
+  String get agentConfigRoleLabel;
+
+  /// No description provided for @agentConfigRoleReadOnly.
+  ///
+  /// In ru, this message translates to:
+  /// **'Авто-созданная роль (только чтение)'**
+  String get agentConfigRoleReadOnly;
+
+  /// No description provided for @agentConfigTypeAPI.
+  ///
+  /// In ru, this message translates to:
+  /// **'API (LLM)'**
+  String get agentConfigTypeAPI;
+
+  /// No description provided for @agentConfigTypeSandbox.
+  ///
+  /// In ru, this message translates to:
+  /// **'Sandbox'**
+  String get agentConfigTypeSandbox;
+
+  /// No description provided for @agentConfigProviderLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM-провайдер'**
+  String get agentConfigProviderLabel;
+
+  /// No description provided for @agentConfigModelLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Модель'**
+  String get agentConfigModelLabel;
+
+  /// No description provided for @agentConfigModelHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'напр. claude-sonnet-4-20250514'**
+  String get agentConfigModelHint;
+
+  /// No description provided for @agentConfigTemperatureLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Temperature'**
+  String get agentConfigTemperatureLabel;
+
+  /// No description provided for @agentConfigTemperatureDefault.
+  ///
+  /// In ru, this message translates to:
+  /// **'по умолчанию'**
+  String get agentConfigTemperatureDefault;
+
+  /// No description provided for @agentConfigDevTeamMCP.
+  ///
+  /// In ru, this message translates to:
+  /// **'DevTeam MCP'**
+  String get agentConfigDevTeamMCP;
+
+  /// No description provided for @agentConfigDevTeamMCPDesc.
+  ///
+  /// In ru, this message translates to:
+  /// **'Встроенные инструменты DevTeam (управление задачами, поиск по коду и т.д.)'**
+  String get agentConfigDevTeamMCPDesc;
+
+  /// No description provided for @agentConfigExternalMCPTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Внешние MCP-серверы'**
+  String get agentConfigExternalMCPTitle;
+
+  /// No description provided for @agentConfigNoExternalMCP.
+  ///
+  /// In ru, this message translates to:
+  /// **'Внешние MCP-серверы не настроены'**
+  String get agentConfigNoExternalMCP;
+
+  /// No description provided for @agentConfigAddMCPServer.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить MCP-сервер'**
+  String get agentConfigAddMCPServer;
+
+  /// No description provided for @agentConfigNoSkills.
+  ///
+  /// In ru, this message translates to:
+  /// **'Навыки не настроены'**
+  String get agentConfigNoSkills;
+
+  /// No description provided for @agentConfigAddSkill.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить навык'**
+  String get agentConfigAddSkill;
+
+  /// No description provided for @agentConfigSaveSuccess.
+  ///
+  /// In ru, this message translates to:
+  /// **'Конфигурация агента сохранена'**
+  String get agentConfigSaveSuccess;
+
+  /// No description provided for @agentConfigSaveError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить конфигурацию агента'**
+  String get agentConfigSaveError;
+
+  /// No description provided for @projectVariablesTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Переменные проекта'**
+  String get projectVariablesTitle;
+
+  /// No description provided for @projectVariablesHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Секреты в рамках проекта. Агенты подставляют их через плейсхолдеры в настройках.'**
+  String get projectVariablesHint;
+
+  /// No description provided for @projectVariablesLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить секреты проекта'**
+  String get projectVariablesLoadError;
+
+  /// No description provided for @projectVariablesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Секретов проекта пока нет'**
+  String get projectVariablesEmpty;
+
+  /// No description provided for @projectVariablesAddButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить секрет'**
+  String get projectVariablesAddButton;
+
+  /// No description provided for @projectVariablesEditTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать секрет'**
+  String get projectVariablesEditTitle;
+
+  /// No description provided for @projectVariablesAddTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить секрет'**
+  String get projectVariablesAddTitle;
+
+  /// No description provided for @projectVariablesKeyLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя ключа'**
+  String get projectVariablesKeyLabel;
+
+  /// No description provided for @projectVariablesKeyRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя ключа обязательно'**
+  String get projectVariablesKeyRequired;
+
+  /// No description provided for @projectVariablesKeyInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Должен начинаться с A-Z, далее A-Z 0-9 _ (макс. 128)'**
+  String get projectVariablesKeyInvalid;
+
+  /// No description provided for @projectVariablesValueLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение'**
+  String get projectVariablesValueLabel;
+
+  /// No description provided for @projectVariablesValueRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение обязательно'**
+  String get projectVariablesValueRequired;
+
+  /// No description provided for @projectVariablesCancelButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get projectVariablesCancelButton;
+
+  /// No description provided for @projectVariablesSaveButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get projectVariablesSaveButton;
+
+  /// No description provided for @projectVariablesDeleteTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить секрет'**
+  String get projectVariablesDeleteTitle;
+
+  /// No description provided for @projectVariablesDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Безвозвратно удалить секрет'**
+  String get projectVariablesDeleteConfirm;
+
+  /// No description provided for @projectVariablesDeleteButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get projectVariablesDeleteButton;
+
+  /// No description provided for @userVariablesTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Личные переменные'**
+  String get userVariablesTitle;
+
+  /// No description provided for @userVariablesHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Секреты вашего аккаунта. Доступны всем агентам, работающим от вашего имени.'**
+  String get userVariablesHint;
+
+  /// No description provided for @userVariablesLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить личные секреты'**
+  String get userVariablesLoadError;
+
+  /// No description provided for @userVariablesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Личных секретов пока нет'**
+  String get userVariablesEmpty;
+
+  /// No description provided for @userVariablesAddButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить секрет'**
+  String get userVariablesAddButton;
+
+  /// No description provided for @userVariablesAddTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить личный секрет'**
+  String get userVariablesAddTitle;
+
+  /// No description provided for @userVariablesKeyLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя ключа'**
+  String get userVariablesKeyLabel;
+
+  /// No description provided for @userVariablesKeyRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя ключа обязательно'**
+  String get userVariablesKeyRequired;
+
+  /// No description provided for @userVariablesKeyInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Должен начинаться с A-Z, далее A-Z 0-9 _ (макс. 128)'**
+  String get userVariablesKeyInvalid;
+
+  /// No description provided for @userVariablesValueLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение'**
+  String get userVariablesValueLabel;
+
+  /// No description provided for @userVariablesValueRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение обязательно'**
+  String get userVariablesValueRequired;
+
+  /// No description provided for @userVariablesCancelButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get userVariablesCancelButton;
+
+  /// No description provided for @userVariablesSaveButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get userVariablesSaveButton;
+
+  /// No description provided for @userVariablesDeleteTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить секрет'**
+  String get userVariablesDeleteTitle;
+
+  /// No description provided for @userVariablesDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Безвозвратно удалить секрет'**
+  String get userVariablesDeleteConfirm;
+
+  /// No description provided for @userVariablesDeleteButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get userVariablesDeleteButton;
+
+  /// No description provided for @mcpRegistryScreenTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Реестр MCP-серверов'**
+  String get mcpRegistryScreenTitle;
+
+  /// No description provided for @mcpRegistryRefreshTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновить'**
+  String get mcpRegistryRefreshTooltip;
+
+  /// No description provided for @mcpRegistryLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить MCP-серверы'**
+  String get mcpRegistryLoadError;
+
+  /// No description provided for @mcpRegistryEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-серверы ещё не зарегистрированы'**
+  String get mcpRegistryEmpty;
+
+  /// No description provided for @mcpRegistryDeleteTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить MCP-сервер'**
+  String get mcpRegistryDeleteTitle;
+
+  /// No description provided for @mcpRegistryDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Деактивировать MCP-сервер'**
+  String get mcpRegistryDeleteConfirm;
+
+  /// No description provided for @mcpRegistryCancelButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get mcpRegistryCancelButton;
+
+  /// No description provided for @mcpRegistryDeleteButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get mcpRegistryDeleteButton;
+
+  /// No description provided for @mcpRegistryAddTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить MCP-сервер'**
+  String get mcpRegistryAddTitle;
+
+  /// No description provided for @mcpRegistryEditTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать MCP-сервер'**
+  String get mcpRegistryEditTitle;
+
+  /// No description provided for @mcpRegistryNameLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя'**
+  String get mcpRegistryNameLabel;
+
+  /// No description provided for @mcpRegistryNameRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя обязательно'**
+  String get mcpRegistryNameRequired;
+
+  /// No description provided for @mcpRegistryDescLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание'**
+  String get mcpRegistryDescLabel;
+
+  /// No description provided for @mcpRegistryTransportLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Транспорт'**
+  String get mcpRegistryTransportLabel;
+
+  /// No description provided for @mcpRegistryCommandLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Команда'**
+  String get mcpRegistryCommandLabel;
+
+  /// No description provided for @mcpRegistryURLLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'URL'**
+  String get mcpRegistryURLLabel;
+
+  /// No description provided for @mcpRegistryScopeLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Область'**
+  String get mcpRegistryScopeLabel;
+
+  /// No description provided for @mcpRegistryActiveLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Активен'**
+  String get mcpRegistryActiveLabel;
+
+  /// No description provided for @mcpRegistrySaveButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get mcpRegistrySaveButton;
+
+  /// No description provided for @rolePromptsScreenTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпты ролей агентов'**
+  String get rolePromptsScreenTitle;
+
+  /// No description provided for @rolePromptsRefreshTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновить'**
+  String get rolePromptsRefreshTooltip;
+
+  /// No description provided for @rolePromptsLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить промпты ролей'**
+  String get rolePromptsLoadError;
+
+  /// No description provided for @rolePromptsEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпты ролей ещё не настроены'**
+  String get rolePromptsEmpty;
+
+  /// No description provided for @rolePromptsEditTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать промпт роли'**
+  String get rolePromptsEditTitle;
+
+  /// No description provided for @rolePromptsContentLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Содержание промпта'**
+  String get rolePromptsContentLabel;
+
+  /// No description provided for @rolePromptsCancelButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get rolePromptsCancelButton;
+
+  /// No description provided for @rolePromptsSaveButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get rolePromptsSaveButton;
 }
 
 class _AppLocalizationsDelegate

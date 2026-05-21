@@ -9,10 +9,12 @@ class AgentV2 {
   final String executionKind; // 'llm' | 'sandbox'
   final String? systemPrompt; // не включается в List; присутствует в Get
   final String? model;
+  final String? providerKind;
   final double? temperature;
   final int? maxTokens;
   final String? codeBackend;
   final bool isActive;
+  final bool internalMcpEnabled;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -23,10 +25,12 @@ class AgentV2 {
     required this.roleDescription,
     required this.executionKind,
     required this.isActive,
+    required this.internalMcpEnabled,
     required this.createdAt,
     required this.updatedAt,
     this.systemPrompt,
     this.model,
+    this.providerKind,
     this.temperature,
     this.maxTokens,
     this.codeBackend,
@@ -48,10 +52,12 @@ class AgentV2 {
       executionKind: json['execution_kind'] as String,
       systemPrompt: json['system_prompt'] as String?,
       model: json['model'] as String?,
+      providerKind: json['provider_kind'] as String?,
       temperature: temp,
       maxTokens: json['max_tokens'] as int?,
       codeBackend: json['code_backend'] as String?,
       isActive: json['is_active'] as bool? ?? true,
+      internalMcpEnabled: json['internal_mcp_enabled'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );

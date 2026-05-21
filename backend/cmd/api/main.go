@@ -143,6 +143,18 @@ func main() {
 	)
 	agentSvcV2.WithRolePromptRepo(rolePromptRepo).WithApiKeyRepo(apiKeyRepo)
 
+	// Logger с redact-обёрткой — создаём рано, чтобы использовать и в secret-сервисах, и в v2-компонентах.
+	v2Logger := slog.New(logging.NewHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	// Phase 5 — project/user secrets + MCP registry.
+	secretSvc := service.NewSecretService(encryptor)
+	projectSecretRepo := repository.NewProjectSecretRepository(db)
+	userSecretRepo := repository.NewUserSecretRepository(db)
+	projectSecretSvc := service.NewProjectSecretService(projectSecretRepo, secretSvc, v2Logger)
+	userSecretSvc := service.NewUserSecretService(userSecretRepo, secretSvc, v2Logger)
+	mcpRegistryRepo := repository.NewMCPServerRegistryRepository(db)
+	mcpRegistrySvc := service.NewMCPServerRegistryService(mcpRegistryRepo)
+
 	// Загрузка промптов из файлов
 	log.Println("Loading prompts from backend/prompts...")
 	promptsLoader := promptsloader.New(promptRepo)
@@ -388,9 +400,6 @@ func main() {
 	artifactRepoV2 := repository.NewArtifactRepository(db)
 	routerDecisionRepoV2 := repository.NewRouterDecisionRepository(db)
 	worktreeRepoV2 := repository.NewWorktreeRepository(db)
-
-	// Logger с redact-обёрткой для всех v2-компонентов.
-	v2Logger := slog.New(logging.NewHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	// Redis-notifier — опциональный. Если REDIS_URL не задан, остаётся nil и
 	// воркеры работают через polling-only (latency ~500ms vs ~10ms с Redis).
@@ -697,6 +706,11 @@ func main() {
 		// Phase 1 §1.4 — admin API для дефолтных промптов ролей агентов.
 		AgentRolePromptHandler: handler.NewAgentRolePromptHandler(rolePromptRepo),
 
+		// Phase 5 — project/user secrets + MCP registry admin CRUD.
+		ProjectSecretHandler:     handler.NewProjectSecretHandler(projectSecretSvc),
+		UserSecretHandler:        handler.NewUserSecretHandler(userSecretSvc),
+		MCPServerRegistryHandler: handler.NewMCPServerRegistryHandler(mcpRegistrySvc),
+
 		// Sprint 17 / Orchestration v2 — read-only API + manual unstick (POST /worktrees/:id/release).
 		// taskService нужен ListWorktrees'у для task-ownership check'а (см. Sprint 17 / 6.2).
 		// v2WorktreeMgr опционален — без него ReleaseWorktree отвечает 503 (см. 6.3).
@@ -751,6 +765,10 @@ func main() {
 			// Sprint 21 §5 — assistant-специфичные MCP tools.
 			Hub:      hub,
 			UserRepo: userRepo,
+
+			// Phase 5 — project/user secret MCP tools.
+			ProjectSecretSvc: projectSecretSvc,
+			UserSecretSvc:    userSecretSvc,
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)

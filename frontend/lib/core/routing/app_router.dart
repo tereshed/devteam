@@ -6,8 +6,11 @@ import 'package:frontend/core/routing/project_dashboard_routes.dart';
 import 'package:frontend/core/routing/root_router_redirect.dart';
 import 'package:frontend/core/routing/router_error_screen.dart';
 import 'package:frontend/core/widgets/app_shell.dart';
+import 'package:frontend/features/admin/agents_v2/presentation/screens/agent_role_prompts_screen.dart';
 import 'package:frontend/features/admin/agents_v2/presentation/screens/agent_v2_detail_screen.dart';
 import 'package:frontend/features/admin/agents_v2/presentation/screens/agents_v2_list_screen.dart';
+import 'package:frontend/features/admin/agents_v2/presentation/screens/mcp_servers_registry_screen.dart';
+import 'package:frontend/features/team/presentation/screens/agent_config_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompt_edit_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompts_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/execution_detail_screen.dart';
@@ -162,6 +165,20 @@ class AppRouter {
                     child: AgentV2DetailScreen(agentId: id),
                   );
                 },
+                routes: [
+                  GoRoute(
+                    path: 'config',
+                    name: 'admin_agents_v2_config',
+                    redirect: adminGuard,
+                    pageBuilder: (context, state) {
+                      final id = state.pathParameters['id']!;
+                      return MaterialPage(
+                        key: state.pageKey,
+                        child: AgentConfigScreen(agentId: id),
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -228,6 +245,26 @@ class AppRouter {
                 },
               ),
             ],
+          ),
+          // Phase 5 — admin: MCP servers registry.
+          GoRoute(
+            path: '/admin/mcp-servers',
+            name: 'admin_mcp_servers',
+            redirect: adminGuard,
+            pageBuilder: (context, state) => MaterialPage(
+              key: state.pageKey,
+              child: const MCPServersRegistryScreen(),
+            ),
+          ),
+          // Phase 5 — admin: agent role prompts.
+          GoRoute(
+            path: '/admin/role-prompts',
+            name: 'admin_role_prompts',
+            redirect: adminGuard,
+            pageBuilder: (context, state) => MaterialPage(
+              key: state.pageKey,
+              child: const AgentRolePromptsScreen(),
+            ),
           ),
         ],
       ),

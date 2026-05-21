@@ -50,6 +50,10 @@ type Dependencies struct {
 	// соответствующий tool не регистрируется (см. RegisterAssistantTools).
 	Hub      *ws.Hub
 	UserRepo repository.UserRepository
+
+	// Phase 5 — MCP-инструменты для project/user секретов (опционально).
+	ProjectSecretSvc *service.ProjectSecretService
+	UserSecretSvc    *service.UserSecretService
 }
 
 // NewMCPServer создает MCP-сервер с зарегистрированными инструментами
@@ -98,6 +102,9 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 		TaskService: deps.TaskService,
 		UserRepo:    deps.UserRepo,
 	})
+
+	// Phase 5 — project/user secret tools (опционально).
+	RegisterSecretTools(server, deps.ProjectSecretSvc, deps.UserSecretSvc)
 
 	return server
 }

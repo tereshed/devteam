@@ -61,9 +61,11 @@ type CreateAgentInput struct {
 }
 
 // UpdateAgentInput — патч-параметры. Все поля опциональные; nil = не менять.
-// Name/Role/ExecutionKind НЕ меняются через update (требуют пересоздания —
+// Name/ExecutionKind НЕ меняются через update (требуют пересоздания —
 // смена runtime-режима меняет инвариант, какой executor использовать).
+// Role — редактируется только для кастомных агентов (docs/agents-rework-plan.md §5.3).
 type UpdateAgentInput struct {
+	Role               *models.AgentRole
 	RoleDescription    *string
 	SystemPrompt       *string
 	Model              *string
@@ -268,6 +270,15 @@ func (s *AgentService) Update(ctx context.Context, id uuid.UUID, in UpdateAgentI
 // applyUpdatePatch — чисто in-memory мутация *current по UpdateAgentInput.
 // Никакого I/O; всё валидируется сразу и возвращает ErrAgentValidation.
 func (s *AgentService) applyUpdatePatch(current *models.Agent, in UpdateAgentInput) error {
+	if in.Role != nil {
+		if !in.Role.IsValid() {
+			return fmt.Errorf("%w: invalid role %q", ErrAgentValidation, *in.Role)
+		}
+		if current.Role.IsAutoCreated() {
+			return fmt.Errorf("%w: cannot change role of auto-created agent (current role=%s)", ErrAgentValidation, current.Role)
+		}
+		current.Role = *in.Role
+	}
 	if in.RoleDescription != nil {
 		current.RoleDescription = in.RoleDescription
 	}

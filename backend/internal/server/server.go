@@ -81,6 +81,13 @@ type Dependencies struct {
 
 	// Phase 1 §1.4 — admin API для дефолтных промптов ролей агентов.
 	AgentRolePromptHandler *handler.AgentRolePromptHandler
+
+	// Phase 5 — project/user secrets.
+	ProjectSecretHandler *handler.ProjectSecretHandler
+	UserSecretHandler    *handler.UserSecretHandler
+
+	// Phase 5 §5.6.1 — admin CRUD для реестра MCP-серверов.
+	MCPServerRegistryHandler *handler.MCPServerRegistryHandler
 }
 
 // New создает новый экземпляр сервера
@@ -164,6 +171,17 @@ func (s *Server) setupRoutes(deps Dependencies) {
 		{
 			me.GET("/llm-credentials", deps.UserLlmCredentialHandler.Get)
 			me.PATCH("/llm-credentials", deps.LlmCredentialsPatchRL.Handler(), deps.UserLlmCredentialHandler.Patch)
+		}
+
+		// Phase 5 — user secrets (/me/secrets).
+		if deps.UserSecretHandler != nil {
+			meSecrets := api.Group("/me/secrets")
+			meSecrets.Use(authMW)
+			{
+				meSecrets.GET("", deps.UserSecretHandler.List)
+				meSecrets.POST("", deps.UserSecretHandler.Set)
+				meSecrets.DELETE("/:secret_id", deps.UserSecretHandler.Delete)
+			}
 		}
 
 		// Phase 4 §4.2 — /me/agents — user-level агенты.
@@ -286,6 +304,13 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			projects.PUT("/:id", deps.ProjectHandler.Update)
 			projects.DELETE("/:id", deps.ProjectHandler.Delete)
 			projects.POST("/:id/reindex", deps.ProjectHandler.Reindex)
+
+			// Phase 5 — project secrets.
+			if deps.ProjectSecretHandler != nil {
+				projects.GET("/:id/secrets", deps.ProjectSecretHandler.List)
+				projects.POST("/:id/secrets", deps.ProjectSecretHandler.Set)
+				projects.DELETE("/:id/secrets/:secret_id", deps.ProjectSecretHandler.Delete)
+			}
 		}
 
 		tasks := api.Group("/tasks")
@@ -385,6 +410,20 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				rolePrompts.GET("", deps.AgentRolePromptHandler.List)
 				rolePrompts.GET("/:role", deps.AgentRolePromptHandler.GetByRole)
 				rolePrompts.PUT("/:role", deps.AgentRolePromptHandler.Update)
+			}
+		}
+
+		// Phase 5 §5.6.1 — admin CRUD для реестра MCP-серверов.
+		if deps.MCPServerRegistryHandler != nil {
+			mcpServers := api.Group("/admin/mcp-servers")
+			mcpServers.Use(authMW)
+			mcpServers.Use(middleware.AdminOnlyMiddleware())
+			{
+				mcpServers.GET("", deps.MCPServerRegistryHandler.List)
+				mcpServers.GET("/:id", deps.MCPServerRegistryHandler.Get)
+				mcpServers.POST("", deps.MCPServerRegistryHandler.Create)
+				mcpServers.PUT("/:id", deps.MCPServerRegistryHandler.Update)
+				mcpServers.DELETE("/:id", deps.MCPServerRegistryHandler.Delete)
 			}
 		}
 

@@ -42,6 +42,17 @@ func (r AgentRole) IsValid() bool {
 	}
 }
 
+// IsAutoCreated — роль принадлежит системному агенту (assistant, orchestrator, router).
+// Для таких ролей смена через update запрещена (docs/agents-rework-plan.md §5.3).
+func (r AgentRole) IsAutoCreated() bool {
+	switch r {
+	case AgentRoleAssistant, AgentRoleOrchestrator, AgentRoleRouter:
+		return true
+	default:
+		return false
+	}
+}
+
 // CodeBackend тип бэкенда для написания кода
 type CodeBackend string
 

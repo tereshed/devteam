@@ -117,13 +117,16 @@ class AgentsV2Repository {
 
   Future<AgentV2> update({
     required String id,
+    String? role,
     String? roleDescription,
     String? systemPrompt,
     String? model,
+    String? providerKind,
     String? codeBackend,
     double? temperature,
     int? maxTokens,
     bool? isActive,
+    bool? internalMcpEnabled,
     CancelToken? cancelToken,
   }) async {
     try {
@@ -131,13 +134,16 @@ class AgentsV2Repository {
         '/agents/$id',
         cancelToken: cancelToken,
         data: {
+          if (role != null) 'role': role,
           if (roleDescription != null) 'role_description': roleDescription,
           if (systemPrompt != null) 'system_prompt': systemPrompt,
           if (model != null) 'model': model,
+          if (providerKind != null) 'provider_kind': providerKind,
           if (codeBackend != null) 'code_backend': codeBackend,
           if (temperature != null) 'temperature': temperature,
           if (maxTokens != null) 'max_tokens': maxTokens,
           if (isActive != null) 'is_active': isActive,
+          if (internalMcpEnabled != null) 'internal_mcp_enabled': internalMcpEnabled,
         },
       );
       return AgentV2.fromJson(_jsonMap(response));

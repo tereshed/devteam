@@ -2274,4 +2274,283 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get assistantStatusAdminSetup =>
       'The assistant requires configuration by an administrator.';
+
+  @override
+  String get navMcpServers => 'MCP servers';
+
+  @override
+  String get navRolePrompts => 'Role prompts';
+
+  @override
+  String get agentConfigScreenTitle => 'Agent configuration';
+
+  @override
+  String get agentConfigSaveButton => 'Save';
+
+  @override
+  String get agentConfigLoadError => 'Failed to load agent configuration';
+
+  @override
+  String get agentConfigActiveLabel => 'Active';
+
+  @override
+  String get agentConfigActiveOn => 'Agent is active and can receive tasks';
+
+  @override
+  String get agentConfigActiveOff =>
+      'Agent is inactive and will not receive tasks';
+
+  @override
+  String get agentConfigRoleSectionTitle => 'Role';
+
+  @override
+  String get agentConfigTypeSectionTitle => 'Execution type';
+
+  @override
+  String get agentConfigLLMSectionTitle => 'LLM settings';
+
+  @override
+  String get agentConfigMCPSectionTitle => 'MCP tools';
+
+  @override
+  String get agentConfigSkillsSectionTitle => 'Skills';
+
+  @override
+  String get agentConfigRoleLabel => 'Role';
+
+  @override
+  String get agentConfigRoleReadOnly => 'Auto-created role (read-only)';
+
+  @override
+  String get agentConfigTypeAPI => 'API (LLM)';
+
+  @override
+  String get agentConfigTypeSandbox => 'Sandbox';
+
+  @override
+  String get agentConfigProviderLabel => 'LLM provider';
+
+  @override
+  String get agentConfigModelLabel => 'Model';
+
+  @override
+  String get agentConfigModelHint => 'e.g. claude-sonnet-4-20250514';
+
+  @override
+  String get agentConfigTemperatureLabel => 'Temperature';
+
+  @override
+  String get agentConfigTemperatureDefault => 'default';
+
+  @override
+  String get agentConfigDevTeamMCP => 'DevTeam MCP';
+
+  @override
+  String get agentConfigDevTeamMCPDesc =>
+      'Built-in DevTeam tools (task management, code search, etc.)';
+
+  @override
+  String get agentConfigExternalMCPTitle => 'External MCP servers';
+
+  @override
+  String get agentConfigNoExternalMCP => 'No external MCP servers configured';
+
+  @override
+  String get agentConfigAddMCPServer => 'Add MCP server';
+
+  @override
+  String get agentConfigNoSkills => 'No skills configured';
+
+  @override
+  String get agentConfigAddSkill => 'Add skill';
+
+  @override
+  String get agentConfigSaveSuccess => 'Agent configuration saved';
+
+  @override
+  String get agentConfigSaveError => 'Failed to save agent configuration';
+
+  @override
+  String get projectVariablesTitle => 'Project variables';
+
+  @override
+  String get projectVariablesHint =>
+      'Secrets scoped to this project. Agents resolve them via dollar-sign placeholders.';
+
+  @override
+  String get projectVariablesLoadError => 'Failed to load project secrets';
+
+  @override
+  String get projectVariablesEmpty => 'No project secrets yet';
+
+  @override
+  String get projectVariablesAddButton => 'Add secret';
+
+  @override
+  String get projectVariablesEditTitle => 'Edit secret';
+
+  @override
+  String get projectVariablesAddTitle => 'Add secret';
+
+  @override
+  String get projectVariablesKeyLabel => 'Key name';
+
+  @override
+  String get projectVariablesKeyRequired => 'Key name is required';
+
+  @override
+  String get projectVariablesKeyInvalid =>
+      'Must start with A-Z, then A-Z 0-9 _ (max 128)';
+
+  @override
+  String get projectVariablesValueLabel => 'Value';
+
+  @override
+  String get projectVariablesValueRequired => 'Value is required';
+
+  @override
+  String get projectVariablesCancelButton => 'Cancel';
+
+  @override
+  String get projectVariablesSaveButton => 'Save';
+
+  @override
+  String get projectVariablesDeleteTitle => 'Delete secret';
+
+  @override
+  String get projectVariablesDeleteConfirm => 'Permanently delete secret';
+
+  @override
+  String get projectVariablesDeleteButton => 'Delete';
+
+  @override
+  String get userVariablesTitle => 'Personal variables';
+
+  @override
+  String get userVariablesHint =>
+      'Secrets scoped to your account. Available to all agents running on your behalf.';
+
+  @override
+  String get userVariablesLoadError => 'Failed to load personal secrets';
+
+  @override
+  String get userVariablesEmpty => 'No personal secrets yet';
+
+  @override
+  String get userVariablesAddButton => 'Add secret';
+
+  @override
+  String get userVariablesAddTitle => 'Add personal secret';
+
+  @override
+  String get userVariablesKeyLabel => 'Key name';
+
+  @override
+  String get userVariablesKeyRequired => 'Key name is required';
+
+  @override
+  String get userVariablesKeyInvalid =>
+      'Must start with A-Z, then A-Z 0-9 _ (max 128)';
+
+  @override
+  String get userVariablesValueLabel => 'Value';
+
+  @override
+  String get userVariablesValueRequired => 'Value is required';
+
+  @override
+  String get userVariablesCancelButton => 'Cancel';
+
+  @override
+  String get userVariablesSaveButton => 'Save';
+
+  @override
+  String get userVariablesDeleteTitle => 'Delete secret';
+
+  @override
+  String get userVariablesDeleteConfirm => 'Permanently delete secret';
+
+  @override
+  String get userVariablesDeleteButton => 'Delete';
+
+  @override
+  String get mcpRegistryScreenTitle => 'MCP servers registry';
+
+  @override
+  String get mcpRegistryRefreshTooltip => 'Refresh';
+
+  @override
+  String get mcpRegistryLoadError => 'Failed to load MCP servers';
+
+  @override
+  String get mcpRegistryEmpty => 'No MCP servers registered yet';
+
+  @override
+  String get mcpRegistryDeleteTitle => 'Delete MCP server';
+
+  @override
+  String get mcpRegistryDeleteConfirm => 'Deactivate MCP server';
+
+  @override
+  String get mcpRegistryCancelButton => 'Cancel';
+
+  @override
+  String get mcpRegistryDeleteButton => 'Delete';
+
+  @override
+  String get mcpRegistryAddTitle => 'Add MCP server';
+
+  @override
+  String get mcpRegistryEditTitle => 'Edit MCP server';
+
+  @override
+  String get mcpRegistryNameLabel => 'Name';
+
+  @override
+  String get mcpRegistryNameRequired => 'Name is required';
+
+  @override
+  String get mcpRegistryDescLabel => 'Description';
+
+  @override
+  String get mcpRegistryTransportLabel => 'Transport';
+
+  @override
+  String get mcpRegistryCommandLabel => 'Command';
+
+  @override
+  String get mcpRegistryURLLabel => 'URL';
+
+  @override
+  String get mcpRegistryScopeLabel => 'Scope';
+
+  @override
+  String get mcpRegistryActiveLabel => 'Active';
+
+  @override
+  String get mcpRegistrySaveButton => 'Save';
+
+  @override
+  String get rolePromptsScreenTitle => 'Agent role prompts';
+
+  @override
+  String get rolePromptsRefreshTooltip => 'Refresh';
+
+  @override
+  String get rolePromptsLoadError => 'Failed to load role prompts';
+
+  @override
+  String get rolePromptsEmpty => 'No role prompts configured yet';
+
+  @override
+  String get rolePromptsEditTitle => 'Edit role prompt';
+
+  @override
+  String get rolePromptsContentLabel => 'Prompt content';
+
+  @override
+  String get rolePromptsCancelButton => 'Cancel';
+
+  @override
+  String get rolePromptsSaveButton => 'Save';
 }

@@ -65,6 +65,7 @@ type createAgentRequest struct {
 }
 
 type updateAgentRequest struct {
+	Role               *string  `json:"role,omitempty"`
 	RoleDescription    *string  `json:"role_description,omitempty"`
 	SystemPrompt       *string  `json:"system_prompt,omitempty"`
 	Model              *string  `json:"model,omitempty"`
@@ -247,6 +248,10 @@ func (h *AgentV2Handler) Update(c *gin.Context) {
 		MaxTokens:          req.MaxTokens,
 		IsActive:           req.IsActive,
 		InternalMCPEnabled: req.InternalMCPEnabled,
+	}
+	if req.Role != nil && *req.Role != "" {
+		r := models.AgentRole(*req.Role)
+		in.Role = &r
 	}
 	if req.ProviderKind != nil && *req.ProviderKind != "" {
 		pk := models.AgentProviderKind(*req.ProviderKind)
