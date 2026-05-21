@@ -310,6 +310,6 @@ func TestConversationMessageRepository_ListByProjectID_Success(t *testing.T) {
 	t.Run("With cursor", func(t *testing.T) {
 		list, err := repo.ListByProjectID(ctx, project.ID, &lastMsgID, 10, false)
 		require.NoError(t, err)
-		assert.Len(t, list, 0) // Messages after the 2nd one (index 1)
+		assert.Len(t, list, 2) // Messages after the 2nd one (index 1)
 	})
 }
