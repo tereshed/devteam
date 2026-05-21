@@ -77,7 +77,7 @@ func TestTaskRepository_Create_Success(t *testing.T) {
 		ProjectID:       p.ID,
 		Title:           "Full task",
 		Description:     "long desc",
-		Status:          models.TaskStateActive,
+		State:          models.TaskStateActive,
 		Priority:        models.TaskPriorityHigh,
 		AssignedAgentID: &agent.ID,
 		CreatedByType:   models.CreatedByAgent,
@@ -97,7 +97,7 @@ func TestTaskRepository_Create_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Full task", got.Title)
 	assert.Equal(t, "long desc", got.Description)
-	assert.Equal(t, models.TaskStateActive, got.Status)
+	assert.Equal(t, models.TaskStateActive, got.State)
 	assert.Equal(t, models.TaskPriorityHigh, got.Priority)
 	assert.Equal(t, agent.ID, *got.AssignedAgentID)
 	assert.Equal(t, models.CreatedByAgent, got.CreatedByType)
@@ -223,7 +223,7 @@ func TestTaskRepository_List_ByProjectID(t *testing.T) {
 	assert.Equal(t, "a1", list[0].Title)
 }
 
-func TestTaskRepository_List_FilterByStatus(t *testing.T) {
+func TestTaskRepository_List_FilterByState(t *testing.T) {
 	db := setupTestDB(t)
 	defer cleanupProjectIntegrationDB(t, db)
 
@@ -232,22 +232,22 @@ func TestTaskRepository_List_FilterByStatus(t *testing.T) {
 	ctx := context.Background()
 
 	t1 := newTestTask(p.ID, user.ID, "ip")
-	t1.Status = models.TaskStateActive
+	t1.State = models.TaskStateActive
 	t2 := newTestTask(p.ID, user.ID, "pend")
-	t2.Status = models.TaskStateActive
+	t2.State = models.TaskStateActive
 	require.NoError(t, repo.Create(ctx, t1))
 	require.NoError(t, repo.Create(ctx, t2))
 
 	st := models.TaskStateActive
 	pid := p.ID
-	list, total, err := repo.List(ctx, TaskFilter{ProjectID: &pid, Status: &st, Limit: 20})
+	list, total, err := repo.List(ctx, TaskFilter{ProjectID: &pid, State: &st, Limit: 20})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
-	assert.Equal(t, models.TaskStateActive, list[0].Status)
+	assert.Equal(t, models.TaskStateActive, list[0].State)
 }
 
-func TestTaskRepository_List_FilterByStatuses(t *testing.T) {
+func TestTaskRepository_List_FilterByStates(t *testing.T) {
 	db := setupTestDB(t)
 	defer cleanupProjectIntegrationDB(t, db)
 
@@ -255,7 +255,7 @@ func TestTaskRepository_List_FilterByStatuses(t *testing.T) {
 	repo := NewTaskRepository(db)
 	ctx := context.Background()
 
-	for _, st := range []models.TaskStatus{models.TaskStateDone, models.TaskStateActive, models.TaskStateActive} {
+	for _, st := range []models.TaskState{models.TaskStateDone, models.TaskStateActive, models.TaskStateActive} {
 		tk := newTestTask(p.ID, user.ID, string(st))
 		tk.State = st
 		require.NoError(t, repo.Create(ctx, tk))
@@ -264,7 +264,7 @@ func TestTaskRepository_List_FilterByStatuses(t *testing.T) {
 	pid := p.ID
 	list, total, err := repo.List(ctx, TaskFilter{
 		ProjectID: &pid,
-		Statuses:  []models.TaskStatus{models.TaskStateActive, models.TaskStateActive},
+		States:  []models.TaskState{models.TaskStateActive, models.TaskStateActive},
 		Limit:     20,
 	})
 	require.NoError(t, err)
@@ -516,15 +516,15 @@ func TestTaskRepository_Update_Success(t *testing.T) {
 
 	loaded, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	expStatus := loaded.Status
+	expStatus := loaded.State
 	expUpdated := loaded.UpdatedAt
-	loaded.Status = models.TaskStateActive
+	loaded.State = models.TaskStateActive
 	loaded.AssignedAgentID = &agent.ID
 	require.NoError(t, repo.Update(ctx, loaded, expStatus, expUpdated))
 
 	again, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	assert.Equal(t, models.TaskStateActive, again.Status)
+	assert.Equal(t, models.TaskStateActive, again.State)
 	assert.Equal(t, agent.ID, *again.AssignedAgentID)
 	assert.True(t, again.UpdatedAt.After(before) || !again.UpdatedAt.Equal(before))
 }
@@ -543,21 +543,21 @@ func TestTaskRepository_Update_StaleOptimisticLock(t *testing.T) {
 
 	a, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	staleStatus := a.Status
+	staleStatus := a.State
 	staleUpdated := a.UpdatedAt
 
 	b, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	expBStatus := b.Status
+	expBStatus := b.State
 	expBUpdated := b.UpdatedAt
-	b.Status = models.TaskStateActive
+	b.State = models.TaskStateActive
 	require.NoError(t, repo.Update(ctx, b, expBStatus, expBUpdated))
 
 	c, err := repo.GetByID(ctx, task.ID)
 	require.NoError(t, err)
-	assert.Equal(t, models.TaskStateActive, c.Status)
+	assert.Equal(t, models.TaskStateActive, c.State)
 
-	c.Status = models.TaskStateActive
+	c.State = models.TaskStateActive
 	c.AssignedAgentID = &agent.ID
 	err = repo.Update(ctx, c, staleStatus, staleUpdated)
 	assert.ErrorIs(t, err, ErrTaskConcurrentUpdate)

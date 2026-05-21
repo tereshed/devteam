@@ -41,7 +41,7 @@ func TestSandboxAgentExecutor_Integration_DisableNetwork(t *testing.T) {
 
 	// 3. Настройка экзекутора
 	runner := sandbox.NewDockerSandboxRunner(cli, nil)
-	executor := NewSandboxAgentExecutor(runner, img)
+	executor := NewSandboxAgentExecutor(runner, img, nil)
 
 	// 4. Запуск задачи с отключенной сетью (ожидаем провал клонирования)
 	input := ExecutionInput{

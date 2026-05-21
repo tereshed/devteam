@@ -35,7 +35,7 @@ func createTaskMessageTestTask(t *testing.T, db *gorm.DB) (*models.User, *models
 		ProjectID:     p.ID,
 		Title:         "task",
 		Description:   "",
-		Status:        models.TaskStateActive,
+		State:        models.TaskStateActive,
 		Priority:      models.TaskPriorityMedium,
 		CreatedByType: models.CreatedByUser,
 		CreatedByID:   user.ID,

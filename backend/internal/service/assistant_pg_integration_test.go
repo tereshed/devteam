@@ -354,7 +354,7 @@ type fixedLLMResolver struct {
 	client llm.Client
 }
 
-func (r fixedLLMResolver) ResolveAssistantClient(_ context.Context, _ *models.Agent) (llm.Client, error) {
+func (r fixedLLMResolver) ResolveAssistantClient(_ context.Context, _ *models.Agent, _ uuid.UUID) (llm.Client, error) {
 	return r.client, nil
 }
 
