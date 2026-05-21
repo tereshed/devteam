@@ -1361,7 +1361,42 @@ definitions:
     - name
     - role
     type: object
+  handler.mcpServerRegistryRequest:
+    type: object
+  handler.projectSecretResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      key_name:
+        type: string
+      project_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  handler.setProjectSecretRequest:
+    properties:
+      key_name:
+        type: string
+      value:
+        type: string
+    required:
+    - key_name
+    - value
+    type: object
   handler.setSecretRequest:
+    properties:
+      key_name:
+        type: string
+      value:
+        type: string
+    required:
+    - key_name
+    - value
+    type: object
+  handler.setUserSecretRequest:
     properties:
       key_name:
         type: string
@@ -1384,6 +1419,8 @@ definitions:
       model:
         type: string
       provider_kind:
+        type: string
+      role:
         type: string
       role_description:
         type: string
@@ -1426,6 +1463,19 @@ definitions:
         type: string
     required:
     - content
+    type: object
+  handler.userSecretResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      key_name:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
     type: object
   handler.worktreeResponse:
     properties:
@@ -1837,6 +1887,16 @@ definitions:
     - MCPAuthAPIKey
     - MCPAuthOAuth
     - MCPAuthBearer
+  models.MCPScope:
+    enum:
+    - global
+    - project
+    - agent
+    type: string
+    x-enum-varnames:
+    - MCPScopeGlobal
+    - MCPScopeProject
+    - MCPScopeAgent
   models.MCPServerConfig:
     properties:
       auth_type:
@@ -1860,6 +1920,43 @@ definitions:
       url:
         type: string
     type: object
+  models.MCPServerRegistry:
+    properties:
+      args:
+        type: object
+      command:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      env_template:
+        type: object
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      scope:
+        $ref: '#/definitions/models.MCPScope'
+      transport:
+        $ref: '#/definitions/models.MCPTransport'
+      updated_at:
+        type: string
+      url:
+        type: string
+    type: object
+  models.MCPTransport:
+    enum:
+    - stdio
+    - http
+    - sse
+    type: string
+    x-enum-varnames:
+    - MCPTransportStdio
+    - MCPTransportHTTP
+    - MCPTransportSSE
   models.Project:
     properties:
       created_at:
@@ -2004,6 +2101,15 @@ definitions:
     - RoleGuest
     - RoleUser
     - RoleAdmin
+  service.SetProjectSecretOutput:
+    properties:
+      id:
+        type: string
+      key_name:
+        type: string
+      project_id:
+        type: string
+    type: object
   service.SetSecretOutput:
     properties:
       agentID:
@@ -2011,6 +2117,15 @@ definitions:
       keyName:
         type: string
       secretID:
+        type: string
+    type: object
+  service.SetUserSecretOutput:
+    properties:
+      id:
+        type: string
+      key_name:
+        type: string
+      user_id:
         type: string
     type: object
 host: localhost:8080
@@ -2143,6 +2258,111 @@ paths:
       summary: Update role prompt
       tags:
       - admin-role-prompts
+  /admin/mcp-servers:
+    get:
+      parameters:
+      - description: Only active servers
+        in: query
+        name: only_active
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.MCPServerRegistry'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List MCP servers
+      tags:
+      - admin-mcp-servers
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Server definition
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.mcpServerRegistryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.MCPServerRegistry'
+      security:
+      - BearerAuth: []
+      summary: Create MCP server
+      tags:
+      - admin-mcp-servers
+  /admin/mcp-servers/{id}:
+    delete:
+      parameters:
+      - description: Server UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Delete MCP server
+      tags:
+      - admin-mcp-servers
+    get:
+      parameters:
+      - description: Server UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MCPServerRegistry'
+      security:
+      - BearerAuth: []
+      summary: Get MCP server
+      tags:
+      - admin-mcp-servers
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Server UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Server definition
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.mcpServerRegistryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MCPServerRegistry'
+      security:
+      - BearerAuth: []
+      summary: Update MCP server
+      tags:
+      - admin-mcp-servers
   /agents:
     get:
       description: Реестр LLM/sandbox-агентов с фильтрами (only_active, execution_kind,
@@ -4306,6 +4526,60 @@ paths:
       summary: Обновление LLM credentials
       tags:
       - me
+  /me/secrets:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.userSecretResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List user secrets
+      tags:
+      - user-secrets
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: key_name + plaintext value
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.setUserSecretRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/service.SetUserSecretOutput'
+      security:
+      - BearerAuth: []
+      summary: Set user secret
+      tags:
+      - user-secrets
+  /me/secrets/{secret_id}:
+    delete:
+      parameters:
+      - description: Secret UUID
+        in: path
+        name: secret_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Delete user secret
+      tags:
+      - user-secrets
   /projects:
     get:
       consumes:
@@ -4607,6 +4881,76 @@ paths:
       summary: Переиндексация проекта
       tags:
       - projects
+  /projects/{id}/secrets:
+    get:
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.projectSecretResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List project secrets
+      tags:
+      - project-secrets
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: key_name + plaintext value
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.setProjectSecretRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/service.SetProjectSecretOutput'
+      security:
+      - BearerAuth: []
+      summary: Set project secret
+      tags:
+      - project-secrets
+  /projects/{id}/secrets/{secret_id}:
+    delete:
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Secret UUID
+        in: path
+        name: secret_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Delete project secret
+      tags:
+      - project-secrets
   /projects/{id}/tasks:
     get:
       description: Возвращает задачи проекта с фильтрацией и пагинацией

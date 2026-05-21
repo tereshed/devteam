@@ -195,6 +195,178 @@
                 }
             }
         },
+        "/admin/mcp-servers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp-servers"
+                ],
+                "summary": "List MCP servers",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Only active servers",
+                        "name": "only_active",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.MCPServerRegistry"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp-servers"
+                ],
+                "summary": "Create MCP server",
+                "parameters": [
+                    {
+                        "description": "Server definition",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.mcpServerRegistryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.MCPServerRegistry"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mcp-servers/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp-servers"
+                ],
+                "summary": "Get MCP server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Server UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MCPServerRegistry"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-mcp-servers"
+                ],
+                "summary": "Update MCP server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Server UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Server definition",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.mcpServerRegistryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MCPServerRegistry"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin-mcp-servers"
+                ],
+                "summary": "Delete MCP server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Server UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/agents": {
             "get": {
                 "security": [
@@ -3647,6 +3819,96 @@
                 }
             }
         },
+        "/me/secrets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-secrets"
+                ],
+                "summary": "List user secrets",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.userSecretResponse"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-secrets"
+                ],
+                "summary": "Set user secret",
+                "parameters": [
+                    {
+                        "description": "key_name + plaintext value",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.setUserSecretRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/service.SetUserSecretOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/secrets/{secret_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "user-secrets"
+                ],
+                "summary": "Delete user secret",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Secret UUID",
+                        "name": "secret_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/projects": {
             "get": {
                 "security": [
@@ -4127,6 +4389,119 @@
                         "schema": {
                             "$ref": "#/definitions/apierror.ErrorResponse"
                         }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/secrets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "project-secrets"
+                ],
+                "summary": "List project secrets",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.projectSecretResponse"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "project-secrets"
+                ],
+                "summary": "Set project secret",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "key_name + plaintext value",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.setProjectSecretRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/service.SetProjectSecretOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/secrets/{secret_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "project-secrets"
+                ],
+                "summary": "Delete project secret",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Secret UUID",
+                        "name": "secret_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
                     }
                 }
             }
@@ -8578,7 +8953,60 @@
                 }
             }
         },
+        "handler.mcpServerRegistryRequest": {
+            "type": "object"
+        },
+        "handler.projectSecretResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "key_name": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.setProjectSecretRequest": {
+            "type": "object",
+            "required": [
+                "key_name",
+                "value"
+            ],
+            "properties": {
+                "key_name": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.setSecretRequest": {
+            "type": "object",
+            "required": [
+                "key_name",
+                "value"
+            ],
+            "properties": {
+                "key_name": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.setUserSecretRequest": {
             "type": "object",
             "required": [
                 "key_name",
@@ -8612,6 +9040,9 @@
                     "type": "string"
                 },
                 "provider_kind": {
+                    "type": "string"
+                },
+                "role": {
                     "type": "string"
                 },
                 "role_description": {
@@ -8674,6 +9105,26 @@
                     "type": "string"
                 },
                 "description": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.userSecretResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "key_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -9240,6 +9691,19 @@
                 "MCPAuthBearer"
             ]
         },
+        "models.MCPScope": {
+            "type": "string",
+            "enum": [
+                "global",
+                "project",
+                "agent"
+            ],
+            "x-enum-varnames": [
+                "MCPScopeGlobal",
+                "MCPScopeProject",
+                "MCPScopeAgent"
+            ]
+        },
         "models.MCPServerConfig": {
             "type": "object",
             "properties": {
@@ -9274,6 +9738,60 @@
                     "type": "string"
                 }
             }
+        },
+        "models.MCPServerRegistry": {
+            "type": "object",
+            "properties": {
+                "args": {
+                    "type": "object"
+                },
+                "command": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "env_template": {
+                    "type": "object"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scope": {
+                    "$ref": "#/definitions/models.MCPScope"
+                },
+                "transport": {
+                    "$ref": "#/definitions/models.MCPTransport"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MCPTransport": {
+            "type": "string",
+            "enum": [
+                "stdio",
+                "http",
+                "sse"
+            ],
+            "x-enum-varnames": [
+                "MCPTransportStdio",
+                "MCPTransportHTTP",
+                "MCPTransportSSE"
+            ]
         },
         "models.Project": {
             "type": "object",
@@ -9486,6 +10004,20 @@
                 "RoleAdmin"
             ]
         },
+        "service.SetProjectSecretOutput": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "key_name": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                }
+            }
+        },
         "service.SetSecretOutput": {
             "type": "object",
             "properties": {
@@ -9496,6 +10028,20 @@
                     "type": "string"
                 },
                 "secretID": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.SetUserSecretOutput": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "key_name": {
+                    "type": "string"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
