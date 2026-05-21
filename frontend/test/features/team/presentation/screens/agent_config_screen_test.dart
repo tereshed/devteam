@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/admin/agents_v2/data/agents_v2_providers.dart';
 import 'package:frontend/features/admin/agents_v2/data/mcp_registry_providers.dart';
 import 'package:frontend/features/admin/agents_v2/domain/agent_v2_model.dart';
 import 'package:frontend/features/team/data/agent_settings_providers.dart';
 import 'package:frontend/features/team/domain/models/agent_settings_model.dart';
 import 'package:frontend/features/team/presentation/screens/agent_config_screen.dart';
-import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
 const _agentId = 'agent-test-001';
@@ -172,10 +172,10 @@ void main() {
                 .overrideWith((ref) async => _defaultSettings),
             mcpRegistryListProvider.overrideWith((ref) async => []),
           ],
-          child: MaterialApp(
+          child: const MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            home: const AgentConfigScreen(agentId: _agentId),
+            home: AgentConfigScreen(agentId: _agentId),
           ),
         ),
       );
@@ -199,10 +199,10 @@ void main() {
                 .overrideWith((ref) async => _defaultSettings),
             mcpRegistryListProvider.overrideWith((ref) async => []),
           ],
-          child: MaterialApp(
+          child: const MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            home: const AgentConfigScreen(agentId: _agentId),
+            home: AgentConfigScreen(agentId: _agentId),
           ),
         ),
       );
