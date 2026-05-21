@@ -1048,6 +1048,7 @@ void main() {
       for (var i = 0; i < kTasksCrossBranchPushMaxRetries; i++) {
         await tester.pump();
       }
+      await tester.pumpAndSettle();
 
       expect(
         router.state.uri.path,

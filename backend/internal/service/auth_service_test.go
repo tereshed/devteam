@@ -316,3 +316,120 @@ func TestAuthService_DeleteUser(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 	mockBus.AssertExpectations(t)
 }
+
+// newAgentSvcForAuthTest builds an AgentService with in-memory repos and seeded
+// role prompts, suitable for testing the Register → CreateDefaultAssistant flow.
+func newAgentSvcForAuthTest(t *testing.T) (*AgentService, *memAgentRepo, *memSecretRepo, *memApiKeyRepo) {
+	t.Helper()
+	agentRepo := newMemAgentRepo()
+	secretRepo := newMemSecretRepo()
+	apiKeyRepo := newMemApiKeyRepo()
+	rolePromptRepo := newMemRolePromptRepo()
+	rolePromptRepo.seed(string(models.AgentRoleAssistant), "You are the assistant.")
+
+	svc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
+	svc.WithRolePromptRepo(rolePromptRepo).WithApiKeyRepo(apiKeyRepo)
+	return svc, agentRepo, secretRepo, apiKeyRepo
+}
+
+func TestAuthService_Register_CreatesAssistantInTransaction(t *testing.T) {
+	mockUserRepo := new(MockUserRepository)
+	mockTokenRepo := new(MockRefreshTokenRepository)
+	mockBus := new(MockEventBus)
+	jwtMgr := createTestJWTManager()
+	agentSvc, agentRepo, secretRepo, apiKeyRepo := newAgentSvcForAuthTest(t)
+	txMgr := newMemTxManager()
+
+	mockUserRepo.On("GetByEmail", mock.Anything, "newuser@example.com").
+		Return(nil, repository.ErrUserNotFound)
+	mockUserRepo.On("Create", mock.Anything, mock.MatchedBy(func(user *models.User) bool {
+		return user.Email == "newuser@example.com"
+	})).Run(func(args mock.Arguments) {
+		// Simulate DB assigning an ID on Create.
+		u := args.Get(1).(*models.User)
+		if u.ID == uuid.Nil {
+			u.ID = uuid.New()
+		}
+	}).Return(nil)
+
+	svc := NewAuthServiceWithAgents(mockUserRepo, mockTokenRepo, jwtMgr, mockBus, agentSvc, txMgr)
+	user, err := svc.Register(context.Background(), "newuser@example.com", "password123")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+	assert.Equal(t, "newuser@example.com", user.Email)
+	assert.NotEqual(t, uuid.Nil, user.ID)
+
+	// Verify assistant agent was created in memAgentRepo.
+	agents, total, _ := agentRepo.List(context.Background(), repository.AgentFilter{})
+	assert.Equal(t, int64(1), total)
+	assert.Equal(t, 1, len(agents))
+	a := agents[0]
+	assert.Equal(t, "assistant", a.Name)
+	assert.Equal(t, models.AgentRoleAssistant, a.Role)
+	assert.Equal(t, models.AgentExecutionKindLLM, a.ExecutionKind)
+	assert.NotNil(t, a.UserID)
+	assert.Equal(t, user.ID, *a.UserID)
+	assert.NotNil(t, a.SystemPrompt)
+	assert.Equal(t, "You are the assistant.", *a.SystemPrompt)
+
+	// Verify scoped MCP API key was created.
+	keys, _ := apiKeyRepo.ListByUserID(context.Background(), user.ID)
+	assert.Equal(t, 1, len(keys))
+	assert.Equal(t, `"mcp"`, keys[0].Scopes)
+
+	// Verify encrypted DEVTEAM_MCP_TOKEN secret exists.
+	secrets, _ := secretRepo.ListByAgentID(context.Background(), a.ID)
+	assert.Equal(t, 1, len(secrets))
+	assert.Equal(t, "DEVTEAM_MCP_TOKEN", secrets[0].KeyName)
+	assert.True(t, len(secrets[0].EncryptedValue) > 0, "encrypted value should be non-empty")
+
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestAuthService_Register_RollbackOnAgentError(t *testing.T) {
+	mockUserRepo := new(MockUserRepository)
+	mockTokenRepo := new(MockRefreshTokenRepository)
+	mockBus := new(MockEventBus)
+	jwtMgr := createTestJWTManager()
+
+	// Build AgentService with empty rolePromptRepo (no prompts seeded) so
+	// CreateDefaultAssistant will fail with "default prompt for assistant: ...".
+	agentRepo := newMemAgentRepo()
+	secretRepo := newMemSecretRepo()
+	apiKeyRepo := newMemApiKeyRepo()
+	emptyPromptRepo := newMemRolePromptRepo() // no seeds
+
+	agentSvc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
+	agentSvc.WithRolePromptRepo(emptyPromptRepo).WithApiKeyRepo(apiKeyRepo)
+
+	txMgr := newMemTxManager()
+
+	mockUserRepo.On("GetByEmail", mock.Anything, "rollback@example.com").
+		Return(nil, repository.ErrUserNotFound)
+	mockUserRepo.On("Create", mock.Anything, mock.MatchedBy(func(user *models.User) bool {
+		return user.Email == "rollback@example.com"
+	})).Run(func(args mock.Arguments) {
+		u := args.Get(1).(*models.User)
+		if u.ID == uuid.Nil {
+			u.ID = uuid.New()
+		}
+	}).Return(nil)
+
+	svc := NewAuthServiceWithAgents(mockUserRepo, mockTokenRepo, jwtMgr, mockBus, agentSvc, txMgr)
+	user, err := svc.Register(context.Background(), "rollback@example.com", "password123")
+
+	// Transaction should have rolled back — Register returns error, no user.
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.Contains(t, err.Error(), "default prompt for assistant")
+
+	// No agents should exist (transaction rolled back before agent creation could succeed).
+	agents, total, _ := agentRepo.List(context.Background(), repository.AgentFilter{})
+	assert.Equal(t, int64(0), total)
+	assert.Empty(t, agents)
+
+	// No API keys or secrets should have leaked.
+	secrets, _ := secretRepo.ListByAgentID(context.Background(), uuid.Nil)
+	assert.Empty(t, secrets)
+}

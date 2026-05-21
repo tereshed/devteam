@@ -1561,3 +1561,123 @@ func TestProjectService_Reindex_LocalProject_Error(t *testing.T) {
 	err := svc.Reindex(ctx, userID, models.RoleUser, projectID)
 	require.ErrorIs(t, err, ErrProjectLocalCannotReindex)
 }
+
+// newAgentSvcForProjectTest builds an AgentService with in-memory repos and
+// seeded role prompts for orchestrator + router, suitable for project creation tests.
+func newAgentSvcForProjectTest(t *testing.T) (*AgentService, *memAgentRepo) {
+	t.Helper()
+	agentRepo := newMemAgentRepo()
+	secretRepo := newMemSecretRepo()
+	rolePromptRepo := newMemRolePromptRepo()
+	rolePromptRepo.seed(string(models.AgentRoleOrchestrator), "You are the orchestrator.")
+	rolePromptRepo.seed(string(models.AgentRoleRouter), "You are the router.")
+
+	svc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
+	svc.WithRolePromptRepo(rolePromptRepo)
+	return svc, agentRepo
+}
+
+func TestProjectService_Create_CreatesDefaultProjectAgents(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	pr := new(MockProjectRepository)
+	tr := new(MockTeamRepository)
+	agentSvc, agentRepo := newAgentSvcForProjectTest(t)
+
+	baseSvc := newTestProjectService(pr, tr, new(MockGitCredentialRepository), noopTxManager{})
+	svc := WithAgentService(baseSvc, agentSvc)
+
+	var capturedTeamID uuid.UUID
+	pr.On("Create", mock.Anything, mock.AnythingOfType("*models.Project")).
+		Run(assignProjectIDOnCreate).Return(nil)
+	tr.On("Create", mock.Anything, mock.MatchedBy(func(team *models.Team) bool {
+		return team.Name == devTeamDefaultName && team.Type == models.TeamTypeDevelopment
+	})).Run(func(args mock.Arguments) {
+		team := args.Get(1).(*models.Team)
+		if team.ID == uuid.Nil {
+			team.ID = uuid.New()
+		}
+		capturedTeamID = team.ID
+	}).Return(nil)
+
+	out, err := svc.Create(ctx, userID, dto.CreateProjectRequest{Name: "Agent Project"})
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, "Agent Project", out.Name)
+
+	// Verify that orchestrator and router agents were created in the agent repo.
+	agents, total, _ := agentRepo.List(ctx, repository.AgentFilter{})
+	require.Equal(t, int64(2), total)
+	require.Equal(t, 2, len(agents))
+
+	roles := map[models.AgentRole]models.Agent{}
+	for _, a := range agents {
+		roles[a.Role] = a
+	}
+
+	// Orchestrator checks.
+	orch, ok := roles[models.AgentRoleOrchestrator]
+	require.True(t, ok, "orchestrator agent must exist")
+	assert.Equal(t, "orchestrator", orch.Name)
+	assert.NotNil(t, orch.TeamID)
+	assert.Equal(t, capturedTeamID, *orch.TeamID)
+	assert.NotNil(t, orch.SystemPrompt)
+	assert.Equal(t, "You are the orchestrator.", *orch.SystemPrompt)
+	assert.Equal(t, models.AgentExecutionKindLLM, orch.ExecutionKind)
+
+	// Router checks.
+	rtr, ok := roles[models.AgentRoleRouter]
+	require.True(t, ok, "router agent must exist")
+	assert.Equal(t, "router", rtr.Name)
+	assert.NotNil(t, rtr.TeamID)
+	assert.Equal(t, capturedTeamID, *rtr.TeamID)
+	assert.NotNil(t, rtr.SystemPrompt)
+	assert.Equal(t, "You are the router.", *rtr.SystemPrompt)
+	assert.Equal(t, models.AgentExecutionKindLLM, rtr.ExecutionKind)
+
+	pr.AssertExpectations(t)
+	tr.AssertExpectations(t)
+}
+
+func TestProjectService_Create_RollbackOnAgentError(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	pr := new(MockProjectRepository)
+	tr := new(MockTeamRepository)
+
+	// Build AgentService with empty rolePromptRepo — CreateDefaultProjectAgents
+	// will fail because no prompts are seeded for orchestrator/router.
+	agentRepo := newMemAgentRepo()
+	secretRepo := newMemSecretRepo()
+	emptyPromptRepo := newMemRolePromptRepo() // no seeds
+	agentSvc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
+	agentSvc.WithRolePromptRepo(emptyPromptRepo)
+
+	baseSvc := newTestProjectService(pr, tr, new(MockGitCredentialRepository), noopTxManager{})
+	svc := WithAgentService(baseSvc, agentSvc)
+
+	pr.On("Create", mock.Anything, mock.AnythingOfType("*models.Project")).
+		Run(assignProjectIDOnCreate).Return(nil)
+	tr.On("Create", mock.Anything, mock.MatchedBy(func(team *models.Team) bool {
+		return team.Name == devTeamDefaultName
+	})).Run(func(args mock.Arguments) {
+		team := args.Get(1).(*models.Team)
+		if team.ID == uuid.Nil {
+			team.ID = uuid.New()
+		}
+	}).Return(nil)
+
+	_, err := svc.Create(ctx, userID, dto.CreateProjectRequest{Name: "Fail Project"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default prompt for orchestrator")
+
+	// In a real DB the transaction would rollback, undoing the project and team
+	// creation. The mock repos don't truly rollback, but the service returned an
+	// error which means the caller never receives a project.
+	//
+	// Agents should not have been created since the prompt lookup failed before
+	// any agent Create call.
+	agents, total, _ := agentRepo.List(ctx, repository.AgentFilter{})
+	assert.Equal(t, int64(0), total)
+	assert.Empty(t, agents)
+}

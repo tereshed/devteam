@@ -54,14 +54,46 @@ func (m *mockApiKeyService) DeleteKey(ctx context.Context, keyID uuid.UUID, requ
 	return args.Error(0)
 }
 
-// testValidKey — реалистичный API-ключ для тестов: "wibe_" + 64 hex = 69 символов
+// testValidKey — realistic API key for tests: "wibe_" + 64 hex = 69 chars
 const testValidKey = "wibe_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
 
-// dummyHandler — возвращает 200, используется как next handler в middleware
+// dummyHandler returns 200 OK, used as the next handler in middleware tests.
 var dummyHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
 })
+
+// --- scopeAllowsMCP unit tests ---
+
+func TestScopeAllowsMCP(t *testing.T) {
+	tests := []struct {
+		name    string
+		scopes  string
+		allowed bool
+	}{
+		{"empty allows all", "", true},
+		{"wildcard", "*", true},
+		{"JSON-encoded wildcard", `"*"`, true},
+		{"JSON-encoded mcp", `"mcp"`, true},
+		{"bare mcp", "mcp", true},
+		{"JSON-encoded read only", `"read"`, false},
+		{"JSON-encoded read,mcp comma-separated", `"read,mcp"`, true},
+		{"JSON-encoded read mcp space-separated", `"read mcp"`, true},
+		{"JSON-encoded admin", `"admin"`, false},
+		{"csv with mcp", "read,mcp,write", true},
+		{"space-separated with mcp", "read mcp write", true},
+		{"no_mcp must NOT match", "no_mcp", false},
+		{"mcp_readonly must NOT match", "mcp_readonly", false},
+		{"supermcp must NOT match", "supermcp", false},
+		{"disable-mcp must NOT match", "disable-mcp", false},
+		{"admin_only", `"admin_only"`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.allowed, scopeAllowsMCP(tt.scopes))
+		})
+	}
+}
 
 // --- extractApiKey ---
 
@@ -142,7 +174,7 @@ func TestIsValidKeyFormat(t *testing.T) {
 	}
 }
 
-// --- NewAuthMiddleware ---
+// --- NewAuthMiddleware: error paths ---
 
 func TestNewAuthMiddleware_NilService(t *testing.T) {
 	handler := NewAuthMiddleware(dummyHandler, nil)
@@ -237,6 +269,8 @@ func TestNewAuthMiddleware_InternalError(t *testing.T) {
 	assertAuthError(t, w, "INTERNAL_ERROR")
 }
 
+// --- NewAuthMiddleware: success + context enrichment ---
+
 func TestNewAuthMiddleware_Success(t *testing.T) {
 	svc := new(mockApiKeyService)
 
@@ -247,7 +281,6 @@ func TestNewAuthMiddleware_Success(t *testing.T) {
 
 	svc.On("ValidateKey", mock.Anything, testValidKey).Return(apiKey, user, nil)
 
-	// Проверяем, что context обогащён правильными данными
 	var capturedUserID uuid.UUID
 	var capturedRole models.UserRole
 	var capturedKeyID uuid.UUID
@@ -272,63 +305,42 @@ func TestNewAuthMiddleware_Success(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
-// --- Scope enforcement ---
+// --- NewAuthMiddleware: scope enforcement integration ---
 
-func TestNewAuthMiddleware_ScopeDenied(t *testing.T) {
-	svc := new(mockApiKeyService)
-	apiKey := &models.ApiKey{ID: uuid.New(), UserID: uuid.New(), Scopes: `"admin_only"`}
-	user := &models.User{ID: apiKey.UserID, Role: models.RoleUser}
-	svc.On("ValidateKey", mock.Anything, testValidKey).Return(apiKey, user, nil)
-
-	handler := NewAuthMiddleware(dummyHandler, svc)
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	req.Header.Set("X-API-Key", testValidKey)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusForbidden, w.Code)
-	assertAuthError(t, w, "SCOPE_DENIED")
-}
-
-func TestNewAuthMiddleware_ScopeMCPAllowed(t *testing.T) {
-	svc := new(mockApiKeyService)
-	apiKey := &models.ApiKey{ID: uuid.New(), UserID: uuid.New(), Scopes: `"mcp"`}
-	user := &models.User{ID: apiKey.UserID, Role: models.RoleUser}
-	svc.On("ValidateKey", mock.Anything, testValidKey).Return(apiKey, user, nil)
-
-	handler := NewAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}), svc)
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	req.Header.Set("X-API-Key", testValidKey)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestScopeAllowsMCP_ExactMatch(t *testing.T) {
+func TestNewAuthMiddleware_ScopeEnforcement(t *testing.T) {
 	tests := []struct {
-		name    string
-		scopes  string
-		allowed bool
+		name       string
+		scopes     string
+		wantStatus int
+		wantError  string
 	}{
-		{"empty", "", true},
-		{"wildcard", "*", true},
-		{"quoted wildcard", `"*"`, true},
-		{"exact mcp", "mcp", true},
-		{"quoted mcp", `"mcp"`, true},
-		{"csv with mcp", "read,mcp,write", true},
-		{"space-separated with mcp", "read mcp write", true},
-		{"no_mcp must NOT match", "no_mcp", false},
-		{"mcp_readonly must NOT match", "mcp_readonly", false},
-		{"disable-mcp must NOT match", "disable-mcp", false},
-		{"admin_only", `"admin_only"`, false},
-		{"supermcp must NOT match", "supermcp", false},
+		{"mcp scope allowed", `"mcp"`, http.StatusOK, ""},
+		{"admin scope denied", `"admin"`, http.StatusForbidden, "SCOPE_DENIED"},
+		{"wildcard scope allowed", `"*"`, http.StatusOK, ""},
+		{"bare wildcard allowed", "*", http.StatusOK, ""},
+		{"empty scope allowed", "", http.StatusOK, ""},
+		{"read,mcp comma-separated allowed", `"read,mcp"`, http.StatusOK, ""},
+		{"read-only denied", `"read"`, http.StatusForbidden, "SCOPE_DENIED"},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.allowed, scopeAllowsMCP(tt.scopes))
+			svc := new(mockApiKeyService)
+			apiKey := &models.ApiKey{ID: uuid.New(), UserID: uuid.New(), Scopes: tt.scopes}
+			user := &models.User{ID: apiKey.UserID, Role: models.RoleUser}
+			svc.On("ValidateKey", mock.Anything, testValidKey).Return(apiKey, user, nil)
+
+			handler := NewAuthMiddleware(dummyHandler, svc)
+			req := httptest.NewRequest(http.MethodPost, "/", nil)
+			req.Header.Set("X-API-Key", testValidKey)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			if tt.wantError != "" {
+				assertAuthError(t, w, tt.wantError)
+			}
+			svc.AssertExpectations(t)
 		})
 	}
 }

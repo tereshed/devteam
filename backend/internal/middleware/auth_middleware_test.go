@@ -14,10 +14,8 @@ import (
 	"github.com/devteam/backend/pkg/jwt"
 )
 
-var testJWTManager *jwt.Manager
-
-func init() {
-	testJWTManager = jwt.NewManager("test-secret-key-for-testing", time.Hour, 24*time.Hour)
+func newTestJWTManager() *jwt.Manager {
+	return jwt.NewManager("test-secret-key-for-testing", time.Hour, 24*time.Hour)
 }
 
 func TestAdminOnlyMiddleware(t *testing.T) {
@@ -112,6 +110,8 @@ func TestAuthMiddleware_WS_SubprotocolFallback(t *testing.T) {
 		},
 	}
 
+	jwtMgr := newTestJWTManager()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -119,12 +119,12 @@ func TestAuthMiddleware_WS_SubprotocolFallback(t *testing.T) {
 			c.Request = httptest.NewRequest("GET", "/", nil)
 
 			if tt.subprotocol != "" && tt.subprotocol != "bearer.invalid-token" && tt.subprotocol != "bearer.another-token" {
-				realToken, _ := testJWTManager.GenerateAccessToken(uuid.New(), "user")
+				realToken, _ := jwtMgr.GenerateAccessToken(uuid.New(), "user")
 				tt.subprotocol = "bearer." + realToken
 			}
 
 			if tt.authHeader != "" && tt.authHeader != "Bearer invalid-token" && tt.authHeader != "Bearer another-token" {
-				realToken, _ := testJWTManager.GenerateAccessToken(uuid.New(), "user")
+				realToken, _ := jwtMgr.GenerateAccessToken(uuid.New(), "user")
 				tt.authHeader = "Bearer " + realToken
 			}
 
@@ -138,7 +138,7 @@ func TestAuthMiddleware_WS_SubprotocolFallback(t *testing.T) {
 				c.Request.Header.Set("Sec-WebSocket-Protocol", tt.subprotocol)
 			}
 
-			middleware := AuthMiddleware(testJWTManager, nil)
+			middleware := AuthMiddleware(jwtMgr, nil)
 			middleware(c)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)

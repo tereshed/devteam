@@ -169,7 +169,7 @@ void main() {
 
       // Empty hint в Connected.
       expect(
-        find.text('All supported providers are already connected.'),
+        find.text('No providers connected yet.'),
         findsOneWidget,
       );
       // Оба провайдера в Available.

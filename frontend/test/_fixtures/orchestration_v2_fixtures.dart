@@ -28,6 +28,7 @@ AgentV2 fxAgent({
   int? maxTokens = 4096,
   String? codeBackend,
   bool isActive = true,
+  bool internalMcpEnabled = false,
 }) {
   return AgentV2(
     id: id ?? kFxAgentId,
@@ -35,6 +36,7 @@ AgentV2 fxAgent({
     role: role,
     roleDescription: roleDescription,
     executionKind: executionKind,
+    internalMcpEnabled: internalMcpEnabled,
     systemPrompt: systemPrompt,
     model: executionKind == 'llm' ? model : null,
     temperature: executionKind == 'llm' ? temperature : null,
