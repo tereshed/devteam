@@ -23,6 +23,7 @@ type LlmCredentialsResponse struct {
 	Qwen       LlmProviderMaskView `json:"qwen"`
 	OpenRouter LlmProviderMaskView `json:"openrouter"`
 	Zhipu      LlmProviderMaskView `json:"zhipu"`
+	Antigravity LlmProviderMaskView `json:"antigravity"`
 }
 
 // PatchLlmCredentialsRequest — частичное обновление ключей (write-only поля для Swagger).
@@ -41,6 +42,8 @@ type PatchLlmCredentialsRequest struct {
 	ClearOpenRouterKey *bool   `json:"clear_openrouter_key,omitempty"`
 	ZhipuAPIKey        *string `json:"zhipu_api_key,omitempty" format:"password" swaggertype:"string"`
 	ClearZhipuKey      *bool   `json:"clear_zhipu_key,omitempty"`
+	AntigravityAPIKey  *string `json:"antigravity_api_key,omitempty" format:"password" swaggertype:"string"`
+	ClearAntigravityKey *bool   `json:"clear_antigravity_key,omitempty"`
 }
 
 // ErrTrailingJSONInPatchBody — после основного объекта в теле остался ещё JSON.

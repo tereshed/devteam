@@ -29,6 +29,8 @@ const (
 	ProviderMoonshot        ProviderType = "moonshot"
 	ProviderOllama          ProviderType = "ollama"
 	ProviderZhipu           ProviderType = "zhipu"
+	ProviderAntigravity     ProviderType = "antigravity"
+	ProviderAntigravityOAuth ProviderType = "antigravity_oauth"
 )
 
 // Config represents the configuration for a provider

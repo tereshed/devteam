@@ -264,6 +264,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get llmProviderClaudeCode => 'Claude Code';
 
   @override
+  String get llmProviderAntigravity => 'Antigravity';
+
+  @override
+  String get llmProviderAntigravityOAuth => 'Antigravity subscription';
+
+  @override
   String get llmProviderAnthropic => 'Anthropic';
 
   @override
@@ -281,6 +287,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get llmProviderClaudeCodeSubtitle =>
       'Anthropic subscription via OAuth';
+
+  @override
+  String get llmProviderAntigravitySubtitle => 'Direct Antigravity API key';
+
+  @override
+  String get llmProviderAntigravityOAuthSubtitle =>
+      'Antigravity subscription via OAuth';
 
   @override
   String get llmProviderAnthropicSubtitle => 'Direct Anthropic API key';
@@ -378,6 +391,27 @@ class AppLocalizationsEn extends AppLocalizations {
       'Access token is required';
 
   @override
+  String get integrationsLlmAntigravityManualTitle => 'Enter Antigravity token';
+
+  @override
+  String get integrationsLlmAntigravityManualHint =>
+      'Use this if Antigravity OAuth is not configured on the server or you already have a token.';
+
+  @override
+  String get integrationsLlmAntigravityManualAccessField => 'Access token';
+
+  @override
+  String get integrationsLlmAntigravityManualRefreshField =>
+      'Refresh token (optional)';
+
+  @override
+  String get integrationsLlmAntigravityManualCta => 'Use existing token';
+
+  @override
+  String get integrationsLlmAntigravityManualAccessRequired =>
+      'Access token is required';
+
+  @override
   String get integrationsLlmDialogApiKeyRequired => 'Enter a non-empty API key';
 
   @override
@@ -408,6 +442,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get integrationsLlmClaudeCodeOAuthTimeout =>
+      'Authorization timed out after 20 minutes. Try again.';
+
+  @override
+  String get integrationsLlmAntigravityOAuthTitle => 'Connect Antigravity';
+
+  @override
+  String get integrationsLlmAntigravityOAuthStep1 =>
+      'Open Antigravity in your browser, enter the code below and authorize the app.';
+
+  @override
+  String get integrationsLlmAntigravityOpenBrowser => 'Open browser';
+
+  @override
+  String get integrationsLlmAntigravityOAuthCode => 'Code:';
+
+  @override
+  String get integrationsLlmAntigravityOAuthCopy => 'Copy code';
+
+  @override
+  String get integrationsLlmAntigravityOAuthWaiting =>
+      'Waiting for confirmation… You can close this dialog and come back later — the status will update automatically.';
+
+  @override
+  String get integrationsLlmAntigravityOAuthTimeout =>
       'Authorization timed out after 20 minutes. Try again.';
 
   @override

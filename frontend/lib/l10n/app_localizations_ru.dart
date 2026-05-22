@@ -265,6 +265,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get llmProviderClaudeCode => 'Claude Code';
 
   @override
+  String get llmProviderAntigravity => 'Antigravity';
+
+  @override
+  String get llmProviderAntigravityOAuth => 'Подписка Antigravity';
+
+  @override
   String get llmProviderAnthropic => 'Anthropic';
 
   @override
@@ -281,6 +287,13 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get llmProviderClaudeCodeSubtitle => 'Подписка Anthropic через OAuth';
+
+  @override
+  String get llmProviderAntigravitySubtitle => 'Прямой API-ключ Antigravity';
+
+  @override
+  String get llmProviderAntigravityOAuthSubtitle =>
+      'Подписка Antigravity через OAuth';
 
   @override
   String get llmProviderAnthropicSubtitle => 'Прямой API-ключ Anthropic';
@@ -377,6 +390,29 @@ class AppLocalizationsRu extends AppLocalizations {
       'Введите непустой access token';
 
   @override
+  String get integrationsLlmAntigravityManualTitle =>
+      'Ввести токен Antigravity';
+
+  @override
+  String get integrationsLlmAntigravityManualHint =>
+      'Используйте, если OAuth-приложение Antigravity ещё не настроено или у вас уже есть готовый токен.';
+
+  @override
+  String get integrationsLlmAntigravityManualAccessField => 'Access token';
+
+  @override
+  String get integrationsLlmAntigravityManualRefreshField =>
+      'Refresh token (опционально)';
+
+  @override
+  String get integrationsLlmAntigravityManualCta =>
+      'Использовать готовый токен';
+
+  @override
+  String get integrationsLlmAntigravityManualAccessRequired =>
+      'Введите непустой access token';
+
+  @override
   String get integrationsLlmDialogApiKeyRequired => 'Введите непустой API-ключ';
 
   @override
@@ -407,6 +443,30 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get integrationsLlmClaudeCodeOAuthTimeout =>
+      'Авторизация истекла через 20 минут. Попробуйте снова.';
+
+  @override
+  String get integrationsLlmAntigravityOAuthTitle => 'Подключение Antigravity';
+
+  @override
+  String get integrationsLlmAntigravityOAuthStep1 =>
+      'Откройте Antigravity в браузере, введите код ниже и подтвердите вход.';
+
+  @override
+  String get integrationsLlmAntigravityOpenBrowser => 'Открыть браузер';
+
+  @override
+  String get integrationsLlmAntigravityOAuthCode => 'Код:';
+
+  @override
+  String get integrationsLlmAntigravityOAuthCopy => 'Скопировать код';
+
+  @override
+  String get integrationsLlmAntigravityOAuthWaiting =>
+      'Ждём подтверждения… Можно закрыть это окно и вернуться позже — статус обновится автоматически.';
+
+  @override
+  String get integrationsLlmAntigravityOAuthTimeout =>
       'Авторизация истекла через 20 минут. Попробуйте снова.';
 
   @override

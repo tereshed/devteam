@@ -246,6 +246,10 @@ func getMaskedField(out *dto.LlmCredentialsResponse, p models.UserLLMProvider) *
 		return out.Qwen.MaskedPreview
 	case models.UserLLMProviderOpenRouter:
 		return out.OpenRouter.MaskedPreview
+	case models.UserLLMProviderZhipu:
+		return out.Zhipu.MaskedPreview
+	case models.UserLLMProviderAntigravity:
+		return out.Antigravity.MaskedPreview
 	default:
 		return nil
 	}

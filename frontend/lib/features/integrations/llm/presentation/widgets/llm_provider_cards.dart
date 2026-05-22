@@ -37,6 +37,18 @@ _ProviderBrand _brandFor(
         subtitle: l10n.llmProviderClaudeCodeSubtitle,
         icon: Icons.workspace_premium_outlined,
       );
+    case LlmIntegrationProvider.antigravityOAuth:
+      return _ProviderBrand(
+        title: l10n.llmProviderAntigravityOAuth,
+        subtitle: l10n.llmProviderAntigravityOAuthSubtitle,
+        icon: Icons.rocket_launch_outlined,
+      );
+    case LlmIntegrationProvider.antigravity:
+      return _ProviderBrand(
+        title: l10n.llmProviderAntigravity,
+        subtitle: l10n.llmProviderAntigravitySubtitle,
+        icon: Icons.auto_awesome,
+      );
     case LlmIntegrationProvider.anthropic:
       return _ProviderBrand(
         title: l10n.llmProviderAnthropic,
@@ -311,3 +323,47 @@ IntegrationProviderCard zhipuCard(
   onReplace: onReplace,
   busy: busy,
 );
+
+IntegrationProviderCard antigravityCard(
+  BuildContext context, {
+  required LlmProviderConnection connection,
+  VoidCallback? onConnect,
+  VoidCallback? onDisconnect,
+  VoidCallback? onReplace,
+  bool busy = false,
+}) => llmProviderCard(
+  context,
+  provider: LlmIntegrationProvider.antigravity,
+  connection: connection,
+  onConnect: onConnect,
+  onDisconnect: onDisconnect,
+  onReplace: onReplace,
+  busy: busy,
+);
+
+IntegrationProviderCard antigravityOAuthCard(
+  BuildContext context, {
+  required LlmProviderConnection connection,
+  VoidCallback? onConnect,
+  VoidCallback? onDisconnect,
+  VoidCallback? onManualToken,
+  bool busy = false,
+}) {
+  final l10n = requireAppLocalizations(context, where: 'antigravityOAuthCard');
+  return llmProviderCard(
+    context,
+    provider: LlmIntegrationProvider.antigravityOAuth,
+    connection: connection,
+    onConnect: onConnect,
+    onDisconnect: onDisconnect,
+    busy: busy,
+    extraSecondaryAction: onManualToken == null
+        ? null
+        : IntegrationAction(
+            label: l10n.integrationsLlmAntigravityManualCta,
+            style: IntegrationActionStyle.secondary,
+            onPressed: onManualToken,
+            isBusy: busy,
+          ),
+  );
+}

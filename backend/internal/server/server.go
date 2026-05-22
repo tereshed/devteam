@@ -55,6 +55,7 @@ type Dependencies struct {
 	LlmCredentialsPatchRL    *middleware.LlmCredentialsPatchRateLimiter
 
 	ClaudeCodeAuthHandler *handler.ClaudeCodeAuthHandler
+	AntigravityAuthHandler *handler.AntigravityAuthHandler
 
 	// UI Refactoring Stage 3a — git OAuth интеграции (GitHub / GitLab / BYO GitLab).
 	GitIntegrationHandler *handler.GitIntegrationHandler
@@ -254,6 +255,19 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				cc.PUT("/manual-token", deps.ClaudeCodeAuthHandler.ManualToken)
 				cc.GET("/status", deps.ClaudeCodeAuthHandler.Status)
 				cc.DELETE("", deps.ClaudeCodeAuthHandler.Revoke)
+			}
+		}
+
+		// Antigravity OAuth
+		if deps.AntigravityAuthHandler != nil {
+			ag := api.Group("/antigravity/auth")
+			ag.Use(authMW)
+			{
+				ag.POST("/init", deps.AntigravityAuthHandler.Init)
+				ag.POST("/callback", deps.AntigravityAuthHandler.Callback)
+				ag.PUT("/manual-token", deps.AntigravityAuthHandler.ManualToken)
+				ag.GET("/status", deps.AntigravityAuthHandler.Status)
+				ag.DELETE("", deps.AntigravityAuthHandler.Revoke)
 			}
 		}
 

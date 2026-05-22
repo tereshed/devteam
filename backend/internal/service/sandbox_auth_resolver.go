@@ -43,21 +43,29 @@ type ClaudeCodeOAuthAccessor interface {
 	AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error)
 }
 
+// AntigravityOAuthAccessor — узкий интерфейс для резолвера: достать OAuth-токен подписки Antigravity для sandbox.
+type AntigravityOAuthAccessor interface {
+	AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error)
+}
+
 // sandboxAuthEnvResolver — реализация по умолчанию.
 type sandboxAuthEnvResolver struct {
-	claudeCodeAuth ClaudeCodeOAuthAccessor
-	userCreds      UserLLMCredentialResolver
-	fallbackAPIKey string
-	logger         *slog.Logger
+	claudeCodeAuth  ClaudeCodeOAuthAccessor
+	antigravityAuth AntigravityOAuthAccessor
+	userCreds       UserLLMCredentialResolver
+	fallbackAPIKey  string
+	logger          *slog.Logger
 }
 
 // NewSandboxAuthEnvResolver собирает резолвер.
 //   - claudeCodeAuth может быть nil (фича OAuth выключена — kind=anthropic_oauth тогда не работает).
 //     Принимается узкий интерфейс ClaudeCodeOAuthAccessor; полный ClaudeCodeAuthService его удовлетворяет.
+//   - antigravityAuth может быть nil.
 //   - userCreds может быть nil (тогда kind=anthropic/deepseek/zhipu/openrouter не сработают).
 //   - fallbackAPIKey — статический ANTHROPIC_API_KEY (для агентов без ProviderKind).
 func NewSandboxAuthEnvResolver(
 	claudeCodeAuth ClaudeCodeOAuthAccessor,
+	antigravityAuth AntigravityOAuthAccessor,
 	userCreds UserLLMCredentialResolver,
 	fallbackAPIKey string,
 	logger *slog.Logger,
@@ -66,10 +74,11 @@ func NewSandboxAuthEnvResolver(
 		logger = slog.Default()
 	}
 	return &sandboxAuthEnvResolver{
-		claudeCodeAuth: claudeCodeAuth,
-		userCreds:      userCreds,
-		fallbackAPIKey: fallbackAPIKey,
-		logger:         logger.With("component", "sandbox_auth_env_resolver"),
+		claudeCodeAuth:  claudeCodeAuth,
+		antigravityAuth: antigravityAuth,
+		userCreds:       userCreds,
+		fallbackAPIKey:  fallbackAPIKey,
+		logger:          logger.With("component", "sandbox_auth_env_resolver"),
 	}
 }
 
@@ -132,10 +141,25 @@ func (r *sandboxAuthEnvResolver) resolveByKind(ctx context.Context, project *mod
 		env.OAuthToken = token
 		return env
 
+	case models.AgentProviderKindAntigravityOAuth:
+		if r.antigravityAuth == nil {
+			logger.Warn("agent has kind=antigravity_oauth but antigravity auth service is disabled")
+			return env
+		}
+		token, err := r.antigravityAuth.AccessTokenForSandbox(ctx, project.UserID)
+		if err != nil {
+			logger.Warn("antigravity_oauth: failed to resolve subscription token", "err", err)
+			return env
+		}
+		env.AntigravityOAuthToken = token
+		env.AntigravityBaseURL = "https://api.antigravity.ai/v1"
+		return env
+
 	case models.AgentProviderKindAnthropic,
 		models.AgentProviderKindDeepSeek,
 		models.AgentProviderKindZhipu,
-		models.AgentProviderKindOpenRouter:
+		models.AgentProviderKindOpenRouter,
+		models.AgentProviderKindAntigravity:
 		if r.userCreds == nil {
 			logger.Warn("user credentials resolver is nil; cannot resolve per-user key")
 			return env
@@ -161,6 +185,11 @@ func (r *sandboxAuthEnvResolver) resolveByKind(ctx context.Context, project *mod
 		if kind == models.AgentProviderKindAnthropic {
 			// Anthropic API key: классический ANTHROPIC_API_KEY, без BASE_URL (CLI пойдёт по дефолту).
 			env.APIKey = key
+			return env
+		}
+		if kind == models.AgentProviderKindAntigravity {
+			env.AntigravityAPIKey = key
+			env.AntigravityBaseURL = "https://api.antigravity.ai/v1"
 			return env
 		}
 		// Не-anthropic kind с native Anthropic-endpoint'ом.

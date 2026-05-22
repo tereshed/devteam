@@ -9,6 +9,7 @@ import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/domain/assistant_status_model.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_repository.dart';
+import 'package:frontend/features/integrations/llm/domain/antigravity_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/claude_code_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/assistant_settings_card.dart';
@@ -77,6 +78,7 @@ class _FakeLlmIntegrationsRepository implements LlmIntegrationsRepository {
 
   List<LlmProviderConnection> apiKey;
   ClaudeCodeIntegrationStatus get claude => const ClaudeCodeIntegrationStatus(connected: false);
+  AntigravityIntegrationStatus get antigravity => const AntigravityIntegrationStatus(connected: false);
 
   @override
   Future<List<LlmProviderConnection>> fetchApiKeyConnections({
@@ -90,6 +92,13 @@ class _FakeLlmIntegrationsRepository implements LlmIntegrationsRepository {
     cancelToken,
   }) async {
     return claude;
+  }
+
+  @override
+  Future<AntigravityIntegrationStatus> fetchAntigravityStatus({
+    cancelToken,
+  }) async {
+    return antigravity;
   }
 
   @override

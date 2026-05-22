@@ -57,6 +57,7 @@ func NewLLMService(factory *factory.Factory, cfg config.LLMConfig, repo reposito
 	// падал с «unsupported provider», даже если OPENROUTER_API_KEY был в env.
 	createProvider(llm.ProviderOpenRouter, cfg.OpenRouter)
 	createProvider(llm.ProviderZhipu, cfg.Zhipu)
+	createProvider(llm.ProviderAntigravity, cfg.Antigravity)
 
 	return &llmService{
 		providers:       providers,

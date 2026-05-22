@@ -35,6 +35,9 @@ const (
 	// Допустимые значения совпадают с CLI: default | acceptEdits | plan | bypassPermissions.
 	EnvClaudeCodePermissionMode = "CLAUDE_CODE_PERMISSION_MODE"
 	EnvMaxTurns                 = "MAX_TURNS"
+	EnvAntigravityAPIKey        = "ANTIGRAVITY_API_KEY"
+	EnvAntigravityOAuthToken    = "ANTIGRAVITY_OAUTH_TOKEN"
+	EnvAntigravityBaseURL       = "ANTIGRAVITY_BASE_URL"
 )
 
 // Фиксированные пути артефактов внутри контейнера (не из env — защита от path injection).

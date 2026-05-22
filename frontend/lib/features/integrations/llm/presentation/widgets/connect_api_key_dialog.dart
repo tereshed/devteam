@@ -172,6 +172,10 @@ class _ConnectApiKeyDialogState extends ConsumerState<_ConnectApiKeyDialog> {
         return 'Qwen';
       case LlmIntegrationProvider.claudeCodeOAuth:
         return l10n.llmProviderClaudeCode;
+      case LlmIntegrationProvider.antigravity:
+        return l10n.llmProviderAntigravity;
+      case LlmIntegrationProvider.antigravityOAuth:
+        return l10n.llmProviderAntigravityOAuth;
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:frontend/features/integrations/llm/domain/antigravity_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/claude_code_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 
@@ -47,6 +48,26 @@ class LlmIntegrationsRepository {
       );
       final data = resp.data ?? <String, dynamic>{};
       return ClaudeCodeIntegrationStatus(
+        connected: data['connected'] == true,
+        expiresAt: _parseTs(data['expires_at']),
+        lastRefreshedAt: _parseTs(data['last_refreshed_at']),
+      );
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
+  /// Получить статус OAuth-подписки Antigravity.
+  Future<AntigravityIntegrationStatus> fetchAntigravityStatus({
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.get<Map<String, dynamic>>(
+        '/antigravity/auth/status',
+        cancelToken: cancelToken,
+      );
+      final data = resp.data ?? <String, dynamic>{};
+      return AntigravityIntegrationStatus(
         connected: data['connected'] == true,
         expiresAt: _parseTs(data['expires_at']),
         lastRefreshedAt: _parseTs(data['last_refreshed_at']),
@@ -199,6 +220,111 @@ class LlmIntegrationsRepository {
     }
   }
 
+  /// Старт OAuth device-flow Antigravity. Возвращает данные для отображения юзеру.
+  Future<AntigravityOAuthInit> initAntigravityOAuth({
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.post<Map<String, dynamic>>(
+        '/antigravity/auth/init',
+        cancelToken: cancelToken,
+      );
+      final data = resp.data ?? <String, dynamic>{};
+      return AntigravityOAuthInit(
+        deviceCode: (data['device_code'] as String?) ?? '',
+        userCode: (data['user_code'] as String?) ?? '',
+        verificationUri: (data['verification_uri'] as String?) ?? '',
+        verificationUriComplete:
+            (data['verification_uri_complete'] as String?) ?? '',
+        intervalSeconds: (data['interval_seconds'] is int)
+            ? data['interval_seconds'] as int
+            : 5,
+        expiresInSeconds: (data['expires_in_seconds'] is int)
+            ? data['expires_in_seconds'] as int
+            : 900,
+      );
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
+  /// Один poll callback'а: проверка статуса OAuth device-flow для Antigravity.
+  ///
+  /// Возвращает [AntigravityIntegrationStatus.connected]=true при успехе.
+  /// `authorization_pending` приходит как 202 → бросается
+  /// [LlmIntegrationsException] с `errorCode = "authorization_pending"`.
+  Future<AntigravityIntegrationStatus> completeAntigravityOAuth({
+    required String deviceCode,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.post<Map<String, dynamic>>(
+        '/antigravity/auth/callback',
+        data: <String, dynamic>{'device_code': deviceCode},
+        cancelToken: cancelToken,
+      );
+      if (resp.statusCode == 202) {
+        throw const LlmIntegrationsException(
+          message: 'authorization_pending',
+          errorCode: 'authorization_pending',
+          statusCode: 202,
+        );
+      }
+      final data = resp.data ?? <String, dynamic>{};
+      return AntigravityIntegrationStatus(
+        connected: data['connected'] == true,
+        expiresAt: _parseTs(data['expires_at']),
+        lastRefreshedAt: _parseTs(data['last_refreshed_at']),
+      );
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
+  Future<void> revokeAntigravityOAuth({CancelToken? cancelToken}) async {
+    try {
+      await _dio.delete<dynamic>('/antigravity/auth', cancelToken: cancelToken);
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
+  /// Сохраняет уже полученный пользователем OAuth-токен Antigravity.
+  /// Альтернатива device-flow.
+  Future<AntigravityIntegrationStatus> saveAntigravityManualToken({
+    required String accessToken,
+    String? refreshToken,
+    DateTime? expiresAt,
+    String? scopes,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final body = <String, dynamic>{'access_token': accessToken};
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        body['refresh_token'] = refreshToken;
+      }
+      if (expiresAt != null) {
+        body['expires_at'] = expiresAt.toUtc().toIso8601String();
+      }
+      if (scopes != null && scopes.isNotEmpty) {
+        body['scopes'] = scopes;
+      }
+      final resp = await _dio.put<Map<String, dynamic>>(
+        '/antigravity/auth/manual-token',
+        data: body,
+        cancelToken: cancelToken,
+      );
+      final data = resp.data ?? <String, dynamic>{};
+      return AntigravityIntegrationStatus(
+        connected: data['connected'] == true,
+        expiresAt: _parseTs(data['expires_at']),
+        lastRefreshedAt: _parseTs(data['last_refreshed_at']),
+      );
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
   // --- helpers ------------------------------------------------------------
 
   static List<LlmProviderConnection> _parseCredentialsResponse(
@@ -213,6 +339,7 @@ class LlmIntegrationsRepository {
       'qwen': LlmIntegrationProvider.qwen,
       'openrouter': LlmIntegrationProvider.openrouter,
       'zhipu': LlmIntegrationProvider.zhipu,
+      'antigravity': LlmIntegrationProvider.antigravity,
     };
     for (final entry in mapping.entries) {
       final raw = data[entry.key];
@@ -263,7 +390,15 @@ class LlmIntegrationsRepository {
         return 'openrouter_api_key';
       case LlmIntegrationProvider.zhipu:
         return 'zhipu_api_key';
+      case LlmIntegrationProvider.antigravity:
+        return 'antigravity_api_key';
       case LlmIntegrationProvider.claudeCodeOAuth:
+        throw ArgumentError.value(
+          p,
+          'provider',
+          'API-key flow не поддерживается; используйте OAuth/admin-CRUD',
+        );
+      case LlmIntegrationProvider.antigravityOAuth:
         throw ArgumentError.value(
           p,
           'provider',
@@ -288,7 +423,15 @@ class LlmIntegrationsRepository {
         return 'clear_openrouter_key';
       case LlmIntegrationProvider.zhipu:
         return 'clear_zhipu_key';
+      case LlmIntegrationProvider.antigravity:
+        return 'clear_antigravity_key';
       case LlmIntegrationProvider.claudeCodeOAuth:
+        throw ArgumentError.value(
+          p,
+          'provider',
+          'API-key flow не поддерживается',
+        );
+      case LlmIntegrationProvider.antigravityOAuth:
         throw ArgumentError.value(
           p,
           'provider',

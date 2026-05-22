@@ -42,6 +42,9 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 	EnvAnthropicAuthToken:       {},
 	EnvClaudeCodeOAuthToken:     {},
 	EnvClaudeCodePermissionMode: {},
+	EnvAntigravityAPIKey:        {},
+	EnvAntigravityOAuthToken:    {},
+	EnvAntigravityBaseURL:       {},
 
 	// Sprint 16 — Hermes Agent (code_backend=hermes). Whitelist строго ограничен
 	// провайдерами, которые реально маппит AgentProviderKind.HermesEnvVar; добавлять

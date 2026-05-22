@@ -26,6 +26,7 @@ type Dependencies struct {
 
 	// Sprint 15.15: опционально. nil — инструменты не регистрируются.
 	ClaudeCodeAuthService service.ClaudeCodeAuthService
+	AntigravityAuthService service.AntigravityAuthService
 
 	// UI Refactoring Stage 3a — git OAuth интеграции (опционально, nil → пропускаем).
 	GitIntegrationService service.GitIntegrationService
@@ -73,6 +74,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterTaskTools(server, deps.TaskService, deps.OrchestratorSvc)
 	RegisterConversationTools(server, deps.ConversationSvc)
 	RegisterClaudeCodeAuthTools(server, deps.ClaudeCodeAuthService)
+	RegisterAntigravityAuthTools(server, deps.AntigravityAuthService)
 	RegisterGitIntegrationsTools(server, deps.GitIntegrationService)
 	RegisterAgentSettingsTools(server, deps.TeamService, deps.MCPServerRegistryRepo, deps.AgentSkillRepo)
 

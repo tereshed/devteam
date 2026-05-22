@@ -10,6 +10,9 @@ part 'llm_provider_model.freezed.dart';
 enum LlmIntegrationProvider {
   /// OAuth-подписка Claude Code (особый flow через device-code).
   claudeCodeOAuth('claude_code_oauth'),
+  /// OAuth-подписка Antigravity (device-code).
+  antigravityOAuth('antigravity_oauth'),
+  antigravity('antigravity'),
   anthropic('anthropic'),
   openai('openai'),
   deepseek('deepseek'),

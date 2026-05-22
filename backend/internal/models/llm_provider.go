@@ -23,6 +23,8 @@ const (
 	LLMProviderKindMoonshot       LLMProviderKind = "moonshot"
 	LLMProviderKindOllama         LLMProviderKind = "ollama"
 	LLMProviderKindZhipu          LLMProviderKind = "zhipu"
+	LLMProviderKindAntigravity    LLMProviderKind = "antigravity"
+	LLMProviderKindAntigravityOAuth LLMProviderKind = "antigravity_oauth"
 )
 
 // IsValid проверяет, что kind является поддерживаемым.
@@ -31,7 +33,8 @@ func (k LLMProviderKind) IsValid() bool {
 	case LLMProviderKindAnthropic, LLMProviderKindAnthropicOAuth,
 		LLMProviderKindOpenAI, LLMProviderKindGemini, LLMProviderKindDeepSeek,
 		LLMProviderKindQwen, LLMProviderKindOpenRouter, LLMProviderKindMoonshot,
-		LLMProviderKindOllama, LLMProviderKindZhipu:
+		LLMProviderKindOllama, LLMProviderKindZhipu, LLMProviderKindAntigravity,
+		LLMProviderKindAntigravityOAuth:
 		return true
 	default:
 		return false

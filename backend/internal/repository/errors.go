@@ -34,6 +34,7 @@ var (
 
 	// Ошибки ClaudeCodeSubscription (Sprint 15.12)
 	ErrClaudeCodeSubscriptionNotFound = errors.New("claude code subscription not found")
+	ErrAntigravitySubscriptionNotFound = errors.New("antigravity subscription not found")
 
 	// Ошибки GitIntegrationCredential (UI Refactoring Stage 3a).
 	ErrGitIntegrationNotFound = errors.New("git integration credential not found")

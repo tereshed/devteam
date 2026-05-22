@@ -4,9 +4,11 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/assistant_settings_card.dart';
+import 'package:frontend/features/integrations/llm/presentation/widgets/connect_antigravity_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/connect_api_key_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/connect_claude_code_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/llm_provider_cards.dart';
+import 'package:frontend/features/integrations/llm/presentation/widgets/manual_antigravity_dialog.dart';
 import 'package:frontend/features/integrations/llm/presentation/widgets/manual_claude_code_dialog.dart';
 
 /// Экран `/integrations/llm` — управление LLM-провайдерами для текущего юзера.
@@ -27,11 +29,13 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
   // Список провайдеров, которые отображаются на экране в фиксированном порядке.
   static const _displayOrder = <LlmIntegrationProvider>[
     LlmIntegrationProvider.claudeCodeOAuth,
+    LlmIntegrationProvider.antigravityOAuth,
     LlmIntegrationProvider.anthropic,
     LlmIntegrationProvider.openai,
     LlmIntegrationProvider.openrouter,
     LlmIntegrationProvider.deepseek,
     LlmIntegrationProvider.zhipu,
+    LlmIntegrationProvider.antigravity,
   ];
 
   @override
@@ -167,6 +171,26 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
             : () => showManualClaudeCodeDialog(context, ref),
       );
     }
+    if (provider == LlmIntegrationProvider.antigravityOAuth) {
+      return antigravityOAuthCard(
+        context,
+        connection: conn,
+        onConnect: isConnected ? null : onConnect,
+        onDisconnect: isConnected ? onDisconnect : null,
+        onManualToken: isConnected
+            ? null
+            : () => showManualAntigravityDialog(context, ref),
+      );
+    }
+    if (provider == LlmIntegrationProvider.antigravity) {
+      return antigravityCard(
+        context,
+        connection: conn,
+        onConnect: isConnected ? null : onConnect,
+        onDisconnect: isConnected ? onDisconnect : null,
+        onReplace: isConnected ? onReplace : null,
+      );
+    }
     return llmProviderCard(
       context,
       provider: provider,
@@ -184,6 +208,8 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
   ) async {
     if (provider == LlmIntegrationProvider.claudeCodeOAuth) {
       await showConnectClaudeCodeDialog(context, ref);
+    } else if (provider == LlmIntegrationProvider.antigravityOAuth) {
+      await showConnectAntigravityDialog(context, ref);
     } else {
       await showConnectApiKeyDialog(context, ref, provider: provider);
     }
@@ -195,6 +221,8 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
     try {
       if (provider == LlmIntegrationProvider.claudeCodeOAuth) {
         await repo.revokeClaudeCodeOAuth();
+      } else if (provider == LlmIntegrationProvider.antigravityOAuth) {
+        await repo.revokeAntigravityOAuth();
       } else {
         await repo.clearApiKey(provider: provider);
       }

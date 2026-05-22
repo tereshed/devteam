@@ -12,9 +12,7 @@ import (
 
 // --- стабы зависимостей резолвера -------------------------------------------------------
 
-// stubClaudeCodeAuthSvc удовлетворяет ClaudeCodeOAuthAccessor (узкий интерфейс).
-// Полный ClaudeCodeAuthService нам не нужен — при добавлении новых методов в сервис
-// этот стаб не сломается.
+// stubClaudeCodeAuthSvc удовлетворяет ClaudeCodeOAuthAccessor и AntigravityOAuthAccessor (узкие интерфейсы).
 type stubClaudeCodeAuthSvc struct {
 	token string
 	err   error
@@ -54,7 +52,7 @@ func TestResolver_Anthropic_UsesUserKey(t *testing.T) {
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
 		models.UserLLMProviderAnthropic: "sk-ant-api03-USER",
 	}}
-	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "FALLBACK", nil)
 
 	env := r.Resolve(context.Background(), newProject(),
 		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindAnthropic)})
@@ -67,7 +65,7 @@ func TestResolver_Anthropic_UsesUserKey(t *testing.T) {
 
 func TestResolver_AnthropicOAuth_UsesSubscriptionToken(t *testing.T) {
 	auth := &stubClaudeCodeAuthSvc{token: "sk-ant-oat01-XYZ"}
-	r := NewSandboxAuthEnvResolver(auth, nil, "FALLBACK", nil)
+	r := NewSandboxAuthEnvResolver(auth, nil, nil, "FALLBACK", nil)
 
 	env := r.Resolve(context.Background(), newProject(),
 		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindAnthropicOAuth)})
@@ -78,11 +76,39 @@ func TestResolver_AnthropicOAuth_UsesSubscriptionToken(t *testing.T) {
 	assert.Empty(t, env.AuthToken)
 }
 
+func TestResolver_Antigravity_UsesUserKey(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderAntigravity: "ant-api-key-XYZ",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindAntigravity)})
+
+	assert.Equal(t, "ant-api-key-XYZ", env.AntigravityAPIKey)
+	assert.Equal(t, "https://api.antigravity.ai/v1", env.AntigravityBaseURL)
+	assert.Empty(t, env.APIKey)
+	assert.Empty(t, env.OAuthToken)
+}
+
+func TestResolver_AntigravityOAuth_UsesSubscriptionToken(t *testing.T) {
+	auth := &stubClaudeCodeAuthSvc{token: "ant-oauth-token-XYZ"}
+	r := NewSandboxAuthEnvResolver(nil, auth, nil, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(),
+		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindAntigravityOAuth)})
+
+	assert.Equal(t, "ant-oauth-token-XYZ", env.AntigravityOAuthToken)
+	assert.Equal(t, "https://api.antigravity.ai/v1", env.AntigravityBaseURL)
+	assert.Empty(t, env.APIKey)
+	assert.Empty(t, env.OAuthToken)
+}
+
 func TestResolver_DeepSeek_UsesNativeAnthropicEndpoint(t *testing.T) {
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
 		models.UserLLMProviderDeepSeek: "sk-deepseek-USER",
 	}}
-	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "FALLBACK", nil)
 
 	env := r.Resolve(context.Background(), newProject(),
 		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindDeepSeek)})
@@ -97,7 +123,7 @@ func TestResolver_Zhipu_UsesNativeAnthropicEndpoint(t *testing.T) {
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
 		models.UserLLMProviderZhipu: "glm-key-USER",
 	}}
-	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "FALLBACK", nil)
 
 	env := r.Resolve(context.Background(), newProject(),
 		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindZhipu)})
@@ -110,13 +136,13 @@ func TestResolver_Zhipu_UsesNativeAnthropicEndpoint(t *testing.T) {
 func TestResolver_NoKind_FallbackToOAuthThenAPIKey(t *testing.T) {
 	// OAuth есть → OAuth.
 	auth := &stubClaudeCodeAuthSvc{token: "sk-ant-oat01-FROM-SUB"}
-	r := NewSandboxAuthEnvResolver(auth, nil, "STATIC", nil)
+	r := NewSandboxAuthEnvResolver(auth, nil, nil, "STATIC", nil)
 	env := r.Resolve(context.Background(), newProject(), &models.Agent{})
 	assert.Equal(t, "sk-ant-oat01-FROM-SUB", env.OAuthToken)
 	assert.Empty(t, env.APIKey)
 
 	// OAuth выключен → static API key.
-	r = NewSandboxAuthEnvResolver(nil, nil, "STATIC", nil)
+	r = NewSandboxAuthEnvResolver(nil, nil, nil, "STATIC", nil)
 	env = r.Resolve(context.Background(), newProject(), &models.Agent{})
 	assert.Equal(t, "STATIC", env.APIKey)
 	assert.Empty(t, env.OAuthToken)
@@ -124,7 +150,7 @@ func TestResolver_NoKind_FallbackToOAuthThenAPIKey(t *testing.T) {
 
 func TestResolver_DeepSeek_UserHasNoKey_ReturnsEmpty(t *testing.T) {
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{}}
-	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "FALLBACK", nil)
 
 	env := r.Resolve(context.Background(), newProject(),
 		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindDeepSeek)})
@@ -140,7 +166,7 @@ func TestResolver_DeepSeek_UserHasNoKey_ReturnsEmpty(t *testing.T) {
 // fallback на чужой провайдер».
 func TestResolver_DeepSeek_LookupErrorDoesNotLeakToOtherProvider(t *testing.T) {
 	user := &stubUserCreds{err: assert.AnError}
-	r := NewSandboxAuthEnvResolver(nil, user, "FALLBACK-SHOULD-NOT-LEAK", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "FALLBACK-SHOULD-NOT-LEAK", nil)
 
 	env := r.Resolve(context.Background(), newProject(),
 		&models.Agent{ProviderKind: kindPtr(models.AgentProviderKindDeepSeek)})
@@ -158,7 +184,7 @@ func TestResolver_Hermes_OpenRouter_SetsOpenRouterEnv(t *testing.T) {
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
 		models.UserLLMProviderOpenRouter: "sk-or-USER",
 	}}
-	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "STATIC", nil)
 
 	env := r.Resolve(context.Background(), newProject(), &models.Agent{
 		CodeBackend:  cbPtr(models.CodeBackendHermes),
@@ -176,7 +202,7 @@ func TestResolver_Hermes_Anthropic_SetsAnthropicEnv(t *testing.T) {
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
 		models.UserLLMProviderAnthropic: "sk-ant-api03-USER",
 	}}
-	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "STATIC", nil)
 
 	env := r.Resolve(context.Background(), newProject(), &models.Agent{
 		CodeBackend:  cbPtr(models.CodeBackendHermes),
@@ -197,7 +223,7 @@ func TestResolver_Hermes_DeepSeek_NotSupportedDirectly_ReturnsEmpty(t *testing.T
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
 		models.UserLLMProviderDeepSeek: "sk-ds-USER",
 	}}
-	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "STATIC", nil)
 
 	env := r.Resolve(context.Background(), newProject(), &models.Agent{
 		CodeBackend:  cbPtr(models.CodeBackendHermes),
@@ -212,7 +238,7 @@ func TestResolver_Hermes_NoProviderKind_ReturnsEmpty(t *testing.T) {
 	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
 		models.UserLLMProviderOpenRouter: "sk-or-USER",
 	}}
-	r := NewSandboxAuthEnvResolver(nil, user, "STATIC", nil)
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "STATIC", nil)
 
 	env := r.Resolve(context.Background(), newProject(), &models.Agent{
 		CodeBackend: cbPtr(models.CodeBackendHermes),

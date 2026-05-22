@@ -11,13 +11,14 @@ import (
 type UserLLMProvider string
 
 const (
-	UserLLMProviderOpenAI     UserLLMProvider = "openai"
-	UserLLMProviderAnthropic  UserLLMProvider = "anthropic"
-	UserLLMProviderGemini     UserLLMProvider = "gemini"
-	UserLLMProviderDeepSeek   UserLLMProvider = "deepseek"
-	UserLLMProviderQwen       UserLLMProvider = "qwen"
-	UserLLMProviderOpenRouter UserLLMProvider = "openrouter"
-	UserLLMProviderZhipu      UserLLMProvider = "zhipu"
+	UserLLMProviderOpenAI      UserLLMProvider = "openai"
+	UserLLMProviderAnthropic   UserLLMProvider = "anthropic"
+	UserLLMProviderGemini      UserLLMProvider = "gemini"
+	UserLLMProviderDeepSeek    UserLLMProvider = "deepseek"
+	UserLLMProviderQwen        UserLLMProvider = "qwen"
+	UserLLMProviderOpenRouter  UserLLMProvider = "openrouter"
+	UserLLMProviderZhipu       UserLLMProvider = "zhipu"
+	UserLLMProviderAntigravity UserLLMProvider = "antigravity"
 )
 
 // UserLLMProvidersOrdered — фиксированный порядок для ответа GET/PATCH.
@@ -29,6 +30,7 @@ var UserLLMProvidersOrdered = []UserLLMProvider{
 	UserLLMProviderQwen,
 	UserLLMProviderOpenRouter,
 	UserLLMProviderZhipu,
+	UserLLMProviderAntigravity,
 }
 
 // IsValidUserLLMProvider проверяет значение provider.
@@ -36,7 +38,7 @@ func IsValidUserLLMProvider(p string) bool {
 	switch UserLLMProvider(p) {
 	case UserLLMProviderOpenAI, UserLLMProviderAnthropic, UserLLMProviderGemini,
 		UserLLMProviderDeepSeek, UserLLMProviderQwen, UserLLMProviderOpenRouter,
-		UserLLMProviderZhipu:
+		UserLLMProviderZhipu, UserLLMProviderAntigravity:
 		return true
 	default:
 		return false

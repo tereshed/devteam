@@ -536,6 +536,18 @@ abstract class AppLocalizations {
   /// **'Claude Code'**
   String get llmProviderClaudeCode;
 
+  /// LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'Antigravity'**
+  String get llmProviderAntigravity;
+
+  /// LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'Подписка Antigravity'**
+  String get llmProviderAntigravityOAuth;
+
   /// ui_refactoring stage 1: LLM provider brand name
   ///
   /// In ru, this message translates to:
@@ -571,6 +583,18 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Подписка Anthropic через OAuth'**
   String get llmProviderClaudeCodeSubtitle;
+
+  /// stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Прямой API-ключ Antigravity'**
+  String get llmProviderAntigravitySubtitle;
+
+  /// stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Подписка Antigravity через OAuth'**
+  String get llmProviderAntigravityOAuthSubtitle;
 
   /// ui_refactoring stage 1: stub card subtitle
   ///
@@ -734,6 +758,42 @@ abstract class AppLocalizations {
   /// **'Введите непустой access token'**
   String get integrationsLlmClaudeCodeManualAccessRequired;
 
+  /// Manual subscription token dialog title
+  ///
+  /// In ru, this message translates to:
+  /// **'Ввести токен Antigravity'**
+  String get integrationsLlmAntigravityManualTitle;
+
+  /// Manual token dialog hint
+  ///
+  /// In ru, this message translates to:
+  /// **'Используйте, если OAuth-приложение Antigravity ещё не настроено или у вас уже есть готовый токен.'**
+  String get integrationsLlmAntigravityManualHint;
+
+  /// Manual token: access token field label
+  ///
+  /// In ru, this message translates to:
+  /// **'Access token'**
+  String get integrationsLlmAntigravityManualAccessField;
+
+  /// Manual token: refresh token field label
+  ///
+  /// In ru, this message translates to:
+  /// **'Refresh token (опционально)'**
+  String get integrationsLlmAntigravityManualRefreshField;
+
+  /// Button on Antigravity card: open manual-token dialog
+  ///
+  /// In ru, this message translates to:
+  /// **'Использовать готовый токен'**
+  String get integrationsLlmAntigravityManualCta;
+
+  /// Validation error
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите непустой access token'**
+  String get integrationsLlmAntigravityManualAccessRequired;
+
   /// ui_refactoring stage 2: validation error
   ///
   /// In ru, this message translates to:
@@ -793,6 +853,48 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Авторизация истекла через 20 минут. Попробуйте снова.'**
   String get integrationsLlmClaudeCodeOAuthTimeout;
+
+  /// OAuth dialog title
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключение Antigravity'**
+  String get integrationsLlmAntigravityOAuthTitle;
+
+  /// OAuth instructions
+  ///
+  /// In ru, this message translates to:
+  /// **'Откройте Antigravity в браузере, введите код ниже и подтвердите вход.'**
+  String get integrationsLlmAntigravityOAuthStep1;
+
+  /// launch URL button
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть браузер'**
+  String get integrationsLlmAntigravityOpenBrowser;
+
+  /// user_code label
+  ///
+  /// In ru, this message translates to:
+  /// **'Код:'**
+  String get integrationsLlmAntigravityOAuthCode;
+
+  /// tooltip for user_code copy IconButton
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировать код'**
+  String get integrationsLlmAntigravityOAuthCopy;
+
+  /// pending body copy
+  ///
+  /// In ru, this message translates to:
+  /// **'Ждём подтверждения… Можно закрыть это окно и вернуться позже — статус обновится автоматически.'**
+  String get integrationsLlmAntigravityOAuthWaiting;
+
+  /// timeout
+  ///
+  /// In ru, this message translates to:
+  /// **'Авторизация истекла через 20 минут. Попробуйте снова.'**
+  String get integrationsLlmAntigravityOAuthTimeout;
 
   /// ui_refactoring stage 2: error banner
   ///

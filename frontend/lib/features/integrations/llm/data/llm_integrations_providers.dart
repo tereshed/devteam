@@ -7,6 +7,8 @@ import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_repository.dart';
+import 'package:frontend/features/integrations/llm/domain/antigravity_status_model.dart';
+import 'package:frontend/features/integrations/llm/domain/claude_code_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 
 /// DI: Singleton-репозиторий LLM Integrations.
@@ -107,7 +109,17 @@ class LlmIntegrationsController extends ChangeNotifier {
     _setState(_state.copyWith(isLoading: _state.connections.isEmpty));
     try {
       final apiKeyConnections = await _repository.fetchApiKeyConnections();
-      final claudeStatus = await _repository.fetchClaudeCodeStatus();
+      final claudeStatusFuture = _repository.fetchClaudeCodeStatus();
+      final antigravityStatusFuture = _repository.fetchAntigravityStatus();
+      
+      final results = await Future.wait([
+        claudeStatusFuture,
+        antigravityStatusFuture,
+      ]);
+      
+      final claudeStatus = results[0] as ClaudeCodeIntegrationStatus;
+      final antigravityStatus = results[1] as AntigravityIntegrationStatus;
+
       if (_disposed || startedAtVersion != _stateVersion) {
         return;
       }
@@ -123,6 +135,14 @@ class LlmIntegrationsController extends ChangeNotifier {
                 ? LlmProviderConnectionStatus.connected
                 : LlmProviderConnectionStatus.disconnected,
             expiresAt: claudeStatus.expiresAt,
+          );
+      connections[LlmIntegrationProvider.antigravityOAuth] =
+          LlmProviderConnection(
+            provider: LlmIntegrationProvider.antigravityOAuth,
+            status: antigravityStatus.connected
+                ? LlmProviderConnectionStatus.connected
+                : LlmProviderConnectionStatus.disconnected,
+            expiresAt: antigravityStatus.expiresAt,
           );
       _setState(
         _state.copyWith(

@@ -48,6 +48,12 @@ func New() *Factory {
 	f.RegisterProvider(llm.ProviderOpenRouter, func(c llm.Config) (llm.Provider, error) {
 		return openrouter.NewFromLLMConfig(c)
 	})
+	f.RegisterProvider(llm.ProviderAntigravity, func(c llm.Config) (llm.Provider, error) {
+		return openai.NewClient(c)
+	})
+	f.RegisterProvider(llm.ProviderAntigravityOAuth, func(c llm.Config) (llm.Provider, error) {
+		return openai.NewClient(c)
+	})
 
 	return f
 }

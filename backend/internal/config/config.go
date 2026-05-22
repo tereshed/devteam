@@ -29,6 +29,8 @@ type Config struct {
 	WorkflowWorkerEnabled bool
 	// ClaudeCodeOAuth — настройки OAuth-провайдера Claude Code (Sprint 15.12).
 	ClaudeCodeOAuth ClaudeCodeOAuthConfig
+	// AntigravityOAuth — настройки OAuth-провайдера Antigravity.
+	AntigravityOAuth AntigravityOAuthConfig
 
 	// GitHubOAuth — настройки OAuth-провайдера GitHub (UI Refactoring Stage 3a).
 	// Пустой ClientID отключает фичу — хендлеры вернут 503.
@@ -56,6 +58,15 @@ type GitLabOAuthAppConfig struct {
 // ClaudeCodeOAuthConfig — env CLAUDE_CODE_OAUTH_*. Пустой ClientID отключает фичу
 // (хендлеры вернут 503, MCP-инструменты не зарегистрируются).
 type ClaudeCodeOAuthConfig struct {
+	ClientID      string
+	DeviceCodeURL string
+	TokenURL      string
+	RevokeURL     string
+	Scopes        string
+}
+
+// AntigravityOAuthConfig — env ANTIGRAVITY_OAUTH_*. Пустой ClientID отключает фичу
+type AntigravityOAuthConfig struct {
 	ClientID      string
 	DeviceCodeURL string
 	TokenURL      string
@@ -213,6 +224,11 @@ func Load() (*Config, error) {
 				BaseURL: getEnv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
 				Model:   getEnv("ZHIPU_MODEL", "glm-4-plus"),
 			},
+			Antigravity: ProviderConfig{
+				APIKey:  getEnv("ANTIGRAVITY_API_KEY", ""),
+				BaseURL: getEnv("ANTIGRAVITY_BASE_URL", "https://api.antigravity.ai/v1"),
+				Model:   getEnv("ANTIGRAVITY_MODEL", "antigravity-default"),
+			},
 		},
 		Admin: AdminConfig{
 			Email:    getEnv("ADMIN_EMAIL", ""),
@@ -237,6 +253,13 @@ func Load() (*Config, error) {
 			TokenURL:      getEnv("CLAUDE_CODE_OAUTH_TOKEN_URL", "https://console.anthropic.com/v1/oauth/token"),
 			RevokeURL:     getEnv("CLAUDE_CODE_OAUTH_REVOKE_URL", ""),
 			Scopes:        getEnv("CLAUDE_CODE_OAUTH_SCOPES", "org:create_api_key user:profile user:inference"),
+		},
+		AntigravityOAuth: AntigravityOAuthConfig{
+			ClientID:      getEnv("ANTIGRAVITY_OAUTH_CLIENT_ID", ""),
+			DeviceCodeURL: getEnv("ANTIGRAVITY_OAUTH_DEVICE_URL", "https://api.antigravity.ai/oauth/device"),
+			TokenURL:      getEnv("ANTIGRAVITY_OAUTH_TOKEN_URL", "https://api.antigravity.ai/oauth/token"),
+			RevokeURL:     getEnv("ANTIGRAVITY_OAUTH_REVOKE_URL", ""),
+			Scopes:        getEnv("ANTIGRAVITY_OAUTH_SCOPES", "user:profile user:inference"),
 		},
 		GitHubOAuth: GitHubOAuthAppConfig{
 			ClientID:     getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
@@ -392,8 +415,9 @@ type LLMConfig struct {
 	// глобальными LLM-агентами (assistant/orchestrator/planner). APIKey
 	// совпадает с OpenRouterAPIKey, но мы держим поля раздельно: историческое
 	// поле осталось для models-listing, а ProviderConfig — для Generate().
-	OpenRouter ProviderConfig
-	Zhipu      ProviderConfig
+	OpenRouter  ProviderConfig
+	Zhipu       ProviderConfig
+	Antigravity ProviderConfig
 }
 
 // ProviderConfig содержит конфигурацию конкретного провайдера

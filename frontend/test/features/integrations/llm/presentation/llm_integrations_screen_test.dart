@@ -15,6 +15,7 @@ import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/api/websocket_service.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_repository.dart';
+import 'package:frontend/features/integrations/llm/domain/antigravity_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/claude_code_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 import 'package:frontend/features/integrations/llm/presentation/screens/llm_integrations_screen.dart';
@@ -24,11 +25,13 @@ class _FakeRepo implements LlmIntegrationsRepository {
   _FakeRepo({
     this.apiKey = const <LlmProviderConnection>[],
     this.claude = const ClaudeCodeIntegrationStatus(connected: false),
+    this.antigravity = const AntigravityIntegrationStatus(connected: false),
     this.gate,
   });
 
   List<LlmProviderConnection> apiKey;
   ClaudeCodeIntegrationStatus claude;
+  AntigravityIntegrationStatus antigravity;
   Completer<void>? gate;
 
   @override
@@ -46,6 +49,13 @@ class _FakeRepo implements LlmIntegrationsRepository {
     cancelToken,
   }) async {
     return claude;
+  }
+
+  @override
+  Future<AntigravityIntegrationStatus> fetchAntigravityStatus({
+    cancelToken,
+  }) async {
+    return antigravity;
   }
 
   @override
@@ -142,6 +152,7 @@ void main() {
             ),
           ],
           claude: const ClaudeCodeIntegrationStatus(connected: true),
+          antigravity: const AntigravityIntegrationStatus(connected: true),
         );
         final ws = _FakeWebSocketService();
         final container = _container(repo: repo, ws: ws);
@@ -153,6 +164,7 @@ void main() {
 
         expect(find.text('Connected'), findsWidgets);
         expect(find.text('Claude Code'), findsOneWidget);
+        expect(find.text('Antigravity subscription'), findsOneWidget);
         expect(find.text('Anthropic'), findsOneWidget);
         // masked_preview виден в карточке как statusDetail
         expect(find.text('****3Mk9'), findsOneWidget);
@@ -181,13 +193,15 @@ void main() {
           find.text('All supported providers are already connected.'),
           findsOneWidget,
         );
-        // Available секция содержит все 6 заявленных провайдеров.
+        // Available секция содержит все 8 заявленных провайдеров.
         expect(find.text('Claude Code'), findsOneWidget);
+        expect(find.text('Antigravity subscription'), findsOneWidget);
         expect(find.text('Anthropic'), findsOneWidget);
         expect(find.text('OpenAI'), findsOneWidget);
         expect(find.text('OpenRouter'), findsOneWidget);
         expect(find.text('DeepSeek'), findsOneWidget);
         expect(find.text('Zhipu'), findsOneWidget);
+        expect(find.text('Antigravity'), findsOneWidget);
         // Кнопка "Connect" есть как минимум один раз.
         expect(find.text('Connect'), findsWidgets);
       },

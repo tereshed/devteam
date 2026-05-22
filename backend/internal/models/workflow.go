@@ -86,13 +86,16 @@ const (
 	AgentProviderKindDeepSeek       AgentProviderKind = "deepseek"
 	AgentProviderKindZhipu          AgentProviderKind = "zhipu"
 	AgentProviderKindOpenRouter     AgentProviderKind = "openrouter"
+	AgentProviderKindAntigravity    AgentProviderKind = "antigravity"
+	AgentProviderKindAntigravityOAuth AgentProviderKind = "antigravity_oauth"
 )
 
 // IsValid проверяет валидность kind.
 func (k AgentProviderKind) IsValid() bool {
 	switch k {
 	case AgentProviderKindAnthropic, AgentProviderKindAnthropicOAuth,
-		AgentProviderKindDeepSeek, AgentProviderKindZhipu, AgentProviderKindOpenRouter:
+		AgentProviderKindDeepSeek, AgentProviderKindZhipu, AgentProviderKindOpenRouter,
+		AgentProviderKindAntigravity, AgentProviderKindAntigravityOAuth:
 		return true
 	default:
 		return false
@@ -153,6 +156,8 @@ func (k AgentProviderKind) UserLLMProvider() UserLLMProvider {
 		return UserLLMProviderZhipu
 	case AgentProviderKindOpenRouter:
 		return UserLLMProviderOpenRouter
+	case AgentProviderKindAntigravity:
+		return UserLLMProviderAntigravity
 	default:
 		return ""
 	}

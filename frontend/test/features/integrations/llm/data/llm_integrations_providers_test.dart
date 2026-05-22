@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_repository.dart';
+import 'package:frontend/features/integrations/llm/domain/antigravity_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/claude_code_status_model.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 
@@ -15,11 +16,13 @@ class _FakeRepo implements LlmIntegrationsRepository {
   _FakeRepo({
     this.apiKeyConnections = const <LlmProviderConnection>[],
     this.claudeStatus = const ClaudeCodeIntegrationStatus(connected: false),
+    this.antigravityStatus = const AntigravityIntegrationStatus(connected: false),
     this.statusGate,
   });
 
   List<LlmProviderConnection> apiKeyConnections;
   ClaudeCodeIntegrationStatus claudeStatus;
+  AntigravityIntegrationStatus antigravityStatus;
   int statusCallCount = 0;
   Completer<void>? statusGate;
 
@@ -42,6 +45,13 @@ class _FakeRepo implements LlmIntegrationsRepository {
   }
 
   @override
+  Future<AntigravityIntegrationStatus> fetchAntigravityStatus({
+    cancelToken,
+  }) async {
+    return antigravityStatus;
+  }
+
+  @override
   noSuchMethod(Invocation invocation) {
     throw UnimplementedError(
       'Метод ${invocation.memberName} не реализован в _FakeRepo',
@@ -51,7 +61,7 @@ class _FakeRepo implements LlmIntegrationsRepository {
 
 void main() {
   group('LlmIntegrationsController', () {
-    test('refresh() — собирает API-key и Claude Code в один Map', () async {
+    test('refresh() — собирает API-key, Claude Code и Antigravity в один Map', () async {
       final repo = _FakeRepo(
         apiKeyConnections: [
           LlmProviderConnection(
@@ -65,6 +75,10 @@ void main() {
           ),
         ],
         claudeStatus: ClaudeCodeIntegrationStatus(
+          connected: true,
+          expiresAt: DateTime.utc(2030, 1, 1),
+        ),
+        antigravityStatus: AntigravityIntegrationStatus(
           connected: true,
           expiresAt: DateTime.utc(2030, 1, 1),
         ),
@@ -89,6 +103,10 @@ void main() {
       );
       expect(
         s.connections[LlmIntegrationProvider.claudeCodeOAuth]?.status,
+        LlmProviderConnectionStatus.connected,
+      );
+      expect(
+        s.connections[LlmIntegrationProvider.antigravityOAuth]?.status,
         LlmProviderConnectionStatus.connected,
       );
       expect(

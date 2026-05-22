@@ -348,6 +348,17 @@ func main() {
 	// экрана LLM Integrations (без поллинга). HubBridge маршрутизирует событие в Hub.SendToUser.
 	claudeCodeAuthSvc = service.WithClaudeCodeEventBus(claudeCodeAuthSvc, eventBus)
 
+	antigravitySubRepo := repository.NewAntigravitySubscriptionRepository(db)
+	antigravityOAuthProvider := service.NewAntigravityOAuthProvider(service.AntigravityOAuthConfig{
+		ClientID:      cfg.AntigravityOAuth.ClientID,
+		DeviceCodeURL: cfg.AntigravityOAuth.DeviceCodeURL,
+		TokenURL:      cfg.AntigravityOAuth.TokenURL,
+		RevokeURL:     cfg.AntigravityOAuth.RevokeURL,
+		Scopes:        cfg.AntigravityOAuth.Scopes,
+	})
+	antigravityAuthSvc := service.NewAntigravityAuthService(antigravitySubRepo, encryptor, antigravityOAuthProvider)
+	antigravityAuthSvc = service.WithAntigravityEventBus(antigravityAuthSvc, eventBus)
+
 	// User-per-credential service (нужен резолверу аутентификации sandbox).
 	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
 	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
@@ -358,6 +369,7 @@ func main() {
 	// Sprint 15.18 — динамический резолвер аутентификации sandbox (OAuth subscription / per-user creds / api key).
 	sandboxAuthResolver := service.NewSandboxAuthEnvResolver(
 		claudeCodeAuthSvc,
+		antigravityAuthSvc,
 		llmCredSvc,
 		cfg.LLM.Anthropic.APIKey,
 		slog.Default(),
@@ -504,6 +516,11 @@ func main() {
 		v2Logger,
 	)
 
+	antigravityAuthHandler := handler.WithAntigravityAuthLogger(
+		handler.NewAntigravityAuthHandler(antigravityAuthSvc),
+		v2Logger,
+	)
+
 	// UI Refactoring Stage 3a — git-интеграции (GitHub / GitLab.com / BYO GitLab).
 	// (gitIntegrationRepo инициализирован выше для ProjectService fallback.)
 	githubOAuthClient := service.NewGitHubOAuthClient(service.GitHubOAuthConfig{
@@ -542,6 +559,13 @@ func main() {
 		log.Println("Claude Code token refresher: started")
 	} else {
 		log.Println("Claude Code OAuth: disabled (set CLAUDE_CODE_OAUTH_CLIENT_ID to enable)")
+	}
+	if cfg.AntigravityOAuth.ClientID != "" {
+		refresher := service.NewAntigravityTokenRefresher(antigravitySubRepo, antigravityAuthSvc, slog.Default())
+		go refresher.Run(ctxWorker)
+		log.Println("Antigravity token refresher: started")
+	} else {
+		log.Println("Antigravity OAuth: disabled (set ANTIGRAVITY_OAUTH_CLIENT_ID to enable)")
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -693,6 +717,7 @@ func main() {
 		LlmCredentialsPatchRL:    llmCredRL,
 
 		ClaudeCodeAuthHandler: claudeCodeAuthHandler,
+		AntigravityAuthHandler: antigravityAuthHandler,
 		GitIntegrationHandler: gitIntegrationHandler,
 		AssistantHandler:      assistantHandler,
 		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
@@ -747,6 +772,7 @@ func main() {
 			OrchestratorSvc:       orchestratorService,
 			ApiKeyService:         apiKeyService,
 			ClaudeCodeAuthService: claudeCodeAuthSvc,
+			AntigravityAuthService: antigravityAuthSvc,
 			GitIntegrationService: gitIntegrationSvc,
 			MCPServerRegistryRepo: repository.NewMCPServerRegistryRepository(db),
 			AgentSkillRepo:        repository.NewAgentSkillRepository(db),

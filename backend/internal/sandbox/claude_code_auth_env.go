@@ -24,6 +24,12 @@ type ClaudeCodeAuthEnv struct {
 	BaseURL string
 	// AuthToken — Bearer-токен для BaseURL. Выставляется как ANTHROPIC_AUTH_TOKEN.
 	AuthToken string
+	// AntigravityAPIKey — API ключ для Antigravity.
+	AntigravityAPIKey string
+	// AntigravityOAuthToken — OAuth токен для Antigravity.
+	AntigravityOAuthToken string
+	// AntigravityBaseURL — переопределенный базовый URL для Antigravity.
+	AntigravityBaseURL string
 	// Extra — Sprint 16: backend-specific env-vars (для code_backend != claude-code,
 	// у которого свои имена переменных). Ключи — точные имена env, значения — plaintext.
 	// При коллизии с типизированными полями выше — Extra перетирает (последняя запись побеждает).
@@ -46,6 +52,15 @@ func (e ClaudeCodeAuthEnv) ToEnv() map[string]string {
 	if e.APIKey != "" {
 		out[EnvAnthropicAPIKey] = e.APIKey
 	}
+	if e.AntigravityAPIKey != "" {
+		out[EnvAntigravityAPIKey] = e.AntigravityAPIKey
+	}
+	if e.AntigravityOAuthToken != "" {
+		out[EnvAntigravityOAuthToken] = e.AntigravityOAuthToken
+	}
+	if e.AntigravityBaseURL != "" {
+		out[EnvAntigravityBaseURL] = e.AntigravityBaseURL
+	}
 	for k, v := range e.Extra {
 		if v != "" {
 			out[k] = v
@@ -57,7 +72,8 @@ func (e ClaudeCodeAuthEnv) ToEnv() map[string]string {
 // HasCredential сообщает, есть ли хоть одна форма аутентификации.
 // Соответствует проверке в deployment/sandbox/claude/entrypoint.sh и hermes entrypoint.
 func (e ClaudeCodeAuthEnv) HasCredential() bool {
-	if e.OAuthToken != "" || e.APIKey != "" || e.AuthToken != "" {
+	if e.OAuthToken != "" || e.APIKey != "" || e.AuthToken != "" ||
+		e.AntigravityAPIKey != "" || e.AntigravityOAuthToken != "" {
 		return true
 	}
 	for _, v := range e.Extra {
