@@ -44,6 +44,7 @@ type contextBuilder struct {
 	// permission_mode для Claude; config.yaml/mcp.json/skills/env для Hermes).
 	// nil — пайплайн пропускает per-agent сборку и работает legacy-путём.
 	agentSettings AgentSettingsService
+	artifactRepo  repository.ArtifactRepository
 }
 
 // NewContextBuilder создаёт сборщик контекста.
@@ -92,6 +93,11 @@ func WithSandboxAuthResolverOption(resolver SandboxAuthEnvResolver) ContextBuild
 // (legacy: per-agent артефакты не пробрасываются, hermes Skills/MCP не работают).
 func WithAgentSettingsServiceOption(svc AgentSettingsService) ContextBuilderOption {
 	return func(b *contextBuilder) { b.agentSettings = svc }
+}
+
+// WithArtifactRepositoryOption — Sprint 17: подключает ArtifactRepository для подтягивания артефактов из таблицы artifacts.
+func WithArtifactRepositoryOption(repo repository.ArtifactRepository) ContextBuilderOption {
+	return func(b *contextBuilder) { b.artifactRepo = repo }
 }
 
 // NewContextBuilderFull — полная конфигурация: секреты sandbox + репозиторий сообщений
@@ -271,8 +277,20 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 func (b *contextBuilder) appendPipelineHandoff(ctx context.Context, input *agent.ExecutionInput, task *models.Task, currentAgent *models.Agent) {
 	var sb strings.Builder
 
-	// 1) Артефакты последнего шага (raw JSON: diff, decision, branch_name, ...).
-	if len(task.Artifacts) > 0 && string(task.Artifacts) != "{}" && string(task.Artifacts) != "null" {
+	// 1) Артефакты последнего шага (из artifacts table, иначе legacy task.Artifacts).
+	if b.artifactRepo != nil {
+		arts, err := b.artifactRepo.ListByTaskID(ctx, task.ID, true)
+		if err != nil {
+			slog.Warn("ContextBuilder: failed to load artifacts", "task_id", task.ID, "error", err)
+		} else if len(arts) > 0 {
+			// ListByTaskID возвращает ASC по created_at, берём последний.
+			lastArt := arts[len(arts)-1]
+			artJSON := b.scrubJSON(lastArt.Content)
+			sb.WriteString("\n\n<previous_step_artifacts encoding=\"json\">\n")
+			sb.Write(artJSON)
+			sb.WriteString("\n</previous_step_artifacts>\n")
+		}
+	} else if len(task.Artifacts) > 0 && string(task.Artifacts) != "{}" && string(task.Artifacts) != "null" {
 		artJSON := b.scrubJSON(task.Artifacts)
 		sb.WriteString("\n\n<previous_step_artifacts encoding=\"json\">\n")
 		sb.Write(artJSON)

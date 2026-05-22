@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -269,7 +270,7 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 
 	// Загружаем task для description/title (executor их использует).
 	var task models.Task
-	if err := w.db.WithContext(execCtx).Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
+	if err := w.db.WithContext(execCtx).Preload("Project").Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("load task %s: %w", ev.TaskID, err))
 		return
 	}
@@ -280,7 +281,23 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		return
 	}
 
-	in := w.buildExecutionInput(&task, &agentRec, payload.Input)
+	var targetArtifact *models.Artifact
+	if payload.Input != nil {
+		if rawID, ok := payload.Input["target_artifact_id"]; ok {
+			if idStr, ok := rawID.(string); ok && idStr != "" {
+				if id, err := uuid.Parse(idStr); err == nil {
+					art, err := w.artifactRepo.GetByID(execCtx, id)
+					if err != nil {
+						w.logger.WarnContext(execCtx, "failed to load target artifact", "artifact_id", id, "error", err)
+					} else {
+						targetArtifact = art
+					}
+				}
+			}
+		}
+	}
+
+	in := w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
 
 	result, execErr := executor.Execute(execCtx, in)
 	if execErr != nil {
@@ -671,7 +688,7 @@ func (w *AgentWorker) allocateWorktreeForJob(ctx context.Context, ev *models.Tas
 	return w.worktreeMgr.Allocate(ctx, ev.TaskID, subtaskID, baseBranch)
 }
 
-func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Agent, input map[string]any) agent.ExecutionInput {
+func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Agent, input map[string]any, targetArtifact *models.Artifact) agent.ExecutionInput {
 	inputJSON, _ := json.Marshal(input)
 
 	in := agent.ExecutionInput{
@@ -689,11 +706,31 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 		Temperature:       agentRec.Temperature,
 		MaxTokens:         agentRec.MaxTokens,
 	}
+	if task.Project != nil {
+		in.GitURL = task.Project.GitURL
+		in.GitDefaultBranch = task.Project.GitDefaultBranch
+	}
+	if task.BranchName != nil {
+		in.BranchName = *task.BranchName
+	}
 	if agentRec.ProviderKind != nil {
 		in.Provider = string(*agentRec.ProviderKind)
 	}
 	if agentRec.CodeBackend != nil {
 		in.CodeBackend = string(*agentRec.CodeBackend)
+	}
+	if targetArtifact != nil {
+		prettyContent := ""
+		if len(targetArtifact.Content) > 0 {
+			var prettyJSON bytes.Buffer
+			if err := json.Indent(&prettyJSON, targetArtifact.Content, "", "  "); err == nil {
+				prettyContent = prettyJSON.String()
+			} else {
+				prettyContent = string(targetArtifact.Content)
+			}
+		}
+		in.PromptUser = fmt.Sprintf("\n\n<target_artifact id=%q producer=%q kind=%q summary=%q>\n%s\n</target_artifact>\n",
+			targetArtifact.ID.String(), targetArtifact.ProducerAgent, string(targetArtifact.Kind), targetArtifact.Summary, prettyContent)
 	}
 	return in
 }

@@ -411,6 +411,12 @@ func main() {
 	secretResolver := service.NewDatabaseSecretResolver(db, encryptor)
 	agentSettingsSvc := service.NewAgentSettingsServiceWithDeps(mcpRegistryLookup, secretResolver)
 
+	// V2 репозитории.
+	taskEventRepoV2 := repository.NewTaskEventRepository(db)
+	artifactRepoV2 := repository.NewArtifactRepository(db)
+	routerDecisionRepoV2 := repository.NewRouterDecisionRepository(db)
+	worktreeRepoV2 := repository.NewWorktreeRepository(db)
+
 	// Sprint 15.M7 — функциональная опция вместо type-assertion-шима WithSandboxAuthResolver.
 	orchestratorContextBuilder := service.NewContextBuilderFull(
 		encryptor, pipelinePromptComposer, sandboxSecrets, taskMsgRepo,
@@ -418,6 +424,7 @@ func main() {
 		// Sprint 16.C — без этой опции AgentSettingsBundle никогда не доезжает
 		// до sandbox-runner'а: hermes-config/skills/permission-mode становятся мёртвым кодом.
 		service.WithAgentSettingsServiceOption(agentSettingsSvc),
+		service.WithArtifactRepositoryOption(artifactRepoV2),
 	)
 
 	llmProviderRepo := repository.NewLLMProviderRepository(db)
@@ -433,12 +440,6 @@ func main() {
 	// ─────────────────────────────────────────────────────────────────────────
 	// Sprint 17 / Orchestration v2 — Stage 5g wiring.
 	// ─────────────────────────────────────────────────────────────────────────
-
-	// V2 репозитории.
-	taskEventRepoV2 := repository.NewTaskEventRepository(db)
-	artifactRepoV2 := repository.NewArtifactRepository(db)
-	routerDecisionRepoV2 := repository.NewRouterDecisionRepository(db)
-	worktreeRepoV2 := repository.NewWorktreeRepository(db)
 
 	// Redis-notifier — опциональный. Если REDIS_URL не задан, остаётся nil и
 	// воркеры работают через polling-only (latency ~500ms vs ~10ms с Redis).
