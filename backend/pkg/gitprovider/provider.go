@@ -159,6 +159,10 @@ type GitProvider interface {
 	// Вызывающий обязан закрыть ReadCloser.
 	GetLocalFileContent(ctx context.Context, workDir string, ref string, path string) (io.ReadCloser, error)
 
+	// GetLatestCommitSHA получает хэш последнего коммита из REMOTE репозитория для указанной ветки.
+	// Если branch пустой, то берется ветка по умолчанию (через HEAD).
+	GetLatestCommitSHA(ctx context.Context, repoURL string, branch string) (string, error)
+
 	// ProviderType идентификатор провайдера: "github", "gitlab", "local", ...
 	ProviderType() string
 

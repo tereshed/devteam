@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
+import 'package:frontend/features/projects/presentation/controllers/project_settings_controller.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_dashboard_shell.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -64,6 +65,9 @@ class ProjectDashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         leading: const _ProjectDashboardBackButton(),
         title: Text(title),
+        actions: [
+          _ReindexButton(projectId: projectId),
+        ],
       ),
       body: ProjectDashboardShell(
         navigationShell: navigationShell,
@@ -88,6 +92,95 @@ class _ProjectDashboardBackButton extends StatelessWidget {
           context.go('/projects');
         }
       },
+    );
+  }
+}
+
+class _ReindexButton extends ConsumerStatefulWidget {
+  const _ReindexButton({required this.projectId});
+
+  final String projectId;
+
+  @override
+  ConsumerState<_ReindexButton> createState() => _ReindexButtonState();
+}
+
+class _ReindexButtonState extends ConsumerState<_ReindexButton> {
+  bool _isLoading = false;
+
+  Future<void> _handleReindex() async {
+    if (_isLoading) {
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
+
+    try {
+      final repo = ref.read(projectRepositoryProvider);
+      await repo.reindex(widget.projectId);
+      ref.invalidate(projectProvider(widget.projectId));
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(l10n.projectSettingsReindexStarted),
+            backgroundColor: theme.colorScheme.secondary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final title = projectSettingsReindexErrorTitle(l10n, e);
+        final detail = projectSettingsErrorDetail(e);
+        final detailStyle = TextStyle(
+          fontSize: 12,
+          color: theme.colorScheme.onError.withOpacity(0.8),
+        );
+        messenger.showSnackBar(
+          SnackBar(
+            content: detail != null
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title),
+                      Text(detail, style: detailStyle),
+                    ],
+                  )
+                : Text(title),
+            backgroundColor: theme.colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return IconButton(
+      icon: _isLoading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          : const Icon(Icons.sync),
+      tooltip: l10n.projectSettingsReindex,
+      onPressed: _isLoading ? null : _handleReindex,
     );
   }
 }

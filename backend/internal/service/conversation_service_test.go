@@ -128,6 +128,9 @@ func (m *mockProjectSvc) Reindex(ctx context.Context, userID uuid.UUID, userRole
 func (m *mockProjectSvc) GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
+func (m *mockProjectSvc) RunBackgroundReindexing(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
 
 type mockTaskSvc struct{ mock.Mock }
 

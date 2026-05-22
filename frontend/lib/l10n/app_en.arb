@@ -587,6 +587,8 @@
   "projectSettingsSaveConflict": "Save failed due to a conflict.",
   "projectSettingsSaveGenericError": "Could not save settings",
   "projectSettingsSaveValidationError": "Invalid data — check the form and try again.",
+  "projectSettingsIndexingStatusLabel": "Indexing status",
+  "projectSettingsLastIndexedCommitLabel": "Last indexed commit",
   "chatErrorGeneric": "Could not load chat",
   "@chatErrorGeneric": { "description": "Generic chat error (ChatController)" },
   "chatErrorConversationNotFound": "Conversation not found",

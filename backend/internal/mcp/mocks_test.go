@@ -377,6 +377,10 @@ func (m *mockProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID
 	return uuid.Nil, nil
 }
 
+func (m *mockProjectService) RunBackgroundReindexing(ctx context.Context) error {
+	return nil
+}
+
 func (m *mockTaskService) Close() error {
 	return nil
 }

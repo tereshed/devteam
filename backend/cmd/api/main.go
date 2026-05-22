@@ -37,6 +37,7 @@ import (
 	"github.com/devteam/backend/pkg/password"
 	"github.com/devteam/backend/pkg/promptsloader"
 	"github.com/devteam/backend/pkg/secrets"
+	"github.com/devteam/backend/pkg/vectordb"
 	"github.com/devteam/backend/pkg/workflowloader"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
@@ -222,8 +223,29 @@ func main() {
 	gitFactory := gitprovider.NewFactory()
 
 	// --- Indexer (Sprint 9) ---
+	var weaviateClient *vectordb.Client
+	if cfg.Weaviate.Host != "" {
+		var err error
+		weaviateClient, err = vectordb.NewClient(&vectordb.Config{
+			Host:   cfg.Weaviate.Host,
+			Scheme: cfg.Weaviate.Scheme,
+		})
+		if err != nil {
+			slog.Error("Failed to create Weaviate client", slog.Any("error", err))
+		} else {
+			// Проверяем доступность Weaviate при старте
+			if err := weaviateClient.HealthCheck(rootCtx); err != nil {
+				slog.Warn("Weaviate health check failed, vector features may be unavailable", slog.Any("error", err))
+			} else {
+				slog.Info("Successfully connected to Weaviate", slog.String("host", cfg.Weaviate.Host))
+			}
+		}
+	} else {
+		slog.Info("Weaviate host is not configured, vector features are disabled")
+	}
+
 	syncRepo := repository.NewSyncStateRepository(db)
-	vectorRepo := repository.NewVectorRepository(nil) // TODO: pass Weaviate client
+	vectorRepo := repository.NewVectorRepository(weaviateClient)
 	codeIndexer, _ := indexer.NewCodeIndexer(syncRepo, vectorRepo, nil, 4, slog.Default())
 
 	// Конструируем git_integration_credentials репозиторий заранее: ProjectService
@@ -248,18 +270,22 @@ func main() {
 	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService, txManager, eventBus, taskIndexer, slog.Default())
 
 	// --- IndexerService координатор (Sprint 9.5) ---
-	// Конструируем все зависимости даже если часть из них пока не активна
-	// (vectordb.Client не сконфигурирован → используем NoopVectorDeleter).
 	conversationRepo := repository.NewConversationRepository(db)
 	conversationMsgRepo := repository.NewConversationMessageRepository(db)
 	conversationIndexer, err := indexer.NewConversationIndexer(conversationRepo, conversationMsgRepo, vectorRepo, eventBus, slog.Default())
 	if err != nil {
 		log.Fatalf("failed to construct conversation indexer: %v", err)
 	}
+
+	var vectorDeleter service.VectorDeleter = service.NoopVectorDeleter{}
+	if weaviateClient != nil {
+		vectorDeleter = weaviateClient
+	}
+
 	indexerLocker := service.NewInMemoryLocker()
 	indexerService := service.NewIndexerService(
 		slog.Default(),
-		service.NoopVectorDeleter{}, // TODO: заменить на *vectordb.Client когда он будет сконфигурирован
+		vectorDeleter,
 		codeIndexer,
 		taskIndexer,
 		conversationIndexer,
@@ -489,7 +515,7 @@ func main() {
 	}
 
 	// Scheduler: внутри cron свой жизненный цикл; останавливаем через Stop() при shutdown.
-	scheduler := service.NewScheduler(workflowRepo, workflowEngine, modelCatalogService)
+	scheduler := service.NewScheduler(workflowRepo, workflowEngine, modelCatalogService, projectService, cfg.Git.ProjectSyncCron)
 	if err := scheduler.Start(ctxWorker); err != nil {
 		log.Printf("Failed to start scheduler: %v", err)
 	}

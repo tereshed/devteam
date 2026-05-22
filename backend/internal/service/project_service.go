@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -66,10 +67,10 @@ type ProjectService interface {
 	HasAccess(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
 	// Reindex запускает переиндексацию проекта в фоновом режиме.
 	Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error
-	// GetOwnerID возвращает user_id владельца проекта (без ABAC-проверки) —
-	// используется продюсерами доменных событий (TaskService) для user-scoped
-	// fan-out в WebSocket Hub (Sprint 21 §7 — assistant.task_update).
+	// GetOwnerID возвращает user_id владельца проекта (без ABAC-проверки)
 	GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
+	// RunBackgroundReindexing запускает фоновую переиндексацию для измененных проектов.
+	RunBackgroundReindexing(ctx context.Context) error
 }
 
 type projectService struct {
@@ -407,7 +408,7 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 	}
 
 	if provider != nil && s.importDir != "" {
-		go s.runIndexingPipeline(provider, project.ID, gitURL, branch)
+		go s.runIndexingPipeline(provider, project.ID, gitURL, branch, "")
 	}
 
 	return project, nil
@@ -418,6 +419,7 @@ func (s *projectService) runIndexingPipeline(
 	projectID uuid.UUID,
 	gitURL string,
 	branch string,
+	commitSHA string,
 ) {
 	var pipelineErr error
 	maskedURL := maskGitURL(gitURL)
@@ -437,12 +439,19 @@ func (s *projectService) runIndexingPipeline(
 			finalStatus = models.ProjectStatusIndexingFailed
 		}
 
-		if err := s.projectRepo.UpdateStatus(context.Background(), projectID, models.ProjectStatusIndexing, finalStatus); err != nil {
+		var updateErr error
+		if pipelineErr == nil {
+			updateErr = s.projectRepo.UpdateStatusAndCommit(context.Background(), projectID, models.ProjectStatusIndexing, finalStatus, commitSHA)
+		} else {
+			updateErr = s.projectRepo.UpdateStatus(context.Background(), projectID, models.ProjectStatusIndexing, finalStatus)
+		}
+
+		if updateErr != nil {
 			slog.Error("failed to update final project status",
 				slog.String("project_id", projectID.String()),
 				slog.String("from", string(models.ProjectStatusIndexing)),
 				slog.String("to", string(finalStatus)),
-				slog.String("error", err.Error()),
+				slog.String("error", updateErr.Error()),
 			)
 		}
 
@@ -457,7 +466,50 @@ func (s *projectService) runIndexingPipeline(
 	ctx, cancel := context.WithTimeout(context.Background(), indexingTimeout)
 	defer cancel()
 
+	if provider != nil {
+		// Run ValidateAccess. If it succeeds, but GetLatestCommitSHA(ctx, gitURL, "") fails, it is an empty repository.
+		if valErr := provider.ValidateAccess(ctx, gitURL); valErr == nil {
+			if _, shaErr := provider.GetLatestCommitSHA(ctx, gitURL, ""); shaErr != nil {
+				slog.Info("empty repository detected during indexing, attempting to initialize it",
+					slog.String("project_id", projectID.String()),
+					slog.String("url", maskedURL),
+				)
+				if err := os.MkdirAll(s.importDir, 0755); err != nil {
+					pipelineErr = fmt.Errorf("failed to create import dir: %w", err)
+					return
+				}
+				if err := s.initializeEmptyRepo(ctx, provider, gitURL, branch, projectID); err != nil {
+					pipelineErr = fmt.Errorf("failed to initialize empty repository: %w", err)
+					slog.Error("failed to initialize empty repository",
+						slog.String("project_id", projectID.String()),
+						slog.String("error", err.Error()),
+					)
+					return
+				}
+			}
+		}
+	}
+
+	if commitSHA == "" && provider != nil {
+		if sha, shaErr := provider.GetLatestCommitSHA(ctx, gitURL, branch); shaErr == nil {
+			commitSHA = sha
+		} else {
+			slog.Warn("failed to fetch latest commit SHA during indexing pipeline",
+				slog.String("project_id", projectID.String()),
+				slog.String("error", shaErr.Error()),
+			)
+		}
+	}
+
 	// 3. Secure WorkDir
+	if err := os.MkdirAll(s.importDir, 0755); err != nil {
+		pipelineErr = fmt.Errorf("failed to create import dir: %w", err)
+		slog.Error("failed to create import dir",
+			slog.String("project_id", projectID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
 	workDir, err := os.MkdirTemp(s.importDir, fmt.Sprintf("project-%s-*", projectID))
 	if err != nil {
 		pipelineErr = fmt.Errorf("failed to create temp workdir: %w", err)
@@ -675,11 +727,10 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 			if err := s.projectRepo.UpdateStatus(ctx, project.ID, models.ProjectStatusActive, models.ProjectStatusIndexing); err != nil {
 				slog.Error("failed to update status to Indexing",
 					slog.String("project_id", project.ID.String()),
-					slog.String("error", err.Error()),
 				)
 			} else {
 				project.Status = models.ProjectStatusIndexing
-				go s.runIndexingPipeline(provider, project.ID, project.GitURL, project.GitDefaultBranch)
+				go s.runIndexingPipeline(provider, project.ID, project.GitURL, project.GitDefaultBranch, "")
 			}
 		}
 	}
@@ -749,6 +800,14 @@ func (s *projectService) Reindex(ctx context.Context, userID uuid.UUID, userRole
 		return mapGitProviderErr(err)
 	}
 
+	latestSHA, err := provider.GetLatestCommitSHA(ctx, project.GitURL, project.GitDefaultBranch)
+	if err != nil {
+		slog.Warn("failed to fetch latest commit SHA during manual reindexing",
+			slog.String("project_id", project.ID.String()),
+			slog.String("error", err.Error()),
+		)
+	}
+
 	// Обновляем статус на Indexing (CAS)
 	if err := s.projectRepo.UpdateStatus(ctx, projectID, project.Status, models.ProjectStatusIndexing); err != nil {
 		// Если не удалось обновить, возможно статус уже изменился
@@ -756,7 +815,7 @@ func (s *projectService) Reindex(ctx context.Context, userID uuid.UUID, userRole
 	}
 
 	// Запускаем пайплайн в фоне
-	go s.runIndexingPipeline(provider, project.ID, project.GitURL, project.GitDefaultBranch)
+	go s.runIndexingPipeline(provider, project.ID, project.GitURL, project.GitDefaultBranch, latestSHA)
 
 	return nil
 }
@@ -786,3 +845,145 @@ func maskGitURL(url string) string {
 
 	return fmt.Sprintf("%s://***%s", scheme, hostPath)
 }
+
+func (s *projectService) RunBackgroundReindexing(ctx context.Context) error {
+	slog.Info("starting periodic background reindexing check")
+
+	projects, _, err := s.projectRepo.List(ctx, repository.ProjectFilter{
+		Limit: 1000,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list projects for background sync: %w", err)
+	}
+
+	for _, project := range projects {
+		if project.GitProvider == models.GitProviderLocal || project.GitURL == "" {
+			continue
+		}
+
+		if project.Status != models.ProjectStatusReady &&
+			project.Status != models.ProjectStatusActive &&
+			project.Status != models.ProjectStatusIndexingFailed {
+			continue
+		}
+
+		slog.Debug("checking project for remote changes",
+			slog.String("project_id", project.ID.String()),
+			slog.String("url", project.GitURL),
+		)
+
+		provider, err := s.buildGitProvider(ctx, project.GitProvider, project.GitCredentialsID, project.UserID)
+		if err != nil {
+			slog.Error("failed to build git provider for project background sync",
+				slog.String("project_id", project.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		latestSHA, err := provider.GetLatestCommitSHA(ctx, project.GitURL, project.GitDefaultBranch)
+		if err != nil {
+			slog.Warn("failed to fetch latest commit SHA for background sync",
+				slog.String("project_id", project.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		if project.LastIndexedCommit == latestSHA {
+			continue
+		}
+
+		slog.Info("detected remote changes in project repository, triggering reindexing",
+			slog.String("project_id", project.ID.String()),
+			slog.String("old_sha", project.LastIndexedCommit),
+			slog.String("new_sha", latestSHA),
+		)
+
+		if err := s.projectRepo.UpdateStatus(ctx, project.ID, project.Status, models.ProjectStatusIndexing); err != nil {
+			slog.Info("project status changed concurrently, skipping background sync",
+				slog.String("project_id", project.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		go s.runIndexingPipeline(provider, project.ID, project.GitURL, project.GitDefaultBranch, latestSHA)
+	}
+
+	return nil
+}
+
+func (s *projectService) initializeEmptyRepo(
+	ctx context.Context,
+	provider gitprovider.GitProvider,
+	gitURL string,
+	branch string,
+	projectID uuid.UUID,
+) error {
+	tempDir, err := os.MkdirTemp(s.importDir, fmt.Sprintf("init-%s-*", projectID))
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(tempDir)
+	}()
+
+	cmd := exec.CommandContext(ctx, "git", "init")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git init: %w", err)
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "config", "user.name", "DevTeam AI")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git config user.name: %w", err)
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "config", "user.email", "ai@devteam.local")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git config user.email: %w", err)
+	}
+
+	readmePath := filepath.Join(tempDir, "README.md")
+	readmeContent := fmt.Sprintf("# Project %s\n\nInitial repository created automatically by DevTeam AI.\n", projectID)
+	if err := os.WriteFile(readmePath, []byte(readmeContent), 0644); err != nil {
+		return fmt.Errorf("write README.md: %w", err)
+	}
+
+	_, _, err = provider.Commit(ctx, tempDir, gitprovider.CommitOptions{
+		Message: "Initial commit",
+		Author: gitprovider.Author{
+			Name:  "DevTeam AI",
+			Email: "ai@devteam.local",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("provider commit: %w", err)
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "remote", "add", "origin", gitURL)
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git remote add: %w", err)
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "branch", "-M", branch)
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git branch rename: %w", err)
+	}
+
+	err = provider.Push(ctx, tempDir, gitprovider.PushOptions{
+		Branch: branch,
+		Remote: "origin",
+	})
+	if err != nil {
+		return fmt.Errorf("provider push: %w", err)
+	}
+
+	return nil
+}
+

@@ -39,6 +39,15 @@ type Config struct {
 	// GitLabOAuth — настройки OAuth-провайдера GitLab.com (UI Refactoring Stage 3a).
 	// Пустой ClientID отключает shared-flow (self-hosted BYO остаётся доступным).
 	GitLabOAuth GitLabOAuthAppConfig
+
+	// Weaviate — конфигурация векторной базы данных Weaviate.
+	Weaviate WeaviateConfig
+}
+
+// WeaviateConfig содержит конфигурацию для подключения к Weaviate
+type WeaviateConfig struct {
+	Host   string
+	Scheme string
 }
 
 // GitHubOAuthAppConfig — env GITHUB_OAUTH_CLIENT_ID / SECRET / SCOPES.
@@ -86,7 +95,10 @@ type WebSocketConfig struct {
 type GitConfig struct {
 	// ImportDir — каталог для клонов (GIT_IMPORT_DIR).
 	ImportDir string
+	// ProjectSyncCron — расписание периодической переиндексации проектов (GIT_PROJECT_SYNC_CRON).
+	ProjectSyncCron string
 }
+
 
 // EncryptionConfig — ключ для AES-256-GCM (32 байта после декодирования ENCRYPTION_KEY).
 type EncryptionConfig struct {
@@ -244,7 +256,8 @@ func Load() (*Config, error) {
 		},
 		Encryption: EncryptionConfig{},
 		Git: GitConfig{
-			ImportDir: getEnv("GIT_IMPORT_DIR", "/tmp/devteam-import"),
+			ImportDir:       getEnv("GIT_IMPORT_DIR", "/tmp/devteam-import"),
+			ProjectSyncCron: getEnv("GIT_PROJECT_SYNC_CRON", "*/10 * * * *"),
 		},
 		WorkflowWorkerEnabled: getBoolEnv("WORKFLOW_WORKER_ENABLED", true),
 		ClaudeCodeOAuth: ClaudeCodeOAuthConfig{
@@ -270,6 +283,10 @@ func Load() (*Config, error) {
 			ClientID:     getEnv("GITLAB_OAUTH_CLIENT_ID", ""),
 			ClientSecret: getEnv("GITLAB_OAUTH_CLIENT_SECRET", ""),
 			Scopes:       getEnv("GITLAB_OAUTH_SCOPES", "api read_user read_repository write_repository"),
+		},
+		Weaviate: WeaviateConfig{
+			Host:   getEnv("WEAVIATE_HOST", "localhost:8082"),
+			Scheme: getEnv("WEAVIATE_SCHEME", "http"),
 		},
 	}
 

@@ -212,6 +212,9 @@ func (m *mockTaskProjectService) GetOwnerID(ctx context.Context, projectID uuid.
 	}
 	return uuid.Nil, nil
 }
+func (m *mockTaskProjectService) RunBackgroundReindexing(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
 
 type mockTaskTeamService struct{ mock.Mock }
 

@@ -2192,6 +2192,18 @@ abstract class AppLocalizations {
   /// **'Некорректные данные — проверьте форму и попробуйте снова.'**
   String get projectSettingsSaveValidationError;
 
+  /// Подпись статуса индексации проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Статус индексации'**
+  String get projectSettingsIndexingStatusLabel;
+
+  /// Подпись хэша последнего проиндексированного коммита
+  ///
+  /// In ru, this message translates to:
+  /// **'Последний проиндексированный коммит'**
+  String get projectSettingsLastIndexedCommitLabel;
+
   /// Общая ошибка чата (ChatController)
   ///
   /// In ru, this message translates to:

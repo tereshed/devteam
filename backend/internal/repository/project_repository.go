@@ -54,6 +54,7 @@ type ProjectRepository interface {
 	ListByUserID(ctx context.Context, userID uuid.UUID, filter ProjectFilter) ([]models.Project, int64, error)
 	Update(ctx context.Context, project *models.Project) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error
+	UpdateStatusAndCommit(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus, commitSHA string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -178,6 +179,28 @@ func (r *projectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldS
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("project status update failed: project not found or status changed (expected %s)", oldStatus)
+	}
+	return nil
+}
+
+// UpdateStatusAndCommit безопасно обновляет статус проекта и хэш последнего коммита.
+func (r *projectRepository) UpdateStatusAndCommit(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus, commitSHA string) error {
+	db := gormDB(ctx, r.db)
+	updates := map[string]interface{}{
+		"status": newStatus,
+	}
+	if commitSHA != "" {
+		updates["last_indexed_commit"] = commitSHA
+	}
+	result := db.WithContext(ctx).Model(&models.Project{}).
+		Where("id = ? AND status = ?", id, oldStatus).
+		Updates(updates)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update project status and commit: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("project status and commit update failed: project not found or status changed (expected %s)", oldStatus)
 	}
 	return nil
 }

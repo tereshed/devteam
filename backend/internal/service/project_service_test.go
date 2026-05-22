@@ -64,13 +64,33 @@ func (m *MockProjectRepository) Update(ctx context.Context, project *models.Proj
 	args := m.Called(ctx, project)
 	return args.Error(0)
 }
-
 func (m *MockProjectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error {
-	args := m.Called(ctx, id, oldStatus, newStatus)
-	return args.Error(0)
+	hasMock := false
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "UpdateStatus" {
+			hasMock = true
+			break
+		}
+	}
+	if hasMock {
+		args := m.Called(ctx, id, oldStatus, newStatus)
+		return args.Error(0)
+	}
+	return nil
 }
 
-func (m *MockProjectRepository) UpdateStatusMaybe(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error {
+func (m *MockProjectRepository) UpdateStatusAndCommit(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus, commitSHA string) error {
+	hasMock := false
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "UpdateStatusAndCommit" {
+			hasMock = true
+			break
+		}
+	}
+	if hasMock {
+		args := m.Called(ctx, id, oldStatus, newStatus, commitSHA)
+		return args.Error(0)
+	}
 	return nil
 }
 
@@ -210,7 +230,20 @@ type MockGitProvider struct {
 }
 
 func (m *MockGitProvider) ValidateAccess(ctx context.Context, repoURL string) error {
-	return m.Called(ctx, repoURL).Error(0)
+	hasExactMock := false
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "ValidateAccess" {
+			_, diffCount := call.Arguments.Diff([]interface{}{ctx, repoURL})
+			if diffCount == 0 {
+				hasExactMock = true
+				break
+			}
+		}
+	}
+	if hasExactMock {
+		return m.Called(ctx, repoURL).Error(0)
+	}
+	return nil
 }
 
 func (m *MockGitProvider) GetRepoInfo(ctx context.Context, repoURL string) (*gitprovider.RepoInfo, error) {
@@ -232,6 +265,60 @@ func (m *MockGitProvider) ProviderType() string {
 func (m *MockGitProvider) SupportsPullRequests() bool {
 	return m.Called().Bool(0)
 }
+
+func (m *MockGitProvider) GetLatestCommitSHA(ctx context.Context, repoURL string, branch string) (string, error) {
+	hasExactMock := false
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "GetLatestCommitSHA" {
+			_, diffCount := call.Arguments.Diff([]interface{}{ctx, repoURL, branch})
+			if diffCount == 0 {
+				hasExactMock = true
+				break
+			}
+		}
+	}
+	if hasExactMock {
+		args := m.Called(ctx, repoURL, branch)
+		return args.String(0), args.Error(1)
+	}
+	return "default_commit_sha", nil
+}
+
+func (m *MockGitProvider) Commit(ctx context.Context, workDir string, opts gitprovider.CommitOptions) (string, bool, error) {
+	hasExactMock := false
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "Commit" {
+			_, diffCount := call.Arguments.Diff([]interface{}{ctx, workDir, opts})
+			if diffCount == 0 {
+				hasExactMock = true
+				break
+			}
+		}
+	}
+	if hasExactMock {
+		args := m.Called(ctx, workDir, opts)
+		return args.String(0), args.Bool(1), args.Error(2)
+	}
+	return "mock_commit_sha", true, nil
+}
+
+func (m *MockGitProvider) Push(ctx context.Context, workDir string, opts gitprovider.PushOptions) error {
+	hasExactMock := false
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "Push" {
+			_, diffCount := call.Arguments.Diff([]interface{}{ctx, workDir, opts})
+			if diffCount == 0 {
+				hasExactMock = true
+				break
+			}
+		}
+	}
+	if hasExactMock {
+		return m.Called(ctx, workDir, opts).Error(0)
+	}
+	return nil
+}
+
 
 // MockEncryptor — мок Encryptor.
 type MockEncryptor struct {
@@ -1392,7 +1479,7 @@ func TestProjectService_IndexingPipeline_Success(t *testing.T) {
 	svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, idx, importDir)
 
 	// Ожидаем обновление статуса на Ready
-	pr.On("UpdateStatus", mock.Anything, projectID, models.ProjectStatusIndexing, models.ProjectStatusReady).Return(nil)
+	pr.On("UpdateStatusAndCommit", mock.Anything, projectID, models.ProjectStatusIndexing, models.ProjectStatusReady, "abcdef123456").Return(nil)
 	// Ожидаем клон
 	mp.On("Clone", mock.Anything, gitURL, mock.MatchedBy(func(opts gitprovider.CloneOptions) bool {
 		return opts.Branch == branch
@@ -1403,7 +1490,7 @@ func TestProjectService_IndexingPipeline_Success(t *testing.T) {
 	})).Return(nil)
 
 	// Запускаем пайплайн (синхронно для теста, вызывая внутренний метод)
-	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, branch)
+	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, branch, "abcdef123456")
 
 	pr.AssertExpectations(t)
 	mp.AssertExpectations(t)
@@ -1412,6 +1499,51 @@ func TestProjectService_IndexingPipeline_Success(t *testing.T) {
 	// Проверяем, что временная директория удалена
 	files, _ := os.ReadDir(importDir)
 	assert.Empty(t, files, "temp directory should be cleaned up")
+}
+
+func TestProjectService_IndexingPipeline_EmptyRepo(t *testing.T) {
+	projectID := uuid.New()
+	gitURL := "https://github.com/repo"
+	branch := "main"
+	importDir := t.TempDir()
+
+	pr := new(MockProjectRepository)
+	idx := new(MockCodeIndexer)
+	mp := new(MockGitProvider)
+	svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, idx, importDir)
+
+	// ValidateAccess succeeds
+	mp.On("ValidateAccess", mock.Anything, gitURL).Return(nil)
+
+	// GetLatestCommitSHA("", ...) fails -> empty repo detected
+	mp.On("GetLatestCommitSHA", mock.Anything, gitURL, "").Return("", errors.New("branch not found / empty repo"))
+
+	// Commit & Push mocks for initialization
+	mp.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return("init_sha", true, nil)
+	mp.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	// GetLatestCommitSHA("main", ...) after initialization succeeds
+	mp.On("GetLatestCommitSHA", mock.Anything, gitURL, branch).Return("abcdef123456", nil)
+
+	// Clone succeeds
+	mp.On("Clone", mock.Anything, gitURL, mock.MatchedBy(func(opts gitprovider.CloneOptions) bool {
+		return opts.Branch == branch
+	})).Return(nil)
+
+	// IndexProject succeeds
+	idx.On("IndexProject", mock.Anything, mock.MatchedBy(func(req indexer.IndexingRequest) bool {
+		return req.ProjectID == projectID
+	})).Return(nil)
+
+	// UpdateStatusAndCommit expects ProjectStatusReady and the commit SHA
+	pr.On("UpdateStatusAndCommit", mock.Anything, projectID, models.ProjectStatusIndexing, models.ProjectStatusReady, "abcdef123456").Return(nil)
+
+	// Run pipeline
+	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, branch, "")
+
+	pr.AssertExpectations(t)
+	mp.AssertExpectations(t)
+	idx.AssertExpectations(t)
 }
 
 func TestProjectService_IndexingPipeline_CloneError(t *testing.T) {
@@ -1428,7 +1560,7 @@ func TestProjectService_IndexingPipeline_CloneError(t *testing.T) {
 	// Ожидаем ошибку клона
 	mp.On("Clone", mock.Anything, gitURL, mock.Anything).Return(errors.New("clone failed"))
 
-	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, "main")
+	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, "main", "")
 
 	pr.AssertExpectations(t)
 }
@@ -1450,7 +1582,7 @@ func TestProjectService_IndexingPipeline_PanicRecovery(t *testing.T) {
 
 	// runIndexingPipeline должен восстановиться после паники
 	assert.NotPanics(t, func() {
-		svc.(*projectService).runIndexingPipeline(mp, projectID, "url", "main")
+		svc.(*projectService).runIndexingPipeline(mp, projectID, "url", "main", "")
 	})
 
 	pr.AssertExpectations(t)
@@ -1681,3 +1813,85 @@ func TestProjectService_Create_RollbackOnAgentError(t *testing.T) {
 	assert.Equal(t, int64(0), total)
 	assert.Empty(t, agents)
 }
+
+func TestProjectService_RunBackgroundReindexing(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	projectID1 := uuid.New()
+	projectID2 := uuid.New()
+	projectID3 := uuid.New()
+	tmpDir := t.TempDir()
+
+	pr := new(MockProjectRepository)
+	gf := new(MockFactory)
+	mp := new(MockGitProvider)
+	
+	// Create project service using raw pr to test UpdateStatus and UpdateStatusAndCommit expectations
+	svc := newProjectServiceWithIndexer(
+		pr,
+		new(MockTeamRepository),
+		new(MockGitCredentialRepository),
+		noopTxManager{},
+		gf,
+		nil,
+		&SilentIndexer{new(MockCodeIndexer)},
+		tmpDir,
+	)
+
+	projects := []models.Project{
+		// 1. Local project - should be ignored
+		{
+			ID:          projectID1,
+			UserID:      userID,
+			GitProvider: models.GitProviderLocal,
+			GitURL:      "",
+			Status:      models.ProjectStatusReady,
+		},
+		// 2. Remote project with no changes - should be ignored
+		{
+			ID:                 projectID2,
+			UserID:             userID,
+			GitProvider:        models.GitProviderGitHub,
+			GitURL:             "https://github.com/o/r1",
+			GitDefaultBranch:   "main",
+			Status:             models.ProjectStatusReady,
+			LastIndexedCommit:  "current_sha",
+		},
+		// 3. Remote project with changes - should trigger reindexing
+		{
+			ID:                 projectID3,
+			UserID:             userID,
+			GitProvider:        models.GitProviderGitHub,
+			GitURL:             "https://github.com/o/r2",
+			GitDefaultBranch:   "main",
+			Status:             models.ProjectStatusReady,
+			LastIndexedCommit:  "old_sha",
+		},
+	}
+
+	pr.On("List", ctx, repository.ProjectFilter{Limit: 1000}).Return(projects, int64(len(projects)), nil)
+
+	// Expectations for project 2 (no changes)
+	gf.On("Create", "github", mock.Anything).Return(mp, nil).Once()
+	mp.On("GetLatestCommitSHA", ctx, "https://github.com/o/r1", "main").Return("current_sha", nil).Once()
+
+	// Expectations for project 3 (changes detected)
+	gf.On("Create", "github", mock.Anything).Return(mp, nil).Once()
+	mp.On("GetLatestCommitSHA", ctx, "https://github.com/o/r2", "main").Return("new_sha", nil).Once()
+	pr.On("UpdateStatus", ctx, projectID3, models.ProjectStatusReady, models.ProjectStatusIndexing).Return(nil).Once()
+	
+	// Expectations inside runIndexingPipeline for project 3
+	mp.On("Clone", mock.Anything, "https://github.com/o/r2", mock.Anything).Return(nil).Once()
+	pr.On("UpdateStatusAndCommit", mock.Anything, projectID3, models.ProjectStatusIndexing, models.ProjectStatusReady, "new_sha").Return(nil).Once()
+
+	err := svc.RunBackgroundReindexing(ctx)
+	require.NoError(t, err)
+
+	// Let background goroutine for project 3 run
+	time.Sleep(50 * time.Millisecond)
+
+	pr.AssertExpectations(t)
+	gf.AssertExpectations(t)
+	mp.AssertExpectations(t)
+}
+

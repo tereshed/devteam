@@ -1199,6 +1199,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Invalid data — check the form and try again.';
 
   @override
+  String get projectSettingsIndexingStatusLabel => 'Indexing status';
+
+  @override
+  String get projectSettingsLastIndexedCommitLabel => 'Last indexed commit';
+
+  @override
   String get chatErrorGeneric => 'Could not load chat';
 
   @override

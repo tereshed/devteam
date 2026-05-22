@@ -83,6 +83,8 @@ services:
       # MCP Server
       MCP_PORT: 8081
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      WEAVIATE_HOST: weaviate:8080
+      WEAVIATE_SCHEME: http
     ports:
       - "8080:8080"   # Основной API (Gin)
       - "8081:8081"   # MCP сервер (Model Context Protocol)

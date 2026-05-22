@@ -30,7 +30,7 @@ RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 # Runtime stage
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates tzdata postgresql-client
+RUN apk --no-cache add ca-certificates tzdata postgresql-client git
 WORKDIR /root/
 
 # Копируем бинарник приложения из builder stage

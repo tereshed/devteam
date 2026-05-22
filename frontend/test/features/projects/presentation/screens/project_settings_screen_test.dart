@@ -221,5 +221,71 @@ void main() {
 
       expect(find.text(l10n.projectSettingsReindexConflict), findsOneWidget);
     });
+
+    testWidgets('Индексирование: показывает статус и хэш последнего коммита при наличии git URL', (
+      tester,
+    ) async {
+      useViewSize(tester, const Size(800, 1600));
+      const url = 'https://github.com/org/repo.git';
+      const vector = 'MyCollection';
+      const commitSha = 'abc123commitsha';
+      await tester.pumpWidget(
+        _harness(
+          child: const ProjectSettingsScreen(projectId: kTestProjectUuid),
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(
+                id: kTestProjectUuid,
+                gitUrl: url,
+                vectorCollection: vector,
+                status: 'indexing',
+                lastIndexedCommit: commitSha,
+              ),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(ProjectSettingsScreen)),
+      )!;
+
+      // Проверяем отображение статуса и коммита
+      expect(find.text(l10n.projectSettingsIndexingStatusLabel), findsOneWidget);
+      expect(find.text(l10n.projectSettingsLastIndexedCommitLabel), findsOneWidget);
+      expect(find.text(commitSha), findsOneWidget);
+    });
+
+    testWidgets('Индексирование: НЕ показывает статус и хэш коммита при локальном gitURL или его отсутствии', (
+      tester,
+    ) async {
+      useViewSize(tester, const Size(800, 1600));
+      await tester.pumpWidget(
+        _harness(
+          child: const ProjectSettingsScreen(projectId: kTestProjectUuid),
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(
+                id: kTestProjectUuid,
+                gitUrl: '',
+                vectorCollection: 'MyCollection',
+                status: 'indexing',
+                lastIndexedCommit: 'abc123commitsha',
+              ),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(ProjectSettingsScreen)),
+      )!;
+
+      // Проверяем, что карточки со статусом нет
+      expect(find.text(l10n.projectSettingsIndexingStatusLabel), findsNothing);
+      expect(find.text(l10n.projectSettingsLastIndexedCommitLabel), findsNothing);
+    });
   });
 }

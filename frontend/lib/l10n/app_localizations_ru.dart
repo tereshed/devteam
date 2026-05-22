@@ -1215,6 +1215,13 @@ class AppLocalizationsRu extends AppLocalizations {
       'Некорректные данные — проверьте форму и попробуйте снова.';
 
   @override
+  String get projectSettingsIndexingStatusLabel => 'Статус индексации';
+
+  @override
+  String get projectSettingsLastIndexedCommitLabel =>
+      'Последний проиндексированный коммит';
+
+  @override
   String get chatErrorGeneric => 'Не удалось загрузить чат';
 
   @override

@@ -73,14 +73,19 @@ func NewCodeIndexer(
 		return nil, fmt.Errorf("failed to get tiktoken encoding: %w", err)
 	}
 
-	return &codeIndexer{
-		syncRepo:   syncRepo,
-		vectorRepo: vectorRepo,
-		parserPool: &sync.Pool{
+	var pool *sync.Pool
+	if parserFactory != nil {
+		pool = &sync.Pool{
 			New: func() interface{} {
 				return parserFactory()
 			},
-		},
+		}
+	}
+
+	return &codeIndexer{
+		syncRepo:   syncRepo,
+		vectorRepo: vectorRepo,
+		parserPool: pool,
 		numWorkers:  numWorkers,
 		tokenizer:   tkm,
 		logger:      logger,
@@ -103,7 +108,7 @@ func (idx *codeIndexer) logError(projectID uuid.UUID, format string, args ...int
 }
 
 func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) error {
-	ctx, cancel := context.WithCancel(ctx)
+	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	filter := NewFileFilter(req.RepoPath)
@@ -119,7 +124,7 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			idx.worker(ctx, tasks, results, errChan)
+			idx.worker(workerCtx, tasks, results, errChan)
 		}()
 	}
 
@@ -130,7 +135,7 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 
 	go func() {
 		defer close(done)
-		idx.resultCollector(ctx, req.ProjectID, results, errChan, func(relPath, hash string) {
+		idx.resultCollector(workerCtx, req.ProjectID, results, errChan, func(relPath, hash string) {
 			processedMu.Lock()
 			processedFiles[relPath] = hash
 			processedMu.Unlock()
@@ -153,8 +158,8 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 			}
 
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-workerCtx.Done():
+				return workerCtx.Err()
 			default:
 			}
 
@@ -192,8 +197,8 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 				Language:     filepath.Ext(path), // Передаем расширение, воркер определит язык
 				Size:         info.Size(),
 			}:
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-workerCtx.Done():
+				return workerCtx.Err()
 			}
 			return nil
 		})

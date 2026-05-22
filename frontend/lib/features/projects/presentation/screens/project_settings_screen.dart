@@ -299,6 +299,9 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch settings controller to keep its CancelTokens alive as long as this screen is mounted.
+    ref.watch(projectSettingsControllerProvider(widget.projectId));
+
     final l10n = requireAppLocalizations(
       context,
       where: 'projectSettingsScreen.body',

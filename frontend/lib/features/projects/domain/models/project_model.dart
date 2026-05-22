@@ -31,6 +31,11 @@ abstract class ProjectModel with _$ProjectModel {
     @JsonKey(name: 'git_credential')
     GitCredentialModel? gitCredential,
 
+    /// Хэш последнего проиндексированного коммита
+    @JsonKey(name: 'last_indexed_commit')
+    @Default('')
+    String lastIndexedCommit,
+
     /// Имя вектор-коллекции (для Weaviate)
     @JsonKey(name: 'vector_collection')
     required String vectorCollection,

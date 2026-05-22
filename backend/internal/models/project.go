@@ -59,6 +59,7 @@ type Project struct {
 	GitProvider      GitProvider    `gorm:"type:varchar(50);not null;default:'local'" json:"git_provider"`
 	GitURL           string         `gorm:"type:varchar(1024)" json:"git_url"`
 	GitDefaultBranch string         `gorm:"type:varchar(255);not null;default:'main'" json:"git_default_branch"`
+	LastIndexedCommit string        `gorm:"type:varchar(255);not null;default:''" json:"last_indexed_commit"`
 	GitCredentialsID *uuid.UUID     `gorm:"type:uuid" json:"git_credentials_id"`
 	GitCredential    *GitCredential `gorm:"foreignKey:GitCredentialsID" json:"git_credential,omitempty"`
 	VectorCollection string         `gorm:"type:varchar(255)" json:"vector_collection"`

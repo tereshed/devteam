@@ -148,3 +148,64 @@ func (c *LocalGitCLI) GetLocalFileContent(ctx context.Context, workDir string, r
 	tok := c.creds.Token
 	return c.effectiveRunner().GitStdoutPipe(ctx, workDir, tok, "cat-file", "blob", "--", spec)
 }
+
+// GetLatestCommitSHA получает хэш последнего коммита из REMOTE репозитория для указанной ветки.
+// Если branch пустой, то берется ветка по умолчанию (через HEAD).
+func (c *LocalGitCLI) GetLatestCommitSHA(ctx context.Context, repoURL string, branch string) (string, error) {
+	if err := requireContext(ctx); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(repoURL) == "" {
+		return "", fmt.Errorf("gitprovider: empty repository URL")
+	}
+
+	cloneURL := repoURL
+	if c.creds.Token != "" && isHTTPURL(cloneURL) {
+		cloneURL = injectTokenInURL(cloneURL, c.creds.Token)
+	}
+
+	args := []string{"ls-remote"}
+	args = append(args, "--", cloneURL)
+
+	if branch != "" {
+		if !strings.HasPrefix(branch, "refs/") {
+			args = append(args, "refs/heads/"+branch)
+		} else {
+			args = append(args, branch)
+		}
+	} else {
+		args = append(args, "HEAD")
+	}
+
+	out, err := runGit(ctx, c.effectiveRunner(), c.creds.Token, "", args...)
+	if err != nil {
+		le := strings.ToLower(err.Error())
+		if strings.Contains(le, "authentication failed") || strings.Contains(le, "could not read username") ||
+			strings.Contains(le, "access denied") || strings.Contains(le, "invalid username or password") {
+			return "", ErrAuthFailed
+		}
+		if strings.Contains(le, "not found") || strings.Contains(le, "does not exist") {
+			return "", ErrRepoNotFound
+		}
+		return "", err
+	}
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		if branch != "" {
+			return "", ErrBranchNotFound
+		}
+		return "", ErrRepoNotFound
+	}
+
+	parts := strings.Split(lines[0], "\t")
+	if len(parts) < 2 {
+		parts = strings.Fields(lines[0])
+	}
+	if len(parts) < 1 || len(parts[0]) == 0 {
+		return "", fmt.Errorf("gitprovider: failed to parse ls-remote output")
+	}
+
+	return parts[0], nil
+}
+

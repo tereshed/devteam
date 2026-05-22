@@ -79,6 +79,11 @@ func (m *MockProjectService) Reindex(ctx context.Context, userID uuid.UUID, user
 	return args.Error(0)
 }
 
+func (m *MockProjectService) RunBackgroundReindexing(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 func (m *MockProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
 	args := m.Called(ctx, projectID)
 	id, _ := args.Get(0).(uuid.UUID)

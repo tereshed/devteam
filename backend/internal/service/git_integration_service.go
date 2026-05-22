@@ -666,6 +666,7 @@ func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uui
 			Name:        github.String(name),
 			Private:     github.Bool(private),
 			Description: github.String(description),
+			AutoInit:    github.Bool(true),
 		}
 		r, _, err := client.Repositories.Create(ctx, "", repo)
 		if err != nil {
@@ -696,10 +697,11 @@ func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uui
 		if !private {
 			visibility = "public"
 		}
-		bodyMap := map[string]string{
-			"name":        name,
-			"visibility":  visibility,
-			"description": description,
+		bodyMap := map[string]interface{}{
+			"name":                   name,
+			"visibility":             visibility,
+			"description":            description,
+			"initialize_with_readme": true,
 		}
 		bodyBytes, err := json.Marshal(bodyMap)
 		if err != nil {

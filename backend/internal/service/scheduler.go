@@ -16,18 +16,28 @@ type Scheduler interface {
 }
 
 type scheduler struct {
-	cron         *cron.Cron
-	repo         repository.WorkflowRepository
-	engine       WorkflowEngine
-	modelService ModelCatalogService // Опционально, может быть nil
+	cron            *cron.Cron
+	repo            repository.WorkflowRepository
+	engine          WorkflowEngine
+	modelService    ModelCatalogService // Опционально, может быть nil
+	projectService  ProjectService
+	projectSyncCron string
 }
 
-func NewScheduler(repo repository.WorkflowRepository, engine WorkflowEngine, modelService ModelCatalogService) Scheduler {
+func NewScheduler(
+	repo repository.WorkflowRepository,
+	engine WorkflowEngine,
+	modelService ModelCatalogService,
+	projectService ProjectService,
+	projectSyncCron string,
+) Scheduler {
 	return &scheduler{
-		cron:         cron.New(),
-		repo:         repo,
-		engine:       engine,
-		modelService: modelService,
+		cron:            cron.New(),
+		repo:            repo,
+		engine:          engine,
+		modelService:    modelService,
+		projectService:  projectService,
+		projectSyncCron: projectSyncCron,
 	}
 }
 
@@ -48,6 +58,22 @@ func (s *scheduler) Start(ctx context.Context) error {
 			log.Printf("Failed to schedule model sync: %v", err)
 		} else {
 			log.Println("Scheduled model sync (daily at 03:00)")
+		}
+	}
+
+	// 1.2. Периодическая переиндексация проектов
+	if s.projectService != nil && s.projectSyncCron != "" {
+		_, err := s.cron.AddFunc(s.projectSyncCron, func() {
+			log.Println("Running scheduled project reindexing check...")
+			ctx := context.Background()
+			if err := s.projectService.RunBackgroundReindexing(ctx); err != nil {
+				log.Printf("Failed running scheduled project reindexing: %v", err)
+			}
+		})
+		if err != nil {
+			log.Printf("Failed to schedule project reindexing: %v", err)
+		} else {
+			log.Printf("Scheduled project reindexing with cron: %s", s.projectSyncCron)
 		}
 	}
 

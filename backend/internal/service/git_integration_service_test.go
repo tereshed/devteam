@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +22,7 @@ import (
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/crypto"
 	"github.com/google/uuid"
+	"golang.org/x/oauth2"
 )
 
 // ─── fakes ───────────────────────────────────────────────────────────────────
@@ -498,5 +501,153 @@ func TestGitOAuthStateStore_Expired(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	if _, err := store.Consume(tok); !errors.Is(err, ErrGitOAuthStateNotFound) {
 		t.Fatalf("expected expired state error, got %v", err)
+	}
+}
+
+type rewriteTransport struct {
+	targetURL string
+	transport http.RoundTripper
+}
+
+func (t *rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	u, err := url.Parse(t.targetURL)
+	if err != nil {
+		return nil, err
+	}
+	req.URL.Scheme = u.Scheme
+	req.URL.Host = u.Host
+	return t.transport.RoundTrip(req)
+}
+
+func TestGitIntegration_CreateRepository_GitHub_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/user/repos" {
+			// Check request body for auto_init
+			var body struct {
+				Name     string `json:"name"`
+				Private  bool   `json:"private"`
+				AutoInit bool   `json:"auto_init"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if body.Name != "my-new-repo" || !body.Private || !body.AutoInit {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{
+				"name": "my-new-repo",
+				"full_name": "test-user/my-new-repo",
+				"html_url": "https://github.com/test-user/my-new-repo",
+				"clone_url": "https://github.com/test-user/my-new-repo.git",
+				"description": "hello"
+			}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	repo := newFakeRepo()
+	uid := uuid.New()
+	enc, _ := crypto.NewAESEncryptor(testKey32(t))
+	// Add mock credential
+	credID := uuid.New()
+	tokenEnc, _ := enc.Encrypt([]byte("ghp_fake_token"), repository.GitIntegrationCredentialAAD(credID))
+	_ = repo.Upsert(context.Background(), &models.GitIntegrationCredential{
+		ID:             credID,
+		UserID:         uid,
+		Provider:       models.GitIntegrationProviderGitHub,
+		AccessTokenEnc: tokenEnc,
+	})
+
+	svc := NewGitIntegrationService(GitIntegrationServiceDeps{
+		Repo:      repo,
+		Encryptor: enc,
+		Logger:    logging.NopLogger(),
+	})
+
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{
+		Transport: &rewriteTransport{
+			targetURL: srv.URL,
+			transport: http.DefaultTransport,
+		},
+	})
+
+	res, err := svc.CreateRepository(ctx, uid, models.GitIntegrationProviderGitHub, "my-new-repo", true, "hello")
+	if err != nil {
+		t.Fatalf("CreateRepository failed: %v", err)
+	}
+	if res.Name != "my-new-repo" || res.FullName != "test-user/my-new-repo" {
+		t.Errorf("unexpected response: %+v", res)
+	}
+}
+
+func TestGitIntegration_CreateRepository_GitLab_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/api/v4/projects" {
+			var body struct {
+				Name                 string `json:"name"`
+				Visibility           string `json:"visibility"`
+				InitializeWithReadme bool   `json:"initialize_with_readme"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if body.Name != "my-new-repo" || body.Visibility != "private" || !body.InitializeWithReadme {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{
+				"name": "my-new-repo",
+				"path_with_namespace": "test-user/my-new-repo",
+				"web_url": "https://gitlab.com/test-user/my-new-repo",
+				"http_url_to_repo": "https://gitlab.com/test-user/my-new-repo.git",
+				"description": "hello"
+			}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	srvHost, srvPort, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	srvIP := net.ParseIP(srvHost)
+
+	resolver := &fakeResolver{responses: [][]net.IP{{srvIP}, {srvIP}}}
+	validator := NewGitProviderHostValidator(resolver, false)
+
+	repo := newFakeRepo()
+	uid := uuid.New()
+	enc, _ := crypto.NewAESEncryptor(testKey32(t))
+	credID := uuid.New()
+	tokenEnc, _ := enc.Encrypt([]byte("glpat-fake"), repository.GitIntegrationCredentialAAD(credID))
+	_ = repo.Upsert(context.Background(), &models.GitIntegrationCredential{
+		ID:             credID,
+		UserID:         uid,
+		Provider:       models.GitIntegrationProviderGitLab,
+		Host:           "http://" + net.JoinHostPort("gitlab.example.com", srvPort),
+		AccessTokenEnc: tokenEnc,
+	})
+
+	svc := NewGitIntegrationService(GitIntegrationServiceDeps{
+		Repo:      repo,
+		Encryptor: enc,
+		Validator: validator,
+		Logger:    logging.NopLogger(),
+	})
+
+	res, err := svc.CreateRepository(context.Background(), uid, models.GitIntegrationProviderGitLab, "my-new-repo", true, "hello")
+	if err != nil {
+		t.Fatalf("CreateRepository failed: %v", err)
+	}
+	if res.Name != "my-new-repo" || res.FullName != "test-user/my-new-repo" {
+		t.Errorf("unexpected response: %+v", res)
 	}
 }

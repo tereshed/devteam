@@ -111,6 +111,9 @@ func (m *mockIdxProjectService) Reindex(ctx context.Context, userID uuid.UUID, u
 func (m *mockIdxProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
+func (m *mockIdxProjectService) RunBackgroundReindexing(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
 
 type mockIdxSyncRepo struct{ mock.Mock }
 

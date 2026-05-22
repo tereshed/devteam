@@ -25,6 +25,7 @@ ProjectModel makeProject({
   String vectorCollection = 'TestCol',
   Map<String, dynamic> techStack = const {},
   GitCredentialModel? gitCredential,
+  String lastIndexedCommit = '',
 }) =>
     ProjectModel(
       id: id,
@@ -34,6 +35,7 @@ ProjectModel makeProject({
       gitUrl: gitUrl,
       gitDefaultBranch: gitDefaultBranch,
       gitCredential: gitCredential,
+      lastIndexedCommit: lastIndexedCommit,
       vectorCollection: vectorCollection,
       techStack: techStack,
       status: status,
