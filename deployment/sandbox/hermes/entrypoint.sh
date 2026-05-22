@@ -243,6 +243,13 @@ fi
 PHASE="prepare_repo_dir"
 rm -rf "$REPO_DIR"
 
+# Configure git credentials if token is present
+if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https?:// ]]; then
+  repo_host="$(printf '%s' "$REPO_URL" | sed -E 's|^https?://([^/]+).*|\1|')"
+  echo "https://x-access-token:${GIT_TOKEN}@${repo_host}" > /tmp/git-credentials
+  git config --global credential.helper 'store --file=/tmp/git-credentials'
+fi
+
 PHASE="clone"
 if ! git clone --depth=50 -- "$REPO_URL" "$REPO_DIR" >>"$AGENT_LOG" 2>&1; then
   echo "entrypoint: git clone failed for $(mask_url_for_log "$REPO_URL") (see ${AGENT_LOG})" >&2

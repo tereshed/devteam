@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/devteam/backend/internal/agent"
@@ -66,14 +67,15 @@ func DefaultAgentWorkerConfig() AgentWorkerConfig {
 
 // AgentWorker — один воркер пула agent_job.
 type AgentWorker struct {
-	db           *gorm.DB
-	eventRepo    repository.TaskEventRepository
-	artifactRepo repository.ArtifactRepository
-	dispatcher   AgentDispatcher
-	worktreeMgr  *WorktreeManager
-	notifier     *RedisNotifier // может быть nil
-	logger       *slog.Logger
-	cfg          AgentWorkerConfig
+	db             *gorm.DB
+	eventRepo      repository.TaskEventRepository
+	artifactRepo   repository.ArtifactRepository
+	dispatcher     AgentDispatcher
+	worktreeMgr    *WorktreeManager
+	notifier       *RedisNotifier // может быть nil
+	logger         *slog.Logger
+	cfg            AgentWorkerConfig
+	contextBuilder ContextBuilder
 }
 
 // NewAgentWorker — конструктор.
@@ -86,6 +88,7 @@ func NewAgentWorker(
 	notifier *RedisNotifier,
 	logger *slog.Logger,
 	cfg AgentWorkerConfig,
+	contextBuilder ContextBuilder,
 ) *AgentWorker {
 	if logger == nil {
 		logger = logging.NopLogger()
@@ -103,6 +106,7 @@ func NewAgentWorker(
 		db: db, eventRepo: eventRepo, artifactRepo: artifactRepo,
 		dispatcher: dispatcher, worktreeMgr: worktreeMgr,
 		notifier: notifier, logger: logger, cfg: cfg,
+		contextBuilder: contextBuilder,
 	}
 }
 
@@ -297,7 +301,37 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		}
 	}
 
-	in := w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
+	var in agent.ExecutionInput
+	if w.contextBuilder != nil {
+		builtIn, err := w.contextBuilder.Build(execCtx, &task, &agentRec, task.Project)
+		if err != nil {
+			w.failEvent(parentCtx, ev, fmt.Errorf("context builder: %w", err))
+			return
+		}
+		in = *builtIn
+		// Override ContextJSON and StructuredContext with the step-specific payload.Input
+		inputJSON, _ := json.Marshal(payload.Input)
+		in.ContextJSON = inputJSON
+		in.StructuredContext = inputJSON
+
+		// If there is a target artifact, and it's not already in PromptUser,
+		// append it in the target_artifact XML format.
+		if targetArtifact != nil && !strings.Contains(in.PromptUser, fmt.Sprintf("<target_artifact id=%q", targetArtifact.ID.String())) {
+			prettyContent := ""
+			if len(targetArtifact.Content) > 0 {
+				var prettyJSON bytes.Buffer
+				if err := json.Indent(&prettyJSON, targetArtifact.Content, "", "  "); err == nil {
+					prettyContent = prettyJSON.String()
+				} else {
+					prettyContent = string(targetArtifact.Content)
+				}
+			}
+			in.PromptUser = in.PromptUser + fmt.Sprintf("\n\n<target_artifact id=%q producer=%q kind=%q summary=%q>\n%s\n</target_artifact>\n",
+				targetArtifact.ID.String(), targetArtifact.ProducerAgent, string(targetArtifact.Kind), targetArtifact.Summary, prettyContent)
+		}
+	} else {
+		in = w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
+	}
 
 	result, execErr := executor.Execute(execCtx, in)
 	if execErr != nil {

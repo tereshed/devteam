@@ -425,6 +425,7 @@ func main() {
 		// до sandbox-runner'а: hermes-config/skills/permission-mode становятся мёртвым кодом.
 		service.WithAgentSettingsServiceOption(agentSettingsSvc),
 		service.WithArtifactRepositoryOption(artifactRepoV2),
+		service.WithGitIntegrationRepositoryOption(gitIntegrationRepo),
 	)
 
 	llmProviderRepo := repository.NewLLMProviderRepository(db)
@@ -659,6 +660,7 @@ func main() {
 				PollInterval:    500 * time.Millisecond,
 				AgentJobTimeout: time.Hour,
 			},
+			orchestratorContextBuilder,
 		)
 		go func() {
 			if err := w.Run(ctxWorker); err != nil {

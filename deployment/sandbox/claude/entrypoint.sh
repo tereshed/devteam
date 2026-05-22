@@ -297,6 +297,13 @@ fi
 PHASE="prepare_repo_dir"
 rm -rf /workspace/repo
 
+# Configure git credentials if token is present
+if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https?:// ]]; then
+  repo_host="$(printf '%s' "$REPO_URL" | sed -E 's|^https?://([^/]+).*|\1|')"
+  echo "https://x-access-token:${GIT_TOKEN}@${repo_host}" > /tmp/git-credentials
+  git config --global credential.helper 'store --file=/tmp/git-credentials'
+fi
+
 # --- clone ---
 PHASE="clone"
 # Не логируем сырой REPO_URL с токеном в stderr

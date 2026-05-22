@@ -43,8 +43,9 @@ type contextBuilder struct {
 	// Sprint 16.C: per-agent артефакты для sandbox-runner'а (settings.json/.mcp.json/
 	// permission_mode для Claude; config.yaml/mcp.json/skills/env для Hermes).
 	// nil — пайплайн пропускает per-agent сборку и работает legacy-путём.
-	agentSettings AgentSettingsService
-	artifactRepo  repository.ArtifactRepository
+	agentSettings      AgentSettingsService
+	artifactRepo       repository.ArtifactRepository
+	gitIntegrationRepo repository.GitIntegrationCredentialRepository
 }
 
 // NewContextBuilder создаёт сборщик контекста.
@@ -98,6 +99,11 @@ func WithAgentSettingsServiceOption(svc AgentSettingsService) ContextBuilderOpti
 // WithArtifactRepositoryOption — Sprint 17: подключает ArtifactRepository для подтягивания артефактов из таблицы artifacts.
 func WithArtifactRepositoryOption(repo repository.ArtifactRepository) ContextBuilderOption {
 	return func(b *contextBuilder) { b.artifactRepo = repo }
+}
+
+// WithGitIntegrationRepositoryOption — подтягивает OAuth-креды для git-провайдеров.
+func WithGitIntegrationRepositoryOption(repo repository.GitIntegrationCredentialRepository) ContextBuilderOption {
+	return func(b *contextBuilder) { b.gitIntegrationRepo = repo }
 }
 
 // NewContextBuilderFull — полная конфигурация: секреты sandbox + репозиторий сообщений
@@ -241,6 +247,19 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 			input.EnvSecrets["GIT_TOKEN"] = string(decrypted)
 		case models.GitCredentialAuthSSHKey:
 			input.EnvSecrets["GIT_SSH_KEY"] = string(decrypted)
+		}
+	} else if b.gitIntegrationRepo != nil && project.GitProvider != models.GitProviderLocal {
+		if integProvider, ok := mapGitProviderToIntegration(project.GitProvider); ok {
+			cred, err := b.gitIntegrationRepo.GetByUserAndProvider(ctx, project.UserID, integProvider)
+			if err == nil && cred != nil && len(cred.AccessTokenEnc) > 0 {
+				aad := repository.GitIntegrationCredentialAAD(cred.ID)
+				decrypted, decErr := b.encryptor.Decrypt(cred.AccessTokenEnc, aad)
+				if decErr == nil {
+					input.EnvSecrets["GIT_TOKEN"] = string(decrypted)
+				} else {
+					slog.Error("Failed to decrypt git integration credentials for fallback", "project_id", project.ID, "error", decErr)
+				}
+			}
 		}
 	}
 
@@ -451,4 +470,5 @@ func (b *contextBuilder) WithCodeChunks(input *agent.ExecutionInput, chunks []in
 
 	return nil
 }
+
 
