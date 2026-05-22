@@ -47,6 +47,7 @@ type Dependencies struct {
 	TaskHandler           *handler.TaskHandler
 	WorkflowHandler       *handler.WorkflowHandler
 	WebhookHandler        *handler.WebhookHandler
+	ConversationHandler   *handler.ConversationHandler
 	JWTManager            *jwt.Manager
 	ApiKeyService         service.ApiKeyService
 	WebSocketHandler      *ws.WebSocketHandler
@@ -326,6 +327,8 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			projects.PUT("/:id", deps.ProjectHandler.Update)
 			projects.DELETE("/:id", deps.ProjectHandler.Delete)
 			projects.POST("/:id/reindex", deps.ProjectHandler.Reindex)
+			projects.POST("/:id/conversations", deps.ConversationHandler.Create)
+			projects.GET("/:id/conversations", deps.ConversationHandler.List)
 
 			// Phase 5 — project secrets.
 			if deps.ProjectSecretHandler != nil {
@@ -356,6 +359,15 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			}
 		}
 
+		conversations := api.Group("/conversations")
+		conversations.Use(authMW)
+		{
+			conversations.GET("/:id", deps.ConversationHandler.GetByID)
+			conversations.POST("/:id/messages", deps.ConversationHandler.SendMessage)
+			conversations.GET("/:id/messages", deps.ConversationHandler.GetHistory)
+			conversations.DELETE("/:id", deps.ConversationHandler.Delete)
+		}
+
 		// Sprint 17 / Orchestration v2 — debug-эндпоинт для worktrees.
 		if deps.OrchestrationV2Handler != nil {
 			worktrees := api.Group("/worktrees")
@@ -370,25 +382,34 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			}
 		}
 
-		// LLM routes (admin only)
+		// LLM routes (admin only except models)
 		llmGroup := api.Group("/llm")
 		llmGroup.Use(authMW)
-		llmGroup.Use(middleware.AdminOnlyMiddleware())
 		{
-			llmGroup.POST("/chat", deps.LLMHandler.Chat)
-			llmGroup.GET("/logs", deps.LLMHandler.ListLogs)
+			llmGroup.GET("/models", deps.LLMHandler.ListModels)
+
+			adminLLMGroup := llmGroup.Group("")
+			adminLLMGroup.Use(middleware.AdminOnlyMiddleware())
+			{
+				adminLLMGroup.POST("/chat", deps.LLMHandler.Chat)
+				adminLLMGroup.GET("/logs", deps.LLMHandler.ListLogs)
+			}
 		}
 
-		// Prompts routes (admin only)
+		// Prompts routes (read for all authenticated users, write for admin only)
 		promptsGroup := api.Group("/prompts")
 		promptsGroup.Use(authMW)
-		promptsGroup.Use(middleware.AdminOnlyMiddleware())
 		{
-			promptsGroup.POST("", deps.PromptHandler.Create)
 			promptsGroup.GET("", deps.PromptHandler.List)
 			promptsGroup.GET("/:id", deps.PromptHandler.GetByID)
-			promptsGroup.PUT("/:id", deps.PromptHandler.Update)
-			promptsGroup.DELETE("/:id", deps.PromptHandler.Delete)
+
+			adminPrompts := promptsGroup.Group("")
+			adminPrompts.Use(middleware.AdminOnlyMiddleware())
+			{
+				adminPrompts.POST("", deps.PromptHandler.Create)
+				adminPrompts.PUT("/:id", deps.PromptHandler.Update)
+				adminPrompts.DELETE("/:id", deps.PromptHandler.Delete)
+			}
 		}
 
 		// Workflow routes (admin only)

@@ -24,6 +24,8 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
 
   static const _supportedProviders = [
     LlmIntegrationProvider.claudeCodeOAuth,
+    LlmIntegrationProvider.antigravityOAuth,
+    LlmIntegrationProvider.antigravity,
     LlmIntegrationProvider.anthropic,
     LlmIntegrationProvider.deepseek,
     LlmIntegrationProvider.zhipu,
@@ -40,6 +42,10 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
     switch (provider) {
       case LlmIntegrationProvider.claudeCodeOAuth:
         return 'anthropic_oauth';
+      case LlmIntegrationProvider.antigravityOAuth:
+        return 'antigravity_oauth';
+      case LlmIntegrationProvider.antigravity:
+        return 'antigravity';
       case LlmIntegrationProvider.anthropic:
         return 'anthropic';
       case LlmIntegrationProvider.deepseek:
@@ -57,6 +63,10 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
     switch (kind) {
       case 'anthropic_oauth':
         return LlmIntegrationProvider.claudeCodeOAuth;
+      case 'antigravity_oauth':
+        return LlmIntegrationProvider.antigravityOAuth;
+      case 'antigravity':
+        return LlmIntegrationProvider.antigravity;
       case 'anthropic':
         return LlmIntegrationProvider.anthropic;
       case 'deepseek':
@@ -74,6 +84,10 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
     switch (provider) {
       case LlmIntegrationProvider.claudeCodeOAuth:
         return 'Claude Code (OAuth)';
+      case LlmIntegrationProvider.antigravityOAuth:
+        return 'Antigravity (OAuth)';
+      case LlmIntegrationProvider.antigravity:
+        return 'Antigravity';
       case LlmIntegrationProvider.anthropic:
         return 'Anthropic Claude';
       case LlmIntegrationProvider.deepseek:
@@ -120,6 +134,11 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
         return [
           'glm-4',
           'glm-4-flash',
+        ];
+      case LlmIntegrationProvider.antigravity:
+      case LlmIntegrationProvider.antigravityOAuth:
+        return [
+          'antigravity-default',
         ];
       default:
         return const [];
@@ -185,6 +204,11 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final myAgentsAsync = ref.watch(myAgentsListProvider);
+
+    final pk = _selectedProvider != null ? _providerToKind(_selectedProvider!) : null;
+    final AsyncValue<List<String>> dynamicModelsAsync = pk != null
+        ? ref.watch(availableModelsProvider(pk))
+        : const AsyncValue.data([]);
 
     return myAgentsAsync.when(
       loading: () => const Center(
@@ -282,9 +306,6 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
             ),
           );
         }
-
-        final suggestions = _selectedProvider != null ? _suggestionsFor(_selectedProvider!) : const <String>[];
-
         return Card(
           elevation: 1,
           shape: RoundedRectangleBorder(
@@ -388,7 +409,17 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
                         decoration: InputDecoration(
                           labelText: 'Модель',
                           prefixIcon: const Icon(Icons.psychology_outlined),
-                          suffixIcon: const Icon(Icons.arrow_drop_down),
+                          suffixIcon: dynamicModelsAsync.maybeWhen(
+                            loading: () => const Padding(
+                              padding: EdgeInsets.all(12.0),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                            orElse: () => const Icon(Icons.arrow_drop_down),
+                          ),
                           helperText: 'Введите название модели или выберите из списка',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -419,7 +450,13 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
                         ];
                       }
                       
-                      final allSuggestions = _suggestionsFor(provider);
+                      final List<String> allSuggestions;
+                      final dynamicModels = dynamicModelsAsync.asData?.value;
+                      if (dynamicModels != null && dynamicModels.isNotEmpty) {
+                        allSuggestions = dynamicModels;
+                      } else {
+                        allSuggestions = _suggestionsFor(provider);
+                      }
                       final isExactMatch = allSuggestions.any((s) => s.toLowerCase() == text.trim().toLowerCase());
                       final filtered = isExactMatch
                           ? allSuggestions

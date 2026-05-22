@@ -325,6 +325,27 @@ class LlmIntegrationsRepository {
     }
   }
 
+  /// Получить список доступных моделей для провайдера.
+  Future<List<String>> fetchAvailableModels(
+    String providerKind, {
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.get<dynamic>(
+        '/llm/models',
+        queryParameters: <String, dynamic>{'provider': providerKind},
+        cancelToken: cancelToken,
+      );
+      final dynamic rawData = resp.data;
+      if (rawData is List) {
+        return rawData.map((dynamic e) => e.toString()).toList();
+      }
+      return <String>[];
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
   // --- helpers ------------------------------------------------------------
 
   static List<LlmProviderConnection> _parseCredentialsResponse(

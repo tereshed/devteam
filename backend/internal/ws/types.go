@@ -28,6 +28,7 @@ const (
 	MessageTypeAgentLog          MessageType = "agent_log"
 	MessageTypeError             MessageType = "error"
 	MessageTypeIntegrationStatus MessageType = "integration_status"
+	MessageTypeConversationMessage MessageType = "conversation_message"
 
 	// Assistant-events (Sprint 21 §7). Все — user-scoped, маршрутизируются
 	// через Hub.SendToUser и обязаны сериализоваться через MarshalUserEnvelope —
@@ -212,6 +213,17 @@ type ErrorData struct {
 	Details map[string]any `json:"details,omitempty"`
 }
 
+// ConversationMessageData — payload для type=conversation_message.
+type ConversationMessageData struct {
+	ID             uuid.UUID       `json:"id"`
+	ConversationID uuid.UUID       `json:"conversation_id"`
+	Role           string          `json:"role"`
+	Content        string          `json:"content"`
+	LinkedTaskIDs  []uuid.UUID     `json:"linked_task_ids"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
 const (
 	MetadataValueMaxBytes = 1024
 	MetadataMaxBytes      = 4096
@@ -320,6 +332,9 @@ func MarshalAgentLog(projectID uuid.UUID, d AgentLogData) ([]byte, error) {
 }
 func MarshalError(projectID uuid.UUID, d ErrorData) ([]byte, error) {
 	return MarshalEnvelope(MessageTypeError, projectID, d)
+}
+func MarshalConversationMessage(projectID uuid.UUID, d ConversationMessageData) ([]byte, error) {
+	return MarshalEnvelope(MessageTypeConversationMessage, projectID, d)
 }
 
 // MarshalUserEnvelope — ЕДИНСТВЕННЫЙ способ сериализации user-scoped WS-сообщения.

@@ -5,6 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
+import 'package:frontend/core/api/websocket_events.dart';
+import 'package:frontend/core/api/websocket_providers.dart';
+import 'package:frontend/core/api/websocket_service.dart';
+import 'package:frontend/features/chat/data/chat_providers.dart';
+import 'package:frontend/features/chat/data/conversation_repository.dart';
+import 'package:frontend/features/chat/domain/requests.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/data/project_repository.dart';
 import 'package:frontend/features/projects/domain/models.dart';
@@ -17,6 +23,7 @@ import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../../../chat/helpers/chat_fixtures.dart';
 import '../../../tasks/helpers/task_fixtures.dart';
 import '../../helpers/project_dashboard_test_router.dart';
 import '../../helpers/project_fixtures.dart';
@@ -32,6 +39,7 @@ class _StubTaskListForDashboardShellTest extends TaskListController {
 }
 
 class MockProjectRepository extends Mock implements ProjectRepository {}
+class MockConversationRepository extends Mock implements ConversationRepository {}
 
 class FakeCancelToken extends Fake implements CancelToken {}
 
@@ -41,6 +49,45 @@ void main() {
   });
 
   group('ProjectDashboardScreen', () {
+    late MockConversationRepository mockConvRepo;
+    late Map<String, String> convToProjectMap;
+
+    setUp(() {
+      mockConvRepo = MockConversationRepository();
+      convToProjectMap = {};
+
+      when(() => mockConvRepo.listConversations(
+            any(),
+            limit: any(named: 'limit'),
+            offset: any(named: 'offset'),
+            cancelToken: any(named: 'cancelToken'),
+          )).thenAnswer((inv) async {
+            final projectId = inv.positionalArguments[0] as String;
+            final conv = makeConversation(projectId: projectId);
+            convToProjectMap[conv.id] = projectId;
+            return ConversationListResponse(
+              conversations: [conv],
+            );
+          });
+      when(() => mockConvRepo.getConversation(
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          )).thenAnswer((inv) async {
+            final convId = inv.positionalArguments[0] as String;
+            final projectId = convToProjectMap[convId] ?? kTestChatProjectUuid;
+            return makeConversation(id: convId, projectId: projectId);
+          });
+      when(() => mockConvRepo.getMessages(
+            any(),
+            limit: any(named: 'limit'),
+            offset: any(named: 'offset'),
+            cancelToken: any(named: 'cancelToken'),
+          )).thenAnswer((_) async => const MessageListResponse(
+            messages: [],
+            hasNext: false,
+          ));
+    });
+
     testWidgets('успешная загрузка: заголовок AppBar — имя проекта', (
       tester,
     ) async {
@@ -51,6 +98,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => makeProject(
                 id: kTestProjectUuid,
@@ -81,6 +130,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(
               kTestProjectUuid,
             ).overrideWith((ref) => completer.future),
@@ -94,7 +145,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byKey(const ValueKey('project-dashboard-loading')), findsOneWidget);
       completer.complete(
         makeProject(
           id: kTestProjectUuid,
@@ -116,6 +167,8 @@ void main() {
           ProviderScope(
             retry: (_, _) => null,
             overrides: [
+              webSocketServiceProvider.overrideWithValue(_Ws()),
+              conversationRepositoryProvider.overrideWithValue(mockConvRepo),
               projectProvider(kTestProjectUuid).overrideWith((ref) async {
                 attempt++;
                 if (attempt == 1) {
@@ -146,7 +199,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(find.text(l10n.dataLoadError), findsOneWidget);
+        expect(find.byKey(const ValueKey('project-dashboard-error')), findsOneWidget);
         await tester.tap(find.text(l10n.retry));
         await tester.pumpAndSettle();
         expect(find.text(kTestDashboardProjectNameAfterRetry), findsOneWidget);
@@ -165,6 +218,8 @@ void main() {
           ProviderScope(
             retry: (_, _) => null,
             overrides: [
+              webSocketServiceProvider.overrideWithValue(_Ws()),
+              conversationRepositoryProvider.overrideWithValue(mockConvRepo),
               projectProvider(kTestProjectUuid).overrideWith(
                 (ref) async => throw ProjectNotFoundException('missing'),
               ),
@@ -210,6 +265,8 @@ void main() {
           ProviderScope(
             retry: (_, _) => null,
             overrides: [
+              webSocketServiceProvider.overrideWithValue(_Ws()),
+              conversationRepositoryProvider.overrideWithValue(mockConvRepo),
               projectProvider(kTestProjectUuid).overrideWith(
                 (ref) async => throw ProjectNotFoundException('missing'),
               ),
@@ -252,6 +309,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => makeProject(
                 id: kTestProjectUuid,
@@ -284,6 +343,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(
               kTestProjectUuid,
             ).overrideWith((ref) async => makeProject(id: kTestProjectUuid)),
@@ -312,6 +373,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(
               kTestProjectUuid,
             ).overrideWith((ref) async => makeProject(id: kTestProjectUuid)),
@@ -325,7 +388,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat');
+      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat/$kTestChatConversationUuid');
     });
 
     testWidgets('редирект: невалидный UUID → /projects', (tester) async {
@@ -355,6 +418,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(
               kTestProjectUuid,
             ).overrideWith((ref) async => makeProject(id: kTestProjectUuid)),
@@ -368,7 +433,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat');
+      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat/$kTestChatConversationUuid');
     });
 
     testWidgets(
@@ -387,6 +452,8 @@ void main() {
           ProviderScope(
             retry: (_, _) => null,
             overrides: [
+              webSocketServiceProvider.overrideWithValue(_Ws()),
+              conversationRepositoryProvider.overrideWithValue(mockConvRepo),
               projectProvider(
                 kTestProjectUuid,
               ).overrideWith((ref) async => makeProject(id: kTestProjectUuid)),
@@ -434,7 +501,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           retry: (_, _) => null,
-          overrides: [projectRepositoryProvider.overrideWithValue(repo)],
+          overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
+            projectRepositoryProvider.overrideWithValue(repo),
+          ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
@@ -463,6 +534,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => throw ProjectNotFoundException('missing'),
             ),
@@ -495,6 +568,8 @@ void main() {
         ProviderScope(
           retry: (_, _) => null,
           overrides: [
+            webSocketServiceProvider.overrideWithValue(_Ws()),
+            conversationRepositoryProvider.overrideWithValue(mockConvRepo),
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => makeProject(
                 id: kTestProjectUuid,
@@ -524,4 +599,23 @@ void main() {
       expect(find.text(kTestDashboardNavProjectNameB), findsOneWidget);
     });
   });
+}
+
+class _Ws extends WebSocketService {
+  _Ws()
+      : super(
+          baseUrl: 'http://127.0.0.1:8080/api/v1',
+          channelFactory: (_, {protocols}) =>
+              throw UnimplementedError('not used'),
+          authProvider: () async => const WsAuth.none(),
+        );
+
+  @override
+  Stream<WsClientEvent> get events => const Stream.empty();
+
+  @override
+  Stream<WsClientEvent> connect(String projectId) => const Stream.empty();
+
+  @override
+  void disconnect() {}
 }

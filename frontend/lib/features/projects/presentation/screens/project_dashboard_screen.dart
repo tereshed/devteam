@@ -52,9 +52,13 @@ class ProjectDashboardScreen extends ConsumerWidget {
 
     Widget? overlay;
     if (asyncProject.isLoading) {
-      overlay = const Center(child: CircularProgressIndicator());
+      overlay = const Center(
+        key: ValueKey('project-dashboard-loading'),
+        child: CircularProgressIndicator(),
+      );
     } else if (asyncProject.hasError) {
       overlay = DataLoadErrorMessage(
+        key: const ValueKey('project-dashboard-error'),
         title: l10n.dataLoadError,
         actionLabel: l10n.retry,
         onAction: () => ref.invalidate(projectProvider(projectId)),
@@ -86,8 +90,9 @@ class _ProjectDashboardBackButton extends StatelessWidget {
       icon: const Icon(Icons.arrow_back),
       tooltip: MaterialLocalizations.of(context).backButtonTooltip,
       onPressed: () {
-        if (context.canPop()) {
-          context.pop();
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop();
         } else {
           context.go('/projects');
         }

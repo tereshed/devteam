@@ -12,11 +12,11 @@ import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_repository.dart';
 import 'package:frontend/features/projects/domain/models/agent_model.dart';
-import 'package:frontend/features/team/domain/models/tool_binding_response_model.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
+import 'package:frontend/features/team/data/team_repository.dart';
 import 'package:frontend/features/team/data/tools_providers.dart';
 import 'package:frontend/features/team/data/tools_repository.dart';
-import 'package:frontend/features/team/data/team_repository.dart';
+import 'package:frontend/features/team/domain/models/tool_binding_response_model.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_card.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_edit_dialog.dart';
 import 'package:frontend/l10n/app_localizations_ru.dart';
@@ -43,6 +43,7 @@ void main() {
 
   AgentModel sampleAgent({
     String? promptId,
+    String? promptName,
     bool isActive = true,
     String? model = 'm1',
     List<ToolBindingResponseModel>? toolBindings,
@@ -53,7 +54,7 @@ void main() {
       name: 'Agent',
       role: 'developer',
       model: model,
-      promptName: null,
+      promptName: promptName,
       promptId: promptId,
       codeBackend: 'claude-code',
       providerKind: providerKind,
@@ -64,7 +65,7 @@ void main() {
 
   MockDio createDio() => MockDio();
 
-  void _stubPrompts(MockDio dio) {
+  void stubPrompts(MockDio dio) {
     when(
       dio.get(
         '/prompts',
@@ -103,7 +104,7 @@ void main() {
   }
 
   void stubDialogDio(MockDio dio) {
-    _stubPrompts(dio);
+    stubPrompts(dio);
     stubToolDefinitions(dio);
   }
 
@@ -475,7 +476,7 @@ void main() {
     );
   });
 
-  testWidgets('ошибка GET /prompts — секция промпта в ошибке', (tester) async {
+  testWidgets('ошибка GET /prompts — отказоустойчивость, загрузка заглушки', (tester) async {
     final dio = createDio();
     when(
       dio.get(
@@ -496,7 +497,10 @@ void main() {
       wrap(
         agentEditDialogBodyForTesting(
           projectId: projectId,
-          agent: sampleAgent(),
+          agent: sampleAgent(
+            promptId: 'stub_id',
+            promptName: 'Stub Prompt Name',
+          ),
           useAutofocus: false,
         ),
         dio: dio,
@@ -505,8 +509,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     final l10n = AppLocalizationsRu();
-    expect(find.text(l10n.teamAgentEditPromptsLoadError), findsWidgets);
-    expect(find.byType(TextFormField), findsOneWidget);
+    expect(find.text(l10n.teamAgentEditPromptsLoadError), findsNothing);
+    expect(find.byType(DropdownButtonFormField<String?>), findsWidgets);
+    expect(find.text('Stub Prompt Name'), findsOneWidget);
   });
 
   testWidgets('dispose во время загрузки промптов — без exception', (tester) async {
@@ -548,7 +553,7 @@ void main() {
 
   testWidgets('dispose во время загрузки tool-definitions — без exception', (tester) async {
     final dio = createDio();
-    _stubPrompts(dio);
+    stubPrompts(dio);
     final completer = Completer<Response<dynamic>>();
     when(
       dio.get(
@@ -583,7 +588,7 @@ void main() {
 
   testWidgets('13.3.1: пустой каталог — teamAgentEditToolsEmpty', (tester) async {
     final dio = createDio();
-    _stubPrompts(dio);
+    stubPrompts(dio);
     when(
       dio.get(
         '/tool-definitions',
@@ -618,7 +623,7 @@ void main() {
     (tester) async {
       useViewSize(tester, const Size(800, 1200));
       final dio = createDio();
-      _stubPrompts(dio);
+      stubPrompts(dio);
       final toolsErr = DioException(
         requestOptions: RequestOptions(path: '/tool-definitions'),
         type: DioExceptionType.badResponse,
@@ -730,7 +735,7 @@ void main() {
       wrap(
         agentEditDialogBodyForTesting(
           projectId: projectId,
-          agent: sampleAgent(),
+          agent: sampleAgent(providerKind: 'anthropic'),
           useAutofocus: true,
         ),
         dio: dio,
@@ -748,7 +753,7 @@ void main() {
       wrap(
         agentEditDialogBodyForTesting(
           projectId: projectId,
-          agent: sampleAgent(),
+          agent: sampleAgent(providerKind: 'anthropic'),
           useAutofocus: false,
         ),
         dio: dio,
@@ -1214,4 +1219,48 @@ void main() {
       ).called(1);
     },
   );
+
+  testWidgets('модель: поле ввода заблокировано, если providerKind не выбран', (tester) async {
+    final dio = createDio();
+    stubDialogDio(dio);
+    await tester.pumpWidget(
+      wrap(
+        agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(providerKind: null),
+          useAutofocus: false,
+        ),
+        dio: dio,
+        viewSize: const Size(800, 600),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final textFormField = tester.widget<TextFormField>(find.byType(TextFormField));
+    expect(textFormField.enabled, isFalse);
+  });
+
+  testWidgets('модель: поле ввода разблокировано при выбранном провайдере и предлагает варианты при тапе', (tester) async {
+    final dio = createDio();
+    stubDialogDio(dio);
+    await tester.pumpWidget(
+      wrap(
+        agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(providerKind: 'anthropic', model: ''),
+          useAutofocus: false,
+        ),
+        dio: dio,
+        viewSize: const Size(800, 600),
+      ),
+    );
+    await tester.pumpAndSettle();
+    
+    final textFormField = tester.widget<TextFormField>(find.byType(TextFormField));
+    expect(textFormField.enabled, isTrue);
+
+    await tester.tap(find.byType(TextFormField));
+    await tester.pumpAndSettle();
+
+    expect(find.text('claude-3-5-sonnet-latest'), findsOneWidget);
+  });
 }

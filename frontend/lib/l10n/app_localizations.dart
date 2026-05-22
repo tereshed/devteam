@@ -2942,6 +2942,18 @@ abstract class AppLocalizations {
   /// **'Промпт не выбран'**
   String get teamAgentEditPromptNone;
 
+  /// Dropdown label when system default prompt is used for orchestrator/router
+  ///
+  /// In ru, this message translates to:
+  /// **'Системный по умолчанию (захардкожен)'**
+  String get teamAgentEditPromptSystemDefaultHardcoded;
+
+  /// Helper text when system default prompt is used for orchestrator/router
+  ///
+  /// In ru, this message translates to:
+  /// **'Используется системный промпт по умолчанию (захардкожен)'**
+  String get teamAgentEditPromptSystemDefaultHardcodedHelp;
+
   /// 13.3 сброс опционального поля (code backend)
   ///
   /// In ru, this message translates to:
@@ -3091,6 +3103,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось загрузить список провайдеров'**
   String get llmProvidersLoadError;
+
+  /// No description provided for @llmProvidersAdminRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Для управления LLM-провайдерами требуются права администратора'**
+  String get llmProvidersAdminRequired;
 
   /// No description provided for @llmProvidersHealthTooltip.
   ///

@@ -55,6 +55,9 @@ type ConversationMessageRepository interface {
 
 	// ListByProjectID возвращает сообщения всех чатов проекта с поддержкой курсора и Preload чата
 	ListByProjectID(ctx context.Context, projectID uuid.UUID, lastID *uuid.UUID, limit int, master bool) ([]*models.ConversationMessage, error)
+
+	// ListByLinkedTaskID возвращает сообщения, связанные с конкретной задачей
+	ListByLinkedTaskID(ctx context.Context, taskID uuid.UUID) ([]*models.ConversationMessage, error)
 }
 
 type conversationMessageRepository struct {
@@ -269,3 +272,19 @@ func (r *conversationMessageRepository) mapDBError(err error) error {
 	}
 	return fmt.Errorf("database error: %w", err)
 }
+
+func (r *conversationMessageRepository) ListByLinkedTaskID(ctx context.Context, taskID uuid.UUID) ([]*models.ConversationMessage, error) {
+	if taskID == uuid.Nil {
+		return nil, ErrInvalidInput
+	}
+	db := gormDB(ctx, r.db)
+	var messages []*models.ConversationMessage
+	err := db.WithContext(ctx).
+		Where("? = ANY(linked_task_ids)", taskID).
+		Find(&messages).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list messages by linked task id: %w", err)
+	}
+	return messages, nil
+}
+

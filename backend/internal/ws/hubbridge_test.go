@@ -345,4 +345,73 @@ func TestHubBridge_Dispatch(t *testing.T) {
 			t.Fatal("timed out")
 		}
 	})
+
+	t.Run("ConversationMessageCreated_and_Updated", func(t *testing.T) {
+		convID := uuid.New()
+		msgID := uuid.New()
+		taskID := uuid.New()
+		createdAt := time.Now().UTC().Truncate(time.Second)
+
+		evCreated := events.ConversationMessageCreated{
+			ProjectID:      projectID,
+			ConversationID: convID,
+			MessageID:      msgID,
+			Role:           "user",
+			Content:        "Hello, API key: sk-12345678901234567890",
+			LinkedTaskIDs:  []uuid.UUID{taskID},
+			Metadata:       `{"foo":"bar"}`,
+			CreatedAt:      createdAt,
+		}
+		bus.Publish(ctx, evCreated)
+
+		select {
+		case msg := <-hub.broadcast:
+			assert.Equal(t, projectID.String(), msg.ProjectID)
+			assert.Equal(t, string(MessageTypeConversationMessage), msg.Type)
+
+			var env Envelope[ConversationMessageData]
+			err := json.Unmarshal(msg.Payload, &env)
+			require.NoError(t, err)
+			assert.Equal(t, msgID, env.Data.ID)
+			assert.Equal(t, convID, env.Data.ConversationID)
+			assert.Equal(t, "user", env.Data.Role)
+			assert.Contains(t, env.Data.Content, secrets.Redacted)
+			assert.Equal(t, []uuid.UUID{taskID}, env.Data.LinkedTaskIDs)
+			assert.JSONEq(t, `{"foo":"bar"}`, string(env.Data.Metadata))
+			assert.Equal(t, createdAt, env.Data.CreatedAt.UTC())
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for ConversationMessageCreated")
+		}
+
+		evUpdated := events.ConversationMessageUpdated{
+			ProjectID:      projectID,
+			ConversationID: convID,
+			MessageID:      msgID,
+			Role:           "user",
+			Content:        "Hello, API key: sk-12345678901234567890 (updated)",
+			LinkedTaskIDs:  []uuid.UUID{taskID},
+			Metadata:       `{"foo":"bar","updated":true}`,
+			CreatedAt:      createdAt,
+		}
+		bus.Publish(ctx, evUpdated)
+
+		select {
+		case msg := <-hub.broadcast:
+			assert.Equal(t, projectID.String(), msg.ProjectID)
+			assert.Equal(t, string(MessageTypeConversationMessage), msg.Type)
+
+			var env Envelope[ConversationMessageData]
+			err := json.Unmarshal(msg.Payload, &env)
+			require.NoError(t, err)
+			assert.Equal(t, msgID, env.Data.ID)
+			assert.Equal(t, convID, env.Data.ConversationID)
+			assert.Equal(t, "user", env.Data.Role)
+			assert.Contains(t, env.Data.Content, secrets.Redacted)
+			assert.Equal(t, []uuid.UUID{taskID}, env.Data.LinkedTaskIDs)
+			assert.JSONEq(t, `{"foo":"bar","updated":true}`, string(env.Data.Metadata))
+			assert.Equal(t, createdAt, env.Data.CreatedAt.UTC())
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for ConversationMessageUpdated")
+		}
+	})
 }

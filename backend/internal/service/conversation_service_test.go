@@ -79,6 +79,9 @@ func (m *mockConversationMessageRepo) GetByID(ctx context.Context, conversationI
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+	if fn, ok := args.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, bool) (*models.ConversationMessage, error)); ok {
+		return fn(ctx, conversationID, id, master)
+	}
 	return args.Get(0).(*models.ConversationMessage), args.Error(1)
 }
 func (m *mockConversationMessageRepo) ListByConversationID(ctx context.Context, conversationID uuid.UUID, filter repository.MessageFilter) ([]*models.ConversationMessage, int64, error) {
@@ -96,6 +99,13 @@ func (m *mockConversationMessageRepo) Delete(ctx context.Context, conversationID
 }
 func (m *mockConversationMessageRepo) ListByProjectID(ctx context.Context, projectID uuid.UUID, lastID *uuid.UUID, limit int, master bool) ([]*models.ConversationMessage, error) {
 	args := m.Called(ctx, projectID, lastID, limit, master)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.ConversationMessage), args.Error(1)
+}
+func (m *mockConversationMessageRepo) ListByLinkedTaskID(ctx context.Context, taskID uuid.UUID) ([]*models.ConversationMessage, error) {
+	args := m.Called(ctx, taskID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -142,7 +152,11 @@ func (m *mockTaskSvc) Create(ctx context.Context, userID uuid.UUID, userRole mod
 	return args.Get(0).(*models.Task), args.Error(1)
 }
 func (m *mockTaskSvc) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
-	return nil, nil
+	args := m.Called(ctx, userID, userRole, taskID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Task), args.Error(1)
 }
 func (m *mockTaskSvc) List(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.ListTasksRequest) ([]models.Task, int64, error) {
 	return nil, 0, nil
@@ -272,6 +286,9 @@ func newTestConversationHarness(t *testing.T) (*conversationService, *mockDeps) 
 		txManager:       new(mockTxManager),
 		eventBus:        new(mockConvEventBus),
 	}
+
+	ch := make(chan events.DomainEvent, 256)
+	deps.eventBus.On("Subscribe", "conversation_task_status_listener", 256).Return((<-chan events.DomainEvent)(ch), func() {})
 
 	svc := NewConversationService(
 		deps.convRepo,
@@ -535,8 +552,10 @@ func TestSendMessage(t *testing.T) {
 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
-				deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{}, int64(0), nil)
+				deps.msgRepo.On("GetByID", mock.Anything, convID, mock.AnythingOfType("uuid.UUID"), true).Return(&models.ConversationMessage{ID: uuid.New(), Role: models.ConversationRoleUser}, nil)
+				deps.msgRepo.On("Update", mock.Anything, convID, mock.AnythingOfType("uuid.UUID"), mock.Anything).Return(nil)
 				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageUpdated")).Return()
 				deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "").Return(nil)
 			},
 			expectedErr: nil,
@@ -592,8 +611,10 @@ func TestSendMessage(t *testing.T) {
 				deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
-				deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{}, int64(0), nil)
+				deps.msgRepo.On("GetByID", mock.Anything, convID, mock.AnythingOfType("uuid.UUID"), true).Return(&models.ConversationMessage{ID: uuid.New(), Role: models.ConversationRoleUser}, nil)
+				deps.msgRepo.On("Update", mock.Anything, convID, mock.AnythingOfType("uuid.UUID"), mock.Anything).Return(nil)
 				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageUpdated")).Return()
 				deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "").Return(nil)
 			},
 			expectedErr: nil,
@@ -650,10 +671,16 @@ func TestSendMessage_ConcurrentAccess(t *testing.T) {
 	deps.msgRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.ConversationMessage")).Return(nil)
 	deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
 	deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
-	deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{}, int64(0), nil)
+	deps.msgRepo.On("GetByID", mock.Anything, convID, mock.AnythingOfType("uuid.UUID"), true).Return(func(ctx context.Context, conversationID, messageID uuid.UUID, lock bool) (*models.ConversationMessage, error) {
+		return &models.ConversationMessage{
+			ID:   messageID,
+			Role: models.ConversationRoleUser,
+		}, nil
+	})
+	deps.msgRepo.On("Update", mock.Anything, convID, mock.AnythingOfType("uuid.UUID"), mock.Anything).Return(nil)
 	deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
+	deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageUpdated")).Return()
 	deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "").Return(nil)
-	deps.indexer.On("IndexMessage", mock.Anything, projectID, convID, mock.AnythingOfType("uuid.UUID")).Return(nil)
 
 	var wg sync.WaitGroup
 	numGoroutines := 50
@@ -812,6 +839,7 @@ func TestRunOrchestrator(t *testing.T) {
 	projectID := uuid.New()
 	convID := uuid.New()
 	content := "Test content"
+	msgID := uuid.New()
 
 	tests := []struct {
 		name       string
@@ -821,10 +849,10 @@ func TestRunOrchestrator(t *testing.T) {
 			name: "TestRunOrchestrator_Success",
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
+				deps.msgRepo.On("GetByID", mock.Anything, convID, msgID, true).Return(&models.ConversationMessage{ID: msgID, Role: models.ConversationRoleUser}, nil)
+				deps.msgRepo.On("Update", mock.Anything, convID, msgID, mock.Anything).Return(nil)
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageUpdated")).Return()
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(nil)
-				deps.msgRepo.On("ListByConversationID", mock.Anything, convID, mock.Anything).Return([]*models.ConversationMessage{{ID: uuid.New(), Role: models.ConversationRoleAssistant}}, int64(1), nil)
-				deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{ID: convID, ProjectID: projectID}, nil)
-				deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), content).Return(nil)
 			},
 		},
 		{
@@ -837,6 +865,9 @@ func TestRunOrchestrator(t *testing.T) {
 			name: "TestRunOrchestrator_OrchestratorFails",
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
+				deps.msgRepo.On("GetByID", mock.Anything, convID, msgID, true).Return(&models.ConversationMessage{ID: msgID, Role: models.ConversationRoleUser}, nil)
+				deps.msgRepo.On("Update", mock.Anything, convID, msgID, mock.Anything).Return(nil)
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageUpdated")).Return()
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return(errors.New("orchestrator error"))
 			},
 		},
@@ -844,6 +875,9 @@ func TestRunOrchestrator(t *testing.T) {
 			name: "TestRunOrchestrator_RecoversFromPanic",
 			setupMocks: func(svc *conversationService, deps *mockDeps) {
 				deps.taskSvc.On("Create", mock.Anything, userID, models.RoleUser, projectID, mock.AnythingOfType("dto.CreateTaskRequest")).Return(&models.Task{ID: uuid.New()}, nil)
+				deps.msgRepo.On("GetByID", mock.Anything, convID, msgID, true).Return(&models.ConversationMessage{ID: msgID, Role: models.ConversationRoleUser}, nil)
+				deps.msgRepo.On("Update", mock.Anything, convID, msgID, mock.Anything).Return(nil)
+				deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageUpdated")).Return()
 				deps.orchestratorSvc.On("ProcessTask", mock.Anything, mock.AnythingOfType("uuid.UUID")).Run(func(args mock.Arguments) {
 					panic("test panic")
 				}).Return(nil)
@@ -861,7 +895,7 @@ func TestRunOrchestrator(t *testing.T) {
 			svc.wg.Add(1)
 			
 			// Run synchronously to ensure panic is caught and wg is done
-			svc.runOrchestrator(context.Background(), userID, projectID, convID, content)
+			svc.runOrchestrator(context.Background(), userID, projectID, convID, content, msgID)
 			
 			// Wait to ensure wg.Done was called
 			done := make(chan struct{})
@@ -996,4 +1030,107 @@ func TestShutdown_ContextTimeout(t *testing.T) {
 	
 	// Clean up the wg so the test can finish cleanly
 	svc.wg.Done()
+}
+
+func TestHandleTaskStatusChanged(t *testing.T) {
+	userID := uuid.New()
+	convID := uuid.New()
+	projectID := uuid.New()
+	taskID := uuid.New()
+	userMsgID := uuid.New()
+
+	t.Run("TaskStateDone_Success", func(t *testing.T) {
+		t.Cleanup(func() { goleak.VerifyNone(t) })
+		svc, deps := newTestConversationHarness(t)
+
+		userMsg := &models.ConversationMessage{
+			ID:             userMsgID,
+			ConversationID: convID,
+			Role:           models.ConversationRoleUser,
+			Content:        "Run a task",
+			LinkedTaskIDs:  models.UUIDSlice{taskID},
+		}
+
+		deps.msgRepo.On("ListByLinkedTaskID", mock.Anything, taskID).Return([]*models.ConversationMessage{userMsg}, nil)
+		deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{ID: convID, ProjectID: projectID, UserID: userID}, nil)
+		resultStr := "Task completed result text"
+		deps.taskSvc.On("GetByID", mock.Anything, userID, models.RoleUser, taskID).Return(&models.Task{
+			ID:     taskID,
+			State:  models.TaskStateDone,
+			Result: &resultStr,
+		}, nil)
+		deps.msgRepo.On("Create", mock.Anything, mock.MatchedBy(func(m *models.ConversationMessage) bool {
+			return m.ConversationID == convID && m.Role == models.ConversationRoleAssistant && m.Content == resultStr
+		})).Return(nil)
+		deps.eventBus.On("Publish", mock.Anything, mock.MatchedBy(func(ev events.DomainEvent) bool {
+			e, ok := ev.(events.ConversationMessageCreated)
+			return ok && e.ConversationID == convID && e.Role == string(models.ConversationRoleAssistant) && e.Content == resultStr
+		})).Return()
+		deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "Run a task").Return(nil)
+
+		svc.handleTaskStatusChanged(events.TaskStatusChanged{
+			TaskID:     taskID,
+			Current:    string(models.TaskStateDone),
+			UserID:     userID,
+			OccurredAt: time.Now(),
+		})
+	})
+
+	t.Run("TaskStateFailed_Success", func(t *testing.T) {
+		t.Cleanup(func() { goleak.VerifyNone(t) })
+		svc, deps := newTestConversationHarness(t)
+
+		userMsg := &models.ConversationMessage{
+			ID:             userMsgID,
+			ConversationID: convID,
+			Role:           models.ConversationRoleUser,
+			Content:        "Run a failing task",
+			LinkedTaskIDs:  models.UUIDSlice{taskID},
+		}
+
+		deps.msgRepo.On("ListByLinkedTaskID", mock.Anything, taskID).Return([]*models.ConversationMessage{userMsg}, nil)
+		deps.convRepo.On("GetOnlyByID", mock.Anything, convID, true).Return(&models.Conversation{ID: convID, ProjectID: projectID, UserID: userID}, nil)
+		deps.msgRepo.On("Create", mock.Anything, mock.MatchedBy(func(m *models.ConversationMessage) bool {
+			return m.ConversationID == convID && m.Role == models.ConversationRoleAssistant && strings.Contains(m.Content, "something went wrong")
+		})).Return(nil)
+		deps.eventBus.On("Publish", mock.Anything, mock.AnythingOfType("events.ConversationMessageCreated")).Return()
+		deps.indexer.On("IndexMessageFromModel", mock.Anything, mock.AnythingOfType("*models.Conversation"), mock.AnythingOfType("*models.ConversationMessage"), "Run a failing task").Return(nil)
+
+		svc.handleTaskStatusChanged(events.TaskStatusChanged{
+			TaskID:       taskID,
+			Current:      string(models.TaskStateFailed),
+			ErrorMessage: "something went wrong",
+			UserID:       userID,
+			OccurredAt:   time.Now(),
+		})
+	})
+
+	t.Run("AlreadyExists_Ignored", func(t *testing.T) {
+		t.Cleanup(func() { goleak.VerifyNone(t) })
+		svc, deps := newTestConversationHarness(t)
+
+		userMsg := &models.ConversationMessage{
+			ID:             userMsgID,
+			ConversationID: convID,
+			Role:           models.ConversationRoleUser,
+			Content:        "Already done",
+			LinkedTaskIDs:  models.UUIDSlice{taskID},
+		}
+		assistantMsg := &models.ConversationMessage{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           models.ConversationRoleAssistant,
+			Content:        "I did it",
+			LinkedTaskIDs:  models.UUIDSlice{taskID},
+		}
+
+		deps.msgRepo.On("ListByLinkedTaskID", mock.Anything, taskID).Return([]*models.ConversationMessage{userMsg, assistantMsg}, nil)
+
+		svc.handleTaskStatusChanged(events.TaskStatusChanged{
+			TaskID:     taskID,
+			Current:    string(models.TaskStateDone),
+			UserID:     userID,
+			OccurredAt: time.Now(),
+		})
+	})
 }

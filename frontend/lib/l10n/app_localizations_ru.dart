@@ -1613,6 +1613,14 @@ class AppLocalizationsRu extends AppLocalizations {
   String get teamAgentEditPromptNone => 'Промпт не выбран';
 
   @override
+  String get teamAgentEditPromptSystemDefaultHardcoded =>
+      'Системный по умолчанию (захардкожен)';
+
+  @override
+  String get teamAgentEditPromptSystemDefaultHardcodedHelp =>
+      'Используется системный промпт по умолчанию (захардкожен)';
+
+  @override
   String get teamAgentEditUnset => 'Не задано';
 
   @override
@@ -1693,6 +1701,10 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get llmProvidersLoadError => 'Не удалось загрузить список провайдеров';
+
+  @override
+  String get llmProvidersAdminRequired =>
+      'Для управления LLM-провайдерами требуются права администратора';
 
   @override
   String get llmProvidersHealthTooltip => 'Проверка здоровья';

@@ -56,7 +56,7 @@ func (h *PromptHandler) Create(c *gin.Context) {
 
 // List возвращает список всех промптов
 // @Summary Список промптов
-// @Description Возвращает все промпты (только админ)
+// @Description Возвращает все промпты
 // @Tags prompts
 // @Security BearerAuth
 // @Security ApiKeyAuth
@@ -83,7 +83,7 @@ func (h *PromptHandler) List(c *gin.Context) {
 
 // GetByID возвращает промпт по ID
 // @Summary Получение промпта
-// @Description Возвращает промпт по ID (только админ)
+// @Description Возвращает промпт по ID
 // @Tags prompts
 // @Security BearerAuth
 // @Security ApiKeyAuth

@@ -345,6 +345,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (asyncChat.hasError && asyncChat.error is ConversationNotFoundException) {
       return Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: false,
           title: Text(l10n.chatScreenAppBarFallbackTitle),
         ),
         body: Center(
@@ -375,7 +376,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (asyncChat.hasError && !isReloadWithData) {
       final err = asyncChat.error!;
       return Scaffold(
-        appBar: AppBar(title: Text(l10n.chatScreenAppBarFallbackTitle)),
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text(l10n.chatScreenAppBarFallbackTitle),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -420,6 +424,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text(title),
       ),
       body: Column(

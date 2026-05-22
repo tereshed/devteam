@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/safe_error_message.dart';
 import 'package:frontend/core/l10n/require.dart';
+import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/settings/data/llm_providers_providers.dart';
 import 'package:frontend/features/settings/domain/models/llm_provider_model.dart';
 
@@ -19,6 +20,38 @@ class LLMProvidersSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = requireAppLocalizations(context, where: 'llmProvidersSection');
+
+    final authState = ref.watch(authControllerProvider);
+    final isAdmin = authState.maybeWhen(
+      data: (user) => user?.role == 'admin',
+      orElse: () => false,
+    );
+
+    if (!isAdmin) {
+      final theme = Theme.of(context);
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.admin_panel_settings_outlined,
+                size: 64,
+                color: theme.colorScheme.secondary.withValues(alpha: 0.6),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                l10n.llmProvidersAdminRequired,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleMedium,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final providers = ref.watch(llmProvidersListProvider);
 
     return providers.when(

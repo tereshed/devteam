@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:frontend/features/admin/agents_v2/data/agents_v2_providers.dart';
 import 'package:frontend/features/admin/agents_v2/domain/agent_v2_model.dart';
+import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:frontend/features/onboarding/data/my_agents_providers.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/requests.dart' as projects;
 import 'package:frontend/features/tasks/data/task_providers.dart';
@@ -35,7 +37,19 @@ Future<DashboardSummary> dashboardSummary(Ref ref) async {
   final projectsFuture = ref.watch(
     projectListProvider(limit: 1, offset: 0).future,
   );
-  final agentsFuture = ref.watch(agentsV2ListProvider.future);
+
+  final authState = ref.watch(authControllerProvider);
+  final isAdmin = authState.maybeWhen(
+    data: (user) => user?.role == 'admin',
+    orElse: () => false,
+  );
+
+  final Future<AgentV2Page> agentsFuture;
+  if (isAdmin) {
+    agentsFuture = ref.watch(agentsV2ListProvider.future);
+  } else {
+    agentsFuture = ref.watch(myAgentsListProvider.future);
+  }
 
   final results = await Future.wait([projectsFuture, agentsFuture]);
   final projectsResp = results[0] as projects.ProjectListResponse;

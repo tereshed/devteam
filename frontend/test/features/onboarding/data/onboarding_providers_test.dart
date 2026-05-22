@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/agents_v2/domain/agent_v2_model.dart';
+import 'package:frontend/features/auth/domain/models.dart';
+import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/onboarding/data/my_agents_providers.dart';
 import 'package:frontend/features/onboarding/data/onboarding_providers.dart';
 import 'package:frontend/features/onboarding/domain/onboarding_state.dart';
@@ -8,6 +10,17 @@ import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/settings/data/llm_providers_providers.dart';
 import 'package:frontend/features/settings/domain/models/llm_provider_model.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
+
+const _adminUser = UserModel(
+  id: 'u1',
+  email: 'admin@example.com',
+  role: 'admin',
+);
+
+class _FakeAuthController extends AuthController {
+  @override
+  Future<UserModel?> build() async => _adminUser;
+}
 
 AgentV2 _agent({
   String role = 'assistant',
@@ -31,9 +44,10 @@ AgentV2 _agent({
 
 void main() {
   group('onboardingStateProvider', () {
-    test('loading while agents not yet fetched', () {
+    test('loading while agents not yet fetched', () async {
       final container = ProviderContainer(
         overrides: [
+          authControllerProvider.overrideWith(_FakeAuthController.new),
           myAgentsListProvider.overrideWith(
             (ref) => Future<AgentV2Page>.delayed(
               const Duration(hours: 1),
@@ -47,6 +61,8 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
+
+      await container.read(authControllerProvider.future);
 
       final state = container.read(onboardingStateProvider);
       expect(state.loading, isTrue);
@@ -74,6 +90,7 @@ void main() {
     test('needsSetup when no providers and assistant unconfigured', () async {
       final container = ProviderContainer(
         overrides: [
+          authControllerProvider.overrideWith(_FakeAuthController.new),
           myAgentsListProvider.overrideWith(
             (ref) async => AgentV2Page(
               total: 1,
@@ -89,6 +106,7 @@ void main() {
       );
       addTearDown(container.dispose);
 
+      await container.read(authControllerProvider.future);
       await container.read(myAgentsListProvider.future);
       await container.read(llmProvidersListProvider.future);
 
@@ -102,6 +120,7 @@ void main() {
     test('configured when assistant has model and provider', () async {
       final container = ProviderContainer(
         overrides: [
+          authControllerProvider.overrideWith(_FakeAuthController.new),
           myAgentsListProvider.overrideWith(
             (ref) async => AgentV2Page(
               total: 1,
@@ -128,6 +147,7 @@ void main() {
       );
       addTearDown(container.dispose);
 
+      await container.read(authControllerProvider.future);
       await container.read(myAgentsListProvider.future);
       await container.read(llmProvidersListProvider.future);
 

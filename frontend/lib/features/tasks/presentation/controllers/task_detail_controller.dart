@@ -291,6 +291,7 @@ class TaskDetailController extends _$TaskDetailController {
             }
           },
           integrationStatus: (_) {},
+          conversationMessage: (_) {},
           // Sprint 21 §7 — assistant.* идут в правую панель, не в task-detail.
           assistantSessionUpdated: (_) {},
           assistantMessage: (_) {},

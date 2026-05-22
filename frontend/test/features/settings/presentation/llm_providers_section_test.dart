@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/features/auth/domain/models.dart';
+import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/settings/data/llm_providers_providers.dart';
 import 'package:frontend/features/settings/domain/models/llm_provider_model.dart';
 import 'package:frontend/features/settings/presentation/widgets/llm_providers_section.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+
+const _user = UserModel(
+  id: 'u1',
+  email: 'admin@example.com',
+  role: 'admin',
+);
+
+class _FakeAuthController extends AuthController {
+  @override
+  Future<UserModel?> build() async => _user;
+}
 
 /// Sprint 15.34 — widget-тесты LLMProvidersSection.
 void main() {
@@ -16,6 +29,7 @@ void main() {
       ProviderScope(
         retry: (_, _) => null,
         overrides: [
+          authControllerProvider.overrideWith(_FakeAuthController.new),
           llmProvidersListProvider.overrideWith((ref) async => providers),
         ],
         child: const MaterialApp(

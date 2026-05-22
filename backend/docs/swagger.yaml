@@ -25,6 +25,8 @@ definitions:
         type: string
       prompt_name:
         type: string
+      provider_kind:
+        type: string
       role:
         type: string
       tool_bindings:
@@ -50,6 +52,58 @@ definitions:
       name:
         type: string
       role:
+        type: string
+    type: object
+  dto.AntigravityAuthCallbackRequest:
+    properties:
+      device_code:
+        type: string
+    required:
+    - device_code
+    type: object
+  dto.AntigravityAuthInitResponse:
+    properties:
+      device_code:
+        type: string
+      expires_in_seconds:
+        description: ExpiresInSeconds — через сколько device_code станет невалидным.
+        type: integer
+      interval_seconds:
+        description: IntervalSeconds — минимальный интервал между poll-запросами /callback.
+        type: integer
+      user_code:
+        type: string
+      verification_uri:
+        type: string
+      verification_uri_complete:
+        type: string
+    type: object
+  dto.AntigravityAuthManualTokenRequest:
+    properties:
+      access_token:
+        type: string
+      expires_at:
+        type: string
+      refresh_token:
+        type: string
+      scopes:
+        type: string
+      token_type:
+        type: string
+    required:
+    - access_token
+    type: object
+  dto.AntigravityAuthStatusResponse:
+    properties:
+      connected:
+        type: boolean
+      expires_at:
+        type: string
+      last_refreshed_at:
+        type: string
+      scopes:
+        type: string
+      token_type:
         type: string
     type: object
   dto.ApiKeyCreatedResponse:
@@ -656,6 +710,8 @@ definitions:
     properties:
       anthropic:
         $ref: '#/definitions/dto.LlmProviderMaskView'
+      antigravity:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
       deepseek:
         $ref: '#/definitions/dto.LlmProviderMaskView'
       gemini:
@@ -665,6 +721,8 @@ definitions:
       openrouter:
         $ref: '#/definitions/dto.LlmProviderMaskView'
       qwen:
+        $ref: '#/definitions/dto.LlmProviderMaskView'
+      zhipu:
         $ref: '#/definitions/dto.LlmProviderMaskView'
     type: object
   dto.LlmProviderMaskView:
@@ -741,7 +799,12 @@ definitions:
       anthropic_api_key:
         format: password
         type: string
+      antigravity_api_key:
+        format: password
+        type: string
       clear_anthropic_key:
+        type: boolean
+      clear_antigravity_key:
         type: boolean
       clear_deepseek_key:
         type: boolean
@@ -752,6 +815,8 @@ definitions:
       clear_openrouter_key:
         type: boolean
       clear_qwen_key:
+        type: boolean
+      clear_zhipu_key:
         type: boolean
       deepseek_api_key:
         format: password
@@ -766,6 +831,9 @@ definitions:
         format: password
         type: string
       qwen_api_key:
+        format: password
+        type: string
+      zhipu_api_key:
         format: password
         type: string
     type: object
@@ -1534,6 +1602,8 @@ definitions:
     - moonshot
     - ollama
     - zhipu
+    - antigravity
+    - antigravity_oauth
     type: string
     x-enum-varnames:
     - ProviderOpenAI
@@ -1546,6 +1616,8 @@ definitions:
     - ProviderMoonshot
     - ProviderOllama
     - ProviderZhipu
+    - ProviderAntigravity
+    - ProviderAntigravityOAuth
   llm.Request:
     properties:
       max_tokens:
@@ -1735,6 +1807,8 @@ definitions:
     - deepseek
     - zhipu
     - openrouter
+    - antigravity
+    - antigravity_oauth
     type: string
     x-enum-varnames:
     - AgentProviderKindAnthropic
@@ -1742,6 +1816,8 @@ definitions:
     - AgentProviderKindDeepSeek
     - AgentProviderKindZhipu
     - AgentProviderKindOpenRouter
+    - AgentProviderKindAntigravity
+    - AgentProviderKindAntigravityOAuth
   models.AgentRole:
     enum:
     - worker
@@ -1974,6 +2050,8 @@ definitions:
       git_url:
         type: string
       id:
+        type: string
+      last_indexed_commit:
         type: string
       name:
         type: string
@@ -2670,6 +2748,165 @@ paths:
       summary: Delete v2 agent secret
       tags:
       - agents-v2
+  /antigravity/auth:
+    delete:
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: ""
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Отзыв OAuth-подписки Antigravity
+      tags:
+      - antigravity
+  /antigravity/auth/callback:
+    post:
+      consumes:
+      - application/json
+      description: Должен вызываться периодически (раз в interval_seconds), пока не
+        вернёт 200 или 410.
+      parameters:
+      - description: device_code из /init
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AntigravityAuthCallbackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AntigravityAuthStatusResponse'
+        "202":
+          description: Пользователь ещё не подтвердил доступ (authorization_pending)
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "410":
+          description: expired_token / access_denied
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "429":
+          description: slow_down
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Завершение OAuth (device flow) для Antigravity
+      tags:
+      - antigravity
+  /antigravity/auth/init:
+    post:
+      description: Возвращает device-code и URL, по которому пользователь должен подтвердить
+        вход.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AntigravityAuthInitResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Старт OAuth (device flow) для Antigravity
+      tags:
+      - antigravity
+  /antigravity/auth/manual-token:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Токен
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AntigravityAuthManualTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AntigravityAuthStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Сохранить заранее полученный токен подписки Antigravity
+      tags:
+      - antigravity
+  /antigravity/auth/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AntigravityAuthStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Статус OAuth-подписки Antigravity
+      tags:
+      - antigravity
   /assistant/active-tasks:
     get:
       description: Live-список task.state=active по всем проектам пользователя (для
@@ -4358,6 +4595,39 @@ paths:
       summary: Список логов LLM
       tags:
       - llm
+  /llm/models:
+    get:
+      description: Fetches available models from the provider or returns fallback
+        models if unavailable
+      parameters:
+      - description: Provider Kind (e.g. anthropic, deepseek, openrouter, antigravity)
+        in: query
+        name: provider
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: List available LLM models for a provider
+      tags:
+      - llm
   /me/agents:
     get:
       description: Список user-level агентов текущего пользователя (assistant и т.д.).
@@ -5403,7 +5673,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: Возвращает все промпты (только админ)
+      description: Возвращает все промпты
       produces:
       - application/json
       responses:
@@ -5499,7 +5769,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: Возвращает промпт по ID (только админ)
+      description: Возвращает промпт по ID
       parameters:
       - description: Prompt ID
         in: path

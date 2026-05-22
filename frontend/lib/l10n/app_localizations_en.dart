@@ -1597,6 +1597,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get teamAgentEditPromptNone => 'No prompt';
 
   @override
+  String get teamAgentEditPromptSystemDefaultHardcoded =>
+      'System default (hardcoded)';
+
+  @override
+  String get teamAgentEditPromptSystemDefaultHardcodedHelp =>
+      'Using system default prompt (hardcoded)';
+
+  @override
   String get teamAgentEditUnset => 'Not set';
 
   @override
@@ -1675,6 +1683,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get llmProvidersLoadError => 'Failed to load LLM providers';
+
+  @override
+  String get llmProvidersAdminRequired =>
+      'Admin role required to manage LLM providers';
 
   @override
   String get llmProvidersHealthTooltip => 'Health check';

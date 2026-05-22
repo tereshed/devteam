@@ -135,6 +135,9 @@ type ConversationMessageCreated struct {
 	MessageID      uuid.UUID
 	Role           string
 	Content        string
+	LinkedTaskIDs  []uuid.UUID
+	Metadata       string
+	CreatedAt      time.Time
 	OccurredAt     time.Time
 	TraceID        string
 }
@@ -142,6 +145,25 @@ type ConversationMessageCreated struct {
 func (e ConversationMessageCreated) domainEvent()          {}
 func (e ConversationMessageCreated) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e ConversationMessageCreated) GetTraceID() string      { return e.TraceID }
+
+// ConversationMessageUpdated — сообщение в чате обновлено (связаны новые задачи, обновились метаданные и т.п.).
+type ConversationMessageUpdated struct {
+	ProjectID      uuid.UUID
+	UserID         uuid.UUID
+	ConversationID uuid.UUID
+	MessageID      uuid.UUID
+	Role           string
+	Content        string
+	LinkedTaskIDs  []uuid.UUID
+	Metadata       string
+	CreatedAt      time.Time
+	OccurredAt     time.Time
+	TraceID        string
+}
+
+func (e ConversationMessageUpdated) domainEvent()          {}
+func (e ConversationMessageUpdated) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e ConversationMessageUpdated) GetTraceID() string      { return e.TraceID }
 
 // ConversationMessageDeleted — удаление сообщения (см. 9.4).
 type ConversationMessageDeleted struct {
@@ -400,6 +422,8 @@ func getEventTypeName(ev DomainEvent) string {
 		return "conversation_deleted"
 	case ConversationMessageCreated:
 		return "conversation_message_created"
+	case ConversationMessageUpdated:
+		return "conversation_message_updated"
 	case ConversationMessageDeleted:
 		return "conversation_message_deleted"
 	case IntegrationConnectionChanged:

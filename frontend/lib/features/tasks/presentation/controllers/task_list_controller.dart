@@ -225,6 +225,7 @@ class TaskListController extends _$TaskListController {
             }
           },
           integrationStatus: (_) {},
+          conversationMessage: (_) {},
           // Sprint 21 §7 — assistant.* идут в AssistantTasksController /
           // AssistantChatController, не в задачи проекта. No-op чтобы
           // exhaustive .when остался валидным.

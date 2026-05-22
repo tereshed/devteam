@@ -103,6 +103,14 @@ func (m *MockConversationMessageRepo) ListByProjectID(ctx context.Context, proje
 	return args.Get(0).([]*models.ConversationMessage), args.Error(1)
 }
 
+func (m *MockConversationMessageRepo) ListByLinkedTaskID(ctx context.Context, taskID uuid.UUID) ([]*models.ConversationMessage, error) {
+	args := m.Called(ctx, taskID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.ConversationMessage), args.Error(1)
+}
+
 // MockEventBus is a mock of EventBus
 type MockEventBus struct {
 	mock.Mock

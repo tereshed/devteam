@@ -850,6 +850,264 @@
                 }
             }
         },
+        "/antigravity/auth": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "antigravity"
+                ],
+                "summary": "Отзыв OAuth-подписки Antigravity",
+                "responses": {
+                    "204": {
+                        "description": ""
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/antigravity/auth/callback": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Должен вызываться периодически (раз в interval_seconds), пока не вернёт 200 или 410.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "antigravity"
+                ],
+                "summary": "Завершение OAuth (device flow) для Antigravity",
+                "parameters": [
+                    {
+                        "description": "device_code из /init",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.AntigravityAuthCallbackRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AntigravityAuthStatusResponse"
+                        }
+                    },
+                    "202": {
+                        "description": "Пользователь ещё не подтвердил доступ (authorization_pending)",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "410": {
+                        "description": "expired_token / access_denied",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "slow_down",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/antigravity/auth/init": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Возвращает device-code и URL, по которому пользователь должен подтвердить вход.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "antigravity"
+                ],
+                "summary": "Старт OAuth (device flow) для Antigravity",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AntigravityAuthInitResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/antigravity/auth/manual-token": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "antigravity"
+                ],
+                "summary": "Сохранить заранее полученный токен подписки Antigravity",
+                "parameters": [
+                    {
+                        "description": "Токен",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.AntigravityAuthManualTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AntigravityAuthStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/antigravity/auth/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "antigravity"
+                ],
+                "summary": "Статус OAuth-подписки Antigravity",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AntigravityAuthStatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/assistant/active-tasks": {
             "get": {
                 "security": [
@@ -3553,6 +3811,58 @@
                 }
             }
         },
+        "/llm/models": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Fetches available models from the provider or returns fallback models if unavailable",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "List available LLM models for a provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider Kind (e.g. anthropic, deepseek, openrouter, antigravity)",
+                        "name": "provider",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/me/agents": {
             "get": {
                 "security": [
@@ -5224,7 +5534,7 @@
                         "OAuth2Password": []
                     }
                 ],
-                "description": "Возвращает все промпты (только админ)",
+                "description": "Возвращает все промпты",
                 "consumes": [
                     "application/json"
                 ],
@@ -5328,7 +5638,7 @@
                         "OAuth2Password": []
                     }
                 ],
-                "description": "Возвращает промпт по ID (только админ)",
+                "description": "Возвращает промпт по ID",
                 "consumes": [
                     "application/json"
                 ],
@@ -6954,6 +7264,9 @@
                 "prompt_name": {
                     "type": "string"
                 },
+                "provider_kind": {
+                    "type": "string"
+                },
                 "role": {
                     "type": "string"
                 },
@@ -6992,6 +7305,85 @@
                     "type": "string"
                 },
                 "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AntigravityAuthCallbackRequest": {
+            "type": "object",
+            "required": [
+                "device_code"
+            ],
+            "properties": {
+                "device_code": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AntigravityAuthInitResponse": {
+            "type": "object",
+            "properties": {
+                "device_code": {
+                    "type": "string"
+                },
+                "expires_in_seconds": {
+                    "description": "ExpiresInSeconds — через сколько device_code станет невалидным.",
+                    "type": "integer"
+                },
+                "interval_seconds": {
+                    "description": "IntervalSeconds — минимальный интервал между poll-запросами /callback.",
+                    "type": "integer"
+                },
+                "user_code": {
+                    "type": "string"
+                },
+                "verification_uri": {
+                    "type": "string"
+                },
+                "verification_uri_complete": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AntigravityAuthManualTokenRequest": {
+            "type": "object",
+            "required": [
+                "access_token"
+            ],
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "string"
+                },
+                "token_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AntigravityAuthStatusResponse": {
+            "type": "object",
+            "properties": {
+                "connected": {
+                    "type": "boolean"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "last_refreshed_at": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "string"
+                },
+                "token_type": {
                     "type": "string"
                 }
             }
@@ -7895,6 +8287,9 @@
                 "anthropic": {
                     "$ref": "#/definitions/dto.LlmProviderMaskView"
                 },
+                "antigravity": {
+                    "$ref": "#/definitions/dto.LlmProviderMaskView"
+                },
                 "deepseek": {
                     "$ref": "#/definitions/dto.LlmProviderMaskView"
                 },
@@ -7908,6 +8303,9 @@
                     "$ref": "#/definitions/dto.LlmProviderMaskView"
                 },
                 "qwen": {
+                    "$ref": "#/definitions/dto.LlmProviderMaskView"
+                },
+                "zhipu": {
                     "$ref": "#/definitions/dto.LlmProviderMaskView"
                 }
             }
@@ -8021,7 +8419,14 @@
                     "type": "string",
                     "format": "password"
                 },
+                "antigravity_api_key": {
+                    "type": "string",
+                    "format": "password"
+                },
                 "clear_anthropic_key": {
+                    "type": "boolean"
+                },
+                "clear_antigravity_key": {
                     "type": "boolean"
                 },
                 "clear_deepseek_key": {
@@ -8037,6 +8442,9 @@
                     "type": "boolean"
                 },
                 "clear_qwen_key": {
+                    "type": "boolean"
+                },
+                "clear_zhipu_key": {
                     "type": "boolean"
                 },
                 "deepseek_api_key": {
@@ -8056,6 +8464,10 @@
                     "format": "password"
                 },
                 "qwen_api_key": {
+                    "type": "string",
+                    "format": "password"
+                },
+                "zhipu_api_key": {
                     "type": "string",
                     "format": "password"
                 }
@@ -9208,7 +9620,9 @@
                 "openrouter",
                 "moonshot",
                 "ollama",
-                "zhipu"
+                "zhipu",
+                "antigravity",
+                "antigravity_oauth"
             ],
             "x-enum-varnames": [
                 "ProviderOpenAI",
@@ -9220,7 +9634,9 @@
                 "ProviderOpenRouter",
                 "ProviderMoonshot",
                 "ProviderOllama",
-                "ProviderZhipu"
+                "ProviderZhipu",
+                "ProviderAntigravity",
+                "ProviderAntigravityOAuth"
             ]
         },
         "llm.Request": {
@@ -9488,14 +9904,18 @@
                 "anthropic_oauth",
                 "deepseek",
                 "zhipu",
-                "openrouter"
+                "openrouter",
+                "antigravity",
+                "antigravity_oauth"
             ],
             "x-enum-varnames": [
                 "AgentProviderKindAnthropic",
                 "AgentProviderKindAnthropicOAuth",
                 "AgentProviderKindDeepSeek",
                 "AgentProviderKindZhipu",
-                "AgentProviderKindOpenRouter"
+                "AgentProviderKindOpenRouter",
+                "AgentProviderKindAntigravity",
+                "AgentProviderKindAntigravityOAuth"
             ]
         },
         "models.AgentRole": {
@@ -9818,6 +10238,9 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "last_indexed_commit": {
                     "type": "string"
                 },
                 "name": {

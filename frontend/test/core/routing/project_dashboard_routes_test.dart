@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
+import 'package:frontend/core/widgets/data_load_error_message.dart';
 import 'package:frontend/features/chat/data/chat_providers.dart';
 import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/domain/requests.dart';
@@ -127,6 +128,16 @@ void main() {
   testWidgets(
     'редирект /projects/:id?from=x сохраняет query на целевом URL',
     (tester) async {
+      final repo = MockConversationRepository();
+      when(
+        repo.listConversations(
+          any,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) => Completer<ConversationListResponse>().future);
+
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTestProjectUuid?from=x',
       );
@@ -136,6 +147,7 @@ void main() {
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
             ),
+            conversationRepositoryProvider.overrideWithValue(repo),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -145,7 +157,8 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(
         router.state.uri.path,
         '/projects/$kTestProjectUuid/$projectDashboardDefaultBranch',
@@ -157,6 +170,16 @@ void main() {
   testWidgets(
     'редирект с корня дашборда сохраняет fragment (#)',
     (tester) async {
+      final repo = MockConversationRepository();
+      when(
+        repo.listConversations(
+          any,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) => Completer<ConversationListResponse>().future);
+
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTestProjectUuid?from=x#section',
       );
@@ -166,6 +189,7 @@ void main() {
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => makeProject(id: kTestProjectUuid, name: 'Frag'),
             ),
+            conversationRepositoryProvider.overrideWithValue(repo),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -175,7 +199,8 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(router.state.uri.fragment, 'section');
       expect(router.state.uri.queryParameters['from'], 'x');
     },
@@ -184,6 +209,16 @@ void main() {
   testWidgets(
     'Sprint 11: /projects/:id/chat/extra (не-UUID) → редирект на /projects/:id/chat',
     (tester) async {
+      final repo = MockConversationRepository();
+      when(
+        repo.listConversations(
+          any,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) => Completer<ConversationListResponse>().future);
+
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTestProjectUuid/chat/extra',
       );
@@ -193,6 +228,7 @@ void main() {
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
             ),
+            conversationRepositoryProvider.overrideWithValue(repo),
           ],
           child: MaterialApp.router(
             routerConfig: router,
@@ -206,16 +242,333 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(
         router.state.uri.path,
         '/projects/$kTestProjectUuid/chat',
       );
-      final ctx = tester.element(find.byType(ChatConversationPlaceholderScreen));
-      expect(
-        find.text(AppLocalizations.of(ctx)!.chatScreenSelectConversationHint),
-        findsOneWidget,
+      expect(find.byType(ChatConversationPlaceholderScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Sprint 11: ChatConversationPlaceholderScreen auto-redirects to first conversation if it exists',
+    (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
+      final repo = MockConversationRepository();
+      when(
+        repo.listConversations(
+          kTestProjectUuid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ConversationListResponse(
+          conversations: [
+            ConversationModel(
+              id: kChatConversationUuidForRoutingTest,
+              projectId: kTestProjectUuid,
+              title: 'Conv',
+              status: 'active',
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 2),
+            ),
+          ],
+        ),
       );
+
+      when(
+        repo.getConversation(
+          kChatConversationUuidForRoutingTest,
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ConversationModel(
+          id: kChatConversationUuidForRoutingTest,
+          projectId: kTestProjectUuid,
+          title: 'Conv',
+          status: 'active',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        repo.getMessages(
+          kChatConversationUuidForRoutingTest,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => const MessageListResponse());
+
+      final router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/chat',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
+            ),
+            conversationRepositoryProvider.overrideWithValue(repo),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestProjectUuid/chat/$kChatConversationUuidForRoutingTest',
+      );
+      expect(find.byType(ChatScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Sprint 11: ChatConversationPlaceholderScreen auto-creates conversation and redirects if none exists',
+    (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
+      final repo = MockConversationRepository();
+      when(
+        repo.listConversations(
+          kTestProjectUuid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const ConversationListResponse(
+          conversations: [],
+          total: 0,
+        ),
+      );
+
+      when(
+        repo.createConversation(
+          kTestProjectUuid,
+          const CreateConversationRequest(title: 'General'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ConversationModel(
+          id: kChatConversationUuidForRoutingTest,
+          projectId: kTestProjectUuid,
+          title: 'General',
+          status: 'active',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+
+      when(
+        repo.getConversation(
+          kChatConversationUuidForRoutingTest,
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ConversationModel(
+          id: kChatConversationUuidForRoutingTest,
+          projectId: kTestProjectUuid,
+          title: 'General',
+          status: 'active',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        repo.getMessages(
+          kChatConversationUuidForRoutingTest,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => const MessageListResponse());
+
+      final router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/chat',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
+            ),
+            conversationRepositoryProvider.overrideWithValue(repo),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+
+      verify(
+        repo.createConversation(
+          kTestProjectUuid,
+          const CreateConversationRequest(title: 'General'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).called(1);
+
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestProjectUuid/chat/$kChatConversationUuidForRoutingTest',
+      );
+      expect(find.byType(ChatScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Sprint 11: ChatConversationPlaceholderScreen displays retry button on error',
+    (tester) async {
+      final repo = MockConversationRepository();
+      var callCount = 0;
+      when(
+        repo.listConversations(
+          kTestProjectUuid,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        callCount++;
+        if (callCount == 1) {
+          throw Exception('Network error');
+        }
+        return ConversationListResponse(
+          conversations: [
+            ConversationModel(
+              id: kChatConversationUuidForRoutingTest,
+              projectId: kTestProjectUuid,
+              title: 'Conv',
+              status: 'active',
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 2),
+            ),
+          ],
+        );
+      });
+
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
+      when(
+        repo.getConversation(
+          kChatConversationUuidForRoutingTest,
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ConversationModel(
+          id: kChatConversationUuidForRoutingTest,
+          projectId: kTestProjectUuid,
+          title: 'Conv',
+          status: 'active',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      );
+      when(
+        repo.getMessages(
+          kChatConversationUuidForRoutingTest,
+          limit: anyNamed('limit'),
+          offset: anyNamed('offset'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer((_) async => const MessageListResponse());
+
+      final router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/chat',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
+            ),
+            conversationRepositoryProvider.overrideWithValue(repo),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DataLoadErrorMessage), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      await tester.tap(find.text('Retry'));
+      await tester.pump();
+
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+
+      expect(
+        router.state.uri.path,
+        '/projects/$kTestProjectUuid/chat/$kChatConversationUuidForRoutingTest',
+      );
+      expect(find.byType(ChatScreen), findsOneWidget);
     },
   );
 

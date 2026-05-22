@@ -8,12 +8,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/pkg/llm"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/pkg/llm"
 )
 
 // MockLLMService is a mock implementation of service.LLMService
@@ -34,11 +36,47 @@ func (m *MockLLMService) ListLogs(ctx context.Context, limit, offset int) ([]mod
 	return args.Get(0).([]models.LLMLog), args.Get(1).(int64), args.Error(2)
 }
 
+type stubUserLlmCredentialService struct {
+	service.UserLlmCredentialService
+	key string
+	err error
+}
+
+func (s *stubUserLlmCredentialService) GetPlaintext(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (string, error) {
+	return s.key, s.err
+}
+
+type stubClaudeCodeAuthService struct {
+	service.ClaudeCodeAuthService
+	token string
+	err   error
+}
+
+func (s *stubClaudeCodeAuthService) AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.token, s.err
+}
+
+type stubAntigravityAuthService struct {
+	service.AntigravityAuthService
+	token string
+	err   error
+}
+
+func (s *stubAntigravityAuthService) AccessTokenForSandbox(ctx context.Context, userID uuid.UUID) (string, error) {
+	return s.token, s.err
+}
+
 func TestLLMHandler_Chat(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mockService := new(MockLLMService)
-	handler := NewLLMHandler(mockService)
+	handler := NewLLMHandler(
+		mockService,
+		&stubUserLlmCredentialService{},
+		&stubClaudeCodeAuthService{},
+		&stubAntigravityAuthService{},
+		nil,
+	)
 
 	router := gin.New()
 	router.POST("/chat", handler.Chat)
@@ -84,7 +122,13 @@ func TestLLMHandler_Chat(t *testing.T) {
 func TestLLMHandler_ListLogs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mockService := new(MockLLMService)
-	h := NewLLMHandler(mockService)
+	h := NewLLMHandler(
+		mockService,
+		&stubUserLlmCredentialService{},
+		&stubClaudeCodeAuthService{},
+		&stubAntigravityAuthService{},
+		nil,
+	)
 
 	logs := []models.LLMLog{{ID: uuid.New()}}
 	mockService.On("ListLogs", mock.Anything, 50, 0).Return(logs, int64(1), nil)
@@ -97,4 +141,90 @@ func TestLLMHandler_ListLogs(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	mockService.AssertExpectations(t)
+}
+
+func TestLLMHandler_ListModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mockService := new(MockLLMService)
+	stubCreds := &stubUserLlmCredentialService{key: "test-key"}
+	stubClaude := &stubClaudeCodeAuthService{token: "claude-token"}
+	stubAntigravity := &stubAntigravityAuthService{token: "antigravity-token"}
+	h := NewLLMHandler(mockService, stubCreds, stubClaude, stubAntigravity, nil)
+
+	t.Run("Missing Provider Parameter", func(t *testing.T) {
+		router := gin.New()
+		router.GET("/llm/models", h.ListModels)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm/models", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("Unknown Provider Parameter", func(t *testing.T) {
+		router := gin.New()
+		router.GET("/llm/models", h.ListModels)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm/models?provider=invalid", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("Unauthorized - Returns Fallback", func(t *testing.T) {
+		router := gin.New()
+		router.GET("/llm/models", h.ListModels)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm/models?provider=anthropic", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var models []string
+		err := json.Unmarshal(w.Body.Bytes(), &models)
+		assert.NoError(t, err)
+		assert.Contains(t, models, "claude-3-5-sonnet-latest")
+	})
+
+	t.Run("Authorized But HTTP Fails - Returns Fallback", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm/models?provider=anthropic", nil)
+
+		router := gin.New()
+		router.GET("/llm/models", func(c *gin.Context) {
+			c.Set("userID", uuid.New())
+			h.ListModels(c)
+		})
+
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var models []string
+		err := json.Unmarshal(w.Body.Bytes(), &models)
+		assert.NoError(t, err)
+		assert.Contains(t, models, "claude-3-5-sonnet-latest")
+	})
+
+	t.Run("Fallback to System Config", func(t *testing.T) {
+		router := gin.New()
+		cfg := &config.Config{}
+		cfg.LLM.Anthropic.APIKey = "system-key"
+		hWithCfg := NewLLMHandler(mockService, &stubUserLlmCredentialService{key: ""}, stubClaude, stubAntigravity, cfg)
+
+		router.GET("/llm/models", func(c *gin.Context) {
+			c.Set("userID", uuid.New())
+			hWithCfg.ListModels(c)
+		})
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm/models?provider=anthropic", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var models []string
+		err := json.Unmarshal(w.Body.Bytes(), &models)
+		assert.NoError(t, err)
+		assert.Contains(t, models, "claude-3-5-sonnet-latest")
+	})
 }

@@ -33,6 +33,7 @@ type AgentResponse struct {
 	PromptID     *string                `json:"prompt_id,omitempty"`
 	PromptName   *string                `json:"prompt_name"`
 	CodeBackend  *string                `json:"code_backend"`
+	ProviderKind *string                `json:"provider_kind,omitempty"`
 	IsActive     bool                   `json:"is_active"`
 	ToolBindings []ToolBindingResponse `json:"tool_bindings"`
 }
@@ -82,6 +83,11 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 		s := string(*agent.CodeBackend)
 		codeBackend = &s
 	}
+	var providerKind *string
+	if agent.ProviderKind != nil {
+		pk := string(*agent.ProviderKind)
+		providerKind = &pk
+	}
 	tb := make([]ToolBindingResponse, 0, len(agent.ToolBindings))
 	for i := range agent.ToolBindings {
 		b := &agent.ToolBindings[i]
@@ -105,6 +111,7 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 		PromptID:     promptID,
 		PromptName:   promptName,
 		CodeBackend:  codeBackend,
+		ProviderKind: providerKind,
 		IsActive:     agent.IsActive,
 		ToolBindings: tb,
 	}

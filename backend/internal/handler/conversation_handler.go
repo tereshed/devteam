@@ -58,7 +58,11 @@ func (h *ConversationHandler) Create(c *gin.Context) {
 		return
 	}
 
-	projectID, err := uuid.Parse(c.Param("project_id"))
+	pID := c.Param("project_id")
+	if pID == "" {
+		pID = c.Param("id")
+	}
+	projectID, err := uuid.Parse(pID)
 	if err != nil {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid project_id format")
 		return
@@ -130,7 +134,11 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		return
 	}
 
-	projectID, err := uuid.Parse(c.Param("project_id"))
+	pID := c.Param("project_id")
+	if pID == "" {
+		pID = c.Param("id")
+	}
+	projectID, err := uuid.Parse(pID)
 	if err != nil {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid project_id format")
 		return

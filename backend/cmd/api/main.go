@@ -311,7 +311,6 @@ func main() {
 	// LLM
 	llmFactory := factory.New()
 	llmService := service.NewLLMService(llmFactory, cfg.LLM, llmRepo, llmModelRepo)
-	llmHandler := handler.NewLLMHandler(llmService)
 
 	// Workflow Engine
 	workflowEngine := service.NewWorkflowEngine(workflowRepo, agentRepo, llmService)
@@ -388,6 +387,8 @@ func main() {
 	// User-per-credential service (нужен резолверу аутентификации sandbox).
 	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
 	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
+
+	llmHandler := handler.NewLLMHandler(llmService, llmCredSvc, claudeCodeAuthSvc, antigravityAuthSvc, cfg)
 
 	// Phase 4 §4.3 — wire llmCredRepo for provider validation.
 	agentSvcV2.WithLlmCredRepo(llmCredRepo)
@@ -505,6 +506,18 @@ func main() {
 	v2TaskLifecycle := service.NewTaskLifecycleService(db, v2Notifier, v2Logger)
 	_ = v2TaskLifecycle // подключается в task_handler через wiring ниже (Stage 5g.6)
 	_ = llmAgentExecutor // ссылка остаётся для обратной совместимости conversation/handler инициализации
+	
+	conversationService := service.NewConversationService(
+		conversationRepo,
+		conversationMsgRepo,
+		projectService,
+		taskService,
+		orchestratorService,
+		conversationIndexer,
+		txManager,
+		eventBus,
+	)
+	conversationHandler := handler.NewConversationHandler(conversationService)
 
 	// Запускаем Workflow Worker в фоне (отключить: WORKFLOW_WORKER_ENABLED=false)
 	ctxWorker, cancelWorker := context.WithCancel(context.Background())
@@ -735,6 +748,7 @@ func main() {
 		TaskHandler:           taskHandler,
 		WorkflowHandler:       workflowHandler,
 		WebhookHandler:        webhookHandler,
+		ConversationHandler:   conversationHandler,
 		JWTManager:            jwtManager,
 		ApiKeyService:         apiKeyService,
 		WebSocketHandler:      wsHandler,

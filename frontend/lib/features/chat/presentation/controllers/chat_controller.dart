@@ -275,6 +275,22 @@ class ChatController extends _$ChatController {
     _patchState((s) => s.copyWith(messages: next));
   }
 
+  void _onWsConversationMessage(WsConversationMessageEvent e) {
+    if (e.projectId != projectId || e.conversationId != conversationId) {
+      return;
+    }
+    final model = ConversationMessageModel(
+      id: e.id,
+      conversationId: e.conversationId,
+      role: e.role,
+      content: e.content,
+      linkedTaskIds: e.linkedTaskIds,
+      metadata: e.metadata,
+      createdAt: e.createdAt,
+    );
+    applyIncomingMessage(model);
+  }
+
   void _handleWsServiceFailure(WsServiceFailure failure) {
     switch (failure) {
       case WsServiceFailureTransient():
@@ -321,6 +337,7 @@ class ChatController extends _$ChatController {
             }
           },
           integrationStatus: (_) {},
+          conversationMessage: _onWsConversationMessage,
           // Assistant-события (Sprint 21 §7) — user-scoped, маршрутизируются
           // в AssistantChatController / AssistantTasksController. Здесь —
           // явный no-op, чтобы Freezed-sealed when остался exhaustive.

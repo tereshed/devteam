@@ -194,6 +194,7 @@ class LlmIntegrationsController extends ChangeNotifier {
           agentLog: (_) {},
           error: (_) {},
           integrationStatus: _applyIntegrationStatus,
+          conversationMessage: (_) {},
           // Sprint 21 §7 — assistant.* идут в правую панель.
           assistantSessionUpdated: (_) {},
           assistantMessage: (_) {},
@@ -289,4 +290,10 @@ final llmIntegrationsStateProvider = StreamProvider<LlmIntegrationsState>((
     unawaited(controller$.close());
   });
   return controller$.stream;
+});
+
+/// Провайдер для получения списка доступных моделей для конкретного LLM-провайдера.
+final availableModelsProvider = FutureProvider.family<List<String>, String>((ref, providerKind) async {
+  final repo = ref.watch(llmIntegrationsRepositoryProvider);
+  return repo.fetchAvailableModels(providerKind);
 });

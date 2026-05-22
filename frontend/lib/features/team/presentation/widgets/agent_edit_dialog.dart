@@ -6,6 +6,7 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/domain/prompt_exceptions.dart';
 import 'package:frontend/features/admin/prompts/domain/prompt_model.dart';
+import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
 import 'package:frontend/features/projects/domain/models/agent_model.dart'
     show AgentModel, codeBackends;
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
@@ -104,7 +105,7 @@ class _AgentEditDialogBody extends ConsumerStatefulWidget {
 class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
   static const _modelMaxLen = 128;
 
-  late final TextEditingController _modelController;
+  late final SearchController _modelController;
   late final FocusNode _modelFocus;
   late final AgentModel _initial;
 
@@ -136,7 +137,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
   void initState() {
     super.initState();
     _initial = widget.agent;
-    _modelController = TextEditingController(text: widget.agent.model ?? '');
+    _modelController = SearchController()..text = widget.agent.model ?? '';
     _modelController.addListener(_recomputeDirty);
     _modelFocus = FocusNode();
     _promptId = widget.agent.promptId;
@@ -190,10 +191,28 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       if (e is PromptCancelledException) {
         return;
       }
+      final currentId = widget.agent.promptId;
+      final currentName = widget.agent.promptName;
+      final fallbackList = <Prompt>[];
+      if (currentId != null && currentId.isNotEmpty) {
+        fallbackList.add(
+          Prompt(
+            id: currentId,
+            name: currentName ?? currentId,
+            description: '',
+            template: '',
+            isActive: true,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        );
+      }
       setState(() {
-        _promptsError = e;
+        _prompts = fallbackList;
         _promptsLoading = false;
+        _promptsError = null;
       });
+      _recomputeDirty();
     }
   }
 
@@ -229,6 +248,63 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
         _toolsLoading = false;
       });
     }
+  }
+
+  List<String> _suggestionsFor(String providerKind) {
+    switch (providerKind) {
+      case 'openrouter':
+        return const [
+          'deepseek/deepseek-r1',
+          'anthropic/claude-3.5-sonnet',
+          'google/gemini-2.5-flash',
+          'openai/gpt-4o',
+          'openai/gpt-4o-mini',
+          'meta-llama/llama-3.3-70b-instruct',
+          'deepseek/deepseek-v4-flash',
+          'anthropic/claude-3.5-haiku',
+        ];
+      case 'anthropic':
+        return const [
+          'claude-3-5-sonnet-latest',
+          'claude-3-5-haiku-latest',
+          'claude-haiku-4-5-20251001',
+        ];
+      case 'anthropic_oauth':
+        return const [
+          'claude-3-5-sonnet-latest',
+          'claude-haiku-4-5-20251001',
+        ];
+      case 'deepseek':
+        return const [
+          'deepseek-chat',
+          'deepseek-reasoner',
+        ];
+      case 'zhipu':
+        return const [
+          'glm-4',
+          'glm-4-flash',
+        ];
+      case 'antigravity':
+      case 'antigravity_oauth':
+        return const [
+          'antigravity-default',
+        ];
+      default:
+        return const [];
+    }
+  }
+
+  String _formatToolName(String name) {
+    final regex = RegExp(
+        r'^([a-zA-Z0-9_-]+)-([0-9a-fA-F]{8})-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+    final match = regex.firstMatch(name);
+    if (match != null) {
+      final prefix = match.group(1);
+      final first8Hex = match.group(2);
+      final shortHex = first8Hex!.substring(0, 5);
+      return '$prefix-$shortHex...';
+    }
+    return name;
   }
 
   @override
@@ -497,6 +573,11 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     final l10n = requireAppLocalizations(context, where: 'agentEditDialog.body');
     final theme = Theme.of(context);
 
+    final pk = _providerKind;
+    final dynamicModelsAsync = pk != null
+        ? ref.watch(availableModelsProvider(pk))
+        : const AsyncValue<List<String>>.data([]);
+
     return PopScope(
       canPop: !_saving && !_dirty,
       onPopInvokedWithResult: (didPop, result) async {
@@ -531,17 +612,130 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                 const SizedBox(height: 16),
                 _ReadonlyAgentSummary(agent: widget.agent, l10n: l10n),
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _modelController,
-                  focusNode: _modelFocus,
-                  autofocus: widget.useAutofocus,
-                  decoration: InputDecoration(
-                    labelText: l10n.teamAgentEditFieldModel,
-                    border: const OutlineInputBorder(),
-                  ),
-                  maxLength: _modelMaxLen,
-                  textInputAction: TextInputAction.next,
-                  onChanged: (_) => _recomputeDirty(),
+                _ProviderKindField(
+                  l10n: l10n,
+                  value: _providerKind,
+                  onChanged: _saving
+                      ? null
+                      : (v) {
+                          setState(() {
+                            _providerKind = v;
+                            if (v != null) {
+                              final suggestions = _suggestionsFor(v);
+                              if (suggestions.isNotEmpty &&
+                                  !suggestions.contains(_modelController.text)) {
+                                _modelController.text = suggestions.first;
+                              }
+                            } else {
+                              _modelController.clear();
+                            }
+                          });
+                          _recomputeDirty();
+                        },
+                ),
+                const SizedBox(height: 12),
+                SearchAnchor(
+                  searchController: _modelController,
+                  builder: (BuildContext context, SearchController controller) {
+                    return TextFormField(
+                      controller: controller,
+                      focusNode: _modelFocus,
+                      autofocus: widget.useAutofocus,
+                      enabled: !_saving && _providerKind != null,
+                      decoration: InputDecoration(
+                        labelText: l10n.teamAgentEditFieldModel,
+                        border: const OutlineInputBorder(),
+                        suffixIcon: dynamicModelsAsync.maybeWhen(
+                          loading: () => const Padding(
+                            padding: EdgeInsets.all(12.0),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          orElse: () => const Icon(Icons.arrow_drop_down),
+                        ),
+                      ),
+                      maxLength: _modelMaxLen,
+                      textInputAction: TextInputAction.next,
+                      onTap: () {
+                        if (_providerKind != null) {
+                          controller.openView();
+                        }
+                      },
+                      onChanged: (_) {
+                        if (_providerKind != null) {
+                          controller.openView();
+                        }
+                        _recomputeDirty();
+                      },
+                    );
+                  },
+                  suggestionsBuilder: (BuildContext context, SearchController controller) {
+                    final text = controller.text;
+                    final pk = _providerKind;
+                    if (pk == null) {
+                      return const [
+                        ListTile(
+                          title: Text('Сначала выберите провайдера'),
+                        ),
+                      ];
+                    }
+                    
+                    final List<String> allSuggestions;
+                    final dynamicModels = dynamicModelsAsync.asData?.value;
+                    if (dynamicModels != null && dynamicModels.isNotEmpty) {
+                      allSuggestions = dynamicModels;
+                    } else {
+                      allSuggestions = _suggestionsFor(pk);
+                    }
+                    final isExactMatch = allSuggestions.any((s) => s.toLowerCase() == text.trim().toLowerCase());
+                    final filtered = isExactMatch
+                        ? allSuggestions
+                        : allSuggestions
+                            .where((m) => m.toLowerCase().contains(text.toLowerCase()))
+                            .toList();
+
+                    final list = <Widget>[];
+
+                    if (text.isNotEmpty && !allSuggestions.contains(text)) {
+                      list.add(
+                        ListTile(
+                          leading: const Icon(Icons.add),
+                          title: Text('Использовать кастомную модель: "$text"'),
+                          onTap: () {
+                            controller.closeView(text);
+                            _recomputeDirty();
+                          },
+                        ),
+                      );
+                    }
+
+                    list.addAll(
+                      filtered.map((model) => ListTile(
+                        title: Text(model),
+                        onTap: () {
+                          controller.closeView(model);
+                          _recomputeDirty();
+                        },
+                      )),
+                    );
+
+                    if (list.isEmpty) {
+                      list.add(
+                        ListTile(
+                          title: const Text('Модели не найдены. Нажмите Enter, чтобы использовать введенный текст.'),
+                          onTap: () {
+                            controller.closeView(text);
+                            _recomputeDirty();
+                          },
+                        ),
+                      );
+                    }
+
+                    return list;
+                  },
                 ),
                 const SizedBox(height: 12),
                 _PromptField(
@@ -550,6 +744,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                   error: _promptsError,
                   prompts: _prompts,
                   value: _promptId,
+                  role: widget.agent.role,
                   onChanged: (v) {
                     setState(() {
                       _promptId = v;
@@ -564,15 +759,6 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                   value: _codeBackend,
                   onChanged: (v) {
                     setState(() => _codeBackend = v);
-                    _recomputeDirty();
-                  },
-                ),
-                const SizedBox(height: 12),
-                _ProviderKindField(
-                  l10n: l10n,
-                  value: _providerKind,
-                  onChanged: (v) {
-                    setState(() => _providerKind = v);
                     _recomputeDirty();
                   },
                 ),
@@ -736,23 +922,28 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
               runSpacing: 8,
               children: [
                 for (final t in _toolDefinitions)
-                  FilterChip(
-                    label: Text(
-                      l10n.teamAgentEditToolsListEntryLabel(t.name, t.category),
+                  Tooltip(
+                    message: t.description.isNotEmpty
+                        ? '${t.name}\n${t.description}'
+                        : t.name,
+                    child: FilterChip(
+                      label: Text(
+                        l10n.teamAgentEditToolsListEntryLabel(_formatToolName(t.name), t.category),
+                      ),
+                      selected: _selectedToolDefIds.contains(t.id),
+                      onSelected: _saving
+                          ? null
+                          : (sel) {
+                              setState(() {
+                                if (sel) {
+                                  _selectedToolDefIds.add(t.id);
+                                } else {
+                                  _selectedToolDefIds.remove(t.id);
+                                }
+                              });
+                              _recomputeDirty();
+                            },
                     ),
-                    selected: _selectedToolDefIds.contains(t.id),
-                    onSelected: _saving
-                        ? null
-                        : (sel) {
-                            setState(() {
-                              if (sel) {
-                                _selectedToolDefIds.add(t.id);
-                              } else {
-                                _selectedToolDefIds.remove(t.id);
-                              }
-                            });
-                            _recomputeDirty();
-                          },
                   ),
               ],
             ),
@@ -800,6 +991,7 @@ class _PromptField extends StatelessWidget {
     required this.prompts,
     required this.value,
     required this.onChanged,
+    required this.role,
   });
 
   final AppLocalizations l10n;
@@ -808,6 +1000,7 @@ class _PromptField extends StatelessWidget {
   final List<Prompt> prompts;
   final String? value;
   final ValueChanged<String?> onChanged;
+  final String role;
 
   @override
   Widget build(BuildContext context) {
@@ -840,23 +1033,17 @@ class _PromptField extends StatelessWidget {
         child: const SizedBox.shrink(),
       );
     }
-    if (prompts.isEmpty) {
-      return InputDecorator(
-        decoration: InputDecoration(
-          labelText: l10n.teamAgentEditFieldPrompt,
-          border: const OutlineInputBorder(),
-        ),
-        child: Text(
-          l10n.teamAgentEditNoPrompts,
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      );
-    }
+
+    final isHardcodedRole = role == 'orchestrator' || role == 'router';
 
     final items = <DropdownMenuItem<String?>>[
       DropdownMenuItem<String?>(
         value: null,
-        child: Text(l10n.teamAgentEditPromptNone),
+        child: Text(
+          isHardcodedRole
+              ? l10n.teamAgentEditPromptSystemDefaultHardcoded
+              : l10n.teamAgentEditPromptNone,
+        ),
       ),
       ...prompts.map(
         (p) => DropdownMenuItem<String?>(
@@ -872,6 +1059,9 @@ class _PromptField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: l10n.teamAgentEditFieldPrompt,
         border: const OutlineInputBorder(),
+        helperText: isHardcodedRole && (value?.isEmpty ?? true)
+            ? l10n.teamAgentEditPromptSystemDefaultHardcodedHelp
+            : null,
       ),
       isExpanded: true,
       initialValue: _effectiveValue(value, prompts),
@@ -943,7 +1133,7 @@ class _ProviderKindField extends StatelessWidget {
 
   final AppLocalizations l10n;
   final String? value;
-  final ValueChanged<String?> onChanged;
+  final ValueChanged<String?>? onChanged;
 
   @override
   Widget build(BuildContext context) {

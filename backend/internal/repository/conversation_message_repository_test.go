@@ -350,3 +350,70 @@ func TestConversationMessageRepository_Delete_Success(t *testing.T) {
 			assert.Len(t, list, 3) // Messages after the 2nd one (index 1)
 		})
 	}
+
+func TestConversationMessageRepository_ListByLinkedTaskID(t *testing.T) {
+	db := setupTestDB(t)
+	tx := db.Begin()
+	defer tx.Rollback()
+
+	_, _, conv := createMsgTestConv(t, tx, "linkedtask@example.com")
+	repo := NewConversationMessageRepository(tx)
+	ctx := context.Background()
+
+	taskID1 := uuid.New()
+	taskID2 := uuid.New()
+
+	msg1 := &models.ConversationMessage{
+		ConversationID: conv.ID,
+		Role:           models.ConversationRoleUser,
+		Content:        "Msg 1",
+		LinkedTaskIDs:  models.UUIDSlice{taskID1},
+	}
+	msg2 := &models.ConversationMessage{
+		ConversationID: conv.ID,
+		Role:           models.ConversationRoleAssistant,
+		Content:        "Msg 2",
+		LinkedTaskIDs:  models.UUIDSlice{taskID1, taskID2},
+	}
+	msg3 := &models.ConversationMessage{
+		ConversationID: conv.ID,
+		Role:           models.ConversationRoleUser,
+		Content:        "Msg 3",
+		LinkedTaskIDs:  models.UUIDSlice{taskID2},
+	}
+
+	require.NoError(t, repo.Create(ctx, msg1))
+	require.NoError(t, repo.Create(ctx, msg2))
+	require.NoError(t, repo.Create(ctx, msg3))
+
+	t.Run("Find by taskID1", func(t *testing.T) {
+		list, err := repo.ListByLinkedTaskID(ctx, taskID1)
+		require.NoError(t, err)
+		assert.Len(t, list, 2)
+		// Should contain msg1 and msg2
+		contents := []string{list[0].Content, list[1].Content}
+		assert.Contains(t, contents, "Msg 1")
+		assert.Contains(t, contents, "Msg 2")
+	})
+
+	t.Run("Find by taskID2", func(t *testing.T) {
+		list, err := repo.ListByLinkedTaskID(ctx, taskID2)
+		require.NoError(t, err)
+		assert.Len(t, list, 2)
+		contents := []string{list[0].Content, list[1].Content}
+		assert.Contains(t, contents, "Msg 2")
+		assert.Contains(t, contents, "Msg 3")
+	})
+
+	t.Run("Find by non-existent taskID", func(t *testing.T) {
+		list, err := repo.ListByLinkedTaskID(ctx, uuid.New())
+		require.NoError(t, err)
+		assert.Empty(t, list)
+	})
+
+	t.Run("Invalid taskID", func(t *testing.T) {
+		_, err := repo.ListByLinkedTaskID(ctx, uuid.Nil)
+		assert.ErrorIs(t, err, ErrInvalidInput)
+	})
+}
+

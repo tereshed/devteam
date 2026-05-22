@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/async"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 var (
@@ -121,6 +123,9 @@ func NewConversationService(
 
 	// Запуск фоновой очистки processedMessages для предотвращения утечки памяти
 	go s.cleanupProcessedMessagesLoop()
+
+	// Запуск фонового прослушивания изменений статуса задач
+	go s.listenTaskStatusChanges()
 
 	return s
 }
@@ -253,7 +258,7 @@ func (s *conversationService) SendMessage(ctx context.Context, userID, conversat
 
 	// Запуск оркестрации в защищенной горутине с поддержкой Graceful Shutdown
 	s.wg.Add(1)
-	go s.runOrchestrator(context.WithoutCancel(ctx), userID, conv.ProjectID, conversationID, content)
+	go s.runOrchestrator(context.WithoutCancel(ctx), userID, conv.ProjectID, conversationID, content, msg.ID)
 
 	return msg, nil
 }
@@ -422,11 +427,8 @@ func normalizePagination(limit, offset int) (int, int) {
 	return limit, offset
 }
 
-func (s *conversationService) runOrchestrator(ctx context.Context, userID, projectID, conversationID uuid.UUID, content string) {
+func (s *conversationService) runOrchestrator(ctx context.Context, userID, projectID, conversationID uuid.UUID, content string, msgID uuid.UUID) {
 	defer s.wg.Done()
-
-	var success bool
-	var assistantMsg *models.ConversationMessage
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -436,20 +438,6 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 				"conversationID", conversationID,
 				"error", r,
 				"stack", string(debug.Stack()))
-			success = false
-		}
-
-		if !success {
-			// TODO: Обновить статус сообщения/разговора на Failed в БД,
-			// чтобы UI не оставался в состоянии вечного ожидания.
-			// s.markMessageFailed(ctx, conversationID, ...)
-		} else if assistantMsg != nil {
-			// Индексируем ответ ассистента после успешного завершения оркестрации
-			// Загружаем Conversation для передачи в индексатор (N+1 protection)
-			conv, err := s.convRepo.GetOnlyByID(ctx, conversationID, true)
-			if err == nil {
-				s.indexMessageAsync(ctx, conv, assistantMsg, content)
-			}
 		}
 	}()
 
@@ -470,9 +458,63 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 		return
 	}
 
+	// 1b. Привязываем ID созданной задачи к сообщению пользователя
+	userMsg, errGet := s.msgRepo.GetByID(ctx, conversationID, msgID, true)
+	if errGet == nil && userMsg != nil {
+		userMsg.LinkedTaskIDs = append(userMsg.LinkedTaskIDs, task.ID)
+
+		// Обновляем метаданные со слепком задачи (linked_task_snapshots)
+		metadataMap := make(map[string]any)
+		if len(userMsg.Metadata) > 0 {
+			_ = json.Unmarshal(userMsg.Metadata, &metadataMap)
+		}
+
+		snapshotsAny, ok := metadataMap["linked_task_snapshots"]
+		var snapshots []any
+		if ok {
+			if list, isList := snapshotsAny.([]any); isList {
+				snapshots = list
+			}
+		}
+
+		newSnapshot := map[string]any{
+			"id":     task.ID.String(),
+			"title":  task.Title,
+			"status": string(task.State),
+		}
+		snapshots = append(snapshots, newSnapshot)
+		metadataMap["linked_task_snapshots"] = snapshots
+
+		metaBytes, errMarshal := json.Marshal(metadataMap)
+		if errMarshal == nil {
+			userMsg.Metadata = datatypes.JSON(metaBytes)
+		}
+
+		updates := map[string]any{
+			"linked_task_ids": userMsg.LinkedTaskIDs,
+			"metadata":        userMsg.Metadata,
+		}
+		if errUpdate := s.msgRepo.Update(ctx, conversationID, msgID, updates); errUpdate != nil {
+			slog.Error("Failed to update user message with task reference", "messageID", msgID, "error", errUpdate)
+		}
+
+		// Публикуем событие ConversationMessageUpdated
+		s.eventBus.Publish(ctx, events.ConversationMessageUpdated{
+			ProjectID:      projectID,
+			UserID:         userID,
+			ConversationID: conversationID,
+			MessageID:      msgID,
+			Role:           string(userMsg.Role),
+			Content:        userMsg.Content,
+			LinkedTaskIDs:  userMsg.LinkedTaskIDs,
+			Metadata:       string(userMsg.Metadata),
+			CreatedAt:      userMsg.CreatedAt,
+			OccurredAt:     time.Now(),
+			TraceID:        getTraceID(ctx),
+		})
+	}
+
 	// 2. Sprint 17 / Orchestration v2: enqueue первого step_req в durable очередь.
-	// StepWorker подберёт его, вызовет Orchestrator.Step → Router → fan-out агентов.
-	// В отличие от legacy ProcessTask, эта операция мгновенная (только INSERT в task_events).
 	if err := s.orchestratorSvc.EnqueueInitialStep(ctx, task.ID); err != nil {
 		slog.Error("Orchestrator failed to enqueue initial step",
 			"userID", userID,
@@ -482,18 +524,6 @@ func (s *conversationService) runOrchestrator(ctx context.Context, userID, proje
 			"error", err)
 		return
 	}
-
-	// 3. Получаем созданный ассистентом ответ
-	messages, _, err := s.msgRepo.ListByConversationID(ctx, conversationID, repository.MessageFilter{
-		Limit:    1,
-		OrderBy:  "created_at",
-		OrderDir: "desc",
-	})
-	if err == nil && len(messages) > 0 && messages[0].Role == models.ConversationRoleAssistant {
-		assistantMsg = messages[0]
-	}
-
-	success = true
 }
 
 func (s *conversationService) indexMessageAsync(ctx context.Context, conv *models.Conversation, msg *models.ConversationMessage, userPrompt string) {
@@ -574,4 +604,121 @@ func truncateRunes(s string, n int) string {
 		count++
 	}
 	return s
+}
+
+func (s *conversationService) listenTaskStatusChanges() {
+	ch, unsub := s.eventBus.Subscribe("conversation_task_status_listener", 256)
+	defer unsub()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			if e, ok := ev.(events.TaskStatusChanged); ok {
+				s.handleTaskStatusChanged(e)
+			}
+		}
+	}
+}
+
+func (s *conversationService) handleTaskStatusChanged(e events.TaskStatusChanged) {
+	state := models.TaskState(e.Current)
+	if state != models.TaskStateDone && state != models.TaskStateFailed && state != models.TaskStateCancelled {
+		return
+	}
+
+	ctx := context.Background()
+
+	// Query messages by linked task ID
+	messages, err := s.msgRepo.ListByLinkedTaskID(ctx, e.TaskID)
+	if err != nil {
+		slog.Error("Failed to list messages by linked task ID", "taskID", e.TaskID, "error", err)
+		return
+	}
+
+	// Check if assistant message already exists for this task to avoid duplicates
+	var userMsg *models.ConversationMessage
+	for _, msg := range messages {
+		if msg.Role == models.ConversationRoleAssistant {
+			// Assistant message already created for this task, ignore
+			return
+		}
+		if msg.Role == models.ConversationRoleUser {
+			userMsg = msg
+		}
+	}
+
+	if userMsg == nil {
+		// No user message linked to this task (e.g. task created through UI, not chat), ignore
+		return
+	}
+
+	// Retrieve conversation details
+	conv, err := s.convRepo.GetOnlyByID(ctx, userMsg.ConversationID, true)
+	if err != nil {
+		slog.Error("Failed to retrieve conversation details for status change", "conversationID", userMsg.ConversationID, "error", err)
+		return
+	}
+
+	userID := e.UserID
+	if userID == uuid.Nil {
+		userID = conv.UserID
+	}
+
+	// Determine the assistant response content
+	var content string
+	switch state {
+	case models.TaskStateDone:
+		task, err := s.taskSvc.GetByID(ctx, userID, models.RoleUser, e.TaskID)
+		if err != nil {
+			slog.Error("Failed to retrieve completed task details", "taskID", e.TaskID, "error", err)
+			content = "Task finished successfully, but details could not be retrieved."
+		} else {
+			if task.Result != nil {
+				content = *task.Result
+			}
+			if content == "" {
+				content = "Task finished successfully with empty result."
+			}
+		}
+	case models.TaskStateFailed:
+		content = fmt.Sprintf("Task failed: %s", e.ErrorMessage)
+	case models.TaskStateCancelled:
+		content = "Task was cancelled."
+	}
+
+	// Create new assistant message
+	assistantMsg := &models.ConversationMessage{
+		ConversationID: userMsg.ConversationID,
+		Role:           models.ConversationRoleAssistant,
+		Content:        content,
+		LinkedTaskIDs:  models.UUIDSlice{e.TaskID},
+	}
+
+	if err := s.msgRepo.Create(ctx, assistantMsg); err != nil {
+		slog.Error("Failed to create assistant message", "conversationID", userMsg.ConversationID, "error", err)
+		return
+	}
+
+	// Publish event ConversationMessageCreated
+	s.eventBus.Publish(ctx, events.ConversationMessageCreated{
+		ProjectID:      conv.ProjectID,
+		UserID:         userID,
+		ConversationID: userMsg.ConversationID,
+		MessageID:      assistantMsg.ID,
+		Role:           string(assistantMsg.Role),
+		Content:        assistantMsg.Content,
+		LinkedTaskIDs:  assistantMsg.LinkedTaskIDs,
+		Metadata:       "{}",
+		CreatedAt:      assistantMsg.CreatedAt,
+		OccurredAt:     time.Now(),
+		TraceID:        e.TraceID,
+	})
+
+	// Index assistant message
+	s.indexMessageAsync(ctx, conv, assistantMsg, userMsg.Content)
 }

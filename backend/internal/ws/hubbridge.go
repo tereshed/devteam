@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -161,6 +162,44 @@ func (b *HubBridge) dispatch(ev events.DomainEvent) {
 			Message: b.scrub.Scrub(e.Message),
 		}
 		payload, err = MarshalError(projectID, data)
+
+	case events.ConversationMessageCreated:
+		msgType = MessageTypeConversationMessage
+		content := b.scrub.Scrub(e.Content)
+		content = ScrubAndStripContent(content)
+		var meta json.RawMessage
+		if e.Metadata != "" {
+			meta = json.RawMessage(e.Metadata)
+		}
+		data := ConversationMessageData{
+			ID:             e.MessageID,
+			ConversationID: e.ConversationID,
+			Role:           e.Role,
+			Content:        content,
+			LinkedTaskIDs:  e.LinkedTaskIDs,
+			Metadata:       meta,
+			CreatedAt:      e.CreatedAt,
+		}
+		payload, err = MarshalConversationMessage(projectID, data)
+
+	case events.ConversationMessageUpdated:
+		msgType = MessageTypeConversationMessage
+		content := b.scrub.Scrub(e.Content)
+		content = ScrubAndStripContent(content)
+		var meta json.RawMessage
+		if e.Metadata != "" {
+			meta = json.RawMessage(e.Metadata)
+		}
+		data := ConversationMessageData{
+			ID:             e.MessageID,
+			ConversationID: e.ConversationID,
+			Role:           e.Role,
+			Content:        content,
+			LinkedTaskIDs:  e.LinkedTaskIDs,
+			Metadata:       meta,
+			CreatedAt:      e.CreatedAt,
+		}
+		payload, err = MarshalConversationMessage(projectID, data)
 
 	default:
 		b.log.Warn("unknown domain event type", "type", fmt.Sprintf("%T", ev))

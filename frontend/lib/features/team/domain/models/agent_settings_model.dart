@@ -47,6 +47,8 @@ const List<String> kSupportedAgentProviderKinds = [
   'deepseek',
   'zhipu',
   'openrouter',
+  'antigravity',
+  'antigravity_oauth',
 ];
 
 /// Допустимые значения permissions.defaultMode (Claude Code CLI).

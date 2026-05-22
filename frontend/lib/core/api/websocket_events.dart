@@ -209,6 +209,22 @@ abstract class WsErrorEvent with _$WsErrorEvent {
 }
 
 @freezed
+abstract class WsConversationMessageEvent with _$WsConversationMessageEvent {
+  const factory WsConversationMessageEvent({
+    required DateTime ts,
+    required int v,
+    required String projectId,
+    required String id,
+    required String conversationId,
+    required String role,
+    required String content,
+    @Default(<String>[]) List<String> linkedTaskIds,
+    @Default(<String, dynamic>{}) Map<String, dynamic> metadata,
+    required DateTime createdAt,
+  }) = _WsConversationMessageEvent;
+}
+
+@freezed
 abstract class WsUnknownEvent with _$WsUnknownEvent {
   const factory WsUnknownEvent({
     required String type,
@@ -400,6 +416,9 @@ abstract class WsServerEvent with _$WsServerEvent {
   const factory WsServerEvent.assistantTaskUpdate(
     WsAssistantTaskUpdateEvent value,
   ) = WsServerEventAssistantTaskUpdate;
+  const factory WsServerEvent.conversationMessage(
+    WsConversationMessageEvent value,
+  ) = WsServerEventConversationMessage;
   const factory WsServerEvent.unknown(WsUnknownEvent value) =
       WsServerEventUnknown;
 }
@@ -852,6 +871,30 @@ WsServerEvent parseWsServerEnvelope(String text) {
               ? Map<String, dynamic>.from(d['details']! as Map)
               : <String, dynamic>{},
           needsRestRefetch: code == WsErrorCode.streamOverflow,
+        ),
+      );
+    case 'conversation_message':
+      final createdAtRaw = d['created_at'];
+      if (createdAtRaw is! String || createdAtRaw.isEmpty) {
+        throw const WsParseError(
+          message: 'created_at отсутствует или не string (conversation_message)',
+        );
+      }
+      final createdAt = parseWsTimestamp(createdAtRaw, context: 'conversation_message.created_at');
+      return WsServerEvent.conversationMessage(
+        WsConversationMessageEvent(
+          ts: ts,
+          v: v,
+          projectId: pid,
+          id: d['id'] as String? ?? '',
+          conversationId: d['conversation_id'] as String? ?? '',
+          role: d['role'] as String? ?? '',
+          content: d['content'] as String? ?? '',
+          linkedTaskIds: (d['linked_task_ids'] as List?)?.map((e) => e as String).toList() ?? const [],
+          metadata: (d['metadata'] is Map<String, dynamic>)
+              ? Map<String, dynamic>.from(d['metadata']! as Map)
+              : <String, dynamic>{},
+          createdAt: createdAt,
         ),
       );
     default:

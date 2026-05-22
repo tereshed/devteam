@@ -1,3 +1,4 @@
+import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/onboarding/data/my_agents_providers.dart';
 import 'package:frontend/features/onboarding/domain/onboarding_state.dart';
 import 'package:frontend/features/settings/data/llm_providers_providers.dart';
@@ -8,35 +9,66 @@ part 'onboarding_providers.g.dart';
 
 @riverpod
 OnboardingState onboardingState(Ref ref) {
-  final myAgents = ref.watch(myAgentsListProvider);
-  final llmProviders = ref.watch(llmProvidersListProvider);
+  final authState = ref.watch(authControllerProvider);
 
-  if (myAgents.isLoading || llmProviders.isLoading) {
-    return const OnboardingState(loading: true);
-  }
+  return authState.maybeWhen(
+    data: (user) {
+      if (user == null) {
+        return const OnboardingState(loading: false);
+      }
+      final isAdmin = user.role == 'admin';
 
-  if (myAgents.hasError || llmProviders.hasError) {
-    return const OnboardingState(loading: false, hasError: true);
-  }
+      final myAgents = ref.watch(myAgentsListProvider);
 
-  final hasProviders =
-      llmProviders.hasValue && llmProviders.value!.isNotEmpty;
-
-  final agents = myAgents.hasValue ? myAgents.value : null;
-  final assistant = agents?.items
-      .where((a) => a.role == 'assistant')
-      .firstOrNull;
-
-  final configured = assistant != null &&
-      assistant.model != null &&
-      assistant.model!.isNotEmpty &&
-      assistant.providerKind != null &&
-      assistant.providerKind!.isNotEmpty;
-
-  return OnboardingState(
-    hasLlmProviders: hasProviders,
-    assistantConfigured: configured,
-    loading: false,
+      if (isAdmin) {
+        final llmProviders = ref.watch(llmProvidersListProvider);
+        if (myAgents.isLoading || llmProviders.isLoading) {
+          return const OnboardingState(loading: true);
+        }
+        if (myAgents.hasError || llmProviders.hasError) {
+          return const OnboardingState(loading: false, hasError: true);
+        }
+        final hasProviders =
+            llmProviders.hasValue && llmProviders.value!.isNotEmpty;
+        final agents = myAgents.hasValue ? myAgents.value : null;
+        final assistant = agents?.items
+            .where((a) => a.role == 'assistant')
+            .firstOrNull;
+        final configured = assistant != null &&
+            assistant.model != null &&
+            assistant.model!.isNotEmpty &&
+            assistant.providerKind != null &&
+            assistant.providerKind!.isNotEmpty;
+        return OnboardingState(
+          hasLlmProviders: hasProviders,
+          assistantConfigured: configured,
+          loading: false,
+        );
+      } else {
+        if (myAgents.isLoading) {
+          return const OnboardingState(loading: true);
+        }
+        if (myAgents.hasError) {
+          return const OnboardingState(loading: false, hasError: true);
+        }
+        final agents = myAgents.hasValue ? myAgents.value : null;
+        final assistant = agents?.items
+            .where((a) => a.role == 'assistant')
+            .firstOrNull;
+        final configured = assistant != null &&
+            assistant.model != null &&
+            assistant.model!.isNotEmpty &&
+            assistant.providerKind != null &&
+            assistant.providerKind!.isNotEmpty;
+        return OnboardingState(
+          hasLlmProviders: true, // Non-admin doesn't need to configure LLM providers
+          assistantConfigured: configured,
+          loading: false,
+        );
+      }
+    },
+    loading: () => const OnboardingState(loading: true),
+    orElse: () => const OnboardingState(loading: false, hasError: true),
   );
 }
 

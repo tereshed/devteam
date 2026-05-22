@@ -86,6 +86,33 @@ void main() {
       );
       expect(ok, isTrue);
     });
+
+    test('conversation_message parses successfully', () {
+      const json =
+          '{"type":"conversation_message","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"project_id":"550e8400-e29b-41d4-a716-446655440000",'
+          '"data":{"id":"110e8400-e29b-41d4-a716-446655440000",'
+          '"conversation_id":"220e8400-e29b-41d4-a716-446655440000",'
+          '"role":"user",'
+          '"content":"Hello project agents",'
+          '"linked_task_ids":["330e8400-e29b-41d4-a716-446655440000"],'
+          '"metadata":{"some_key":"some_val"},'
+          '"created_at":"2026-05-16T09:59:00.000Z"}}';
+      final ev = parseWsServerEnvelope(json);
+      final got = ev.maybeMap(
+        conversationMessage: (e) => e.value,
+        orElse: () => null,
+      );
+      expect(got, isNotNull);
+      expect(got!.projectId, '550e8400-e29b-41d4-a716-446655440000');
+      expect(got.id, '110e8400-e29b-41d4-a716-446655440000');
+      expect(got.conversationId, '220e8400-e29b-41d4-a716-446655440000');
+      expect(got.role, 'user');
+      expect(got.content, 'Hello project agents');
+      expect(got.linkedTaskIds, ['330e8400-e29b-41d4-a716-446655440000']);
+      expect(got.metadata, {'some_key': 'some_val'});
+      expect(got.createdAt.isUtc, isTrue);
+    });
   });
 
   group('parseWsServerEnvelope (integration_status)', () {
