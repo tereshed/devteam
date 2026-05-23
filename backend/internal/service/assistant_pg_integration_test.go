@@ -160,6 +160,8 @@ func startAssistantHarness(t *testing.T) *assistantHarness {
 	svc, err := service.NewAssistantService(service.AssistantServiceDeps{
 		Repo:         h.repo,
 		TaskRepo:     h.taskRepo,
+		ProjectRepo:  repository.NewProjectRepository(gdb),
+		TeamRepo:     repository.NewTeamRepository(gdb),
 		AgentLoader:  service.NewDBAgentLoader(gdb),
 		AgentCreator: agentSvc,
 		LLMResolver:  fixedLLMResolver{client: h.llm},

@@ -709,6 +709,8 @@ func main() {
 	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{
 		Repo:         assistantSessionRepo,
 		TaskRepo:     taskRepo,
+		ProjectRepo:  projectRepo,
+		TeamRepo:     teamRepo,
 		AgentLoader:  service.NewDBAgentLoader(db),
 		AgentCreator: agentSvcV2,
 		LLMResolver:  service.NewAssistantLLMClientAdapter(llmCredSvc, llmFactory, cfg.LLM, llmRepo, llmModelRepo),

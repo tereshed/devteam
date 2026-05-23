@@ -207,6 +207,8 @@ type AssistantAgentCreator interface {
 type AssistantServiceDeps struct {
 	Repo        repository.AssistantSessionRepository
 	TaskRepo    repository.TaskRepository
+	ProjectRepo repository.ProjectRepository
+	TeamRepo    repository.TeamRepository
 	AgentLoader AssistantAgentLoader
 	AgentCreator AssistantAgentCreator
 	LLMResolver AssistantLLMClientResolver
@@ -229,6 +231,12 @@ func NewAssistantService(deps AssistantServiceDeps) (AssistantService, error) {
 	}
 	if deps.TaskRepo == nil {
 		return nil, errors.New("AssistantService: TaskRepo is required")
+	}
+	if deps.ProjectRepo == nil {
+		return nil, errors.New("AssistantService: ProjectRepo is required")
+	}
+	if deps.TeamRepo == nil {
+		return nil, errors.New("AssistantService: TeamRepo is required")
 	}
 	if deps.AgentLoader == nil {
 		return nil, errors.New("AssistantService: AgentLoader is required")
