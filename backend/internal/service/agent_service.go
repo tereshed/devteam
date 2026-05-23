@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -50,6 +51,7 @@ type CreateAgentInput struct {
 	ExecutionKind   models.AgentExecutionKind
 	RoleDescription *string
 	SystemPrompt    *string
+	PromptID        *uuid.UUID
 	Model           *string                    // для llm; запрещено для sandbox. nil допустим ("не сконфигурирован").
 	ProviderKind    *models.AgentProviderKind
 	CodeBackend     *models.CodeBackend // обязательно для sandbox; запрещено для llm
@@ -68,6 +70,8 @@ type UpdateAgentInput struct {
 	Role               *models.AgentRole
 	RoleDescription    *string
 	SystemPrompt       *string
+	PromptID           *uuid.UUID
+	ClearPromptID      bool
 	Model              *string
 	ProviderKind       *models.AgentProviderKind
 	CodeBackend        *models.CodeBackend // Sprint 5 review fix #4: можно менять для sandbox-агента
@@ -172,6 +176,7 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 		ExecutionKind:   in.ExecutionKind,
 		RoleDescription: in.RoleDescription,
 		SystemPrompt:    in.SystemPrompt,
+		PromptID:        in.PromptID,
 		ProviderKind:    in.ProviderKind,
 		Temperature:     in.Temperature,
 		MaxTokens:       in.MaxTokens,
@@ -203,6 +208,28 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 			return nil, fmt.Errorf("%w: sandbox-agent must NOT have model", ErrAgentValidation)
 		}
 		a.CodeBackend = in.CodeBackend
+	}
+
+	// Auto-infer ProviderKind from Model if not explicitly provided
+	if a.ProviderKind == nil && a.Model != nil && *a.Model != "" {
+		model := *a.Model
+		var pk models.AgentProviderKind
+		if strings.Contains(model, "/") {
+			pk = models.AgentProviderKindOpenRouter
+			a.ProviderKind = &pk
+		} else if strings.HasPrefix(model, "claude-") {
+			pk = models.AgentProviderKindAnthropic
+			a.ProviderKind = &pk
+		} else if strings.HasPrefix(model, "deepseek-") {
+			pk = models.AgentProviderKindDeepSeek
+			a.ProviderKind = &pk
+		} else if strings.HasPrefix(model, "glm-") {
+			pk = models.AgentProviderKindZhipu
+			a.ProviderKind = &pk
+		} else if strings.HasPrefix(model, "antigravity-") {
+			pk = models.AgentProviderKindAntigravity
+			a.ProviderKind = &pk
+		}
 	}
 
 	if err := s.validateRanges(in.Temperature, in.MaxTokens); err != nil {
@@ -284,6 +311,13 @@ func (s *AgentService) applyUpdatePatch(current *models.Agent, in UpdateAgentInp
 	}
 	if in.SystemPrompt != nil {
 		current.SystemPrompt = in.SystemPrompt
+	}
+	if in.ClearPromptID {
+		current.PromptID = nil
+		current.Prompt = nil
+	} else if in.PromptID != nil {
+		current.PromptID = in.PromptID
+		current.Prompt = nil
 	}
 
 	// Model — только для llm-агентов. Phase 1 §1.3: допускаем nil (сброс к "не сконфигурирован").

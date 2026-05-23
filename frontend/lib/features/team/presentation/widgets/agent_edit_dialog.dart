@@ -106,6 +106,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
   static const _modelMaxLen = 128;
 
   late final SearchController _modelController;
+  late final TextEditingController _systemPromptController;
   late final FocusNode _modelFocus;
   late final AgentModel _initial;
 
@@ -139,6 +140,8 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     _initial = widget.agent;
     _modelController = SearchController()..text = widget.agent.model ?? '';
     _modelController.addListener(_recomputeDirty);
+    _systemPromptController = TextEditingController()..text = widget.agent.systemPrompt ?? '';
+    _systemPromptController.addListener(_recomputeDirty);
     _modelFocus = FocusNode();
     _promptId = widget.agent.promptId;
     _codeBackend = widget.agent.codeBackend;
@@ -314,6 +317,8 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     _toolsCancel?.cancel();
     _modelController.removeListener(_recomputeDirty);
     _modelController.dispose();
+    _systemPromptController.removeListener(_recomputeDirty);
+    _systemPromptController.dispose();
     _modelFocus.dispose();
     super.dispose();
   }
@@ -326,6 +331,10 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     final promptDirty = _promptTouched &&
         (_promptId ?? '') != (_initial.promptId ?? '');
 
+    final sysPromptTrim = _systemPromptController.text.trim();
+    final initialSysPrompt = (_initial.systemPrompt ?? '').trim();
+    final sysPromptDirty = sysPromptTrim != initialSysPrompt;
+
     final cbDirty = (_codeBackend ?? '') != (_initial.codeBackend ?? '');
     final pkDirty = (_providerKind ?? '') != (_initial.providerKind ?? '');
     final activeDirty = _isActive != _initial.isActive;
@@ -333,7 +342,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     final toolsDirty = !_sameToolIdSet(_selectedToolDefIds, _initialToolBindingIds);
 
     final next =
-        modelDirty || promptDirty || cbDirty || pkDirty || activeDirty || toolsDirty;
+        modelDirty || promptDirty || sysPromptDirty || cbDirty || pkDirty || activeDirty || toolsDirty;
     if (next != _dirty) {
       setState(() => _dirty = next);
     }
@@ -417,6 +426,15 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       promptPatch = const Patch<String?>.omit();
     }
 
+    final sysPromptTrim = _systemPromptController.text.trim();
+    final initialSysPrompt = (_initial.systemPrompt ?? '').trim();
+    var sysPromptPatch = const Patch<String?>.omit();
+    if (sysPromptTrim != initialSysPrompt) {
+      sysPromptPatch = sysPromptTrim.isEmpty
+          ? const Patch<String?>.clear()
+          : Patch.value(sysPromptTrim);
+    }
+
     final Patch<String?> cbPatch;
     if ((_codeBackend ?? '') != (_initial.codeBackend ?? '')) {
       cbPatch = _codeBackend == null || _codeBackend!.isEmpty
@@ -457,6 +475,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     return UpdateAgentPatch(
       model: modelPatch,
       promptId: promptPatch,
+      systemPrompt: sysPromptPatch,
       codeBackend: cbPatch,
       providerKind: pkPatch,
       isActive: activePatch,
@@ -547,6 +566,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       return;
     }
     ref.invalidate(teamProvider(widget.projectId));
+    ref.invalidate(teamsProvider(widget.projectId));
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref.read(teamProvider(widget.projectId).future);
@@ -638,6 +658,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                   searchController: _modelController,
                   builder: (BuildContext context, SearchController controller) {
                     return TextFormField(
+                      key: const Key('agentEditDialog_modelField'),
                       controller: controller,
                       focusNode: _modelFocus,
                       autofocus: widget.useAutofocus,
@@ -752,6 +773,19 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                     });
                     _recomputeDirty();
                   },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('agentEditDialog_systemPromptField'),
+                  controller: _systemPromptController,
+                  decoration: InputDecoration(
+                    labelText: l10n.agentsV2FieldSystemPrompt,
+                    hintText: 'Дополнительные правила системного промпта...',
+                    border: const OutlineInputBorder(),
+                  ),
+                  maxLines: 5,
+                  minLines: 2,
+                  onChanged: (_) => _recomputeDirty(),
                 ),
                 const SizedBox(height: 12),
                 _CodeBackendField(

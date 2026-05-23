@@ -265,7 +265,7 @@ func main() {
 		cfg.Git.ImportDir,
 	), agentSvcV2)
 	toolDefinitionService := service.NewToolDefinitionService(toolDefRepo)
-	teamService := service.NewTeamService(teamRepo, toolDefRepo)
+	teamService := service.WithTransactionManager(service.WithAgentServiceForTeam(service.NewTeamService(teamRepo, toolDefRepo), agentSvcV2), txManager)
 	taskIndexer := indexer.NewTaskIndexer(taskRepo, taskMsgRepo, vectorRepo, slog.Default())
 	taskService := service.NewTaskService(taskRepo, taskMsgRepo, projectService, teamService, txManager, eventBus, taskIndexer, slog.Default())
 

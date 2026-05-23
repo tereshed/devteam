@@ -6,6 +6,7 @@ class UpdateAgentPatch {
   const UpdateAgentPatch({
     this.model = const Patch<String>.omit(),
     this.promptId = const Patch<String?>.omit(),
+    this.systemPrompt = const Patch<String?>.omit(),
     this.codeBackend = const Patch<String?>.omit(),
     this.providerKind = const Patch<String?>.omit(),
     this.isActive = const Patch<bool>.omit(),
@@ -14,6 +15,7 @@ class UpdateAgentPatch {
 
   final Patch<String> model;
   final Patch<String?> promptId;
+  final Patch<String?> systemPrompt;
   final Patch<String?> codeBackend;
   final Patch<String?> providerKind;
   final Patch<bool> isActive;
@@ -30,6 +32,11 @@ class UpdateAgentPatch {
       m['prompt_id'] = null;
     } else if (promptId.isValue) {
       m['prompt_id'] = promptId.requireValue;
+    }
+    if (systemPrompt.isClear) {
+      m['system_prompt'] = null;
+    } else if (systemPrompt.isValue) {
+      m['system_prompt'] = systemPrompt.requireValue;
     }
     if (codeBackend.isClear) {
       m['code_backend'] = null;

@@ -39,6 +39,9 @@ Future<void> pumpAppWidget(
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(
+          splashFactory: NoSplash.splashFactory,
+        ),
         home: child,
       ),
     ),
@@ -66,6 +69,9 @@ Future<void> pumpAppWidgetWithRouter(
       child: MaterialApp.router(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(
+          splashFactory: NoSplash.splashFactory,
+        ),
         routerConfig: routerConfig,
       ),
     ),

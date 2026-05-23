@@ -30,6 +30,9 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+            splashFactory: NoSplash.splashFactory,
+          ),
           home: Builder(
             builder: (ctx) => Scaffold(
               body: TextButton(

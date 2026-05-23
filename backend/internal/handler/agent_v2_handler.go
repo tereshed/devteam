@@ -57,6 +57,7 @@ type createAgentRequest struct {
 	ExecutionKind   string   `json:"execution_kind" binding:"required"`
 	RoleDescription *string  `json:"role_description,omitempty"`
 	SystemPrompt    *string  `json:"system_prompt,omitempty"`
+	PromptID        *string  `json:"prompt_id,omitempty"`
 	Model           *string  `json:"model,omitempty"`
 	CodeBackend     *string  `json:"code_backend,omitempty"`
 	Temperature     *float64 `json:"temperature,omitempty"`
@@ -68,6 +69,8 @@ type updateAgentRequest struct {
 	Role               *string  `json:"role,omitempty"`
 	RoleDescription    *string  `json:"role_description,omitempty"`
 	SystemPrompt       *string  `json:"system_prompt,omitempty"`
+	ClearPromptID      *bool    `json:"clear_prompt_id,omitempty"`
+	PromptID           *string  `json:"prompt_id,omitempty"`
 	Model              *string  `json:"model,omitempty"`
 	ProviderKind       *string  `json:"provider_kind,omitempty"`
 	CodeBackend        *string  `json:"code_backend,omitempty"`
@@ -191,12 +194,22 @@ func (h *AgentV2Handler) Create(c *gin.Context) {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 		return
 	}
+	var promptUUID *uuid.UUID
+	if req.PromptID != nil && *req.PromptID != "" {
+		parsed, err := uuid.Parse(*req.PromptID)
+		if err != nil {
+			apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid prompt_id")
+			return
+		}
+		promptUUID = &parsed
+	}
 	in := service.CreateAgentInput{
 		Name:            req.Name,
 		Role:            models.AgentRole(req.Role),
 		ExecutionKind:   models.AgentExecutionKind(req.ExecutionKind),
 		RoleDescription: req.RoleDescription,
 		SystemPrompt:    req.SystemPrompt,
+		PromptID:        promptUUID,
 		Temperature:     req.Temperature,
 		MaxTokens:       req.MaxTokens,
 		IsActive:        req.IsActive,
@@ -240,14 +253,27 @@ func (h *AgentV2Handler) Update(c *gin.Context) {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 		return
 	}
+	var promptUUID *uuid.UUID
+	if req.PromptID != nil && *req.PromptID != "" {
+		parsed, err := uuid.Parse(*req.PromptID)
+		if err != nil {
+			apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid prompt_id")
+			return
+		}
+		promptUUID = &parsed
+	}
 	in := service.UpdateAgentInput{
 		RoleDescription:    req.RoleDescription,
 		SystemPrompt:       req.SystemPrompt,
+		PromptID:           promptUUID,
 		Model:              req.Model,
 		Temperature:        req.Temperature,
 		MaxTokens:          req.MaxTokens,
 		IsActive:           req.IsActive,
 		InternalMCPEnabled: req.InternalMCPEnabled,
+	}
+	if req.ClearPromptID != nil {
+		in.ClearPromptID = *req.ClearPromptID
 	}
 	if req.Role != nil && *req.Role != "" {
 		r := models.AgentRole(*req.Role)

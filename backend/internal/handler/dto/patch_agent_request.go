@@ -25,6 +25,9 @@ type PatchAgentRequest struct {
 	providerKindSet, providerKindNull bool
 	providerKindVal                   *string
 
+	systemPromptSet, systemPromptNull bool
+	systemPromptVal                  *string
+
 	isActiveSet bool
 	isActiveVal bool
 
@@ -81,6 +84,18 @@ func (p *PatchAgentRequest) UnmarshalJSON(data []byte) error {
 				return err
 			}
 			p.codeBackendVal = &s
+		}
+	}
+	if v, ok := raw["system_prompt"]; ok {
+		p.systemPromptSet = true
+		if isJSONNull(v) {
+			p.systemPromptNull = true
+		} else {
+			var s string
+			if err := json.Unmarshal(v, &s); err != nil {
+				return err
+			}
+			p.systemPromptVal = &s
 		}
 	}
 	if v, ok := raw["provider_kind"]; ok {
@@ -176,6 +191,20 @@ func (p PatchAgentRequest) CodeBackendValue() (string, bool) {
 		return "", false
 	}
 	return *p.codeBackendVal, true
+}
+
+func (p PatchAgentRequest) SystemPromptPresent() bool { return p.systemPromptSet }
+
+func (p PatchAgentRequest) SystemPromptClear() bool { return p.systemPromptSet && p.systemPromptNull }
+
+func (p PatchAgentRequest) SystemPromptValue() (string, bool) {
+	if !p.systemPromptSet || p.systemPromptNull {
+		return "", false
+	}
+	if p.systemPromptVal == nil {
+		return "", false
+	}
+	return *p.systemPromptVal, true
 }
 
 // ProviderKindPresent true если ключ "provider_kind" был в JSON (Sprint 15.e2e).

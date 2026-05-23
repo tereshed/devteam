@@ -9,6 +9,8 @@ import 'package:frontend/features/admin/agents_v2/data/agents_v2_repository.dart
 import 'package:frontend/features/admin/agents_v2/domain/agent_v2_exceptions.dart';
 import 'package:frontend/features/admin/agents_v2/domain/agent_v2_model.dart';
 import 'package:frontend/features/admin/agents_v2/presentation/screens/agent_v2_detail_screen.dart';
+import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
+import 'package:frontend/features/admin/prompts/data/prompts_repository.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -22,6 +24,7 @@ import '../../../../../support/widget_test_harness.dart';
 // показывает value по умолчанию, добавляет visibility toggle).
 
 class _MockRepo extends Mock implements AgentsV2Repository {}
+class _MockPromptsRepo extends Mock implements PromptsRepository {}
 
 const _kId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
@@ -33,12 +36,14 @@ Future<void> _pump(
   WidgetTester tester, {
   required _MockRepo repo,
   required AgentV2 agent,
+  required _MockPromptsRepo promptsRepo,
 }) =>
     pumpAppWidget(
       tester,
       child: const AgentV2DetailScreen(agentId: _kId),
       overrides: [
         agentsV2RepositoryProvider.overrideWithValue(repo),
+        promptsRepositoryProvider.overrideWithValue(promptsRepo),
         agentV2DetailProvider(_kId).overrideWith((_) async => agent),
       ],
       // Высокий viewport — экран длинный (header + 6 полей + 2 кнопки + hint),
@@ -59,6 +64,7 @@ void main() {
         'submit valid form: вызывает repo.update и показывает snackbar',
         (tester) async {
       final repo = _MockRepo();
+      final promptsRepo = _MockPromptsRepo();
       final agent = fxAgent(
         id: _kId,
         name: 'planner-claude',
@@ -68,10 +74,14 @@ void main() {
         roleDescription: 'orig desc',
         systemPrompt: 'orig prompt',
       );
+      when(() => promptsRepo.getPrompts(cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) async => []);
       when(() => repo.update(
             id: any(named: 'id'),
             roleDescription: any(named: 'roleDescription'),
             systemPrompt: any(named: 'systemPrompt'),
+            promptId: any(named: 'promptId'),
+            clearPromptId: any(named: 'clearPromptId'),
             model: any(named: 'model'),
             codeBackend: any(named: 'codeBackend'),
             temperature: any(named: 'temperature'),
@@ -80,7 +90,7 @@ void main() {
             cancelToken: any(named: 'cancelToken'),
           )).thenAnswer((_) async => agent);
 
-      await _pump(tester, repo: repo, agent: agent);
+      await _pump(tester, repo: repo, agent: agent, promptsRepo: promptsRepo);
 
       final BuildContext ctx =
           tester.element(find.byType(AgentV2DetailScreen));
@@ -92,6 +102,8 @@ void main() {
             id: _kId,
             roleDescription: 'orig desc',
             systemPrompt: 'orig prompt',
+            promptId: null,
+            clearPromptId: true,
             model: 'claude-sonnet-4-6',
             codeBackend: null,
             temperature: any(named: 'temperature'),
@@ -104,11 +116,16 @@ void main() {
     testWidgets('error handling: 409 conflict → inline error-text',
         (tester) async {
       final repo = _MockRepo();
+      final promptsRepo = _MockPromptsRepo();
       final agent = fxAgent(id: _kId);
+      when(() => promptsRepo.getPrompts(cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) async => []);
       when(() => repo.update(
             id: any(named: 'id'),
             roleDescription: any(named: 'roleDescription'),
             systemPrompt: any(named: 'systemPrompt'),
+            promptId: any(named: 'promptId'),
+            clearPromptId: any(named: 'clearPromptId'),
             model: any(named: 'model'),
             codeBackend: any(named: 'codeBackend'),
             temperature: any(named: 'temperature'),
@@ -117,7 +134,7 @@ void main() {
             cancelToken: any(named: 'cancelToken'),
           )).thenThrow(AgentV2ConflictException('name already taken'));
 
-      await _pump(tester, repo: repo, agent: agent);
+      await _pump(tester, repo: repo, agent: agent, promptsRepo: promptsRepo);
 
       final BuildContext ctx =
           tester.element(find.byType(AgentV2DetailScreen));
@@ -136,8 +153,11 @@ void main() {
         'hidden secret field: SecretDialog рендерит value как obscureText '
         'и переключает видимость по visibility-кнопке', (tester) async {
       final repo = _MockRepo();
+      final promptsRepo = _MockPromptsRepo();
       final agent = fxAgent(id: _kId);
-      await _pump(tester, repo: repo, agent: agent);
+      when(() => promptsRepo.getPrompts(cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) async => []);
+      await _pump(tester, repo: repo, agent: agent, promptsRepo: promptsRepo);
 
       final BuildContext ctx =
           tester.element(find.byType(AgentV2DetailScreen));
@@ -184,7 +204,10 @@ void main() {
     testWidgets('Add secret submit: repo.setSecret вызван + closed snackbar',
         (tester) async {
       final repo = _MockRepo();
+      final promptsRepo = _MockPromptsRepo();
       final agent = fxAgent(id: _kId);
+      when(() => promptsRepo.getPrompts(cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) async => []);
       when(() => repo.setSecret(
             agentId: any(named: 'agentId'),
             keyName: any(named: 'keyName'),
@@ -196,7 +219,7 @@ void main() {
             createdAt: DateTime.utc(2026, 5, 15),
           ));
 
-      await _pump(tester, repo: repo, agent: agent);
+      await _pump(tester, repo: repo, agent: agent, promptsRepo: promptsRepo);
 
       final BuildContext ctx =
           tester.element(find.byType(AgentV2DetailScreen));

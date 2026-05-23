@@ -40,6 +40,36 @@ func RegisterTeamTools(server *mcp.Server, projectSvc service.ProjectService, te
 		Name:        "team_agent_patch",
 		Description: "Частично обновить агента команды (PATCH /projects/:id/team/agents/:agentId). Поля: clear_model / model, clear_prompt_id / prompt_id, clear_code_backend / code_backend, is_active, tool_definition_ids (опционально: полная замена привязок; [] — снять все).",
 	}, makeTeamAgentPatchHandler(projectSvc, teamSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_list",
+		Description: "Получить список всех команд проекта (как GET /projects/:id/teams).",
+	}, makeTeamListHandler(projectSvc, teamSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_create",
+		Description: "Создать новую команду в проекте (как POST /projects/:id/teams). Поля: project_id, name, type (development/research/analytics).",
+	}, makeTeamCreateHandler(projectSvc, teamSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_delete",
+		Description: "Удалить команду из проекта (как DELETE /projects/:id/teams/:teamId).",
+	}, makeTeamDeleteHandler(projectSvc, teamSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_type_list",
+		Description: "Получить список всех доступных типов команд (как GET /team-types).",
+	}, makeTeamTypeListHandler(teamSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_type_create",
+		Description: "Создать новый тип команды (как POST /admin/team-types; только для администраторов). Поля: code, name.",
+	}, makeTeamTypeCreateHandler(teamSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_type_delete",
+		Description: "Удалить тип команды (как DELETE /admin/team-types/:code; только для администраторов). Поля: code.",
+	}, makeTeamTypeDeleteHandler(teamSvc))
 }
 
 // TeamAgentPatchParams — параметры team_agent_patch (типизированные поля вместо сырого JSON).
@@ -47,13 +77,15 @@ type TeamAgentPatchParams struct {
 	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
 	AgentID   string `json:"agent_id" jsonschema:"UUID агента"`
 
-	ClearModel       bool    `json:"clear_model" jsonschema:"Сбросить model в NULL (не совмещать с model)"`
-	Model            *string `json:"model" jsonschema:"Новое значение model"`
-	ClearPromptID    bool    `json:"clear_prompt_id" jsonschema:"Сбросить prompt_id в NULL"`
-	PromptID         *string `json:"prompt_id" jsonschema:"UUID промпта"`
-	ClearCodeBackend bool    `json:"clear_code_backend" jsonschema:"Сбросить code_backend в NULL"`
-	CodeBackend      *string `json:"code_backend" jsonschema:"Значение code_backend"`
-	IsActive         *bool   `json:"is_active" jsonschema:"Активен ли агент"`
+	ClearModel        bool    `json:"clear_model" jsonschema:"Сбросить model в NULL (не совмещать с model)"`
+	Model             *string `json:"model" jsonschema:"Новое значение model"`
+	ClearPromptID     bool    `json:"clear_prompt_id" jsonschema:"Сбросить prompt_id в NULL"`
+	PromptID          *string `json:"prompt_id" jsonschema:"UUID промпта"`
+	ClearSystemPrompt bool    `json:"clear_system_prompt" jsonschema:"Сбросить system_prompt в NULL"`
+	SystemPrompt      *string `json:"system_prompt" jsonschema:"Новое значение system_prompt"`
+	ClearCodeBackend  bool    `json:"clear_code_backend" jsonschema:"Сбросить code_backend в NULL"`
+	CodeBackend       *string `json:"code_backend" jsonschema:"Значение code_backend"`
+	IsActive          *bool   `json:"is_active" jsonschema:"Активен ли агент"`
 
 	// ToolDefinitionIDs — nil: не менять tool_bindings; указатель на пустой срез: снять все;
 	// непустой срез UUID — полная замена набора (объекты {tool_definition_id} в JSON PATCH).
@@ -66,6 +98,9 @@ func teamAgentPatchWireJSON(p *TeamAgentPatchParams) ([]byte, error) {
 	}
 	if p.ClearPromptID && p.PromptID != nil && *p.PromptID != "" {
 		return nil, fmt.Errorf("clear_prompt_id and prompt_id are mutually exclusive")
+	}
+	if p.ClearSystemPrompt && p.SystemPrompt != nil && *p.SystemPrompt != "" {
+		return nil, fmt.Errorf("clear_system_prompt and system_prompt are mutually exclusive")
 	}
 	if p.ClearCodeBackend && p.CodeBackend != nil && *p.CodeBackend != "" {
 		return nil, fmt.Errorf("clear_code_backend and code_backend are mutually exclusive")
@@ -86,6 +121,11 @@ func teamAgentPatchWireJSON(p *TeamAgentPatchParams) ([]byte, error) {
 		m["prompt_id"] = nil
 	} else if p.PromptID != nil {
 		m["prompt_id"] = *p.PromptID
+	}
+	if p.ClearSystemPrompt {
+		m["system_prompt"] = nil
+	} else if p.SystemPrompt != nil {
+		m["system_prompt"] = *p.SystemPrompt
 	}
 	if p.ClearCodeBackend {
 		m["code_backend"] = nil
@@ -244,7 +284,213 @@ func teamServiceMCPError(err error) (*mcp.CallToolResult, any, error) {
 		return ValidationErr(err.Error())
 	case errors.Is(err, service.ErrTeamAgentConflict):
 		return Err("agent update conflict", err)
+	case errors.Is(err, service.ErrTeamTypeAlreadyExists):
+		return Err("team type already exists in project", err)
+	case errors.Is(err, service.ErrTeamCannotDeleteDevelopment):
+		return ValidationErr(err.Error())
+	case errors.Is(err, service.ErrTeamTypeInvalid):
+		return ValidationErr(err.Error())
 	default:
 		return Err("team operation failed", err)
+	}
+}
+
+// TeamListParams — параметры team_list
+type TeamListParams struct {
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+}
+
+// TeamCreateParams — параметры team_create
+type TeamCreateParams struct {
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+	Name      string `json:"name" jsonschema:"Имя команды"`
+	Type      string `json:"type" jsonschema:"Тип команды (development/research/analytics)"`
+}
+
+// TeamDeleteParams — параметры team_delete
+type TeamDeleteParams struct {
+	ProjectID string `json:"project_id" jsonschema:"UUID проекта"`
+	TeamID    string `json:"team_id" jsonschema:"UUID команды"`
+}
+
+func makeTeamListHandler(projectSvc service.ProjectService, teamSvc service.TeamService) func(ctx context.Context, req *mcp.CallToolRequest, params *TeamListParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TeamListParams) (*mcp.CallToolResult, any, error) {
+		if params == nil || params.ProjectID == "" {
+			return ValidationErr("project_id is required")
+		}
+		uid, ok := UserIDFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+		role, ok := UserRoleFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+
+		pid, err := uuid.Parse(params.ProjectID)
+		if err != nil {
+			return ValidationErr(fmt.Sprintf("invalid project_id: %q", params.ProjectID))
+		}
+
+		if _, err := projectSvc.GetByID(ctx, uid, role, pid); err != nil {
+			return projectServiceMCPError(err)
+		}
+
+		teams, err := teamSvc.ListByProjectID(ctx, pid)
+		if err != nil {
+			return teamServiceMCPError(err)
+		}
+
+		resp := make([]dto.TeamResponse, 0, len(teams))
+		for i := range teams {
+			resp = append(resp, dto.ToTeamResponse(&teams[i]))
+		}
+		return OK(fmt.Sprintf("found %d teams for project %s", len(teams), params.ProjectID), resp)
+	}
+}
+
+func makeTeamCreateHandler(projectSvc service.ProjectService, teamSvc service.TeamService) func(ctx context.Context, req *mcp.CallToolRequest, params *TeamCreateParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TeamCreateParams) (*mcp.CallToolResult, any, error) {
+		if params == nil || params.ProjectID == "" || params.Name == "" || params.Type == "" {
+			return ValidationErr("project_id, name, and type are required")
+		}
+		uid, ok := UserIDFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+		role, ok := UserRoleFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+
+		pid, err := uuid.Parse(params.ProjectID)
+		if err != nil {
+			return ValidationErr(fmt.Sprintf("invalid project_id: %q", params.ProjectID))
+		}
+
+		if _, err := projectSvc.GetByID(ctx, uid, role, pid); err != nil {
+			return projectServiceMCPError(err)
+		}
+
+		req := dto.CreateTeamRequest{
+			Name: params.Name,
+			Type: params.Type,
+		}
+
+		team, err := teamSvc.Create(ctx, pid, req)
+		if err != nil {
+			return teamServiceMCPError(err)
+		}
+
+		data := dto.ToTeamResponse(team)
+		return OK(fmt.Sprintf("team %q created", data.Name), data)
+	}
+}
+
+func makeTeamDeleteHandler(projectSvc service.ProjectService, teamSvc service.TeamService) func(ctx context.Context, req *mcp.CallToolRequest, params *TeamDeleteParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TeamDeleteParams) (*mcp.CallToolResult, any, error) {
+		if params == nil || params.ProjectID == "" || params.TeamID == "" {
+			return ValidationErr("project_id and team_id are required")
+		}
+		uid, ok := UserIDFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+		role, ok := UserRoleFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+
+		pid, err := uuid.Parse(params.ProjectID)
+		if err != nil {
+			return ValidationErr(fmt.Sprintf("invalid project_id: %q", params.ProjectID))
+		}
+
+		tid, err := uuid.Parse(params.TeamID)
+		if err != nil {
+			return ValidationErr(fmt.Sprintf("invalid team_id: %q", params.TeamID))
+		}
+
+		if _, err := projectSvc.GetByID(ctx, uid, role, pid); err != nil {
+			return projectServiceMCPError(err)
+		}
+
+		if err := teamSvc.Delete(ctx, pid, tid); err != nil {
+			return teamServiceMCPError(err)
+		}
+
+		return OK("team deleted successfully", nil)
+	}
+}
+
+// TeamTypeListParams — параметры team_type_list
+type TeamTypeListParams struct{}
+
+// TeamTypeCreateParams — параметры team_type_create
+type TeamTypeCreateParams struct {
+	Code string `json:"code" jsonschema:"Код типа команды (только строчные латинские буквы/цифры)"`
+	Name string `json:"name" jsonschema:"Человекочитаемое имя типа команды"`
+}
+
+// TeamTypeDeleteParams — параметры team_type_delete
+type TeamTypeDeleteParams struct {
+	Code string `json:"code" jsonschema:"Код типа команды для удаления"`
+}
+
+func makeTeamTypeListHandler(teamSvc service.TeamService) func(ctx context.Context, req *mcp.CallToolRequest, params *TeamTypeListParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, _ *TeamTypeListParams) (*mcp.CallToolResult, any, error) {
+		list, err := teamSvc.ListTeamTypes(ctx)
+		if err != nil {
+			return teamServiceMCPError(err)
+		}
+		resp := make([]dto.TeamTypeResponse, 0, len(list))
+		for i := range list {
+			resp = append(resp, dto.ToTeamTypeResponse(&list[i]))
+		}
+		return OK(fmt.Sprintf("found %d team types", len(list)), resp)
+	}
+}
+
+func makeTeamTypeCreateHandler(teamSvc service.TeamService) func(ctx context.Context, req *mcp.CallToolRequest, params *TeamTypeCreateParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TeamTypeCreateParams) (*mcp.CallToolResult, any, error) {
+		if params == nil || params.Code == "" || params.Name == "" {
+			return ValidationErr("code and name are required")
+		}
+
+		role, ok := UserRoleFromContext(ctx)
+		if !ok || role != "admin" {
+			return ValidationErr("administrator privileges required")
+		}
+
+		req := dto.CreateTeamTypeRequest{
+			Code: params.Code,
+			Name: params.Name,
+		}
+
+		tt, err := teamSvc.CreateTeamType(ctx, req)
+		if err != nil {
+			return teamServiceMCPError(err)
+		}
+
+		return OK(fmt.Sprintf("team type %q created", tt.Code), dto.ToTeamTypeResponse(tt))
+	}
+}
+
+func makeTeamTypeDeleteHandler(teamSvc service.TeamService) func(ctx context.Context, req *mcp.CallToolRequest, params *TeamTypeDeleteParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TeamTypeDeleteParams) (*mcp.CallToolResult, any, error) {
+		if params == nil || params.Code == "" {
+			return ValidationErr("code is required")
+		}
+
+		role, ok := UserRoleFromContext(ctx)
+		if !ok || role != "admin" {
+			return ValidationErr("administrator privileges required")
+		}
+
+		if err := teamSvc.DeleteTeamType(ctx, params.Code); err != nil {
+			return teamServiceMCPError(err)
+		}
+
+		return OK("team type deleted successfully", nil)
 	}
 }

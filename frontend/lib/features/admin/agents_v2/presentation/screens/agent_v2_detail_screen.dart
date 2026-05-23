@@ -4,6 +4,9 @@ import 'package:frontend/features/admin/agents_v2/data/agents_v2_providers.dart'
 import 'package:frontend/features/admin/agents_v2/domain/agent_v2_model.dart';
 import 'package:frontend/features/admin/agents_v2/presentation/widgets/agent_v2_secret_dialog.dart';
 import 'package:frontend/core/l10n/require.dart';
+import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
+import 'package:frontend/features/admin/prompts/domain/prompt_model.dart';
+import 'package:dio/dio.dart';
 
 class AgentV2DetailScreen extends ConsumerStatefulWidget {
   const AgentV2DetailScreen({super.key, required this.agentId});
@@ -27,8 +30,45 @@ class _AgentV2DetailScreenState extends ConsumerState<AgentV2DetailScreen> {
   bool _saving = false;
   String? _error;
 
+  List<Prompt> _prompts = [];
+  bool _promptsLoading = true;
+  String? _promptId;
+  CancelToken? _promptsCancel;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrompts();
+  }
+
+  Future<void> _loadPrompts() async {
+    _promptsCancel?.cancel();
+    _promptsCancel = CancelToken();
+    final token = _promptsCancel;
+    setState(() {
+      _promptsLoading = true;
+    });
+    try {
+      final list = await ref.read(promptsRepositoryProvider).getPrompts(
+            cancelToken: token,
+          );
+      if (!mounted) return;
+      setState(() {
+        _prompts = list;
+        _promptsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _prompts = [];
+        _promptsLoading = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _promptsCancel?.cancel();
     _roleDescCtrl.dispose();
     _systemPromptCtrl.dispose();
     _modelCtrl.dispose();
@@ -41,6 +81,7 @@ class _AgentV2DetailScreenState extends ConsumerState<AgentV2DetailScreen> {
     if (_hydrated) return;
     _roleDescCtrl.text = a.roleDescription;
     _systemPromptCtrl.text = a.systemPrompt ?? '';
+    _promptId = a.promptId;
     _modelCtrl.text = a.model ?? '';
     _tempCtrl.text = a.temperature?.toString() ?? '';
     _maxTokensCtrl.text = a.maxTokens?.toString() ?? '';
@@ -60,6 +101,8 @@ class _AgentV2DetailScreenState extends ConsumerState<AgentV2DetailScreen> {
             id: a.id,
             roleDescription: _roleDescCtrl.text,
             systemPrompt: _systemPromptCtrl.text,
+            promptId: _promptId,
+            clearPromptId: _promptId == null,
             model: a.isLlm ? _modelCtrl.text.trim() : null,
             codeBackend: a.isSandbox ? _codeBackend : null,
             temperature: _tempCtrl.text.trim().isEmpty
@@ -127,10 +170,41 @@ class _AgentV2DetailScreenState extends ConsumerState<AgentV2DetailScreen> {
                   maxLines: 2,
                 ),
                 const SizedBox(height: 12),
+                if (_promptsLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8.0),
+                    child: SizedBox(
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String?>(
+                    value: _promptId,
+                    decoration: InputDecoration(
+                      labelText: l10n.teamAgentEditFieldPrompt,
+                      border: const OutlineInputBorder(),
+                    ),
+                    isExpanded: true,
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text(l10n.teamAgentEditPromptNone),
+                      ),
+                      ..._prompts.map((p) => DropdownMenuItem<String?>(
+                            value: p.id,
+                            child: Text(p.name),
+                          )),
+                    ],
+                    onChanged: (v) => setState(() => _promptId = v),
+                  ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: _systemPromptCtrl,
                   decoration: InputDecoration(
-                      labelText: l10n.agentsV2FieldSystemPrompt),
+                      labelText: l10n.agentsV2FieldSystemPrompt,
+                      border: const OutlineInputBorder(),
+                  ),
                   maxLines: 12,
                   minLines: 4,
                 ),

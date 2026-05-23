@@ -182,7 +182,7 @@ void main() {
 
   bool modelFieldHasFocus(WidgetTester tester) {
     final editable = find.descendant(
-      of: find.byType(TextFormField),
+      of: find.byKey(const Key('agentEditDialog_modelField')),
       matching: find.byType(EditableText),
     );
     return tester.widget<EditableText>(editable).focusNode.hasFocus;
@@ -230,12 +230,13 @@ void main() {
   });
 
   testWidgets('Cancel без изменений — PATCH не вызывается (широкий)', (tester) async {
+    useViewSize(tester, const Size(800, 1000));
     final dio = createDio();
     stubDialogDio(dio);
     await tester.pumpWidget(
       dialogPushedHost(
         dio: dio,
-        viewSize: const Size(800, 600),
+        viewSize: const Size(800, 1000),
         body: agentEditDialogBodyForTesting(
           projectId: projectId,
           agent: sampleAgent(),
@@ -1235,7 +1236,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final textFormField = tester.widget<TextFormField>(find.byType(TextFormField));
+    final textFormField = tester.widget<TextFormField>(find.byKey(const Key('agentEditDialog_modelField')));
     expect(textFormField.enabled, isFalse);
   });
 
@@ -1255,10 +1256,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     
-    final textFormField = tester.widget<TextFormField>(find.byType(TextFormField));
+    final textFormField = tester.widget<TextFormField>(find.byKey(const Key('agentEditDialog_modelField')));
     expect(textFormField.enabled, isTrue);
 
-    await tester.tap(find.byType(TextFormField));
+    await tester.tap(find.byKey(const Key('agentEditDialog_modelField')));
     await tester.pumpAndSettle();
 
     expect(find.text('claude-3-5-sonnet-latest'), findsOneWidget);

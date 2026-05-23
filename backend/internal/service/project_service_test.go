@@ -124,6 +124,23 @@ func (m *MockTeamRepository) GetByProjectID(ctx context.Context, projectID uuid.
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+func (m *MockTeamRepository) ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error) {
+	args := m.Called(ctx, projectID)
+	var teams []models.Team
+	if v := args.Get(0); v != nil {
+		teams = v.([]models.Team)
+	}
+	return teams, args.Error(1)
+}
+
+func (m *MockTeamRepository) GetByProjectIDAndType(ctx context.Context, projectID uuid.UUID, teamType models.TeamType) (*models.Team, error) {
+	args := m.Called(ctx, projectID, teamType)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
 func (m *MockTeamRepository) GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error) {
 	args := m.Called(ctx, projectID, agentID)
 	if args.Get(0) == nil {
@@ -165,6 +182,37 @@ func (m *MockTeamRepository) Update(ctx context.Context, team *models.Team) erro
 func (m *MockTeamRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
+}
+
+func (m *MockTeamRepository) CreateTeamType(ctx context.Context, tt *models.TeamTypeModel) error {
+	args := m.Called(ctx, tt)
+	return args.Error(0)
+}
+
+func (m *MockTeamRepository) GetTeamTypeByCode(ctx context.Context, code string) (*models.TeamTypeModel, error) {
+	args := m.Called(ctx, code)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.TeamTypeModel), args.Error(1)
+}
+
+func (m *MockTeamRepository) ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.TeamTypeModel), args.Error(1)
+}
+
+func (m *MockTeamRepository) DeleteTeamType(ctx context.Context, code string) error {
+	args := m.Called(ctx, code)
+	return args.Error(0)
+}
+
+func (m *MockTeamRepository) CountTeamsByType(ctx context.Context, code string) (int64, error) {
+	args := m.Called(ctx, code)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 type MockGitCredentialRepository struct {

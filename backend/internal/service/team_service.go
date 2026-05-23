@@ -29,11 +29,20 @@ var (
 
 	// Sprint 15.B (B4): ownership-check для /agents/:id/settings и MCP-инструментов agent_settings_*.
 	ErrTeamAgentAccessDenied = errors.New("agent does not belong to current user's project")
+
+	ErrTeamTypeAlreadyExists       = errors.New("team of this type already exists in the project")
+	ErrTeamCannotDeleteDevelopment = errors.New("cannot delete the development team")
+	ErrTeamTypeInvalid             = errors.New("invalid team type")
+	ErrTeamTypeInUse               = errors.New("cannot delete team type that is currently in use")
+	ErrTeamTypeCannotDeleteSystem   = errors.New("cannot delete system team type")
 )
 
 // TeamService минимальная бизнес-обёртка над TeamRepository.
 type TeamService interface {
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error)
+	ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error)
+	Create(ctx context.Context, projectID uuid.UUID, req dto.CreateTeamRequest) (*models.Team, error)
+	Delete(ctx context.Context, projectID, teamID uuid.UUID) error
 	Update(ctx context.Context, projectID uuid.UUID, req dto.UpdateTeamRequest) (*models.Team, error)
 	PatchAgent(ctx context.Context, projectID, agentID uuid.UUID, req dto.PatchAgentRequest) (*models.Team, error)
 	// Sprint 15.23 — per-agent settings (code_backend_settings + sandbox_permissions).
@@ -42,6 +51,10 @@ type TeamService interface {
 	// agent → team → project.user_id. Admin (isAdmin=true) пропускает проверку.
 	GetAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID) (*models.Agent, error)
 	UpdateAgentSettings(ctx context.Context, actor AgentSettingsActor, agentID uuid.UUID, req dto.UpdateAgentSettingsRequest) (*models.Agent, error)
+
+	ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error)
+	CreateTeamType(ctx context.Context, req dto.CreateTeamTypeRequest) (*models.TeamTypeModel, error)
+	DeleteTeamType(ctx context.Context, code string) error
 }
 
 // AgentSettingsActor — кто делает запрос. Sprint 15.B (B4).
@@ -53,11 +66,29 @@ type AgentSettingsActor struct {
 type teamService struct {
 	teamRepo    repository.TeamRepository
 	toolDefRepo repository.ToolDefinitionRepository
+	agentSvc    *AgentService
+	txManager   repository.TransactionManager
 }
 
 // NewTeamService создаёт сервис команд.
 func NewTeamService(teamRepo repository.TeamRepository, toolDefRepo repository.ToolDefinitionRepository) TeamService {
 	return &teamService{teamRepo: teamRepo, toolDefRepo: toolDefRepo}
+}
+
+// WithAgentServiceForTeam sets the AgentService on TeamService.
+func WithAgentServiceForTeam(svc TeamService, agentSvc *AgentService) TeamService {
+	if ts, ok := svc.(*teamService); ok {
+		ts.agentSvc = agentSvc
+	}
+	return svc
+}
+
+// WithTransactionManager sets the TransactionManager on TeamService.
+func WithTransactionManager(svc TeamService, tx repository.TransactionManager) TeamService {
+	if ts, ok := svc.(*teamService); ok {
+		ts.txManager = tx
+	}
+	return svc
 }
 
 func (s *teamService) GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error) {
@@ -69,6 +100,98 @@ func (s *teamService) GetByProjectID(ctx context.Context, projectID uuid.UUID) (
 		return nil, err
 	}
 	return team, nil
+}
+
+func (s *teamService) ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error) {
+	return s.teamRepo.ListByProjectID(ctx, projectID)
+}
+
+func (s *teamService) Create(ctx context.Context, projectID uuid.UUID, req dto.CreateTeamRequest) (*models.Team, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, ErrTeamInvalidName
+	}
+	tt := models.TeamType(req.Type)
+	if _, err := s.teamRepo.GetTeamTypeByCode(ctx, string(tt)); err != nil {
+		return nil, ErrTeamTypeInvalid
+	}
+
+	// Проверяем, существует ли уже команда такого типа в проекте
+	existing, err := s.teamRepo.ListByProjectID(ctx, projectID)
+	if err == nil {
+		for _, t := range existing {
+			if t.Type == tt {
+				return nil, ErrTeamTypeAlreadyExists
+			}
+		}
+	}
+
+	team := &models.Team{
+		ProjectID: projectID,
+		Name:      name,
+		Type:      tt,
+	}
+
+	runCreate := func(txCtx context.Context) error {
+		if err := s.teamRepo.Create(txCtx, team); err != nil {
+			return err
+		}
+		if s.agentSvc != nil {
+			if err := s.agentSvc.CreateDefaultProjectAgents(txCtx, team.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if s.txManager != nil {
+		if err := s.txManager.WithTransaction(ctx, runCreate); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := runCreate(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	// Возвращаем созданную команду
+	return s.teamRepo.GetByID(ctx, team.ID)
+}
+
+func (s *teamService) Delete(ctx context.Context, projectID, teamID uuid.UUID) error {
+	team, err := s.teamRepo.GetByID(ctx, teamID)
+	if err != nil {
+		if errors.Is(err, repository.ErrTeamNotFound) {
+			return ErrTeamNotFound
+		}
+		return err
+	}
+
+	if team.ProjectID != projectID {
+		return ErrTeamNotFound
+	}
+
+	if team.Type == models.TeamTypeDevelopment {
+		return ErrTeamCannotDeleteDevelopment
+	}
+
+	runDelete := func(txCtx context.Context) error {
+		// Сначала удаляем всех агентов команды
+		for _, a := range team.Agents {
+			if s.agentSvc != nil {
+				if err := s.agentSvc.Delete(txCtx, a.ID); err != nil {
+					return err
+				}
+			}
+		}
+		// Затем удаляем саму команду
+		return s.teamRepo.Delete(txCtx, teamID)
+	}
+
+	if s.txManager != nil {
+		return s.txManager.WithTransaction(ctx, runDelete)
+	}
+	return runDelete(ctx)
 }
 
 func (s *teamService) Update(ctx context.Context, projectID uuid.UUID, req dto.UpdateTeamRequest) (*models.Team, error) {
@@ -167,6 +290,14 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 		}
 	}
 
+	if req.SystemPromptPresent() {
+		if req.SystemPromptClear() {
+			agent.SystemPrompt = nil
+		} else if v, ok := req.SystemPromptValue(); ok {
+			agent.SystemPrompt = &v
+		}
+	}
+
 	if req.CodeBackendPresent() {
 		if req.CodeBackendClear() {
 			agent.CodeBackend = nil
@@ -204,6 +335,9 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 			}
 			return nil, err
 		}
+		if agent.TeamID != nil && *agent.TeamID != uuid.Nil {
+			return s.teamRepo.GetByID(ctx, *agent.TeamID)
+		}
 		return s.teamRepo.GetByProjectID(ctx, projectID)
 	}
 
@@ -214,6 +348,9 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 		return nil, err
 	}
 
+	if agent.TeamID != nil && *agent.TeamID != uuid.Nil {
+		return s.teamRepo.GetByID(ctx, *agent.TeamID)
+	}
 	return s.teamRepo.GetByProjectID(ctx, projectID)
 }
 
@@ -513,4 +650,63 @@ func (s *teamService) assertAgentOwner(ctx context.Context, actor AgentSettingsA
 		return ErrTeamAgentNotFound
 	}
 	return nil
+}
+
+func (s *teamService) ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error) {
+	return s.teamRepo.ListTeamTypes(ctx)
+}
+
+func (s *teamService) CreateTeamType(ctx context.Context, req dto.CreateTeamTypeRequest) (*models.TeamTypeModel, error) {
+	code := strings.TrimSpace(strings.ToLower(req.Code))
+	if code == "" {
+		return nil, ErrTeamTypeInvalid
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, ErrTeamTypeInvalid
+	}
+
+	// Check if already exists
+	if _, err := s.teamRepo.GetTeamTypeByCode(ctx, code); err == nil {
+		return nil, ErrTeamTypeAlreadyExists
+	}
+
+	tt := &models.TeamTypeModel{
+		Code:     code,
+		Name:     name,
+		IsSystem: false,
+	}
+
+	if err := s.teamRepo.CreateTeamType(ctx, tt); err != nil {
+		return nil, err
+	}
+
+	return tt, nil
+}
+
+func (s *teamService) DeleteTeamType(ctx context.Context, code string) error {
+	code = strings.TrimSpace(strings.ToLower(code))
+	if code == "" {
+		return ErrTeamTypeInvalid
+	}
+
+	// Check if system
+	tt, err := s.teamRepo.GetTeamTypeByCode(ctx, code)
+	if err != nil {
+		return ErrTeamTypeInvalid
+	}
+	if tt.IsSystem {
+		return ErrTeamTypeCannotDeleteSystem
+	}
+
+	// Check if in use
+	count, err := s.teamRepo.CountTeamsByType(ctx, code)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrTeamTypeInUse
+	}
+
+	return s.teamRepo.DeleteTeamType(ctx, code)
 }

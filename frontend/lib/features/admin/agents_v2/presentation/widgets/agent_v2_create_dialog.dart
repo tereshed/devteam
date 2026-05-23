@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/agents_v2/data/agents_v2_providers.dart';
 import 'package:frontend/core/l10n/require.dart';
+import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
+import 'package:frontend/features/admin/prompts/domain/prompt_model.dart';
+import 'package:dio/dio.dart';
 
 class AgentV2CreateDialog extends ConsumerStatefulWidget {
   const AgentV2CreateDialog({super.key});
@@ -37,8 +40,45 @@ class _AgentV2CreateDialogState extends ConsumerState<AgentV2CreateDialog> {
   bool _saving = false;
   String? _error;
 
+  List<Prompt> _prompts = [];
+  bool _promptsLoading = true;
+  String? _promptId;
+  CancelToken? _promptsCancel;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrompts();
+  }
+
+  Future<void> _loadPrompts() async {
+    _promptsCancel?.cancel();
+    _promptsCancel = CancelToken();
+    final token = _promptsCancel;
+    setState(() {
+      _promptsLoading = true;
+    });
+    try {
+      final list = await ref.read(promptsRepositoryProvider).getPrompts(
+            cancelToken: token,
+          );
+      if (!mounted) return;
+      setState(() {
+        _prompts = list;
+        _promptsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _prompts = [];
+        _promptsLoading = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _promptsCancel?.cancel();
     _nameCtrl.dispose();
     _roleDescCtrl.dispose();
     _systemPromptCtrl.dispose();
@@ -73,6 +113,7 @@ class _AgentV2CreateDialogState extends ConsumerState<AgentV2CreateDialog> {
         systemPrompt: _systemPromptCtrl.text.trim().isEmpty
             ? null
             : _systemPromptCtrl.text,
+        promptId: _promptId,
         model: _executionKind == 'llm' ? _modelCtrl.text.trim() : null,
         codeBackend: _executionKind == 'sandbox' ? _codeBackend : null,
         temperature: temperature,
@@ -139,6 +180,34 @@ class _AgentV2CreateDialogState extends ConsumerState<AgentV2CreateDialog> {
                       labelText: l10n.agentsV2FieldRoleDescription),
                   maxLines: 2,
                 ),
+                const SizedBox(height: 12),
+                if (_promptsLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8.0),
+                    child: SizedBox(
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String?>(
+                    value: _promptId,
+                    decoration: InputDecoration(
+                      labelText: l10n.teamAgentEditFieldPrompt,
+                    ),
+                    isExpanded: true,
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text(l10n.teamAgentEditPromptNone),
+                      ),
+                      ..._prompts.map((p) => DropdownMenuItem<String?>(
+                            value: p.id,
+                            child: Text(p.name),
+                          )),
+                    ],
+                    onChanged: (v) => setState(() => _promptId = v),
+                  ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _systemPromptCtrl,

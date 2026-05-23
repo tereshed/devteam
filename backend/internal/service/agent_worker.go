@@ -244,7 +244,7 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 
 	// Загружаем агента (актуальный snapshot — system_prompt/model могли обновить).
 	var agentRec models.Agent
-	if err := w.db.WithContext(execCtx).Where("name = ?", payload.AgentName).First(&agentRec).Error; err != nil {
+	if err := w.db.WithContext(execCtx).Preload("Prompt").Where("name = ?", payload.AgentName).First(&agentRec).Error; err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("load agent %q: %w", payload.AgentName, err))
 		return
 	}
@@ -725,6 +725,15 @@ func (w *AgentWorker) allocateWorktreeForJob(ctx context.Context, ev *models.Tas
 func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Agent, input map[string]any, targetArtifact *models.Artifact) agent.ExecutionInput {
 	inputJSON, _ := json.Marshal(input)
 
+	var promptParts []string
+	if agentRec.Prompt != nil && strings.TrimSpace(agentRec.Prompt.Template) != "" {
+		promptParts = append(promptParts, agentRec.Prompt.Template)
+	}
+	if agentRec.SystemPrompt != nil && strings.TrimSpace(*agentRec.SystemPrompt) != "" {
+		promptParts = append(promptParts, *agentRec.SystemPrompt)
+	}
+	promptSystem := strings.Join(promptParts, "\n\n")
+
 	in := agent.ExecutionInput{
 		TaskID:            task.ID.String(),
 		ProjectID:         task.ProjectID.String(),
@@ -735,7 +744,7 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 		AgentName:         agentRec.Name,
 		Role:              string(agentRec.Role),
 		Model:             derefString(agentRec.Model),
-		PromptSystem:      derefString(agentRec.SystemPrompt),
+		PromptSystem:      promptSystem,
 		StructuredContext: inputJSON,
 		Temperature:       agentRec.Temperature,
 		MaxTokens:         agentRec.MaxTokens,

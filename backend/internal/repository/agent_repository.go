@@ -114,7 +114,7 @@ func (r *agentRepository) Create(ctx context.Context, a *models.Agent) error {
 func (r *agentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
 	db := gormDB(ctx, r.db)
 	var a models.Agent
-	err := db.WithContext(ctx).Where("id = ?", id).First(&a).Error
+	err := db.WithContext(ctx).Preload("Prompt").Where("id = ?", id).First(&a).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrAgentNotFound
@@ -134,6 +134,7 @@ func (r *agentRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*
 	var a models.Agent
 	err := db.WithContext(ctx).
 		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Preload("Prompt").
 		Where("id = ?", id).First(&a).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -147,7 +148,7 @@ func (r *agentRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*
 func (r *agentRepository) GetByName(ctx context.Context, name string) (*models.Agent, error) {
 	db := gormDB(ctx, r.db)
 	var a models.Agent
-	err := db.WithContext(ctx).Where("name = ?", name).First(&a).Error
+	err := db.WithContext(ctx).Preload("Prompt").Where("name = ?", name).First(&a).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrAgentNotFound
@@ -193,6 +194,7 @@ func (r *agentRepository) List(ctx context.Context, filter AgentFilter) ([]model
 
 	var agents []models.Agent
 	err := q.Select(agentListColumns).
+		Preload("Prompt").
 		Order("name ASC").
 		Limit(limit).
 		Offset(offset).

@@ -41,6 +41,7 @@ type AgentCreateParams struct {
 	ExecutionKind   string   `json:"execution_kind" jsonschema:"llm или sandbox"`
 	RoleDescription *string  `json:"role_description,omitempty"`
 	SystemPrompt    *string  `json:"system_prompt,omitempty"`
+	PromptID        *string  `json:"prompt_id,omitempty" jsonschema:"UUID промпта"`
 	Model           *string  `json:"model,omitempty" jsonschema:"Обязателен для llm; запрещён для sandbox"`
 	CodeBackend     *string  `json:"code_backend,omitempty" jsonschema:"Обязателен для sandbox (claude-code/aider/hermes/custom); запрещён для llm"`
 	Temperature     *float64 `json:"temperature,omitempty"`
@@ -52,6 +53,8 @@ type AgentUpdateParams struct {
 	AgentID         string   `json:"agent_id" jsonschema:"UUID агента"`
 	RoleDescription *string  `json:"role_description,omitempty"`
 	SystemPrompt    *string  `json:"system_prompt,omitempty"`
+	ClearPromptID   bool     `json:"clear_prompt_id,omitempty" jsonschema:"Сбросить prompt_id в NULL (не совмещать с prompt_id)"`
+	PromptID        *string  `json:"prompt_id,omitempty" jsonschema:"UUID промпта"`
 	Model           *string  `json:"model,omitempty" jsonschema:"Только для llm-агентов"`
 	ProviderKind    *string  `json:"provider_kind,omitempty" jsonschema:"anthropic/deepseek/zhipu/openrouter"`
 	// Sprint 5 review fix #4: CodeBackend для sandbox-агентов (например, перейти с claude-code на aider).
@@ -174,12 +177,22 @@ func makeAgentGetHandler(svc *service.AgentService) func(context.Context, *mcp.C
 
 func makeAgentCreateHandler(svc *service.AgentService) func(context.Context, *mcp.CallToolRequest, AgentCreateParams) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, p AgentCreateParams) (*mcp.CallToolResult, any, error) {
+		var promptUUID *uuid.UUID
+		if p.PromptID != nil && *p.PromptID != "" {
+			parsed, err := uuid.Parse(*p.PromptID)
+			if err != nil {
+				return ValidationErr("invalid prompt_id (must be UUID)")
+			}
+			promptUUID = &parsed
+		}
+
 		in := service.CreateAgentInput{
 			Name:            p.Name,
 			Role:            models.AgentRole(p.Role),
 			ExecutionKind:   models.AgentExecutionKind(p.ExecutionKind),
 			RoleDescription: p.RoleDescription,
 			SystemPrompt:    p.SystemPrompt,
+			PromptID:        promptUUID,
 			Temperature:     p.Temperature,
 			MaxTokens:       p.MaxTokens,
 			IsActive:        p.IsActive,
@@ -206,9 +219,19 @@ func makeAgentUpdateHandler(svc *service.AgentService) func(context.Context, *mc
 		if err != nil {
 			return ValidationErr("invalid agent_id (must be UUID)")
 		}
+		var promptUUID *uuid.UUID
+		if p.PromptID != nil && *p.PromptID != "" {
+			parsed, err := uuid.Parse(*p.PromptID)
+			if err != nil {
+				return ValidationErr("invalid prompt_id (must be UUID)")
+			}
+			promptUUID = &parsed
+		}
 		in := service.UpdateAgentInput{
 			RoleDescription:    p.RoleDescription,
 			SystemPrompt:       p.SystemPrompt,
+			PromptID:           promptUUID,
+			ClearPromptID:      p.ClearPromptID,
 			Model:              p.Model,
 			Temperature:        p.Temperature,
 			MaxTokens:          p.MaxTokens,

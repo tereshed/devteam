@@ -64,6 +64,49 @@ func (m *MockTeamService) UpdateAgentSettings(ctx context.Context, actor service
 	return args.Get(0).(*models.Agent), args.Error(1)
 }
 
+func (m *MockTeamService) ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error) {
+	args := m.Called(ctx, projectID)
+	var teams []models.Team
+	if v := args.Get(0); v != nil {
+		teams = v.([]models.Team)
+	}
+	return teams, args.Error(1)
+}
+
+func (m *MockTeamService) Create(ctx context.Context, projectID uuid.UUID, req dto.CreateTeamRequest) (*models.Team, error) {
+	args := m.Called(ctx, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
+func (m *MockTeamService) Delete(ctx context.Context, projectID, teamID uuid.UUID) error {
+	args := m.Called(ctx, projectID, teamID)
+	return args.Error(0)
+}
+
+func (m *MockTeamService) ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.TeamTypeModel), args.Error(1)
+}
+
+func (m *MockTeamService) CreateTeamType(ctx context.Context, req dto.CreateTeamTypeRequest) (*models.TeamTypeModel, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.TeamTypeModel), args.Error(1)
+}
+
+func (m *MockTeamService) DeleteTeamType(ctx context.Context, code string) error {
+	args := m.Called(ctx, code)
+	return args.Error(0)
+}
+
 func setupTeamRouter(teamMock *MockTeamService, projectMock *MockProjectService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -375,4 +418,86 @@ func TestTeam_PatchAgent_Conflict(t *testing.T) {
 	setupTeamRouter(teamMock, projectMock, true).ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusConflict, w.Code)
+}
+
+func TestTeam_ListTeamTypes(t *testing.T) {
+	teamMock := new(MockTeamService)
+	teamTypes := []models.TeamTypeModel{
+		{Code: "dev", Name: "Development", IsSystem: true},
+		{Code: "research", Name: "Research", IsSystem: false},
+	}
+	teamMock.On("ListTeamTypes", mock.Anything).Return(teamTypes, nil)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", testProjectUserID)
+		c.Set("userRole", string(models.RoleUser))
+		c.Next()
+	})
+	h := NewTeamHandler(teamMock, nil)
+	r.GET("/team-types", h.ListTeamTypes)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/team-types", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var got []dto.TeamTypeResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Len(t, got, 2)
+	assert.Equal(t, "dev", got[0].Code)
+	assert.Equal(t, "Development", got[0].Name)
+	assert.True(t, got[0].IsSystem)
+	teamMock.AssertExpectations(t)
+}
+
+func TestTeam_CreateTeamType(t *testing.T) {
+	teamMock := new(MockTeamService)
+	reqDto := dto.CreateTeamTypeRequest{Code: "marketing", Name: "Marketing"}
+	resModel := models.TeamTypeModel{Code: "marketing", Name: "Marketing", IsSystem: false}
+	teamMock.On("CreateTeamType", mock.Anything, reqDto).Return(&resModel, nil)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", testProjectUserID)
+		c.Set("userRole", string(models.RoleAdmin))
+		c.Next()
+	})
+	h := NewTeamHandler(teamMock, nil)
+	r.POST("/admin/team-types", h.CreateTeamType)
+
+	w := httptest.NewRecorder()
+	body, _ := json.Marshal(reqDto)
+	req := httptest.NewRequest(http.MethodPost, "/admin/team-types", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var got dto.TeamTypeResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Equal(t, "marketing", got.Code)
+	assert.Equal(t, "Marketing", got.Name)
+	assert.False(t, got.IsSystem)
+	teamMock.AssertExpectations(t)
+}
+
+func TestTeam_DeleteTeamType(t *testing.T) {
+	teamMock := new(MockTeamService)
+	teamMock.On("DeleteTeamType", mock.Anything, "marketing").Return(nil)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", testProjectUserID)
+		c.Set("userRole", string(models.RoleAdmin))
+		c.Next()
+	})
+	h := NewTeamHandler(teamMock, nil)
+	r.DELETE("/admin/team-types/:code", h.DeleteTeamType)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/admin/team-types/marketing", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	teamMock.AssertExpectations(t)
 }

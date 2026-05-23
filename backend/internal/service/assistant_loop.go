@@ -87,8 +87,26 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		return
 	}
 	projectIDStr := ""
+	var project *models.Project
+	var teams []models.Team
 	if sess.ProjectID != nil {
 		projectIDStr = sess.ProjectID.String()
+		if p, err := s.deps.ProjectRepo.GetByID(ctx, *sess.ProjectID); err == nil {
+			project = p
+		} else {
+			s.deps.Logger.WarnContext(ctx, "assistant: load project failed for session",
+				slog.String("project_id", projectIDStr),
+				slog.String("error", err.Error()),
+			)
+		}
+		if list, err := s.deps.TeamRepo.ListByProjectID(ctx, *sess.ProjectID); err == nil {
+			teams = list
+		} else {
+			s.deps.Logger.WarnContext(ctx, "assistant: list teams failed for project",
+				slog.String("project_id", projectIDStr),
+				slog.String("error", err.Error()),
+			)
+		}
 	}
 
 	// 1) Загружаем agent (system prompt + model + provider).
@@ -134,9 +152,58 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	if agent.Model != nil {
 		model = *agent.Model
 	}
-	sysPrompt := ""
-	if agent.SystemPrompt != nil {
-		sysPrompt = *agent.SystemPrompt
+	var promptParts []string
+	if agent.Prompt != nil && strings.TrimSpace(agent.Prompt.Template) != "" {
+		promptParts = append(promptParts, agent.Prompt.Template)
+	}
+	if agent.SystemPrompt != nil && strings.TrimSpace(*agent.SystemPrompt) != "" {
+		promptParts = append(promptParts, *agent.SystemPrompt)
+	}
+	sysPrompt := strings.Join(promptParts, "\n\n")
+	if project != nil {
+		var pb strings.Builder
+		pb.WriteString("\n\n=== PROJECT CONTEXT ===\n")
+		pb.WriteString(fmt.Sprintf("You are operating as a Project Orchestrator/Assistant inside the project %q.\n", project.Name))
+		if project.Description != "" {
+			pb.WriteString(fmt.Sprintf("Project Description: %s\n", project.Description))
+		}
+		pb.WriteString(fmt.Sprintf("Project ID: %s\n", project.ID.String()))
+		if project.GitURL != "" {
+			pb.WriteString(fmt.Sprintf("Git URL: %s\n", project.GitURL))
+			if project.GitDefaultBranch != "" {
+				pb.WriteString(fmt.Sprintf("Default Branch: %s\n", project.GitDefaultBranch))
+			}
+		}
+
+		if len(teams) > 0 {
+			pb.WriteString("\n=== PROJECT TEAMS & AGENTS ===\n")
+			for _, t := range teams {
+				pb.WriteString(fmt.Sprintf("Team: %s (Type: %s, ID: %s)\n", t.Name, t.Type, t.ID.String()))
+				if len(t.Agents) > 0 {
+					pb.WriteString("  Agents in this team:\n")
+					for _, a := range t.Agents {
+						isActiveStr := "inactive"
+						if a.IsActive {
+							isActiveStr = "active"
+						}
+						pb.WriteString(fmt.Sprintf("  - Agent %q (Role: %s, Status: %s, ID: %s)\n", a.Name, a.Role, isActiveStr, a.ID.String()))
+						if a.SystemPrompt != nil && *a.SystemPrompt != "" {
+							pb.WriteString(fmt.Sprintf("    Instructions: %s\n", *a.SystemPrompt))
+						}
+					}
+				} else {
+					pb.WriteString("  No agents configured in this team.\n")
+				}
+			}
+		}
+
+		pb.WriteString("\n=== INSTRUCTIONS FOR PROJECT MODE ===\n")
+		pb.WriteString("1. You are strictly isolated to this project. Never attempt to list other projects, access tasks/conversations of other projects, or create new projects.\n")
+		pb.WriteString("2. You can help the user configure the teams and agents in this project (using team_list, team_create, team_delete, team_get, team_update, team_agent_patch, team_agent_create, team_agent_delete, team_type_list, team_type_create, team_type_delete tools).\n")
+		pb.WriteString("3. You can formulate tasks for this project and start/delegate them to the pipeline (using conversation_create, conversation_send_message, task_create tools).\n")
+		pb.WriteString("4. Your tone should be collaborative, professional, and focus on coordinating engineering work in this project.\n")
+
+		sysPrompt += pb.String()
 	}
 	// Phase 5: пробрасываем agent.ProviderKind в RunRequest.Provider. Без
 	// этого llmService.Generate уходил в defaultProvider (openai) независимо

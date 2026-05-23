@@ -33,6 +33,9 @@ Widget wrapSimple(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     locale: locale,
+    theme: ThemeData(
+      splashFactory: NoSplash.splashFactory,
+    ),
     home: Scaffold(body: body),
   );
 }
@@ -51,6 +54,9 @@ Widget wrapRouter({
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: locale,
+        theme: ThemeData(
+          splashFactory: NoSplash.splashFactory,
+        ),
         routerConfig: GoRouter(
           routes: [
             GoRoute(path: '/', builder: builder),

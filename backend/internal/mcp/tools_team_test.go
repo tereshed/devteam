@@ -237,3 +237,40 @@ func TestTeamAgentPatchWireJSON_InvalidToolDefinitionIDUUID(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid tool_definition_id")
 }
+
+func TestTeamAgentPatchWireJSON_SystemPrompt(t *testing.T) {
+	// Mutually exclusive clear_system_prompt and system_prompt
+	prompt := "hello rules"
+	_, err := teamAgentPatchWireJSON(&TeamAgentPatchParams{
+		ProjectID:         "p",
+		AgentID:           "a",
+		ClearSystemPrompt: true,
+		SystemPrompt:      &prompt,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "clear_system_prompt and system_prompt are mutually exclusive")
+
+	// Valid system_prompt
+	raw, err := teamAgentPatchWireJSON(&TeamAgentPatchParams{
+		ProjectID:    "p",
+		AgentID:      "a",
+		SystemPrompt: &prompt,
+	})
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(raw, &m))
+	assert.Equal(t, prompt, m["system_prompt"])
+
+	// Clear system_prompt
+	raw2, err := teamAgentPatchWireJSON(&TeamAgentPatchParams{
+		ProjectID:         "p",
+		AgentID:           "a",
+		ClearSystemPrompt: true,
+	})
+	require.NoError(t, err)
+	var m2 map[string]any
+	require.NoError(t, json.Unmarshal(raw2, &m2))
+	assert.Nil(t, m2["system_prompt"])
+	assert.Contains(t, m2, "system_prompt")
+}
+

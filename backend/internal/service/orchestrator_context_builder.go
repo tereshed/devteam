@@ -182,11 +182,16 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		input.MaxTokens = assignedAgent.MaxTokens
 	}
 
-	// Системный промпт: DB agent.SystemPrompt > DB agent.Prompt (versioned).
+	// Системный промпт: DB agent.Prompt (versioned) + DB agent.SystemPrompt (additional rules/custom prompt).
+	var promptParts []string
+	if assignedAgent.Prompt != nil && strings.TrimSpace(assignedAgent.Prompt.Template) != "" {
+		promptParts = append(promptParts, assignedAgent.Prompt.Template)
+	}
 	if assignedAgent.SystemPrompt != nil && strings.TrimSpace(*assignedAgent.SystemPrompt) != "" {
-		input.PromptSystem = *assignedAgent.SystemPrompt
-	} else if assignedAgent.Prompt != nil {
-		input.PromptSystem = assignedAgent.Prompt.Template
+		promptParts = append(promptParts, *assignedAgent.SystemPrompt)
+	}
+	if len(promptParts) > 0 {
+		input.PromptSystem = strings.Join(promptParts, "\n\n")
 	}
 	if b.composer != nil {
 		if sys, err := b.composer.ComposeSystem(string(assignedAgent.Role)); err == nil && strings.TrimSpace(sys) != "" {

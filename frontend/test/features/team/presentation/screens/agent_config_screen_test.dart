@@ -59,6 +59,9 @@ Future<void> _pump(
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(
+          splashFactory: NoSplash.splashFactory,
+        ),
         home: AgentConfigScreen(agentId: a.id),
       ),
     ),
@@ -172,9 +175,12 @@ void main() {
                 .overrideWith((ref) async => _defaultSettings),
             mcpRegistryListProvider.overrideWith((ref) async => []),
           ],
-          child: const MaterialApp(
+          child: MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
+            theme: ThemeData(
+              splashFactory: NoSplash.splashFactory,
+            ),
             home: AgentConfigScreen(agentId: _agentId),
           ),
         ),
@@ -199,9 +205,12 @@ void main() {
                 .overrideWith((ref) async => _defaultSettings),
             mcpRegistryListProvider.overrideWith((ref) async => []),
           ],
-          child: const MaterialApp(
+          child: MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
+            theme: ThemeData(
+              splashFactory: NoSplash.splashFactory,
+            ),
             home: AgentConfigScreen(agentId: _agentId),
           ),
         ),

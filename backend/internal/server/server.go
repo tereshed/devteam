@@ -319,6 +319,9 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			projects.GET("/:id/team", deps.TeamHandler.GetByProjectID)
 			projects.PUT("/:id/team", deps.TeamHandler.Update)
 			projects.PATCH("/:id/team/agents/:agentId", deps.TeamHandler.PatchAgent)
+			projects.GET("/:id/teams", deps.TeamHandler.ListByProjectID)
+			projects.POST("/:id/teams", deps.TeamHandler.Create)
+			projects.DELETE("/:id/teams/:teamId", deps.TeamHandler.Delete)
 
 			projects.POST("/:id/tasks", deps.TaskHandler.Create)
 			projects.GET("/:id/tasks", deps.TaskHandler.List)
@@ -468,6 +471,16 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				mcpServers.PUT("/:id", deps.MCPServerRegistryHandler.Update)
 				mcpServers.DELETE("/:id", deps.MCPServerRegistryHandler.Delete)
 			}
+		}
+
+		// Dynamic Team Types endpoints
+		api.GET("/team-types", authMW, deps.TeamHandler.ListTeamTypes)
+		adminTeamTypes := api.Group("/admin/team-types")
+		adminTeamTypes.Use(authMW)
+		adminTeamTypes.Use(middleware.AdminOnlyMiddleware())
+		{
+			adminTeamTypes.POST("", deps.TeamHandler.CreateTeamType)
+			adminTeamTypes.DELETE("/:code", deps.TeamHandler.DeleteTeamType)
 		}
 
 		// Sprint 21 — глобальный ассистент (правая панель).

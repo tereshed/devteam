@@ -379,4 +379,79 @@ void main() {
       );
     });
   });
+
+  group('getTeamTypes', () {
+    test('success', () async {
+      when(
+        mockDio.get(
+          '/team-types',
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: [
+            {'code': 'development', 'name': 'Development', 'is_system': true},
+            {'code': 'custom_type', 'name': 'Custom Type', 'is_system': false},
+          ],
+          statusCode: 200,
+          requestOptions: RequestOptions(path: '/team-types'),
+        ),
+      );
+
+      final types = await repository.getTeamTypes();
+      expect(types, hasLength(2));
+      expect(types[0].code, 'development');
+      expect(types[0].isSystem, isTrue);
+      expect(types[1].code, 'custom_type');
+      expect(types[1].isSystem, isFalse);
+    });
+  });
+
+  group('createTeamType', () {
+    test('success', () async {
+      when(
+        mockDio.post(
+          '/admin/team-types',
+          data: anyNamed('data'),
+          options: anyNamed('options'),
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          data: {'code': 'custom_type', 'name': 'Custom Type', 'is_system': false},
+          statusCode: 201,
+          requestOptions: RequestOptions(path: '/admin/team-types'),
+        ),
+      );
+
+      final tt = await repository.createTeamType(code: 'custom_type', name: 'Custom Type');
+      expect(tt.code, 'custom_type');
+      expect(tt.name, 'Custom Type');
+      expect(tt.isSystem, isFalse);
+    });
+  });
+
+  group('deleteTeamType', () {
+    test('success', () async {
+      when(
+        mockDio.delete(
+          '/admin/team-types/custom_type',
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<dynamic>(
+          statusCode: 204,
+          requestOptions: RequestOptions(path: '/admin/team-types/custom_type'),
+        ),
+      );
+
+      await repository.deleteTeamType('custom_type');
+      verify(
+        mockDio.delete(
+          '/admin/team-types/custom_type',
+          cancelToken: anyNamed('cancelToken'),
+        ),
+      ).called(1);
+    });
+  });
 }

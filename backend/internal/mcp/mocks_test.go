@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
@@ -190,6 +191,50 @@ func (m *mockTeamService) UpdateAgentSettings(ctx context.Context, actor service
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *mockTeamService) ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error) {
+	args := m.Called(ctx, projectID)
+	var teams []models.Team
+	if v := args.Get(0); v != nil {
+		teams = v.([]models.Team)
+	}
+	return teams, args.Error(1)
+}
+
+func (m *mockTeamService) Create(ctx context.Context, projectID uuid.UUID, req dto.CreateTeamRequest) (*models.Team, error) {
+	args := m.Called(ctx, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
+func (m *mockTeamService) Delete(ctx context.Context, projectID, teamID uuid.UUID) error {
+	args := m.Called(ctx, projectID, teamID)
+	return args.Error(0)
+}
+
+func (m *mockTeamService) ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error) {
+	args := m.Called(ctx)
+	var teamTypes []models.TeamTypeModel
+	if v := args.Get(0); v != nil {
+		teamTypes = v.([]models.TeamTypeModel)
+	}
+	return teamTypes, args.Error(1)
+}
+
+func (m *mockTeamService) CreateTeamType(ctx context.Context, req dto.CreateTeamTypeRequest) (*models.TeamTypeModel, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.TeamTypeModel), args.Error(1)
+}
+
+func (m *mockTeamService) DeleteTeamType(ctx context.Context, code string) error {
+	args := m.Called(ctx, code)
+	return args.Error(0)
 }
 
 // --- ToolDefinitionService mock ---
@@ -384,3 +429,104 @@ func (m *mockProjectService) RunBackgroundReindexing(ctx context.Context) error 
 func (m *mockTaskService) Close() error {
 	return nil
 }
+
+// --- AgentRepository mock ---
+
+type mockAgentRepository struct {
+	mock.Mock
+}
+
+func (m *mockAgentRepository) Create(ctx context.Context, agent *models.Agent) error {
+	args := m.Called(ctx, agent)
+	return args.Error(0)
+}
+
+func (m *mockAgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *mockAgentRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *mockAgentRepository) GetByName(ctx context.Context, name string) (*models.Agent, error) {
+	args := m.Called(ctx, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *mockAgentRepository) List(ctx context.Context, filter repository.AgentFilter) ([]models.Agent, int64, error) {
+	args := m.Called(ctx, filter)
+	var list []models.Agent
+	if v := args.Get(0); v != nil {
+		list = v.([]models.Agent)
+	}
+	return list, args.Get(1).(int64), args.Error(2)
+}
+
+func (m *mockAgentRepository) Update(ctx context.Context, agent *models.Agent, expectedUpdatedAt time.Time) error {
+	args := m.Called(ctx, agent, expectedUpdatedAt)
+	return args.Error(0)
+}
+
+func (m *mockAgentRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+// --- AgentSecretRepository mock ---
+
+type mockAgentSecretRepository struct {
+	mock.Mock
+}
+
+func (m *mockAgentSecretRepository) Create(ctx context.Context, secret *models.AgentSecret) error {
+	args := m.Called(ctx, secret)
+	return args.Error(0)
+}
+
+func (m *mockAgentSecretRepository) GetByName(ctx context.Context, agentID uuid.UUID, keyName string) (*models.AgentSecret, error) {
+	args := m.Called(ctx, agentID, keyName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.AgentSecret), args.Error(1)
+}
+
+func (m *mockAgentSecretRepository) ListByAgentID(ctx context.Context, agentID uuid.UUID) ([]models.AgentSecret, error) {
+	args := m.Called(ctx, agentID)
+	var list []models.AgentSecret
+	if v := args.Get(0); v != nil {
+		list = v.([]models.AgentSecret)
+	}
+	return list, args.Error(1)
+}
+
+func (m *mockAgentSecretRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *mockAgentSecretRepository) DeleteByAgentID(ctx context.Context, agentID uuid.UUID) error {
+	args := m.Called(ctx, agentID)
+	return args.Error(0)
+}
+
+// --- mockTransactionManager mock ---
+
+type mockTransactionManager struct{}
+
+func (m *mockTransactionManager) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
+}
+

@@ -257,6 +257,48 @@ func (m *mockTaskTeamService) UpdateAgentSettings(ctx context.Context, actor Age
 	return args.Get(0).(*models.Agent), args.Error(1)
 }
 
+func (m *mockTaskTeamService) ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error) {
+	args := m.Called(ctx, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Team), args.Error(1)
+}
+
+func (m *mockTaskTeamService) Create(ctx context.Context, projectID uuid.UUID, req dto.CreateTeamRequest) (*models.Team, error) {
+	args := m.Called(ctx, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
+
+func (m *mockTaskTeamService) Delete(ctx context.Context, projectID, teamID uuid.UUID) error {
+	args := m.Called(ctx, projectID, teamID)
+	return args.Error(0)
+}
+
+func (m *mockTaskTeamService) ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.TeamTypeModel), args.Error(1)
+}
+
+func (m *mockTaskTeamService) CreateTeamType(ctx context.Context, req dto.CreateTeamTypeRequest) (*models.TeamTypeModel, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.TeamTypeModel), args.Error(1)
+}
+
+func (m *mockTaskTeamService) DeleteTeamType(ctx context.Context, code string) error {
+	args := m.Called(ctx, code)
+	return args.Error(0)
+}
+
 type mockTransactionManager struct{ mock.Mock }
 
 func (m *mockTransactionManager) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {

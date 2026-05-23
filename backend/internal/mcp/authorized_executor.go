@@ -301,6 +301,65 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 				RequiresConfirmation: true,
 				Handler:              e.teamAgentPatch,
 			},
+			agentloop.Tool{
+				Name:        "team_list",
+				Description: "Получить список всех команд проекта (как GET /projects/:id/teams).",
+				InputSchema: schemaTeamList,
+				Handler:     e.teamList,
+			},
+			agentloop.Tool{
+				Name:                 "team_create",
+				Description:          "Создать новую команду в проекте. Требует подтверждения. Поля: project_id, name, type.",
+				InputSchema:          schemaTeamCreate,
+				RequiresConfirmation: true,
+				Handler:              e.teamCreate,
+			},
+			agentloop.Tool{
+				Name:                 "team_delete",
+				Description:          "Удалить команду из проекта. Требует подтверждения. Поля: project_id, team_id.",
+				InputSchema:          schemaTeamDelete,
+				RequiresConfirmation: true,
+				Handler:              e.teamDelete,
+			},
+			agentloop.Tool{
+				Name:        "team_type_list",
+				Description: "Получить список всех доступных типов команд (как GET /team-types).",
+				InputSchema: schemaTeamTypeList,
+				Handler:     e.teamTypeList,
+			},
+			agentloop.Tool{
+				Name:                 "team_type_create",
+				Description:          "Создать новый тип команды. Требует подтверждения. Поля: code, name. Доступно только администраторам.",
+				InputSchema:          schemaTeamTypeCreate,
+				RequiresConfirmation: true,
+				Handler:              e.teamTypeCreate,
+			},
+			agentloop.Tool{
+				Name:                 "team_type_delete",
+				Description:          "Удалить тип команды. Требует подтверждения. Поля: code. Доступно только администраторам.",
+				InputSchema:          schemaTeamTypeDelete,
+				RequiresConfirmation: true,
+				Handler:              e.teamTypeDelete,
+			},
+		)
+	}
+
+	if e.teamSvc != nil && e.agentSvc != nil {
+		tools = append(tools,
+			agentloop.Tool{
+				Name:                 "team_agent_create",
+				Description:          "Создать нового агента и добавить его в команду проекта. Требует подтверждения.",
+				InputSchema:          schemaTeamAgentCreate,
+				RequiresConfirmation: true,
+				Handler:              e.teamAgentCreate,
+			},
+			agentloop.Tool{
+				Name:                 "team_agent_delete",
+				Description:          "Удалить агента из команды проекта. Требует подтверждения.",
+				InputSchema:          schemaTeamAgentDelete,
+				RequiresConfirmation: true,
+				Handler:              e.teamAgentDelete,
+			},
 		)
 	}
 
@@ -413,6 +472,14 @@ func mapServiceErr(err error) (json.RawMessage, error) {
 		return businessErr("validation", err.Error())
 	case errors.Is(err, service.ErrTeamAgentConflict):
 		return businessErr("error", "конфликт при обновлении агента")
+	case errors.Is(err, service.ErrAgentValidation):
+		return businessErr("validation", err.Error())
+	case errors.Is(err, service.ErrAgentNameAlreadyTaken):
+		return businessErr("validation", "агент с таким именем уже существует")
+	case errors.Is(err, service.ErrAgentNotInRegistry):
+		return businessErr("not_found", "агент не найден")
+	case errors.Is(err, service.ErrAgentConcurrentUpdate):
+		return businessErr("error", "конфликт параллельного обновления агента")
 	default:
 		// Generic — но НЕ просачиваем raw err.Error() (может содержать SQL/secrets).
 		return businessErr("error", "внутренняя ошибка при выполнении инструмента")
@@ -1188,7 +1255,15 @@ var (
 	schemaGitRepositoryCreate = json.RawMessage(`{"type":"object","required":["provider","name"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"},"name":{"type":"string","description":"Имя нового репозитория"},"private":{"type":"boolean","description":"Сделать ли репозиторий приватным"},"description":{"type":"string","description":"Описание нового репозитория"}}}`)
 	schemaTeamGet        = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
 	schemaTeamUpdate     = json.RawMessage(`{"type":"object","required":["name"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"}},"description":"UUID проекта и новое название."}`)
-	schemaTeamAgentPatch = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"clear_model":{"type":"boolean"},"model":{"type":"string"},"clear_prompt_id":{"type":"boolean"},"prompt_id":{"type":"string","format":"uuid"},"clear_code_backend":{"type":"boolean"},"code_backend":{"type":"string"},"is_active":{"type":"boolean"},"tool_definition_ids":{"type":"array","items":{"type":"string","format":"uuid"}}}}`)
+	schemaTeamAgentPatch = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"clear_model":{"type":"boolean"},"model":{"type":"string"},"clear_prompt_id":{"type":"boolean"},"prompt_id":{"type":"string","format":"uuid"},"clear_system_prompt":{"type":"boolean"},"system_prompt":{"type":"string"},"clear_code_backend":{"type":"boolean"},"code_backend":{"type":"string"},"is_active":{"type":"boolean"},"tool_definition_ids":{"type":"array","items":{"type":"string","format":"uuid"}}}}`)
+	schemaTeamAgentCreate = json.RawMessage(`{"type":"object","required":["name","role","execution_kind"],"properties":{"project_id":{"type":"string","format":"uuid"},"team_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"role":{"type":"string","enum":["orchestrator","router","developer","reviewer","tester","planner","coder","researcher","writer"]},"execution_kind":{"type":"string","enum":["llm","sandbox"]},"role_description":{"type":"string"},"system_prompt":{"type":"string"},"prompt_id":{"type":"string","format":"uuid"},"model":{"type":"string"},"provider_kind":{"type":"string","enum":["openai","anthropic","deepseek","zhipu","openrouter","anthropic_oauth","antigravity","antigravity_oauth"]},"code_backend":{"type":"string","enum":["claude-code","aider","hermes","custom"]},"temperature":{"type":"number"},"max_tokens":{"type":"integer"}}}`)
+	schemaTeamAgentDelete = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
+	schemaTeamList       = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
+	schemaTeamCreate     = json.RawMessage(`{"type":"object","required":["name","type"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"type":{"type":"string"}},"description":"Создать новую команду в проекте."}`)
+	schemaTeamDelete     = json.RawMessage(`{"type":"object","required":["team_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"team_id":{"type":"string","format":"uuid"}},"description":"Удалить команду из проекта."}`)
+	schemaTeamTypeList   = json.RawMessage(`{"type":"object","properties":{}}`)
+	schemaTeamTypeCreate = json.RawMessage(`{"type":"object","required":["code","name"],"properties":{"code":{"type":"string"},"name":{"type":"string"}}}`)
+	schemaTeamTypeDelete = json.RawMessage(`{"type":"object","required":["code"],"properties":{"code":{"type":"string"}}}`)
 )
 
 func (e *AuthorizedExecutor) teamGet(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
@@ -1294,9 +1369,353 @@ func (e *AuthorizedExecutor) teamAgentPatch(ctx context.Context, auth agentloop.
 	return marshalResult(dto.ToTeamResponse(team))
 }
 
+type TeamAgentCreateParams struct {
+	ProjectID       string   `json:"project_id"`
+	TeamID          string   `json:"team_id,omitempty"`
+	Name            string   `json:"name"`
+	Role            string   `json:"role"`
+	ExecutionKind   string   `json:"execution_kind"`
+	RoleDescription *string  `json:"role_description,omitempty"`
+	SystemPrompt    *string  `json:"system_prompt,omitempty"`
+	PromptID        *string  `json:"prompt_id,omitempty"`
+	Model           *string  `json:"model,omitempty"`
+	ProviderKind    *string  `json:"provider_kind,omitempty"`
+	CodeBackend     *string  `json:"code_backend,omitempty"`
+	Temperature     *float64 `json:"temperature,omitempty"`
+	MaxTokens       *int     `json:"max_tokens,omitempty"`
+}
+
+func (e *AuthorizedExecutor) teamAgentCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamAgentCreateParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	// Get teams
+	teams, err := e.teamSvc.ListByProjectID(ctx, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	var team *models.Team
+	if a.TeamID != "" {
+		tid, err := uuid.Parse(a.TeamID)
+		if err != nil {
+			return businessErr("validation", "team_id must be a valid UUID")
+		}
+		for i := range teams {
+			if teams[i].ID == tid {
+				team = &teams[i]
+				break
+			}
+		}
+		if team == nil {
+			return businessErr("not_found", "команда не найдена в текущем проекте")
+		}
+	} else {
+		if len(teams) == 0 {
+			return businessErr("not_found", "команда проекта не найдена")
+		}
+		team = &teams[0]
+	}
+
+	var promptUUID *uuid.UUID
+	if a.PromptID != nil && *a.PromptID != "" {
+		parsed, err := uuid.Parse(*a.PromptID)
+		if err != nil {
+			return businessErr("validation", "prompt_id must be a valid UUID")
+		}
+		promptUUID = &parsed
+	}
+
+	// Prepare CreateAgentInput
+	in := service.CreateAgentInput{
+		Name:            a.Name,
+		Role:            models.AgentRole(a.Role),
+		ExecutionKind:   models.AgentExecutionKind(a.ExecutionKind),
+		RoleDescription: a.RoleDescription,
+		SystemPrompt:    a.SystemPrompt,
+		PromptID:        promptUUID,
+		Model:           a.Model,
+		Temperature:     a.Temperature,
+		MaxTokens:       a.MaxTokens,
+		TeamID:          &team.ID,
+		UserID:          nil, // For team-level agent, UserID must be NULL due to chk_agents_ownership constraint
+	}
+	if a.ProviderKind != nil {
+		pk := models.AgentProviderKind(*a.ProviderKind)
+		in.ProviderKind = &pk
+	}
+	if a.CodeBackend != nil {
+		cb := models.CodeBackend(*a.CodeBackend)
+		in.CodeBackend = &cb
+	}
+
+	_, err = e.agentSvc.Create(ctx, in)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+
+	// Reload team to return updated list of agents
+	updatedTeams, err := e.teamSvc.ListByProjectID(ctx, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	var updatedTeam *models.Team
+	for i := range updatedTeams {
+		if updatedTeams[i].ID == team.ID {
+			updatedTeam = &updatedTeams[i]
+			break
+		}
+	}
+	if updatedTeam == nil {
+		return marshalResult(nil)
+	}
+	return marshalResult(dto.ToTeamResponse(updatedTeam))
+}
+
+type TeamAgentDeleteParams struct {
+	ProjectID string `json:"project_id"`
+	AgentID   string `json:"agent_id"`
+}
+
+func (e *AuthorizedExecutor) teamAgentDelete(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamAgentDeleteParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	aid, err := uuid.Parse(a.AgentID)
+	if err != nil {
+		return businessErr("validation", "agent_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+
+	// Get agent to verify ownership
+	agent, err := e.agentSvc.GetByID(ctx, aid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	if agent.TeamID == nil {
+		return businessErr("forbidden", "агент не принадлежит ни одной команде")
+	}
+
+	// Verify that the agent's team belongs to the current project
+	teams, err := e.teamSvc.ListByProjectID(ctx, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	var targetTeam *models.Team
+	for i := range teams {
+		if teams[i].ID == *agent.TeamID {
+			targetTeam = &teams[i]
+			break
+		}
+	}
+	if targetTeam == nil {
+		return businessErr("forbidden", "агент не принадлежит команде текущего проекта")
+	}
+
+	// Delete agent
+	if err := e.agentSvc.Delete(ctx, aid); err != nil {
+		return mapServiceErr(err)
+	}
+
+	// Reload the team to return its updated state
+	updatedTeams, err := e.teamSvc.ListByProjectID(ctx, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	var updatedTeam *models.Team
+	for i := range updatedTeams {
+		if updatedTeams[i].ID == *agent.TeamID {
+			updatedTeam = &updatedTeams[i]
+			break
+		}
+	}
+	if updatedTeam == nil {
+		return marshalResult(nil)
+	}
+	return marshalResult(dto.ToTeamResponse(updatedTeam))
+}
+
 func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
+}
+
+func (e *AuthorizedExecutor) teamList(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamListParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	teams, err := e.teamSvc.ListByProjectID(ctx, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	resp := make([]dto.TeamResponse, 0, len(teams))
+	for i := range teams {
+		resp = append(resp, dto.ToTeamResponse(&teams[i]))
+	}
+	return marshalResult(resp)
+}
+
+func (e *AuthorizedExecutor) teamCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamCreateParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	req := dto.CreateTeamRequest{
+		Name: a.Name,
+		Type: a.Type,
+	}
+	team, err := e.teamSvc.Create(ctx, pid, req)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(dto.ToTeamResponse(team))
+}
+
+func (e *AuthorizedExecutor) teamDelete(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamDeleteParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	tid, err := uuid.Parse(a.TeamID)
+	if err != nil {
+		return businessErr("validation", "team_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	err = e.teamSvc.Delete(ctx, pid, tid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(nil)
+}
+
+func (e *AuthorizedExecutor) teamTypeList(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	list, err := e.teamSvc.ListTeamTypes(ctx)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	resp := make([]dto.TeamTypeResponse, 0, len(list))
+	for i := range list {
+		resp = append(resp, dto.ToTeamTypeResponse(&list[i]))
+	}
+	return marshalResult(resp)
+}
+
+func (e *AuthorizedExecutor) teamTypeCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	var a TeamTypeCreateParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	req := dto.CreateTeamTypeRequest{
+		Code: a.Code,
+		Name: a.Name,
+	}
+	tt, err := e.teamSvc.CreateTeamType(ctx, req)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(dto.ToTeamTypeResponse(tt))
+}
+
+func (e *AuthorizedExecutor) teamTypeDelete(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	var a TeamTypeDeleteParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	err := e.teamSvc.DeleteTeamType(ctx, a.Code)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(nil)
 }

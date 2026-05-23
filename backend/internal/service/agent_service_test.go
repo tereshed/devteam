@@ -241,6 +241,40 @@ func TestAgentService_Create_LLMHappyPath(t *testing.T) {
 	if a.CodeBackend != nil {
 		t.Errorf("llm-agent must NOT have code_backend, got %v", *a.CodeBackend)
 	}
+	if a.ProviderKind == nil || *a.ProviderKind != models.AgentProviderKindAnthropic {
+		t.Errorf("expected auto-inferred provider_kind 'anthropic', got %v", a.ProviderKind)
+	}
+}
+
+func TestAgentService_Create_LLMProviderInference(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	tests := []struct {
+		model            string
+		expectedProvider models.AgentProviderKind
+	}{
+		{"deepseek/deepseek-v4-flash", models.AgentProviderKindOpenRouter},
+		{"claude-haiku-4-5-20251001", models.AgentProviderKindAnthropic},
+		{"deepseek-chat", models.AgentProviderKindDeepSeek},
+		{"glm-4", models.AgentProviderKindZhipu},
+		{"antigravity-default", models.AgentProviderKindAntigravity},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			a, err := svc.Create(context.Background(), CreateAgentInput{
+				Name:          "agent-" + uuid.New().String(),
+				Role:          models.AgentRolePlanner,
+				ExecutionKind: models.AgentExecutionKindLLM,
+				Model:         &tt.model,
+			})
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			if a.ProviderKind == nil || *a.ProviderKind != tt.expectedProvider {
+				t.Errorf("for model %q, expected provider %q, got %v", tt.model, tt.expectedProvider, a.ProviderKind)
+			}
+		})
+	}
 }
 
 // Phase 1 §1.3: LLM-агент может быть создан без model ("не сконфигурирован").

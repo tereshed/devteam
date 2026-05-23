@@ -43,6 +43,12 @@ type UpdateTeamRequest struct {
 	Name *string `json:"name"`
 }
 
+// CreateTeamRequest — запрос на создание команды.
+type CreateTeamRequest struct {
+	Name string `json:"name" binding:"required"`
+	Type string `json:"type" binding:"required"`
+}
+
 // ToTeamResponse маппит модель команды в DTO.
 func ToTeamResponse(team *models.Team) TeamResponse {
 	if team == nil {
@@ -114,5 +120,35 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 		ProviderKind: providerKind,
 		IsActive:     agent.IsActive,
 		ToolBindings: tb,
+	}
+}
+
+// TeamTypeResponse — тип команды (HTTP / MCP).
+type TeamTypeResponse struct {
+	ID        string    `json:"id"`
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	IsSystem  bool      `json:"is_system"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CreateTeamTypeRequest — запрос на создание типа команды.
+type CreateTeamTypeRequest struct {
+	Code string `json:"code" binding:"required"`
+	Name string `json:"name" binding:"required"`
+}
+
+func ToTeamTypeResponse(tt *models.TeamTypeModel) TeamTypeResponse {
+	if tt == nil {
+		return TeamTypeResponse{}
+	}
+	return TeamTypeResponse{
+		ID:        tt.ID.String(),
+		Code:      tt.Code,
+		Name:      tt.Name,
+		IsSystem:  tt.IsSystem,
+		CreatedAt: tt.CreatedAt,
+		UpdatedAt: tt.UpdatedAt,
 	}
 }

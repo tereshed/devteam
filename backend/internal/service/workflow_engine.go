@@ -234,10 +234,14 @@ func (e *workflowEngine) executeLLMStep(ctx context.Context, exec *models.Execut
 		return nil, fmt.Errorf("agent not found: %w", err)
 	}
 
-	var promptText string
-	if agent.Prompt != nil {
-		promptText = agent.Prompt.Template
+	var promptParts []string
+	if agent.Prompt != nil && strings.TrimSpace(agent.Prompt.Template) != "" {
+		promptParts = append(promptParts, agent.Prompt.Template)
 	}
+	if agent.SystemPrompt != nil && strings.TrimSpace(*agent.SystemPrompt) != "" {
+		promptParts = append(promptParts, *agent.SystemPrompt)
+	}
+	promptText := strings.Join(promptParts, "\n\n")
 
 	var modelConfig struct {
 		Model       string  `json:"model"`
@@ -477,8 +481,16 @@ func (e *workflowEngine) checkLoopExitCondition(ctx context.Context, exec *model
 
 	if loopConfig.ExitAgentRole != "" || loopConfig.ExitAgentID != "" {
 		agent, err := e.resolveAgent(ctx, loopConfig.ExitAgentRole, loopConfig.ExitAgentID)
-		if err == nil && agent.Prompt != nil {
-			systemPrompt = agent.Prompt.Template
+		if err == nil {
+			var promptParts []string
+			if agent.Prompt != nil && strings.TrimSpace(agent.Prompt.Template) != "" {
+				promptParts = append(promptParts, agent.Prompt.Template)
+			}
+			if agent.SystemPrompt != nil && strings.TrimSpace(*agent.SystemPrompt) != "" {
+				promptParts = append(promptParts, *agent.SystemPrompt)
+			}
+			systemPrompt = strings.Join(promptParts, "\n\n")
+
 			var modelConfig struct {
 				Model       string  `json:"model"`
 				Temperature float64 `json:"temperature"`

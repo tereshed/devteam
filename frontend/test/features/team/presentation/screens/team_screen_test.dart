@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
+import 'package:frontend/features/team/domain/models/team_type_model.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_repository.dart';
 import 'package:frontend/features/projects/domain/models.dart';
@@ -71,11 +72,21 @@ Widget _harness({
 }) {
   final scoped = ProviderScope(
     retry: (_, _) => null,
-    overrides: overrides,
+    overrides: [
+      teamTypesProvider.overrideWith((ref) async => const [
+        TeamTypeModel(code: 'development', name: 'Development', isSystem: true),
+        TeamTypeModel(code: 'research', name: 'Research', isSystem: false),
+        TeamTypeModel(code: 'analytics', name: 'Analytics', isSystem: false),
+      ]),
+      ...overrides,
+    ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       locale: locale,
+      theme: ThemeData(
+        splashFactory: NoSplash.splashFactory,
+      ),
       home: const Scaffold(body: TeamScreen(projectId: _projectId)),
     ),
   );
@@ -92,11 +103,11 @@ void main() {
   final l10nRu = AppLocalizationsRu();
 
   testWidgets('loading: CircularProgressIndicator до резолва future', (tester) async {
-    final completer = Completer<TeamModel>();
+    final completer = Completer<List<TeamModel>>();
     await tester.pumpWidget(
       _harness(
         overrides: [
-          teamProvider(_projectId).overrideWith((ref) => completer.future),
+          teamsProvider(_projectId).overrideWith((ref) => completer.future),
         ],
       ),
     );
@@ -104,7 +115,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.byType(DataLoadErrorMessage), findsNothing);
 
-    completer.complete(_team());
+    completer.complete([_team()]);
     await tester.pumpAndSettle();
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
@@ -114,12 +125,12 @@ void main() {
     await tester.pumpWidget(
       _harness(
         overrides: [
-          teamProvider(_projectId).overrideWith((ref) async {
+          teamsProvider(_projectId).overrideWith((ref) async {
             attempt++;
             if (attempt == 1) {
               throw TeamApiException('boom', statusCode: 500);
             }
-            return _team(agents: [_agent()]);
+            return [_team(agents: [_agent()])];
           }),
         ],
       ),
@@ -139,7 +150,7 @@ void main() {
     expect(find.byType(AgentCard), findsOneWidget);
   });
 
-  testWidgets('успех: заголовок (team.name + team.type) + AgentCard по агенту', (tester) async {
+  testWidgets('успех: заголовок (team.name + translated type) + AgentCard по агенту', (tester) async {
     final team = _team(
       name: 'Команда «Альфа»',
       type: 'development',
@@ -155,14 +166,14 @@ void main() {
     await tester.pumpWidget(
       _harness(
         overrides: [
-          teamProvider(_projectId).overrideWith((ref) async => team),
+          teamsProvider(_projectId).overrideWith((ref) async => [team]),
         ],
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Команда «Альфа»'), findsOneWidget);
-    expect(find.text('development'), findsOneWidget);
+    expect(find.text('Разработка'), findsNWidgets(2)); // Translated (both ChoiceChip and Card details)
     expect(find.byType(AgentCard), findsNWidgets(2));
     expect(find.text('Planner'), findsOneWidget);
     expect(find.text('Dev'), findsOneWidget);
@@ -173,7 +184,7 @@ void main() {
     await tester.pumpWidget(
       _harness(
         overrides: [
-          teamProvider(_projectId).overrideWith((ref) async => _team()),
+          teamsProvider(_projectId).overrideWith((ref) async => [_team()]),
         ],
       ),
     );
@@ -183,19 +194,19 @@ void main() {
     expect(find.byType(AgentCard), findsNothing);
   });
 
-  testWidgets('RefreshIndicator: pull-to-refresh инвалидирует teamProvider', (tester) async {
+  testWidgets('RefreshIndicator: pull-to-refresh инвалидирует teamsProvider', (tester) async {
     var calls = 0;
-    final teams = [
-      _team(agents: [_agent(name: 'First')]),
-      _team(agents: [_agent(name: 'Second')]),
+    final teamsLists = [
+      [_team(agents: [_agent(name: 'First')])],
+      [_team(agents: [_agent(name: 'Second')])],
     ];
     await tester.pumpWidget(
       _harness(
         overrides: [
-          teamProvider(_projectId).overrideWith((ref) async {
+          teamsProvider(_projectId).overrideWith((ref) async {
             final i = calls;
             calls++;
-            return teams[i.clamp(0, teams.length - 1)];
+            return teamsLists[i.clamp(0, teamsLists.length - 1)];
           }),
         ],
       ),
@@ -212,7 +223,6 @@ void main() {
   });
 
   testWidgets('tap по AgentCard открывает диалог редактирования (широкий экран)', (tester) async {
-    // 13.3 диалог монтируется как showDialog: для широкого экрана нужны валидные Dio-стабы.
     final dio = MockDio();
     when(
       dio.get('/prompts', cancelToken: anyNamed('cancelToken')),
@@ -243,6 +253,7 @@ void main() {
           promptsRepositoryProvider
               .overrideWithValue(PromptsRepository(dio: dio)),
           toolsRepositoryProvider.overrideWithValue(ToolsRepository(dio: dio)),
+          teamsProvider(_projectId).overrideWith((ref) async => [team]),
           teamProvider(_projectId).overrideWith((ref) async => team),
         ],
       ),
@@ -260,7 +271,7 @@ void main() {
       _harness(
         locale: const Locale('en'),
         overrides: [
-          teamProvider(_projectId).overrideWith(
+          teamsProvider(_projectId).overrideWith(
             (ref) async => throw TeamApiException('x', statusCode: 500),
           ),
         ],

@@ -34,6 +34,21 @@ func (m *mockTeamRepo) GetByProjectID(ctx context.Context, projectID uuid.UUID) 
 	}
 	return args.Get(0).(*models.Team), args.Error(1)
 }
+func (m *mockTeamRepo) ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error) {
+	args := m.Called(ctx, projectID)
+	var teams []models.Team
+	if v := args.Get(0); v != nil {
+		teams = v.([]models.Team)
+	}
+	return teams, args.Error(1)
+}
+func (m *mockTeamRepo) GetByProjectIDAndType(ctx context.Context, projectID uuid.UUID, teamType models.TeamType) (*models.Team, error) {
+	args := m.Called(ctx, projectID, teamType)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Team), args.Error(1)
+}
 func (m *mockTeamRepo) GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error) {
 	args := m.Called(ctx, projectID, agentID)
 	if args.Get(0) == nil {
@@ -66,6 +81,31 @@ func (m *mockTeamRepo) Update(ctx context.Context, team *models.Team) error {
 }
 func (m *mockTeamRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
+}
+
+func (m *mockTeamRepo) CreateTeamType(ctx context.Context, tt *models.TeamTypeModel) error {
+	return m.Called(ctx, tt).Error(0)
+}
+func (m *mockTeamRepo) GetTeamTypeByCode(ctx context.Context, code string) (*models.TeamTypeModel, error) {
+	args := m.Called(ctx, code)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.TeamTypeModel), args.Error(1)
+}
+func (m *mockTeamRepo) ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.TeamTypeModel), args.Error(1)
+}
+func (m *mockTeamRepo) DeleteTeamType(ctx context.Context, code string) error {
+	return m.Called(ctx, code).Error(0)
+}
+func (m *mockTeamRepo) CountTeamsByType(ctx context.Context, code string) (int64, error) {
+	args := m.Called(ctx, code)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 type mockToolDefRepo struct{ mock.Mock }
@@ -322,4 +362,69 @@ func TestTeamService_PatchAgent_ToolBindings_SameSetTwiceStillCallsSave(t *testi
 	tr.AssertNumberOfCalls(t, "SaveAgentWithToolBindings", 2)
 	tr.AssertExpectations(t)
 	td.AssertExpectations(t)
+}
+
+func TestTeamService_TeamTypes(t *testing.T) {
+	tr := new(mockTeamRepo)
+	td := new(mockToolDefRepo)
+	svc := NewTeamService(tr, td)
+
+	t.Run("ListTeamTypes", func(t *testing.T) {
+		expected := []models.TeamTypeModel{
+			{Code: "dev", Name: "Development", IsSystem: true},
+			{Code: "research", Name: "Research", IsSystem: false},
+		}
+		tr.On("ListTeamTypes", mock.Anything).Return(expected, nil).Once()
+		res, err := svc.ListTeamTypes(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, expected, res)
+	})
+
+	t.Run("CreateTeamType - Success", func(t *testing.T) {
+		req := dto.CreateTeamTypeRequest{
+			Code: "custom",
+			Name: "Custom Team",
+		}
+		tr.On("GetTeamTypeByCode", mock.Anything, "custom").Return(nil, fmt.Errorf("not found")).Once()
+		tr.On("CreateTeamType", mock.Anything, mock.MatchedBy(func(tt *models.TeamTypeModel) bool {
+			return tt.Code == "custom" && tt.Name == "Custom Team" && !tt.IsSystem
+		})).Return(nil).Once()
+
+		res, err := svc.CreateTeamType(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.Equal(t, "custom", res.Code)
+	})
+
+	t.Run("CreateTeamType - Already Exists", func(t *testing.T) {
+		req := dto.CreateTeamTypeRequest{
+			Code: "custom",
+			Name: "Custom Team",
+		}
+		tr.On("GetTeamTypeByCode", mock.Anything, "custom").Return(&models.TeamTypeModel{Code: "custom"}, nil).Once()
+
+		_, err := svc.CreateTeamType(context.Background(), req)
+		require.ErrorIs(t, err, ErrTeamTypeAlreadyExists)
+	})
+
+	t.Run("DeleteTeamType - System Protection", func(t *testing.T) {
+		tr.On("GetTeamTypeByCode", mock.Anything, "dev").Return(&models.TeamTypeModel{Code: "dev", IsSystem: true}, nil).Once()
+		err := svc.DeleteTeamType(context.Background(), "dev")
+		require.ErrorIs(t, err, ErrTeamTypeCannotDeleteSystem)
+	})
+
+	t.Run("DeleteTeamType - In Use Protection", func(t *testing.T) {
+		tr.On("GetTeamTypeByCode", mock.Anything, "qa").Return(&models.TeamTypeModel{Code: "qa", IsSystem: false}, nil).Once()
+		tr.On("CountTeamsByType", mock.Anything, "qa").Return(int64(3), nil).Once()
+		err := svc.DeleteTeamType(context.Background(), "qa")
+		require.ErrorIs(t, err, ErrTeamTypeInUse)
+	})
+
+	t.Run("DeleteTeamType - Success", func(t *testing.T) {
+		tr.On("GetTeamTypeByCode", mock.Anything, "qa").Return(&models.TeamTypeModel{Code: "qa", IsSystem: false}, nil).Once()
+		tr.On("CountTeamsByType", mock.Anything, "qa").Return(int64(0), nil).Once()
+		tr.On("DeleteTeamType", mock.Anything, "qa").Return(nil).Once()
+		err := svc.DeleteTeamType(context.Background(), "qa")
+		require.NoError(t, err)
+	})
 }

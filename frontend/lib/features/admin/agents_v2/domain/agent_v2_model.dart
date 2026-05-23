@@ -8,6 +8,8 @@ class AgentV2 {
   final String roleDescription;
   final String executionKind; // 'llm' | 'sandbox'
   final String? systemPrompt; // не включается в List; присутствует в Get
+  final String? promptId;
+  final String? promptName;
   final String? model;
   final String? providerKind;
   final double? temperature;
@@ -29,6 +31,8 @@ class AgentV2 {
     required this.createdAt,
     required this.updatedAt,
     this.systemPrompt,
+    this.promptId,
+    this.promptName,
     this.model,
     this.providerKind,
     this.temperature,
@@ -51,6 +55,10 @@ class AgentV2 {
       roleDescription: json['role_description'] as String? ?? '',
       executionKind: json['execution_kind'] as String,
       systemPrompt: json['system_prompt'] as String?,
+      promptId: json['prompt_id'] as String?,
+      promptName: json['prompt'] != null
+          ? (json['prompt'] as Map<String, dynamic>)['name'] as String?
+          : null,
       model: json['model'] as String?,
       providerKind: json['provider_kind'] as String?,
       temperature: temp,

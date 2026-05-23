@@ -23,6 +23,8 @@ type TeamRepository interface {
 	Create(ctx context.Context, team *models.Team) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Team, error)
 	GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error)
+	ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error)
+	GetByProjectIDAndType(ctx context.Context, projectID uuid.UUID, teamType models.TeamType) (*models.Team, error)
 	GetAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*models.Agent, error)
 	GetAgentByID(ctx context.Context, agentID uuid.UUID) (*models.Agent, error)
 	// GetAgentOwnerUserID возвращает user_id владельца проекта, к команде которого принадлежит агент.
@@ -34,6 +36,12 @@ type TeamRepository interface {
 	SaveAgentWithToolBindings(ctx context.Context, agent *models.Agent, replaceBindings bool, bindingToolDefIDs []uuid.UUID) error
 	Update(ctx context.Context, team *models.Team) error
 	Delete(ctx context.Context, id uuid.UUID) error
+
+	CreateTeamType(ctx context.Context, tt *models.TeamTypeModel) error
+	GetTeamTypeByCode(ctx context.Context, code string) (*models.TeamTypeModel, error)
+	ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error)
+	DeleteTeamType(ctx context.Context, code string) error
+	CountTeamsByType(ctx context.Context, code string) (int64, error)
 }
 
 type teamRepository struct {
@@ -87,7 +95,7 @@ func (r *teamRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Tea
 	return &team, nil
 }
 
-// GetByProjectID возвращает команду проекта с агентами и вложенным Prompt
+// GetByProjectID возвращает команду проекта с агентами и вложенным Prompt (первую созданную команду)
 func (r *teamRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID) (*models.Team, error) {
 	var team models.Team
 	err := r.db.WithContext(ctx).
@@ -97,12 +105,51 @@ func (r *teamRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID
 		Preload("Agents.Prompt").
 		Preload("Agents.ToolBindings.ToolDefinition").
 		Where("project_id = ?", projectID).
+		Order("created_at ASC").
 		First(&team).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrTeamNotFound
 		}
 		return nil, fmt.Errorf("failed to get team by project id: %w", err)
+	}
+	return &team, nil
+}
+
+// ListByProjectID возвращает список всех команд проекта
+func (r *teamRepository) ListByProjectID(ctx context.Context, projectID uuid.UUID) ([]models.Team, error) {
+	var teams []models.Team
+	err := r.db.WithContext(ctx).
+		Preload("Agents", func(db *gorm.DB) *gorm.DB {
+			return db.Order("role ASC")
+		}).
+		Preload("Agents.Prompt").
+		Preload("Agents.ToolBindings.ToolDefinition").
+		Where("project_id = ?", projectID).
+		Order("created_at ASC").
+		Find(&teams).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list teams by project id: %w", err)
+	}
+	return teams, nil
+}
+
+// GetByProjectIDAndType возвращает команду проекта определенного типа
+func (r *teamRepository) GetByProjectIDAndType(ctx context.Context, projectID uuid.UUID, teamType models.TeamType) (*models.Team, error) {
+	var team models.Team
+	err := r.db.WithContext(ctx).
+		Preload("Agents", func(db *gorm.DB) *gorm.DB {
+			return db.Order("role ASC")
+		}).
+		Preload("Agents.Prompt").
+		Preload("Agents.ToolBindings.ToolDefinition").
+		Where("project_id = ? AND type = ?", projectID, teamType).
+		First(&team).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTeamNotFound
+		}
+		return nil, fmt.Errorf("failed to get team by project id and type: %w", err)
 	}
 	return &team, nil
 }
@@ -218,4 +265,45 @@ func (r *teamRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("failed to delete team: %w", err)
 	}
 	return nil
+}
+
+func (r *teamRepository) CreateTeamType(ctx context.Context, tt *models.TeamTypeModel) error {
+	if err := r.db.WithContext(ctx).Create(tt).Error; err != nil {
+		return fmt.Errorf("failed to create team type: %w", err)
+	}
+	return nil
+}
+
+func (r *teamRepository) GetTeamTypeByCode(ctx context.Context, code string) (*models.TeamTypeModel, error) {
+	var tt models.TeamTypeModel
+	if err := r.db.WithContext(ctx).Where("code = ?", code).First(&tt).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("team type not found")
+		}
+		return nil, fmt.Errorf("failed to get team type: %w", err)
+	}
+	return &tt, nil
+}
+
+func (r *teamRepository) ListTeamTypes(ctx context.Context) ([]models.TeamTypeModel, error) {
+	var list []models.TeamTypeModel
+	if err := r.db.WithContext(ctx).Order("created_at ASC").Find(&list).Error; err != nil {
+		return nil, fmt.Errorf("failed to list team types: %w", err)
+	}
+	return list, nil
+}
+
+func (r *teamRepository) DeleteTeamType(ctx context.Context, code string) error {
+	if err := r.db.WithContext(ctx).Where("code = ?", code).Delete(&models.TeamTypeModel{}).Error; err != nil {
+		return fmt.Errorf("failed to delete team type: %w", err)
+	}
+	return nil
+}
+
+func (r *teamRepository) CountTeamsByType(ctx context.Context, code string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&models.Team{}).Where("type = ?", code).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed to count teams by type: %w", err)
+	}
+	return count, nil
 }

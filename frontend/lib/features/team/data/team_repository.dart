@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:frontend/core/api/dio_api_error.dart';
 import 'package:frontend/core/api/dio_repository_error_map.dart';
 import 'package:frontend/features/projects/domain/models.dart';
+import 'package:frontend/features/team/domain/models/team_type_model.dart';
 import 'package:frontend/features/team/domain/team_exceptions.dart';
 
 /// HTTP-слой команды проекта (13.1). Мутации — в последующих задачах.
@@ -51,6 +52,91 @@ class TeamRepository {
     }
   }
 
+  /// Получает все команды проекта.
+  Future<List<TeamModel>> getTeams(
+    String projectId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+
+    try {
+      final response = await _dio.get(
+        '/projects/$projectId/teams',
+        cancelToken: cancelToken,
+      );
+      final list = response.data as List<dynamic>;
+      final teams = list.map((e) => TeamModel.fromJson(e as Map<String, dynamic>)).toList();
+      for (final team in teams) {
+        if (team.projectId != projectId) {
+          throw TeamProjectMismatchException(
+            'expected projectId $projectId, got ${team.projectId}',
+          );
+        }
+      }
+      return teams;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Создает новую команду в проекте.
+  Future<TeamModel> createTeam(
+    String projectId, {
+    required String name,
+    required String type,
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/teams',
+        data: {
+          'name': name,
+          'type': type,
+        },
+        options: Options(contentType: 'application/json'),
+        cancelToken: cancelToken,
+      );
+      final team = TeamModel.fromJson(_jsonBody(response));
+      if (team.projectId != projectId) {
+        throw TeamProjectMismatchException(
+          'expected projectId $projectId, got ${team.projectId}',
+        );
+      }
+      return team;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Удаляет команду из проекта.
+  Future<void> deleteTeam(
+    String projectId,
+    String teamId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+    if (teamId.isEmpty) {
+      throw ArgumentError('teamId is required');
+    }
+
+    try {
+      await _dio.delete(
+        '/projects/$projectId/teams/$teamId',
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   /// Throws [TeamConflictException] на **409**.
   Future<TeamModel> patchAgent(
     String projectId,
@@ -79,6 +165,63 @@ class TeamRepository {
         );
       }
       return team;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Получает доступные типы команд.
+  Future<List<TeamTypeModel>> getTeamTypes({
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/team-types',
+        cancelToken: cancelToken,
+      );
+      final list = response.data as List<dynamic>;
+      return list.map((e) => TeamTypeModel.fromJson(e as Map<String, dynamic>)).toList();
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Создает новый тип команды (admin-only).
+  Future<TeamTypeModel> createTeamType({
+    required String code,
+    required String name,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/admin/team-types',
+        data: {
+          'code': code,
+          'name': name,
+        },
+        options: Options(contentType: 'application/json'),
+        cancelToken: cancelToken,
+      );
+      final data = response.data as Map<String, dynamic>;
+      return TeamTypeModel.fromJson(data);
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Удаляет тип команды (admin-only).
+  Future<void> deleteTeamType(
+    String code, {
+    CancelToken? cancelToken,
+  }) async {
+    if (code.isEmpty) {
+      throw ArgumentError('code is required');
+    }
+    try {
+      await _dio.delete(
+        '/admin/team-types/$code',
+        cancelToken: cancelToken,
+      );
     } on DioException catch (e) {
       throw _handleDioError(e);
     }

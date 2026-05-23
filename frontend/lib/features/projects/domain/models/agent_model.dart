@@ -29,6 +29,10 @@ abstract class AgentModel with _$AgentModel {
     @JsonKey(name: 'prompt_id')
     String? promptId,
 
+    /// Инлайновый системный промпт (дополнительные правила)
+    @JsonKey(name: 'system_prompt')
+    String? systemPrompt,
+
     /// Бэкенд для выполнения (claude-code | aider | custom)
     /// Nullable: не все агенты выполняют код в sandbox
     @JsonKey(name: 'code_backend')
