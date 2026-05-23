@@ -122,6 +122,24 @@ class _AssistantChatPanelState extends ConsumerState<AssistantChatPanel> {
       },
     );
 
+    // При сбросе сессии (например, при смене проекта) гарантируем наличие новой сессии.
+    ref.listen(
+      assistantChatControllerProvider.select((s) => s.currentSessionId),
+      (_, next) {
+        if (next == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            unawaited(
+              ref
+                  .read(assistantChatControllerProvider.notifier)
+                  .ensureSession()
+                  .catchError((Object _) => ''),
+            );
+          });
+        }
+      },
+    );
+
     final groups = groupAssistantMessages(state.messages);
 
     return Column(

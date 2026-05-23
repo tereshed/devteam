@@ -52,8 +52,9 @@ const (
 // ToolHandler.Invoke — handler сам кладёт UserID в свой ctx-ключ перед
 // вызовом MCP/сервиса.
 type AuthContext struct {
-	UserID string
-	Scope  string // "assistant" | "router" — для аудита/метрик
+	UserID    string
+	ProjectID string // Сюда пробрасывается ID проекта, если сессия привязана к проекту
+	Scope     string // "assistant" | "router" — для аудита/метрик
 }
 
 // ToolHandler — исполнитель одного MCP-инструмента. Возвращает СЫРОЙ JSON

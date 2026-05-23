@@ -22,6 +22,7 @@ typedef _BuildersMemoKey = ({
   _SheetMemoKey sheet,
   bool isStreaming,
   String copyTooltip,
+  String? messageId,
 });
 
 /// Тело пузыря: markdown + fenced code (без raw HTML и без загрузки картинок по URL).
@@ -39,6 +40,7 @@ class ChatMessage extends StatefulWidget {
     required this.role,
     required this.content,
     this.isStreaming = false,
+    this.messageId,
   });
 
   /// Одно из [conversationMessageRoles]: `user` | `assistant` | `system`.
@@ -49,6 +51,9 @@ class ChatMessage extends StatefulWidget {
 
   /// Хвост сообщения ещё дописывается (копирование кода по умолчанию отключено).
   final bool isStreaming;
+
+  /// Уникальный ID сообщения (необходимо для интерактивных опросов и кнопок).
+  final String? messageId;
 
   /// Убираем [md.InlineHtmlSyntax] из GFM inline-набора — иначе `<script>` в строке стал бы узлом HTML.
   /// Блоковый HTML из [BlockParser.standardBlockSyntaxes] ([HtmlBlockSyntax]) даёт в AST обычный
@@ -210,6 +215,7 @@ class _ChatMessageState extends State<ChatMessage> {
       sheet: sheetKey,
       isStreaming: widget.isStreaming,
       copyTooltip: l10n.chatMessageCopyCode,
+      messageId: widget.messageId,
     );
     if (_memoBuilders == null || _memoBuildersKey != buildersKey) {
       _memoBuilders = <String, MarkdownElementBuilder>{
@@ -217,6 +223,7 @@ class _ChatMessageState extends State<ChatMessage> {
           isStreaming: widget.isStreaming,
           styleSheet: sheet,
           copyTooltip: l10n.chatMessageCopyCode,
+          messageId: widget.messageId,
         ),
         'a': ChatLinkBuilder.instance,
       };

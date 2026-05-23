@@ -88,6 +88,7 @@ class AssistantMessageBubble extends StatelessWidget {
                 child: ChatMessage(
                   role: chatRole,
                   content: message.content ?? '',
+                  messageId: message.id,
                 ),
               ),
             ],

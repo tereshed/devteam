@@ -76,6 +76,21 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		}
 	}()
 
+	// 0) Загружаем сессию, чтобы получить project_id.
+	sess, err := s.deps.Repo.GetSession(ctx, sessionID, userID)
+	if err != nil {
+		s.deps.Logger.ErrorContext(ctx, "assistant: load session failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		s.appendErrorMessage(ctx, sessionID, userID, "не удалось загрузить сессию")
+		return
+	}
+	projectIDStr := ""
+	if sess.ProjectID != nil {
+		projectIDStr = sess.ProjectID.String()
+	}
+
 	// 1) Загружаем agent (system prompt + model + provider).
 	agent, err := s.getOrProvisionAssistantAgent(ctx, userID)
 	if err != nil {
@@ -142,8 +157,9 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		History:      history,
 		Tools:        s.deps.ToolCatalog.Catalog(),
 		Auth: agentloop.AuthContext{
-			UserID: userID.String(),
-			Scope:  "assistant",
+			UserID:    userID.String(),
+			ProjectID: projectIDStr,
+			Scope:     "assistant",
 		},
 		Hooks: hooks,
 	})

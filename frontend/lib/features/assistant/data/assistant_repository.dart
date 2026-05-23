@@ -80,13 +80,18 @@ class AssistantRepository {
   // ──────────────────────────── Sessions ────────────────────────────
 
   /// `POST /assistant/sessions` — создать пустую сессию.
-  Future<AssistantSessionModel> createSession({CancelToken? cancelToken}) async {
+  Future<AssistantSessionModel> createSession({
+    String? projectId,
+    CancelToken? cancelToken,
+  }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/assistant/sessions',
         // Бэкенд ожидает пустое тело (CreateAssistantSessionRequest{}), но
-        // Gin требует application/json при ShouldBindJSON. Шлём `{}`.
-        data: <String, dynamic>{},
+        // Gin требует application/json при ShouldBindJSON. Шлём `{}` или `{"project_id": projectId}`.
+        data: <String, dynamic>{
+          if (projectId != null) 'project_id': projectId,
+        },
         options: Options(contentType: 'application/json'),
         cancelToken: cancelToken,
       );
@@ -100,6 +105,7 @@ class AssistantRepository {
   Future<AssistantSessionListResponse> listSessions({
     bool includeArchived = false,
     int limit = kAssistantDefaultSessionLimit,
+    String? projectId,
     CancelToken? cancelToken,
   }) async {
     final nLimit = _normalizeSessionLimit(limit);
@@ -109,6 +115,7 @@ class AssistantRepository {
         queryParameters: <String, dynamic>{
           if (includeArchived) 'include_archived': true,
           'limit': nLimit,
+          if (projectId != null) 'project_id': projectId,
         },
         cancelToken: cancelToken,
       );

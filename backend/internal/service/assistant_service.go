@@ -156,8 +156,8 @@ type AssistantAgentLoader interface {
 
 // AssistantService — публичный контракт правой панели.
 type AssistantService interface {
-	CreateSession(ctx context.Context, userID uuid.UUID) (*models.AssistantSession, error)
-	ListSessions(ctx context.Context, userID uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error)
+	CreateSession(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID) (*models.AssistantSession, error)
+	ListSessions(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error)
 	GetSession(ctx context.Context, sessionID, userID uuid.UUID) (*models.AssistantSession, error)
 	ArchiveSession(ctx context.Context, sessionID, userID uuid.UUID) error
 
@@ -353,13 +353,14 @@ func (s *assistantService) GetStatus(ctx context.Context, userID uuid.UUID) (*dt
 	}, nil
 }
 
-func (s *assistantService) CreateSession(ctx context.Context, userID uuid.UUID) (*models.AssistantSession, error) {
+func (s *assistantService) CreateSession(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID) (*models.AssistantSession, error) {
 	if userID == uuid.Nil {
 		return nil, ErrAssistantInvalidInput
 	}
 	session := &models.AssistantSession{
-		UserID: userID,
-		Status: models.AssistantSessionStatusActive,
+		UserID:    userID,
+		ProjectID: projectID,
+		Status:    models.AssistantSessionStatusActive,
 	}
 	if err := s.deps.Repo.CreateSession(ctx, session); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
@@ -368,11 +369,11 @@ func (s *assistantService) CreateSession(ctx context.Context, userID uuid.UUID) 
 	return session, nil
 }
 
-func (s *assistantService) ListSessions(ctx context.Context, userID uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error) {
+func (s *assistantService) ListSessions(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error) {
 	if userID == uuid.Nil {
 		return nil, ErrAssistantInvalidInput
 	}
-	return s.deps.Repo.ListSessionsByUser(ctx, userID, includeArchived, limit)
+	return s.deps.Repo.ListSessionsByUser(ctx, userID, projectID, includeArchived, limit)
 }
 
 func (s *assistantService) GetSession(ctx context.Context, sessionID, userID uuid.UUID) (*models.AssistantSession, error) {
@@ -560,13 +561,23 @@ func (s *assistantService) buildConfirmResultJSON(
 		}{"error", fmt.Sprintf("tool %q больше не доступен", *pending.ToolName)})
 	}
 
+	sess, err := s.deps.Repo.GetSession(ctx, sessionID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup session: %w", err)
+	}
+	projectIDStr := ""
+	if sess.ProjectID != nil {
+		projectIDStr = sess.ProjectID.String()
+	}
+
 	// Исполняем. Per-call timeout оборачиваем здесь же (внутри Executor
 	// per-call есть, но confirm-исполнение идёт вне Executor).
 	execCtx, cancel := context.WithTimeout(ctx, AssistantPerLLMCallTimeout)
 	defer cancel()
 	result, execErr := handler(execCtx, agentloop.AuthContext{
-		UserID: userID.String(),
-		Scope:  "assistant",
+		UserID:    userID.String(),
+		ProjectID: projectIDStr,
+		Scope:     "assistant",
 	}, json.RawMessage(pending.ToolArguments))
 	if execErr != nil {
 		// Сетевая/ctx ошибка → отдаём наружу (busy остаётся TRUE).

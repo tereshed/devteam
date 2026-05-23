@@ -101,6 +101,14 @@ void main() {
   testWidgets(
     '/projects/:id/settings показывает ProjectSettingsScreen',
     (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTestProjectUuid/settings',
       );
@@ -110,6 +118,7 @@ void main() {
             projectProvider(kTestProjectUuid).overrideWith(
               (ref) async => makeProject(id: kTestProjectUuid),
             ),
+            webSocketServiceProvider.overrideWithValue(ws),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -128,6 +137,14 @@ void main() {
   testWidgets(
     'редирект /projects/:id?from=x сохраняет query на целевом URL',
     (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
       final repo = MockConversationRepository();
       when(
         repo.listConversations(
@@ -148,6 +165,7 @@ void main() {
               (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
             ),
             conversationRepositoryProvider.overrideWithValue(repo),
+            webSocketServiceProvider.overrideWithValue(ws),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -170,6 +188,14 @@ void main() {
   testWidgets(
     'редирект с корня дашборда сохраняет fragment (#)',
     (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
       final repo = MockConversationRepository();
       when(
         repo.listConversations(
@@ -190,6 +216,7 @@ void main() {
               (ref) async => makeProject(id: kTestProjectUuid, name: 'Frag'),
             ),
             conversationRepositoryProvider.overrideWithValue(repo),
+            webSocketServiceProvider.overrideWithValue(ws),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -209,6 +236,14 @@ void main() {
   testWidgets(
     'Sprint 11: /projects/:id/chat/extra (не-UUID) → редирект на /projects/:id/chat',
     (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
       final repo = MockConversationRepository();
       when(
         repo.listConversations(
@@ -229,6 +264,7 @@ void main() {
               (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
             ),
             conversationRepositoryProvider.overrideWithValue(repo),
+            webSocketServiceProvider.overrideWithValue(ws),
           ],
           child: MaterialApp.router(
             routerConfig: router,
@@ -645,6 +681,14 @@ void main() {
   testWidgets(
     'Sprint 12.5: невалидный taskId → /projects/:id/tasks с сохранением query',
     (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
       final router = buildProjectDashboardTestRouter(
         initialLocation: '/projects/$kTestProjectUuid/tasks/not-a-uuid?q=y',
       );
@@ -662,6 +706,7 @@ void main() {
             taskListControllerProvider.overrideWith(
               () => _StubTaskListForRedirect(seed),
             ),
+            webSocketServiceProvider.overrideWithValue(ws),
           ],
           child: MaterialApp.router(
             localizationsDelegates: AppLocalizations.localizationsDelegates,

@@ -49,7 +49,7 @@ type AssistantSessionRepository interface {
 
 	// ListSessionsByUser — список активных и архивных сессий пользователя.
 	// Сортировка: last_message_at DESC NULLS LAST (используется idx_assistant_sessions_user).
-	ListSessionsByUser(ctx context.Context, userID uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error)
+	ListSessionsByUser(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error)
 
 	// UpdateSessionTitle меняет title (для авто-генерации после первого ответа модели).
 	UpdateSessionTitle(ctx context.Context, sessionID, userID uuid.UUID, title string) error
@@ -180,7 +180,7 @@ func (r *assistantSessionRepository) GetSession(ctx context.Context, sessionID, 
 	return &session, nil
 }
 
-func (r *assistantSessionRepository) ListSessionsByUser(ctx context.Context, userID uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error) {
+func (r *assistantSessionRepository) ListSessionsByUser(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error) {
 	if userID == uuid.Nil {
 		return nil, ErrInvalidInput
 	}
@@ -188,6 +188,11 @@ func (r *assistantSessionRepository) ListSessionsByUser(ctx context.Context, use
 	db := gormDB(ctx, r.db).WithContext(ctx).Clauses(dbresolver.Write).
 		Model(&models.AssistantSession{}).
 		Where("user_id = ?", userID)
+	if projectID != nil {
+		db = db.Where("project_id = ?", projectID)
+	} else {
+		db = db.Where("project_id IS NULL")
+	}
 	if !includeArchived {
 		db = db.Where("status = ?", models.AssistantSessionStatusActive)
 	}

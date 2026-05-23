@@ -695,6 +695,8 @@ func main() {
 	assistantToolCatalog := mcpserver.NewAuthorizedExecutor(mcpserver.AuthorizedExecutorDeps{
 		ProjectService:        projectService,
 		TaskService:           taskService,
+		ConversationService:   conversationService,
+		TeamService:           teamService,
 		AgentService:          agentSvcV2,
 		GitIntegrationService: gitIntegrationSvc,
 		QueryService: service.NewOrchestrationQueryService(

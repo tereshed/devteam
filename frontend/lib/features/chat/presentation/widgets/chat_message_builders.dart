@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:frontend/features/assistant/presentation/widgets/poll_widget.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_message_href.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -66,6 +67,7 @@ class ChatPreBuilder extends MarkdownElementBuilder {
     required this.isStreaming,
     required this.styleSheet,
     required this.copyTooltip,
+    this.messageId,
   }) {
     // Счётчик только в debug/profile для теста мемоизации; в release tree-shaking убирает assert.
     assert(() {
@@ -77,6 +79,7 @@ class ChatPreBuilder extends MarkdownElementBuilder {
   final bool isStreaming;
   final MarkdownStyleSheet styleSheet;
   final String copyTooltip;
+  final String? messageId;
 
   static int _debugInstantiationCount = 0;
 
@@ -114,6 +117,25 @@ class ChatPreBuilder extends MarkdownElementBuilder {
   ) {
     final raw = _codeBody.toString();
     final display = raw.replaceAll(RegExp(r'\n$'), '');
+
+    // Detect if this is a poll code block
+    var isPoll = false;
+    final firstChild = element.children?.isNotEmpty == true ? element.children!.first : null;
+    if (firstChild is md.Element) {
+      final className = firstChild.attributes['class'] ?? '';
+      if (className == 'language-poll' || className == 'poll') {
+        isPoll = true;
+      }
+    }
+
+    if (isPoll) {
+      return PollWidget(
+        jsonPayload: display,
+        messageId: messageId ?? '',
+        isStreaming: isStreaming,
+      );
+    }
+
     final codeStyle = styleSheet.code ?? preferredStyle;
 
     // Кастомный builder не оборачивается markdown-пакетом в SelectableText — используем

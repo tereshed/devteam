@@ -4,6 +4,7 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
 import 'package:frontend/features/assistant/presentation/controllers/assistant_chat_controller.dart';
+import 'package:frontend/features/projects/data/project_providers.dart';
 
 /// Dropdown в header'е панели чата: текущая сессия + список последних сессий
 /// пользователя (Sprint 21 §10 frontend).
@@ -131,6 +132,7 @@ class _SessionPickerItem extends StatelessWidget {
 final assistantSessionsListProvider =
     FutureProvider.autoDispose<List<AssistantSessionModel>>((ref) async {
   final repo = ref.watch(assistantRepositoryProvider);
-  final resp = await repo.listSessions();
+  final projectId = ref.watch(activeProjectIdProvider);
+  final resp = await repo.listSessions(projectId: projectId);
   return resp.sessions;
 });

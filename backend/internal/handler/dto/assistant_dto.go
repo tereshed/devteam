@@ -20,7 +20,9 @@ import (
 // CreateAssistantSessionRequest — пустое тело: сессия создаётся без title,
 // title выставляется автоматически по первому ответу модели или через
 // UpdateSessionTitle (см. план §2 «UpdateSessionTitle»).
-type CreateAssistantSessionRequest struct{}
+type CreateAssistantSessionRequest struct {
+	ProjectID *uuid.UUID `json:"project_id,omitempty"`
+}
 
 // SendAssistantMessageRequest — отправка user-сообщения.
 //
@@ -60,6 +62,7 @@ type ConfirmToolCallRequest struct {
 type AssistantSessionResponse struct {
 	ID                uuid.UUID      `json:"id"`
 	UserID            uuid.UUID      `json:"user_id"`
+	ProjectID         *uuid.UUID     `json:"project_id,omitempty"`
 	Title             *string        `json:"title,omitempty"`
 	Status            string         `json:"status" example:"active"`
 	Busy              bool           `json:"busy"`
@@ -177,6 +180,7 @@ func ToAssistantSessionResponse(s *models.AssistantSession) AssistantSessionResp
 	return AssistantSessionResponse{
 		ID:                s.ID,
 		UserID:            s.UserID,
+		ProjectID:         s.ProjectID,
 		Title:             s.Title,
 		Status:            string(s.Status),
 		Busy:              s.Busy,

@@ -63,6 +63,7 @@ func (r AssistantMessageRole) IsValid() bool {
 type AssistantSession struct {
 	ID                uuid.UUID              `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	UserID            uuid.UUID              `gorm:"type:uuid;not null" json:"user_id"`
+	ProjectID         *uuid.UUID             `gorm:"type:uuid" json:"project_id,omitempty"`
 	Title             *string                `gorm:"type:varchar(255)" json:"title,omitempty"`
 	Status            AssistantSessionStatus `gorm:"type:varchar(32);not null;default:'active'" json:"status"`
 	Busy              bool                   `gorm:"type:boolean;not null;default:false" json:"busy"`

@@ -10,7 +10,6 @@ import 'package:go_router/go_router.dart';
 
 void _goProjectsList(BuildContext context) => context.go('/projects');
 
-/// Дашборд проекта: загрузка [ProjectModel], shell с четырьмя ветками (см. роутер).
 class ProjectDashboardScreen extends ConsumerWidget {
   const ProjectDashboardScreen({
     super.key,
@@ -143,7 +142,7 @@ class _ReindexButtonState extends ConsumerState<_ReindexButton> {
         final detail = projectSettingsErrorDetail(e);
         final detailStyle = TextStyle(
           fontSize: 12,
-          color: theme.colorScheme.onError.withOpacity(0.8),
+          color: theme.colorScheme.onError.withValues(alpha: 0.8),
         );
         messenger.showSnackBar(
           SnackBar(

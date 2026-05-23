@@ -10,7 +10,6 @@ import 'package:frontend/features/admin/agents_v2/presentation/screens/agent_rol
 import 'package:frontend/features/admin/agents_v2/presentation/screens/agent_v2_detail_screen.dart';
 import 'package:frontend/features/admin/agents_v2/presentation/screens/agents_v2_list_screen.dart';
 import 'package:frontend/features/admin/agents_v2/presentation/screens/mcp_servers_registry_screen.dart';
-import 'package:frontend/features/team/presentation/screens/agent_config_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompt_edit_screen.dart';
 import 'package:frontend/features/admin/prompts/presentation/screens/prompts_list_screen.dart';
 import 'package:frontend/features/admin/workflows/presentation/screens/execution_detail_screen.dart';
@@ -29,6 +28,7 @@ import 'package:frontend/features/projects/presentation/screens/create_project_s
 import 'package:frontend/features/projects/presentation/screens/project_dashboard_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/projects_list_screen.dart';
 import 'package:frontend/features/settings/presentation/screens/global_settings_screen.dart';
+import 'package:frontend/features/team/presentation/screens/agent_config_screen.dart';
 import 'package:go_router/go_router.dart';
 
 /// Ключи вложенных [Navigator] для веток дашборда проекта (StatefulShellRoute).
@@ -266,40 +266,38 @@ class AppRouter {
               child: const AgentRolePromptsScreen(),
             ),
           ),
-        ],
-      ),
-
-      // Project dashboard (`/projects/:id/...`) — top-level вне [AppShell],
-      // потому что внутри уже есть [StatefulShellRoute] (chat/tasks/team/settings).
-      GoRoute(
-        path: '/projects/:id',
-        name: ProjectRouteNames.projectsDetail,
-        redirect: projectDashboardDetailRedirect,
-        routes: [
-          StatefulShellRoute(
-            builder: (context, state, navigationShell) {
-              final id = state.pathParameters['id']!;
-              return ProjectDashboardScreen(
-                projectId: id,
-                navigationShell: navigationShell,
-              );
-            },
-            navigatorContainerBuilder:
-                (
-                  BuildContext context,
-                  StatefulNavigationShell navigationShell,
-                  List<Widget> children,
-                ) {
-                  // Только активная ветка: компромисс по state вкладок — см.
-                  // docs/tasks/10.7-gorouter-projects-routes.md, «StatefulShellRoute и сохранение state».
-                  return children[navigationShell.currentIndex];
+          // Project dashboard (`/projects/:id/...`) — inside [AppShell] to keep sidebars visible.
+          GoRoute(
+            path: '/projects/:id',
+            name: ProjectRouteNames.projectsDetail,
+            redirect: projectDashboardDetailRedirect,
+            routes: [
+              StatefulShellRoute(
+                builder: (context, state, navigationShell) {
+                  final id = state.pathParameters['id']!;
+                  return ProjectDashboardScreen(
+                    projectId: id,
+                    navigationShell: navigationShell,
+                  );
                 },
-            branches: buildProjectDashboardShellBranches(
-              chatNavigatorKey: _projectShellChatNavKey,
-              tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
-              teamNavigatorKey: _projectShellTeamNavKey,
-              settingsNavigatorKey: _projectShellSettingsNavKey,
-            ),
+                navigatorContainerBuilder:
+                    (
+                      BuildContext context,
+                      StatefulNavigationShell navigationShell,
+                      List<Widget> children,
+                    ) {
+                      // Только активная ветка: компромисс по state вкладок — см.
+                      // docs/tasks/10.7-gorouter-projects-routes.md, «StatefulShellRoute и сохранение state».
+                      return children[navigationShell.currentIndex];
+                    },
+                branches: buildProjectDashboardShellBranches(
+                  chatNavigatorKey: _projectShellChatNavKey,
+                  tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
+                  teamNavigatorKey: _projectShellTeamNavKey,
+                  settingsNavigatorKey: _projectShellSettingsNavKey,
+                ),
+              ),
+            ],
           ),
         ],
       ),

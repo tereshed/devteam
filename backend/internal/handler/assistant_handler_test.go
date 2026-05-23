@@ -29,16 +29,16 @@ type MockAssistantService struct {
 	mock.Mock
 }
 
-func (m *MockAssistantService) CreateSession(ctx context.Context, userID uuid.UUID) (*models.AssistantSession, error) {
-	args := m.Called(ctx, userID)
+func (m *MockAssistantService) CreateSession(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID) (*models.AssistantSession, error) {
+	args := m.Called(ctx, userID, projectID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.AssistantSession), args.Error(1)
 }
 
-func (m *MockAssistantService) ListSessions(ctx context.Context, userID uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error) {
-	args := m.Called(ctx, userID, includeArchived, limit)
+func (m *MockAssistantService) ListSessions(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID, includeArchived bool, limit int) ([]*models.AssistantSession, error) {
+	args := m.Called(ctx, userID, projectID, includeArchived, limit)
 	var sessions []*models.AssistantSession
 	if args.Get(0) != nil {
 		sessions = args.Get(0).([]*models.AssistantSession)
@@ -134,7 +134,7 @@ func setupAssistantRouter(mockSvc *MockAssistantService, withAuth bool) *gin.Eng
 func TestAssistant_CreateSession_Success(t *testing.T) {
 	mockSvc := new(MockAssistantService)
 	sess := &models.AssistantSession{ID: testAssistantSessionID, UserID: testAssistantUserID, Status: models.AssistantSessionStatusActive}
-	mockSvc.On("CreateSession", mock.Anything, testAssistantUserID).Return(sess, nil)
+	mockSvc.On("CreateSession", mock.Anything, testAssistantUserID, mock.Anything).Return(sess, nil)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/assistant/sessions", nil)
@@ -148,7 +148,7 @@ func TestAssistant_CreateSession_Success(t *testing.T) {
 
 func TestAssistant_ListSessions_WithLimit(t *testing.T) {
 	mockSvc := new(MockAssistantService)
-	mockSvc.On("ListSessions", mock.Anything, testAssistantUserID, true, 10).Return([]*models.AssistantSession{}, nil)
+	mockSvc.On("ListSessions", mock.Anything, testAssistantUserID, mock.Anything, true, 10).Return([]*models.AssistantSession{}, nil)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/assistant/sessions?include_archived=true&limit=10", nil)

@@ -72,6 +72,7 @@ type AuthorizedExecutor struct {
 	projectSvc        service.ProjectService
 	taskSvc           service.TaskService
 	convSvc           service.ConversationService
+	teamSvc           service.TeamService
 	agentSvc          *service.AgentService
 	querySvc          *service.OrchestrationQueryService
 	gitIntegrationSvc service.GitIntegrationService
@@ -82,6 +83,7 @@ type AuthorizedExecutorDeps struct {
 	ProjectService        service.ProjectService
 	TaskService           service.TaskService
 	ConversationService   service.ConversationService
+	TeamService           service.TeamService
 	AgentService          *service.AgentService
 	QueryService          *service.OrchestrationQueryService
 	GitIntegrationService service.GitIntegrationService
@@ -93,6 +95,7 @@ func NewAuthorizedExecutor(deps AuthorizedExecutorDeps) *AuthorizedExecutor {
 		projectSvc:        deps.ProjectService,
 		taskSvc:           deps.TaskService,
 		convSvc:           deps.ConversationService,
+		teamSvc:           deps.TeamService,
 		agentSvc:          deps.AgentService,
 		querySvc:          deps.QueryService,
 		gitIntegrationSvc: deps.GitIntegrationService,
@@ -276,6 +279,31 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 		)
 	}
 
+	if e.teamSvc != nil {
+		tools = append(tools,
+			agentloop.Tool{
+				Name:        "team_get",
+				Description: "Получить команду проекта с агентами.",
+				InputSchema: schemaTeamGet,
+				Handler:     e.teamGet,
+			},
+			agentloop.Tool{
+				Name:                 "team_update",
+				Description:          "Обновить команду проекта (название). Требует подтверждения.",
+				InputSchema:          schemaTeamUpdate,
+				RequiresConfirmation: true,
+				Handler:              e.teamUpdate,
+			},
+			agentloop.Tool{
+				Name:                 "team_agent_patch",
+				Description:          "Частично обновить настройки агента в команде проекта. Требует подтверждения. Поля: model/clear_model, prompt_id/clear_prompt_id, code_backend/clear_code_backend, is_active, tool_definition_ids.",
+				InputSchema:          schemaTeamAgentPatch,
+				RequiresConfirmation: true,
+				Handler:              e.teamAgentPatch,
+			},
+		)
+	}
+
 	// Tools без зависимостей — всегда в каталоге.
 	tools = append(tools,
 		agentloop.Tool{
@@ -373,6 +401,18 @@ func mapServiceErr(err error) (json.RawMessage, error) {
 		return businessErr("validation", "git-интеграция не найдена (сначала подключите её в настройках)")
 	case errors.Is(err, repository.ErrInvalidInput):
 		return businessErr("validation", "некорректные аргументы")
+	case errors.Is(err, service.ErrTeamNotFound):
+		return businessErr("not_found", "команда проекта не найдена")
+	case errors.Is(err, service.ErrTeamInvalidName):
+		return businessErr("validation", "некорректное имя команды")
+	case errors.Is(err, service.ErrTeamAgentNotFound):
+		return businessErr("not_found", "агент команды не найден")
+	case errors.Is(err, service.ErrTeamAgentInvalidModel),
+		errors.Is(err, service.ErrTeamAgentInvalidCodeBackend),
+		errors.Is(err, service.ErrTeamAgentInvalidToolBindings):
+		return businessErr("validation", err.Error())
+	case errors.Is(err, service.ErrTeamAgentConflict):
+		return businessErr("error", "конфликт при обновлении агента")
 	default:
 		// Generic — но НЕ просачиваем raw err.Error() (может содержать SQL/secrets).
 		return businessErr("error", "внутренняя ошибка при выполнении инструмента")
@@ -410,6 +450,22 @@ func (e *AuthorizedExecutor) projectList(ctx context.Context, auth agentloop.Aut
 	var a projectListArgs
 	if err := parseArgs(args, &a); err != nil {
 		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		pid, err := uuid.Parse(auth.ProjectID)
+		if err != nil {
+			return businessErr("validation", "invalid session project id")
+		}
+		p, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid)
+		if err != nil {
+			return mapServiceErr(err)
+		}
+		return marshalResult(map[string]any{
+			"items":  []any{p},
+			"total":  1,
+			"limit":  1,
+			"offset": 0,
+		})
 	}
 	req := dto.ListProjectsRequest{
 		Status:      a.Status,
@@ -465,6 +521,9 @@ func (e *AuthorizedExecutor) projectGet(ctx context.Context, auth agentloop.Auth
 	if err != nil {
 		return businessErr("validation", err.Error())
 	}
+	if auth.ProjectID != "" && auth.ProjectID != pid.String() {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
+	}
 	p, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid)
 	if err != nil {
 		return mapServiceErr(err)
@@ -473,6 +532,9 @@ func (e *AuthorizedExecutor) projectGet(ctx context.Context, auth agentloop.Auth
 }
 
 func (e *AuthorizedExecutor) projectCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	if auth.ProjectID != "" {
+		return businessErr("forbidden", "создание проектов запрещено в контексте проекта")
+	}
 	ctx, uid, err := injectAuth(ctx, auth)
 	if err != nil {
 		return nil, err
@@ -510,6 +572,9 @@ func (e *AuthorizedExecutor) projectUpdate(ctx context.Context, auth agentloop.A
 	if err != nil {
 		return businessErr("validation", err.Error())
 	}
+	if auth.ProjectID != "" && auth.ProjectID != pid.String() {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
+	}
 	req := dto.UpdateProjectRequest{
 		Name:        a.Name,
 		Description: a.Description,
@@ -533,6 +598,9 @@ func (e *AuthorizedExecutor) projectDelete(ctx context.Context, auth agentloop.A
 	pid, err := a.resolve()
 	if err != nil {
 		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" && auth.ProjectID != pid.String() {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
 	}
 	if err := e.projectSvc.Delete(ctx, uid, models.RoleUser, pid); err != nil {
 		return mapServiceErr(err)
@@ -559,6 +627,12 @@ func (e *AuthorizedExecutor) taskList(ctx context.Context, auth agentloop.AuthCo
 	var a taskListArgs
 	if err := parseArgs(args, &a); err != nil {
 		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
 	}
 	pid, err := uuid.Parse(a.ProjectID)
 	if err != nil {
@@ -600,6 +674,9 @@ func (e *AuthorizedExecutor) taskGet(ctx context.Context, auth agentloop.AuthCon
 	if err != nil {
 		return mapServiceErr(err)
 	}
+	if auth.ProjectID != "" && t.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
+	}
 	return marshalResult(t)
 }
 
@@ -616,7 +693,14 @@ func (e *AuthorizedExecutor) taskCancel(ctx context.Context, auth agentloop.Auth
 	if err != nil {
 		return businessErr("validation", err.Error())
 	}
-	t, err := e.taskSvc.Cancel(ctx, uid, models.RoleUser, tid)
+	t, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	if auth.ProjectID != "" && t.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
+	}
+	t, err = e.taskSvc.Cancel(ctx, uid, models.RoleUser, tid)
 	if err != nil {
 		return mapServiceErr(err)
 	}
@@ -641,6 +725,12 @@ func (e *AuthorizedExecutor) conversationList(ctx context.Context, auth agentloo
 	var a convListArgs
 	if err := parseArgs(args, &a); err != nil {
 		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
 	}
 	pid, err := uuid.Parse(a.ProjectID)
 	if err != nil {
@@ -677,6 +767,9 @@ func (e *AuthorizedExecutor) conversationGet(ctx context.Context, auth agentloop
 	if err != nil {
 		return mapServiceErr(err)
 	}
+	if auth.ProjectID != "" && c.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
+	}
 	return marshalResult(c)
 }
 
@@ -693,6 +786,12 @@ func (e *AuthorizedExecutor) conversationCreate(ctx context.Context, auth agentl
 	var a convCreateArgs
 	if err := parseArgs(args, &a); err != nil {
 		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
 	}
 	pid, err := uuid.Parse(a.ProjectID)
 	if err != nil {
@@ -725,6 +824,13 @@ func (e *AuthorizedExecutor) conversationSendMessage(ctx context.Context, auth a
 	}
 	if a.Content == "" {
 		return businessErr("validation", "content is required")
+	}
+	c, err := e.convSvc.GetConversation(ctx, uid, cid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	if auth.ProjectID != "" && c.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
 	}
 	// Мы используем рандомный client_msg_id, т.к. это разовый вызов от ассистента.
 	clientMsgID := uuid.New()
@@ -826,8 +932,12 @@ func (e *AuthorizedExecutor) artifactList(ctx context.Context, auth agentloop.Au
 		return businessErr("validation", "task_id must be a valid UUID")
 	}
 	// Проверка доступа к задаче (неявно через taskSvc)
-	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid); err != nil {
+	task, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid)
+	if err != nil {
 		return mapServiceErr(err)
+	}
+	if auth.ProjectID != "" && task.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
 	}
 	artifacts, err := e.querySvc.ListArtifacts(ctx, tid, false)
 	if err != nil {
@@ -854,8 +964,12 @@ func (e *AuthorizedExecutor) artifactGet(ctx context.Context, auth agentloop.Aut
 		return mapServiceErr(err)
 	}
 	// Проверка доступа к задаче артефакта
-	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, artifact.TaskID); err != nil {
+	task, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, artifact.TaskID)
+	if err != nil {
 		return mapServiceErr(err)
+	}
+	if auth.ProjectID != "" && task.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
 	}
 	return marshalResult(artifact)
 }
@@ -873,8 +987,12 @@ func (e *AuthorizedExecutor) routerDecisionList(ctx context.Context, auth agentl
 	if err != nil {
 		return businessErr("validation", "task_id must be a valid UUID")
 	}
-	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid); err != nil {
+	task, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid)
+	if err != nil {
 		return mapServiceErr(err)
+	}
+	if auth.ProjectID != "" && task.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
 	}
 	decisions, err := e.querySvc.ListRouterDecisions(ctx, tid)
 	if err != nil {
@@ -896,8 +1014,12 @@ func (e *AuthorizedExecutor) worktreeList(ctx context.Context, auth agentloop.Au
 	if err != nil {
 		return businessErr("validation", "task_id must be a valid UUID")
 	}
-	if _, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid); err != nil {
+	task, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid)
+	if err != nil {
 		return mapServiceErr(err)
+	}
+	if auth.ProjectID != "" && task.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
 	}
 	trees, err := e.querySvc.ListWorktrees(ctx, tid)
 	if err != nil {
@@ -919,7 +1041,17 @@ func (e *AuthorizedExecutor) assistantActiveTasksCount(ctx context.Context, auth
 	if err != nil {
 		return mapServiceErr(err)
 	}
-	return marshalResult(map[string]any{"count": len(tasks)})
+	count := 0
+	if auth.ProjectID != "" {
+		for _, t := range tasks {
+			if t.ProjectID.String() == auth.ProjectID {
+				count++
+			}
+		}
+	} else {
+		count = len(tasks)
+	}
+	return marshalResult(map[string]any{"count": count})
 }
 
 func (e *AuthorizedExecutor) whoami(_ context.Context, auth agentloop.AuthContext, _ json.RawMessage) (json.RawMessage, error) {
@@ -1054,7 +1186,113 @@ var (
 	schemaGitIntegrationList = json.RawMessage(`{"type":"object","properties":{}}`)
 	schemaGitRepositoryList  = json.RawMessage(`{"type":"object","required":["provider"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"}}}`)
 	schemaGitRepositoryCreate = json.RawMessage(`{"type":"object","required":["provider","name"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"},"name":{"type":"string","description":"Имя нового репозитория"},"private":{"type":"boolean","description":"Сделать ли репозиторий приватным"},"description":{"type":"string","description":"Описание нового репозитория"}}}`)
+	schemaTeamGet        = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
+	schemaTeamUpdate     = json.RawMessage(`{"type":"object","required":["name"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"}},"description":"UUID проекта и новое название."}`)
+	schemaTeamAgentPatch = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"clear_model":{"type":"boolean"},"model":{"type":"string"},"clear_prompt_id":{"type":"boolean"},"prompt_id":{"type":"string","format":"uuid"},"clear_code_backend":{"type":"boolean"},"code_backend":{"type":"string"},"is_active":{"type":"boolean"},"tool_definition_ids":{"type":"array","items":{"type":"string","format":"uuid"}}}}`)
 )
+
+func (e *AuthorizedExecutor) teamGet(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamGetParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	team, err := e.teamSvc.GetByProjectID(ctx, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(dto.ToTeamResponse(team))
+}
+
+func (e *AuthorizedExecutor) teamUpdate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamUpdateParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	upd := dto.UpdateTeamRequest{Name: a.Name}
+	team, err := e.teamSvc.Update(ctx, pid, upd)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(dto.ToTeamResponse(team))
+}
+
+func (e *AuthorizedExecutor) teamAgentPatch(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a TeamAgentPatchParams
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+	aid, err := uuid.Parse(a.AgentID)
+	if err != nil {
+		return businessErr("validation", "agent_id is required (UUID)")
+	}
+	// Check project access
+	if _, err := e.projectSvc.GetByID(ctx, uid, models.RoleUser, pid); err != nil {
+		return mapServiceErr(err)
+	}
+	raw, err := teamAgentPatchWireJSON(&a)
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+	var patch dto.PatchAgentRequest
+	if err := json.Unmarshal(raw, &patch); err != nil {
+		return businessErr("validation", fmt.Sprintf("invalid patch fields: %v", err))
+	}
+	team, err := e.teamSvc.PatchAgent(ctx, pid, aid, patch)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(dto.ToTeamResponse(team))
+}
 
 func maxInt(a, b int) int {
 	if a > b {

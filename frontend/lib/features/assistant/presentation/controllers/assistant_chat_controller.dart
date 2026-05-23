@@ -8,6 +8,7 @@ import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_session_picker.dart';
+import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'assistant_chat_controller.g.dart';
@@ -143,6 +144,10 @@ class AssistantChatController extends _$AssistantChatController {
       _wsSubscription = null;
       _pollingTimer?.cancel();
     });
+
+    // Наблюдаем за активным проектом. При смене проекта Riverpod пересоздаст этот контроллер.
+    ref.watch(activeProjectIdProvider);
+
     return const AssistantChatState();
   }
 
@@ -168,13 +173,14 @@ class AssistantChatController extends _$AssistantChatController {
     state = state.copyWith(creatingSession: true, error: null);
     try {
       final repo = ref.read(assistantRepositoryProvider);
-      final sessions = await repo.listSessions(limit: 1);
+      final projectId = ref.read(activeProjectIdProvider);
+      final sessions = await repo.listSessions(limit: 1, projectId: projectId);
       AssistantSessionModel session;
       if (sessions.sessions.isNotEmpty &&
           sessions.sessions.first.status == assistantSessionStatusActive) {
         session = sessions.sessions.first;
       } else {
-        session = await repo.createSession();
+        session = await repo.createSession(projectId: projectId);
         ref.invalidate(assistantSessionsListProvider);
       }
       await _selectSession(session);
@@ -207,7 +213,8 @@ class AssistantChatController extends _$AssistantChatController {
     state = state.copyWith(creatingSession: true, error: null);
     try {
       final repo = ref.read(assistantRepositoryProvider);
-      final session = await repo.createSession();
+      final projectId = ref.read(activeProjectIdProvider);
+      final session = await repo.createSession(projectId: projectId);
       ref.invalidate(assistantSessionsListProvider);
       await _selectSession(session);
       return session.id;

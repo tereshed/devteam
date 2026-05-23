@@ -41,3 +41,14 @@ Future<ProjectModel> project(Ref ref, String id) {
         cancelToken: cancelToken,
       );
 }
+
+@Riverpod(keepAlive: true)
+class ActiveProjectId extends _$ActiveProjectId {
+  @override
+  String? build() => null;
+
+  void set(String? id) {
+    state = id;
+  }
+}
+

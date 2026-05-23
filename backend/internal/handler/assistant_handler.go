@@ -109,7 +109,11 @@ func (h *AssistantHandler) CreateSession(c *gin.Context) {
 		return
 	}
 
-	sess, err := h.service.CreateSession(c.Request.Context(), uid)
+	var req dto.CreateAssistantSessionRequest
+	// project_id is optional, so we ignore JSON binding EOF errors if body is empty.
+	_ = c.ShouldBindJSON(&req)
+
+	sess, err := h.service.CreateSession(c.Request.Context(), uid, req.ProjectID)
 	if err != nil {
 		h.respondAssistantError(c, err)
 		return
@@ -127,6 +131,7 @@ func (h *AssistantHandler) CreateSession(c *gin.Context) {
 // @Produce json
 // @Param include_archived query bool false "Включить архивные сессии"
 // @Param limit query int false "Лимит (1–200, по умолчанию 50)"
+// @Param project_id query string false "ID проекта (UUID)"
 // @Success 200 {object} dto.AssistantSessionListResponse
 // @Failure 400 {object} apierror.ErrorResponse "Невалидные параметры"
 // @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
@@ -139,6 +144,17 @@ func (h *AssistantHandler) ListSessions(c *gin.Context) {
 		return
 	}
 
+	var projectID *uuid.UUID
+	projectIDStr := c.Query("project_id")
+	if projectIDStr != "" {
+		pid, err := uuid.Parse(projectIDStr)
+		if err != nil {
+			apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid project_id format")
+			return
+		}
+		projectID = &pid
+	}
+
 	includeArchived := parseBoolQuery(c, "include_archived", false)
 	limit, err := parseLimitQuery(c, assistantDefaultSessionLimit, assistantMaxSessionLimit)
 	if err != nil {
@@ -146,7 +162,7 @@ func (h *AssistantHandler) ListSessions(c *gin.Context) {
 		return
 	}
 
-	sessions, err := h.service.ListSessions(c.Request.Context(), uid, includeArchived, limit)
+	sessions, err := h.service.ListSessions(c.Request.Context(), uid, projectID, includeArchived, limit)
 	if err != nil {
 		h.respondAssistantError(c, err)
 		return
