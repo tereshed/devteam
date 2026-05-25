@@ -132,6 +132,9 @@ void main() {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
+        theme: ThemeData(
+          splashFactory: NoSplash.splashFactory,
+        ),
         home: const Scaffold(
           // Шире, чем дефолт правой панели в AppShell (360dp), чтобы task-row
           // c длинными переводными подписями не уходил в overflow при тестах.

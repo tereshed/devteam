@@ -115,6 +115,10 @@ func (l *fixedAgentLoader) GetAgentByName(_ context.Context, _ string) (*models.
 	return l.a, nil
 }
 
+func (l *fixedAgentLoader) GetAgentByTeamAndName(_ context.Context, _ uuid.UUID, _ string) (*models.Agent, error) {
+	return l.a, nil
+}
+
 // Helpers ----------------------------------------------------------------------
 
 func makeRouterAgentForScenario() *models.Agent {

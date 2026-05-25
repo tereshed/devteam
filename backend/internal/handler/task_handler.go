@@ -77,6 +77,8 @@ func writeTaskServiceError(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, err.Error())
 	case errors.Is(err, service.ErrAgentNotInTeam):
 		apierror.JSON(c, http.StatusUnprocessableEntity, apierror.ErrUnprocessable, err.Error())
+	case errors.Is(err, service.ErrTeamNotInProject):
+		apierror.JSON(c, http.StatusUnprocessableEntity, apierror.ErrUnprocessable, err.Error())
 	case errors.Is(err, service.ErrTaskParentNotFound):
 		apierror.JSON(c, http.StatusUnprocessableEntity, apierror.ErrUnprocessable, err.Error())
 	case errors.Is(err, service.ErrTaskInvalidTitle):

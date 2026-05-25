@@ -367,6 +367,85 @@
                 }
             }
         },
+        "/admin/team-types": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Создает новый тип команды (только для администраторов)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Создание типа команды",
+                "parameters": [
+                    {
+                        "description": "Параметры создания",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateTeamTypeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TeamTypeResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/team-types/{code}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Удаляет тип команды по коду (только для администраторов)",
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Удаление типа команды",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Код типа команды",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/agents": {
             "get": {
                 "security": [
@@ -1184,6 +1263,12 @@
                         "description": "Лимит (1–200, по умолчанию 50)",
                         "name": "limit",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID проекта (UUID)",
+                        "name": "project_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1697,6 +1782,64 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.AssistantStatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/assistant/transcribe": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Принимает аудиофайл (multipart/form-data) и возвращает распознанный текст.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant"
+                ],
+                "summary": "Распознавание аудио в текст",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Аудиофайл",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Успешный ответ с текстом",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный запрос",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
                         }
                     },
                     "401": {
@@ -5305,6 +5448,140 @@
                 }
             }
         },
+        "/projects/{id}/teams": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Возвращает все команды с агентами для указанного проекта",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Получение списка команд проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.TeamResponse"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Создает новую команду указанного типа (development, research, analytics) в проекте",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Создание команды проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Параметры создания",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateTeamRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TeamResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/teams/{teamId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Удаляет команду из проекта (разрешено только для research и analytics)",
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Удаление команды проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Team ID",
+                        "name": "teamId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/projects/{id}/ws": {
             "get": {
                 "security": [
@@ -6637,6 +6914,40 @@
                 }
             }
         },
+        "/team-types": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Возвращает все доступные типы команд",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Получение списка типов команд",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.TeamTypeResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/tool-definitions": {
             "get": {
                 "security": [
@@ -7270,6 +7581,9 @@
                 "role": {
                     "type": "string"
                 },
+                "system_prompt": {
+                    "type": "string"
+                },
                 "tool_bindings": {
                     "type": "array",
                     "items": {
@@ -7570,6 +7884,9 @@
                     "type": "object"
                 },
                 "pending_tool_call_id": {
+                    "type": "string"
+                },
+                "project_id": {
                     "type": "string"
                 },
                 "status": {
@@ -7962,6 +8279,36 @@
                     "type": "string",
                     "maxLength": 500,
                     "minLength": 1
+                }
+            }
+        },
+        "dto.CreateTeamRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "type"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CreateTeamTypeRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },
@@ -8887,6 +9234,29 @@
                 }
             }
         },
+        "dto.TeamTypeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.TestLLMProviderConnectionRequest": {
             "type": "object",
             "required": [
@@ -9351,6 +9721,9 @@
                 "name": {
                     "type": "string"
                 },
+                "prompt_id": {
+                    "type": "string"
+                },
                 "role": {
                     "type": "string"
                 },
@@ -9436,6 +9809,9 @@
         "handler.updateAgentRequest": {
             "type": "object",
             "properties": {
+                "clear_prompt_id": {
+                    "type": "boolean"
+                },
                 "code_backend": {
                     "type": "string"
                 },
@@ -9451,6 +9827,9 @@
                 "model": {
                     "type": "string"
                 },
+                "prompt_id": {
+                    "type": "string"
+                },
                 "provider_kind": {
                     "type": "string"
                 },
@@ -9459,6 +9838,10 @@
                 },
                 "role_description": {
                     "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": {}
                 },
                 "system_prompt": {
                     "type": "string"
@@ -9494,6 +9877,10 @@
                 },
                 "role_description": {
                     "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": {}
                 },
                 "system_prompt": {
                     "type": "string"
@@ -10353,10 +10740,14 @@
         "models.TeamType": {
             "type": "string",
             "enum": [
-                "development"
+                "development",
+                "research",
+                "analytics"
             ],
             "x-enum-varnames": [
-                "TeamTypeDevelopment"
+                "TeamTypeDevelopment",
+                "TeamTypeResearch",
+                "TeamTypeAnalytics"
             ]
         },
         "models.ToolDefinition": {

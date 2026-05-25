@@ -977,6 +977,12 @@
   "@taskStatusPaused": { "description": "Статус задачи paused" },
   "taskStatusUnknownStatus": "Неизвестный статус",
   "@taskStatusUnknownStatus": { "description": "Неизвестная строка статуса с бэкенда" },
+  "taskStatusActive": "В работе",
+  "@taskStatusActive": { "description": "Статус задачи active (в работе)" },
+  "taskStatusDone": "Готово",
+  "@taskStatusDone": { "description": "Статус задачи done (выполнена)" },
+  "taskStatusNeedsHuman": "Нужна помощь",
+  "@taskStatusNeedsHuman": { "description": "Статус задачи needs_human (требуется помощь)" },
   "tasksSearchHint": "Поиск задач",
   "@tasksSearchHint": { "description": "Подсказка поля поиска списка задач (12.4)" },
   "tasksEmpty": "Задач пока нет",
@@ -1213,6 +1219,12 @@
       "category": { "type": "String" }
     }
   },
+  "teamAgentEditTestRun": "Тестовый запуск",
+  "@teamAgentEditTestRun": { "description": "Кнопка тестового запуска задачи для агента" },
+  "teamAgentEditTestRunSuccess": "Тестовая задача успешно запущена",
+  "@teamAgentEditTestRunSuccess": { "description": "Снекбар при успешном запуске тестовой задачи" },
+  "teamAgentEditTestRunError": "Не удалось запустить тестовую задачу",
+  "@teamAgentEditTestRunError": { "description": "Снекбар при ошибке запуска тестовой задачи" },
   "chatMessageCopyCode": "Копировать код",
   "@chatMessageCopyCode": { "description": "Подсказка кнопки копирования блока кода в чате" },
   "chatMessageStreamingPlaceholder": "Печатает…",
@@ -1628,6 +1640,16 @@
   "onboardingConfigureAssistant": "Ваш ассистент почти готов! Выберите LLM-провайдера и модель в настройках, чтобы начать работу.",
   "onboardingGoToSettings": "Перейти в настройки",
   "onboardingConfigureProjectAgents": "Настройте агентов orchestrator и router — выберите LLM-провайдера и модель для каждого, чтобы запустить оркестрацию задач.",
-  "onboardingGoToTeam": "Настроить агентов"
+  "onboardingGoToTeam": "Настроить агентов",
+  "chatInputVoiceTooltip": "Голосовой ввод (Alt+V)",
+  "chatInputVoiceDisabledTooltip": "Голосовой ввод не активен (настройте модель распознавания речи в настройках ассистента)",
+  "chatInputVoiceRecordingHint": "Идет запись... Говорите ({seconds}с). Нажмите Alt+V для завершения",
+  "@chatInputVoiceRecordingHint": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  }
 }
 

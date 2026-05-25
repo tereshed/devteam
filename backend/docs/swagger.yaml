@@ -29,6 +29,8 @@ definitions:
         type: string
       role:
         type: string
+      system_prompt:
+        type: string
       tool_bindings:
         items:
           $ref: '#/definitions/dto.ToolBindingResponse'
@@ -226,6 +228,8 @@ definitions:
       metadata:
         type: object
       pending_tool_call_id:
+        type: string
+      project_id:
         type: string
       status:
         example: active
@@ -495,6 +499,26 @@ definitions:
         type: string
     required:
     - title
+    type: object
+  dto.CreateTeamRequest:
+    properties:
+      name:
+        type: string
+      type:
+        type: string
+    required:
+    - name
+    - type
+    type: object
+  dto.CreateTeamTypeRequest:
+    properties:
+      code:
+        type: string
+      name:
+        type: string
+    required:
+    - code
+    - name
     type: object
   dto.CreateWebhookRequest:
     properties:
@@ -1111,6 +1135,21 @@ definitions:
       updated_at:
         type: string
     type: object
+  dto.TeamTypeResponse:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_system:
+        type: boolean
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.TestLLMProviderConnectionRequest:
     properties:
       auth_type:
@@ -1416,6 +1455,8 @@ definitions:
         type: string
       name:
         type: string
+      prompt_id:
+        type: string
       role:
         type: string
       role_description:
@@ -1476,6 +1517,8 @@ definitions:
     type: object
   handler.updateAgentRequest:
     properties:
+      clear_prompt_id:
+        type: boolean
       code_backend:
         type: string
       internal_mcp_enabled:
@@ -1486,12 +1529,17 @@ definitions:
         type: integer
       model:
         type: string
+      prompt_id:
+        type: string
       provider_kind:
         type: string
       role:
         type: string
       role_description:
         type: string
+      settings:
+        additionalProperties: {}
+        type: object
       system_prompt:
         type: string
       temperature:
@@ -1515,6 +1563,9 @@ definitions:
         type: string
       role_description:
         type: string
+      settings:
+        additionalProperties: {}
+        type: object
       system_prompt:
         type: string
       team_id:
@@ -2130,9 +2181,13 @@ definitions:
   models.TeamType:
     enum:
     - development
+    - research
+    - analytics
     type: string
     x-enum-varnames:
     - TeamTypeDevelopment
+    - TeamTypeResearch
+    - TeamTypeAnalytics
   models.ToolDefinition:
     properties:
       category:
@@ -2441,6 +2496,51 @@ paths:
       summary: Update MCP server
       tags:
       - admin-mcp-servers
+  /admin/team-types:
+    post:
+      consumes:
+      - application/json
+      description: Создает новый тип команды (только для администраторов)
+      parameters:
+      - description: Параметры создания
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTeamTypeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TeamTypeResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание типа команды
+      tags:
+      - teams
+  /admin/team-types/{code}:
+    delete:
+      description: Удаляет тип команды по коду (только для администраторов)
+      parameters:
+      - description: Код типа команды
+        in: path
+        name: code
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление типа команды
+      tags:
+      - teams
   /agents:
     get:
       description: Реестр LLM/sandbox-агентов с фильтрами (only_active, execution_kind,
@@ -2947,6 +3047,10 @@ paths:
         in: query
         name: limit
         type: integer
+      - description: ID проекта (UUID)
+        in: query
+        name: project_id
+        type: string
       produces:
       - application/json
       responses:
@@ -3295,6 +3399,44 @@ paths:
       security:
       - BearerAuth: []
       summary: Статус ассистента
+      tags:
+      - assistant
+  /assistant/transcribe:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Принимает аудиофайл (multipart/form-data) и возвращает распознанный
+        текст.
+      parameters:
+      - description: Аудиофайл
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешный ответ с текстом
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Невалидный запрос
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Распознавание аудио в текст
       tags:
       - assistant
   /auth/api-keys:
@@ -5531,6 +5673,86 @@ paths:
       summary: Частичное обновление агента
       tags:
       - teams
+  /projects/{id}/teams:
+    get:
+      description: Возвращает все команды с агентами для указанного проекта
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.TeamResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение списка команд проекта
+      tags:
+      - teams
+    post:
+      consumes:
+      - application/json
+      description: Создает новую команду указанного типа (development, research, analytics)
+        в проекте
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Параметры создания
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTeamRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TeamResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание команды проекта
+      tags:
+      - teams
+  /projects/{id}/teams/{teamId}:
+    delete:
+      description: Удаляет команду из проекта (разрешено только для research и analytics)
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Team ID
+        in: path
+        name: teamId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление команды проекта
+      tags:
+      - teams
   /projects/{id}/ws:
     get:
       description: Стримит события task_status, task_message, agent_log, error для
@@ -6367,6 +6589,25 @@ paths:
       summary: List router decisions (timeline)
       tags:
       - orchestration-v2
+  /team-types:
+    get:
+      description: Возвращает все доступные типы команд
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.TeamTypeResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Получение списка типов команд
+      tags:
+      - teams
   /tool-definitions:
     get:
       description: Возвращает активные записи реестра tool_definitions, отсортированные

@@ -25,6 +25,7 @@ class _FakeMyAgentsRepository implements MyAgentsRepository {
   String? lastId;
   String? lastModel;
   String? lastProviderKind;
+  Map<String, dynamic>? lastSettings;
 
   @override
   Future<AgentV2Page> list({cancelToken}) async {
@@ -36,12 +37,14 @@ class _FakeMyAgentsRepository implements MyAgentsRepository {
     String id, {
     String? model,
     String? providerKind,
+    Map<String, dynamic>? settings,
     cancelToken,
   }) async {
     updateCalled = true;
     lastId = id;
     lastModel = model;
     lastProviderKind = providerKind;
+    lastSettings = settings;
     
     final idx = agents.items.indexWhere((a) => a.id == id);
     final updatedAgent = AgentV2(
@@ -56,6 +59,7 @@ class _FakeMyAgentsRepository implements MyAgentsRepository {
       updatedAt: DateTime.now(),
       model: model,
       providerKind: providerKind,
+      settings: settings ?? const {},
     );
     if (idx != -1) {
       final list = List<AgentV2>.from(agents.items);
@@ -144,10 +148,13 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(
+          child: MaterialApp(
+            theme: ThemeData(
+              splashFactory: NoSplash.splashFactory,
+            ),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(body: AssistantSettingsCard()),
+            home: const Scaffold(body: AssistantSettingsCard()),
           ),
         ),
       );
@@ -208,10 +215,13 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(
+          child: MaterialApp(
+            theme: ThemeData(
+              splashFactory: NoSplash.splashFactory,
+            ),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(body: AssistantSettingsCard()),
+            home: const Scaffold(body: AssistantSettingsCard()),
           ),
         ),
       );
@@ -254,6 +264,114 @@ void main() {
 
       // Success SnackBar is shown
       expect(find.text('Настройки ассистента успешно сохранены'), findsOneWidget);
+    });
+
+    testWidgets('Allows selecting speech provider and model and saves in settings', (tester) async {
+      final assistantAgent = AgentV2(
+        id: 'agent-123',
+        name: 'My Assistant',
+        role: 'assistant',
+        roleDescription: 'Personal assistant',
+        executionKind: 'llm',
+        isActive: true,
+        internalMcpEnabled: false,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        providerKind: 'deepseek',
+        model: 'deepseek-chat',
+        settings: const {
+          'stt_provider': 'system',
+        },
+      );
+
+      final myAgentsRepo = _FakeMyAgentsRepository(
+        agents: AgentV2Page(total: 1, items: [assistantAgent], limit: 10, offset: 0),
+      );
+
+      final llmRepo = _FakeLlmIntegrationsRepository(
+        apiKey: const [
+          LlmProviderConnection(
+            provider: LlmIntegrationProvider.openai,
+            status: LlmProviderConnectionStatus.connected,
+          ),
+          LlmProviderConnection(
+            provider: LlmIntegrationProvider.openrouter,
+            status: LlmProviderConnectionStatus.connected,
+          ),
+          LlmProviderConnection(
+            provider: LlmIntegrationProvider.deepseek,
+            status: LlmProviderConnectionStatus.connected,
+          ),
+        ],
+      );
+      final ws = _FakeWebSocketService();
+
+      final container = ProviderContainer(
+        overrides: [
+          myAgentsRepositoryProvider.overrideWithValue(myAgentsRepo),
+          llmIntegrationsRepositoryProvider.overrideWithValue(llmRepo),
+          webSocketServiceProvider.overrideWithValue(ws),
+          assistantStatusProvider.overrideWith(
+            (ref) async => const AssistantStatusModel(isConfigured: true, requiredProvider: 'deepseek'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(llmIntegrationsControllerProvider).refresh();
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: ThemeData(
+              splashFactory: NoSplash.splashFactory,
+            ),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: AssistantSettingsCard()),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Find the speech provider dropdown
+      final providerDropdownFinder = find.byWidgetPredicate(
+        (widget) => widget is DropdownButtonFormField<String> && 
+                    widget.decoration.labelText == 'Провайдер распознавания речи',
+      );
+      expect(providerDropdownFinder, findsOneWidget);
+
+      // Verify initial selected provider is 'system'
+      final providerDropdownState = tester.state<FormFieldState<String>>(providerDropdownFinder);
+      expect(providerDropdownState.value, 'system');
+
+      // Change provider to 'openai'
+      await tester.tap(providerDropdownFinder);
+      await tester.pumpAndSettle();
+
+      final openaiOptionFinder = find.text('OpenAI (API)').last;
+      await tester.tap(openaiOptionFinder);
+      await tester.pumpAndSettle();
+
+      // Find the speech model field (should now be visible)
+      final speechModelFieldFinder = find.byType(TextFormField).last;
+      expect(speechModelFieldFinder, findsOneWidget);
+
+      final speechModelFieldWidget = tester.widget<TextFormField>(speechModelFieldFinder);
+      // Verify initial suggested/default value is 'whisper-1'
+      expect(speechModelFieldWidget.controller?.text, 'whisper-1');
+
+      // Save settings
+      final saveBtnFinder = find.text('Сохранить настройки');
+      await tester.tap(saveBtnFinder);
+      await tester.pumpAndSettle();
+
+      expect(myAgentsRepo.updateCalled, isTrue);
+      expect(myAgentsRepo.lastSettings, isNotNull);
+      expect(myAgentsRepo.lastSettings!['stt_provider'], 'openai');
+      expect(myAgentsRepo.lastSettings!['stt_model'], 'whisper-1');
     });
   });
 }

@@ -97,6 +97,9 @@ Widget wrapChatInputHarness({
     ProviderScope(
       retry: (_, _) => null,
       child: MaterialApp(
+        theme: ThemeData(
+          splashFactory: NoSplash.splashFactory,
+        ),
         locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

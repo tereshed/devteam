@@ -31,6 +31,18 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
         return isRu ? 'Исследования' : 'Research';
       case 'analytics':
         return isRu ? 'Аналитика' : 'Analytics';
+      case 'marketing':
+        return isRu ? 'Маркетинг' : 'Marketing';
+      case 'smm':
+        return isRu ? 'SMM' : 'SMM';
+      case 'rd':
+        return isRu ? 'R&D' : 'R&D';
+      case 'hr':
+        return isRu ? 'HR' : 'HR';
+      case 'legal':
+        return isRu ? 'Юристы' : 'Legal';
+      case 'other':
+        return isRu ? 'Другое' : 'Other';
       default:
         for (final t in types) {
           if (t.code == type) {
@@ -111,12 +123,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                                 border: const OutlineInputBorder(),
                               ),
                               items: filteredTypes.map((t) {
-                                String displayName = t.name;
-                                if (t.code == 'research') {
-                                  displayName = isRu ? 'Исследования' : 'Research';
-                                } else if (t.code == 'analytics') {
-                                  displayName = isRu ? 'Аналитика' : 'Analytics';
-                                }
+                                final displayName = _translateTeamType(context, t.code, filteredTypes);
                                 return DropdownMenuItem(
                                   value: t.code,
                                   child: Text(displayName),
@@ -329,6 +336,18 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                         icon = Icons.science;
                       } else if (t.type == 'analytics') {
                         icon = Icons.analytics;
+                      } else if (t.type == 'marketing') {
+                        icon = Icons.campaign;
+                      } else if (t.type == 'smm') {
+                        icon = Icons.share;
+                      } else if (t.type == 'rd') {
+                        icon = Icons.biotech;
+                      } else if (t.type == 'hr') {
+                        icon = Icons.people;
+                      } else if (t.type == 'legal') {
+                        icon = Icons.gavel;
+                      } else if (t.type == 'other') {
+                        icon = Icons.category;
                       } else {
                         icon = Icons.group;
                       }

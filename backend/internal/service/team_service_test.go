@@ -428,3 +428,221 @@ func TestTeamService_TeamTypes(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestTeamService_PatchAgent_SandboxAgent_ModelInSettings(t *testing.T) {
+	tr := new(mockTeamRepo)
+	td := new(mockToolDefRepo)
+	svc := NewTeamService(tr, td)
+
+	pid := uuid.New()
+	aid := uuid.New()
+
+	agent := &models.Agent{
+		ID:            aid,
+		Name:          "sandbox-agent",
+		Role:          models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindSandbox,
+		CodeBackendSettings: datatypes.JSON([]byte(`{"hermes":{"toolsets":["file_ops"],"permission_mode":"yolo"}}`)),
+	}
+
+	tr.On("GetAgentInProject", mock.Anything, pid, aid).Return(agent, nil).Once()
+	tr.On("SaveAgent", mock.Anything, mock.MatchedBy(func(a *models.Agent) bool {
+		if a.Model != nil {
+			return false
+		}
+		var settings AgentCodeBackendSettings
+		if err := json.Unmarshal(a.CodeBackendSettings, &settings); err != nil {
+			return false
+		}
+		return settings.Model == "deepseek/deepseek-v4-flash" && settings.Hermes != nil && len(settings.Hermes.Toolsets) == 1
+	})).Return(nil).Once()
+
+	teamOut := &models.Team{ID: uuid.New(), ProjectID: pid}
+	tr.On("GetByProjectID", mock.Anything, pid).Return(teamOut, nil).Once()
+
+	var req dto.PatchAgentRequest
+	raw := []byte(`{"model":"deepseek/deepseek-v4-flash"}`)
+	require.NoError(t, json.Unmarshal(raw, &req))
+
+	_, err := svc.PatchAgent(context.Background(), pid, aid, req)
+	require.NoError(t, err)
+
+	tr.AssertExpectations(t)
+}
+
+func TestTeamService_PatchAgent_TransitionToSandbox(t *testing.T) {
+	tr := new(mockTeamRepo)
+	td := new(mockToolDefRepo)
+	svc := NewTeamService(tr, td)
+
+	pid := uuid.New()
+	aid := uuid.New()
+	initialModel := "gpt-4o"
+
+	agent := &models.Agent{
+		ID:            aid,
+		Name:          "transition-agent",
+		Role:          models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
+		Model:         &initialModel,
+		CodeBackend:   nil,
+	}
+
+	tr.On("GetAgentInProject", mock.Anything, pid, aid).Return(agent, nil).Once()
+	tr.On("SaveAgent", mock.Anything, mock.MatchedBy(func(a *models.Agent) bool {
+		// check transitions
+		if a.ExecutionKind != models.AgentExecutionKindSandbox {
+			return false
+		}
+		if a.CodeBackend == nil || string(*a.CodeBackend) != "hermes" {
+			return false
+		}
+		if a.Model != nil {
+			return false
+		}
+		var settings AgentCodeBackendSettings
+		if err := json.Unmarshal(a.CodeBackendSettings, &settings); err != nil {
+			return false
+		}
+		return settings.Model == "gpt-4o"
+	})).Return(nil).Once()
+
+	teamOut := &models.Team{ID: uuid.New(), ProjectID: pid}
+	tr.On("GetByProjectID", mock.Anything, pid).Return(teamOut, nil).Once()
+
+	var req dto.PatchAgentRequest
+	raw := []byte(`{"code_backend":"hermes"}`)
+	require.NoError(t, json.Unmarshal(raw, &req))
+
+	_, err := svc.PatchAgent(context.Background(), pid, aid, req)
+	require.NoError(t, err)
+
+	tr.AssertExpectations(t)
+}
+
+func TestTeamService_PatchAgent_TransitionToLLM(t *testing.T) {
+	tr := new(mockTeamRepo)
+	td := new(mockToolDefRepo)
+	svc := NewTeamService(tr, td)
+
+	pid := uuid.New()
+	aid := uuid.New()
+
+	agent := &models.Agent{
+		ID:                  aid,
+		Name:                "transition-agent",
+		Role:                models.AgentRoleDeveloper,
+		ExecutionKind:       models.AgentExecutionKindSandbox,
+		Model:               nil,
+		CodeBackend:         cbPtr(models.CodeBackendHermes),
+		CodeBackendSettings: datatypes.JSON([]byte(`{"model":"gpt-4o"}`)),
+	}
+
+	tr.On("GetAgentInProject", mock.Anything, pid, aid).Return(agent, nil).Once()
+	tr.On("SaveAgent", mock.Anything, mock.MatchedBy(func(a *models.Agent) bool {
+		// check transitions
+		if a.ExecutionKind != models.AgentExecutionKindLLM {
+			return false
+		}
+		if a.CodeBackend != nil {
+			return false
+		}
+		if a.Model == nil || *a.Model != "gpt-4o" {
+			return false
+		}
+		var settings AgentCodeBackendSettings
+		if err := json.Unmarshal(a.CodeBackendSettings, &settings); err != nil {
+			return false
+		}
+		return settings.Model == ""
+	})).Return(nil).Once()
+
+	teamOut := &models.Team{ID: uuid.New(), ProjectID: pid}
+	tr.On("GetByProjectID", mock.Anything, pid).Return(teamOut, nil).Once()
+
+	var req dto.PatchAgentRequest
+	raw := []byte(`{"code_backend":""}`)
+	require.NoError(t, json.Unmarshal(raw, &req))
+
+	_, err := svc.PatchAgent(context.Background(), pid, aid, req)
+	require.NoError(t, err)
+
+	tr.AssertExpectations(t)
+}
+
+func TestTeamService_UpdateAgentSettings_TransitionToSandbox(t *testing.T) {
+	tr := new(mockTeamRepo)
+	td := new(mockToolDefRepo)
+	svc := NewTeamService(tr, td)
+
+	aid := uuid.New()
+	userID := uuid.New()
+	initialModel := "gpt-4o"
+
+	agent := &models.Agent{
+		ID:            aid,
+		Name:          "transition-agent",
+		Role:          models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
+		Model:         &initialModel,
+		CodeBackend:   nil,
+	}
+
+	tr.On("GetAgentByID", mock.Anything, aid).Return(agent, nil).Once()
+	tr.On("GetAgentOwnerUserID", mock.Anything, aid).Return(userID, nil).Once() // Owner matching actor ID
+	tr.On("SaveAgent", mock.Anything, mock.MatchedBy(func(a *models.Agent) bool {
+		return a.ExecutionKind == models.AgentExecutionKindSandbox &&
+			a.Model == nil &&
+			a.CodeBackend != nil && string(*a.CodeBackend) == "hermes"
+	})).Return(nil).Once()
+
+	req := dto.UpdateAgentSettingsRequest{
+		CodeBackend: cbPtrString("hermes"),
+	}
+
+	actor := AgentSettingsActor{UserID: userID, IsAdmin: false}
+	_, err := svc.UpdateAgentSettings(context.Background(), actor, aid, req)
+	require.NoError(t, err)
+
+	tr.AssertExpectations(t)
+}
+
+func TestTeamService_UpdateAgentSettings_TransitionToLLM(t *testing.T) {
+	tr := new(mockTeamRepo)
+	td := new(mockToolDefRepo)
+	svc := NewTeamService(tr, td)
+
+	aid := uuid.New()
+	userID := uuid.New()
+
+	agent := &models.Agent{
+		ID:                  aid,
+		Name:                "transition-agent",
+		Role:                models.AgentRoleDeveloper,
+		ExecutionKind:       models.AgentExecutionKindSandbox,
+		Model:               nil,
+		CodeBackend:         cbPtr(models.CodeBackendHermes),
+		CodeBackendSettings: datatypes.JSON([]byte(`{"model":"gpt-4o"}`)),
+	}
+
+	tr.On("GetAgentByID", mock.Anything, aid).Return(agent, nil).Once()
+	tr.On("GetAgentOwnerUserID", mock.Anything, aid).Return(userID, nil).Once()
+	tr.On("SaveAgent", mock.Anything, mock.MatchedBy(func(a *models.Agent) bool {
+		return a.ExecutionKind == models.AgentExecutionKindLLM &&
+			a.Model != nil && *a.Model == "gpt-4o" &&
+			a.CodeBackend == nil
+	})).Return(nil).Once()
+
+	req := dto.UpdateAgentSettingsRequest{
+		CodeBackend: cbPtrString(""),
+	}
+
+	actor := AgentSettingsActor{UserID: userID, IsAdmin: false}
+	_, err := svc.UpdateAgentSettings(context.Background(), actor, aid, req)
+	require.NoError(t, err)
+
+	tr.AssertExpectations(t)
+}
+
+func cbPtrString(v string) *string                  { return &v }
+

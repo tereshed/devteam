@@ -399,7 +399,7 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 			return err
 		}
 		if s.agentService != nil {
-			return s.agentService.CreateDefaultProjectAgents(txCtx, team.ID)
+			return s.agentService.CreateDefaultProjectAgents(txCtx, team.ID, string(team.Type))
 		}
 		return nil
 	})

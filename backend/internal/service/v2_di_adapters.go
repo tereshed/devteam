@@ -98,6 +98,20 @@ func (l *DBAgentLoader) GetAgentByName(ctx context.Context, name string) (*model
 	return &a, nil
 }
 
+// GetAgentByTeamAndName implements AgentLoader interface.
+func (l *DBAgentLoader) GetAgentByTeamAndName(ctx context.Context, teamID uuid.UUID, name string) (*models.Agent, error) {
+	if l == nil || l.db == nil {
+		return nil, errors.New("DBAgentLoader: db is not configured")
+	}
+	var a models.Agent
+	err := l.db.WithContext(ctx).Where("team_id = ? AND name = ?", teamID, name).First(&a).Error
+	if err == nil {
+		return &a, nil
+	}
+	// Fallback to global agent
+	return l.GetAgentByName(ctx, name)
+}
+
 // GetAgentByUserRole finds a user-owned agent by role (e.g. per-user assistant).
 // Falls back to GetAgentByName for backward compatibility with global agents.
 func (l *DBAgentLoader) GetAgentByUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error) {

@@ -12,6 +12,11 @@ enum TaskStatusTone {
 
 TaskStatusTone taskStatusTone(String status) {
   return switch (status) {
+    'active' => TaskStatusTone.active,
+    'done' => TaskStatusTone.success,
+    'failed' => TaskStatusTone.error,
+    'cancelled' || 'paused' || 'needs_human' => TaskStatusTone.stopped,
+    // Backward compatibility:
     'pending' ||
     'planning' ||
     'in_progress' ||
@@ -20,8 +25,6 @@ TaskStatusTone taskStatusTone(String status) {
     'changes_requested' =>
       TaskStatusTone.active,
     'completed' => TaskStatusTone.success,
-    'failed' => TaskStatusTone.error,
-    'cancelled' || 'paused' => TaskStatusTone.stopped,
     _ => TaskStatusTone.unknown,
   };
 }
@@ -59,6 +62,10 @@ Color taskStatusChipForeground(ColorScheme scheme, TaskStatusTone tone) {
 /// Локализованная подпись статуса ([taskStatusPending] … [taskStatusUnknownStatus]).
 String taskStatusLabel(AppLocalizations l10n, String status) {
   return switch (status) {
+    'active' => l10n.taskStatusActive,
+    'done' => l10n.taskStatusDone,
+    'needs_human' => l10n.taskStatusNeedsHuman,
+    // Backward compatibility:
     'pending' => l10n.taskStatusPending,
     'planning' => l10n.taskStatusPlanning,
     'in_progress' => l10n.taskStatusInProgress,

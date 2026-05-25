@@ -36,6 +36,7 @@ type updateMyAgentRequest struct {
 	MaxTokens          *int     `json:"max_tokens,omitempty"`
 	IsActive           *bool    `json:"is_active,omitempty"`
 	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty"`
+	Settings           *map[string]any `json:"settings,omitempty"`
 
 	// Запрещённые поля — early-return 400 если переданы.
 	TeamID        *uuid.UUID `json:"team_id,omitempty"`
@@ -184,6 +185,7 @@ func (h *AgentMyHandler) Update(c *gin.Context) {
 		MaxTokens:          req.MaxTokens,
 		IsActive:           req.IsActive,
 		InternalMCPEnabled: req.InternalMCPEnabled,
+		Settings:           req.Settings,
 	}
 	if req.ProviderKind != nil {
 		pk := models.AgentProviderKind(*req.ProviderKind)

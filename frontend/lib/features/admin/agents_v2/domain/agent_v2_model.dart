@@ -19,6 +19,7 @@ class AgentV2 {
   final bool internalMcpEnabled;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final Map<String, dynamic> settings;
 
   const AgentV2({
     required this.id,
@@ -38,6 +39,7 @@ class AgentV2 {
     this.temperature,
     this.maxTokens,
     this.codeBackend,
+    this.settings = const {},
   });
 
   bool get isLlm => executionKind == 'llm';
@@ -68,6 +70,7 @@ class AgentV2 {
       internalMcpEnabled: json['internal_mcp_enabled'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      settings: json['settings'] as Map<String, dynamic>? ?? const {},
     );
   }
 }

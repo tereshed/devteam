@@ -17,16 +17,12 @@ const agentRoles = [
 
 /// Статусы задачи (`TaskStatus` на бэкенде).
 const taskStatuses = [
-  'pending',
-  'planning',
-  'in_progress',
-  'review',
-  'changes_requested',
-  'testing',
-  'completed',
+  'active',
+  'needs_human',
+  'paused',
+  'done',
   'failed',
   'cancelled',
-  'paused',
 ];
 
 /// Частые статусы для сравнений в UI вместо magic-string.

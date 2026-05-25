@@ -174,6 +174,10 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 	// Phase 1 §1.5: БД — единственный source of truth для model, temperature, max_tokens, system_prompt.
 	if assignedAgent.Model != nil && *assignedAgent.Model != "" {
 		input.Model = *assignedAgent.Model
+	} else if assignedAgent.ExecutionKind == models.AgentExecutionKindSandbox && len(assignedAgent.CodeBackendSettings) > 0 {
+		if settings, err := decodeCodeBackendSettings(assignedAgent.CodeBackendSettings); err == nil && settings.Model != "" {
+			input.Model = settings.Model
+		}
 	}
 	if assignedAgent.Temperature != nil {
 		input.Temperature = assignedAgent.Temperature

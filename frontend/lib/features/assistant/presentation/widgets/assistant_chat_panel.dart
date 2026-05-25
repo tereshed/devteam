@@ -9,6 +9,7 @@ import 'package:frontend/features/assistant/presentation/widgets/assistant_messa
 import 'package:frontend/features/assistant/presentation/widgets/assistant_session_picker.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_tool_call_card.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_input.dart';
+import 'package:frontend/features/onboarding/data/my_agents_providers.dart';
 import 'package:go_router/go_router.dart';
 
 /// Главная панель чата с ассистентом (Sprint 21 §10 frontend).
@@ -110,6 +111,36 @@ class _AssistantChatPanelState extends ConsumerState<AssistantChatPanel> {
   Widget build(BuildContext context) {
     final l10n = requireAppLocalizations(context, where: 'AssistantChatPanel');
     final state = ref.watch(assistantChatControllerProvider);
+
+    final myAgentsAsync = ref.watch(myAgentsListProvider);
+    final assistantAgent = myAgentsAsync.asData?.value.items
+        .where((a) => a.role == 'assistant')
+        .firstOrNull;
+    final settings = assistantAgent?.settings ?? const {};
+    var sttProvider = settings['stt_provider'] as String?;
+    var sttModel = settings['stt_model'] as String?;
+
+    if (sttProvider == null && sttModel != null && sttModel.isNotEmpty) {
+      // Migrate old config on the fly
+      if (sttModel == 'system') {
+        sttProvider = 'system';
+        sttModel = '';
+      } else if (sttModel == 'whisper_openai') {
+        sttProvider = 'openai';
+        sttModel = 'whisper-1';
+      } else if (sttModel == 'whisper_groq') {
+        sttProvider = 'groq';
+        sttModel = 'whisper-large-v3';
+      } else if (sttModel == 'gemini_voice') {
+        sttProvider = 'gemini';
+        sttModel = 'gemini-1.5-flash';
+      } else {
+        sttProvider = 'system';
+      }
+    }
+
+    final isVoiceEnabled = sttProvider != null && sttProvider.isNotEmpty && sttProvider != 'disabled';
+    final voiceModel = sttProvider == 'system' ? 'system' : sttModel;
 
     // Listener-style: при появлении pendingNavigate выполняем context.go().
     ref.listen(
@@ -236,6 +267,8 @@ class _AssistantChatPanelState extends ConsumerState<AssistantChatPanel> {
             isSending: state.isBusy,
             hintText: l10n.assistantInputHint,
             sendTooltip: l10n.assistantSend,
+            isVoiceEnabled: isVoiceEnabled,
+            voiceModel: voiceModel,
           ),
         ),
       ],

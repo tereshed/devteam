@@ -1300,6 +1300,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskStatusUnknownStatus => 'Unknown status';
 
   @override
+  String get taskStatusActive => 'In progress';
+
+  @override
+  String get taskStatusDone => 'Done';
+
+  @override
+  String get taskStatusNeedsHuman => 'Needs human';
+
+  @override
   String get tasksSearchHint => 'Search tasks';
 
   @override
@@ -1636,6 +1645,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String teamAgentEditToolsListEntryLabel(String name, String category) {
     return '$name ($category)';
   }
+
+  @override
+  String get teamAgentEditTestRun => 'Test run';
+
+  @override
+  String get teamAgentEditTestRunSuccess => 'Test task successfully started';
+
+  @override
+  String get teamAgentEditTestRunError => 'Failed to start test task';
 
   @override
   String get chatMessageCopyCode => 'Copy code';
@@ -2647,4 +2665,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingGoToTeam => 'Configure agents';
+
+  @override
+  String get chatInputVoiceTooltip => 'Voice input (Alt+V)';
+
+  @override
+  String get chatInputVoiceDisabledTooltip =>
+      'Voice input is not active (configure the speech recognition model in assistant settings)';
+
+  @override
+  String chatInputVoiceRecordingHint(int seconds) {
+    return 'Recording... Speak (${seconds}s). Press Alt+V to complete';
+  }
 }

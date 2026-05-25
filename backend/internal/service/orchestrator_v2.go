@@ -279,17 +279,42 @@ func (o *Orchestrator) scheduleCancelNotify(taskID uuid.UUID) func(context.Conte
 // ─────────────────────────────────────────────────────────────────────────────
 
 func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *models.Task) (RouterState, error) {
-	// Все enabled-агенты, ИМЕЮЩИЕ непустое role_description. Без этого фильтра
-	// в каталог попадают: (a) leaked-агенты, созданные тестами через POST /agents
-	// без description'а (cost-leak Phase 2: 289 шт. накопилось за день, раздувало
-	// router prompt до 7k+ токенов на каждый вызов), (b) ассистент (он не pipeline-
-	// агент, router его не выбирает). LLM не может ничего полезного с агентом
-	// без description'а, поэтому исключаем их из каталога целиком.
-	var agents []*models.Agent
+	var teamID uuid.UUID
+	if task.TeamID != nil {
+		teamID = *task.TeamID
+	} else {
+		var err error
+		teamID, err = getProjectTeamID(tx, task.ProjectID)
+		if err != nil {
+			return RouterState{}, fmt.Errorf("find project team: %w", err)
+		}
+	}
+
+	// Все enabled-агенты, ИМЕЮЩИЕ непустое role_description.
+	// Фильтруем по (team_id = teamID OR team_id IS NULL) и дедуплицируем, предпочитая командных агентов.
+	var loaded []*models.Agent
 	if err := tx.WithContext(ctx).
-		Where("is_active = ? AND role_description IS NOT NULL AND role_description <> ''", true).
-		Find(&agents).Error; err != nil {
+		Where("(team_id = ? OR team_id IS NULL) AND is_active = ? AND role_description IS NOT NULL AND role_description <> ''", teamID, true).
+		Find(&loaded).Error; err != nil {
 		return RouterState{}, fmt.Errorf("load agents: %w", err)
+	}
+
+	agentsMap := make(map[string]*models.Agent)
+	for _, a := range loaded {
+		existing, ok := agentsMap[a.Name]
+		if !ok {
+			agentsMap[a.Name] = a
+		} else {
+			// Если существующий агент глобальный, а текущий привязан к команде — заменяем командным
+			if existing.TeamID == nil && a.TeamID != nil {
+				agentsMap[a.Name] = a
+			}
+		}
+	}
+
+	agents := make([]*models.Agent, 0, len(agentsMap))
+	for _, a := range agentsMap {
+		agents = append(agents, a)
 	}
 
 	// Артефакты — только metadata, только status=ready (Router их видит в истории).
@@ -313,6 +338,7 @@ func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *m
 
 	return RouterState{
 		Task:      task,
+		TeamID:    teamID,
 		Agents:    agents,
 		Artifacts: artifacts,
 		InFlight:  inflight,
@@ -389,11 +415,27 @@ func (o *Orchestrator) enqueueAgentJobs(ctx context.Context, tx *gorm.DB, task *
 //
 // Для sandbox-агента в payload кладётся base_branch — AgentWorker по нему аллоцирует.
 func (o *Orchestrator) enqueueOneAgentJob(ctx context.Context, tx *gorm.DB, task *models.Task, req *AgentRequest, baseBranch string) error {
+	var teamID uuid.UUID
+	var err error
+	if task.TeamID != nil {
+		teamID = *task.TeamID
+	} else {
+		teamID, err = getProjectTeamID(tx, task.ProjectID)
+		if err != nil {
+			return fmt.Errorf("find project team: %w", err)
+		}
+	}
+
 	// Загружаем агента чтобы понять llm vs sandbox.
 	var agentRec models.Agent
-	if err := tx.WithContext(ctx).Where("name = ? AND is_active = ?", req.Name, true).
-		First(&agentRec).Error; err != nil {
-		return fmt.Errorf("load agent %q: %w", req.Name, err)
+	err = tx.WithContext(ctx).Where("team_id = ? AND name = ? AND is_active = ?", teamID, req.Name, true).
+		First(&agentRec).Error
+	if err != nil {
+		// Fallback to global agent
+		if errGlobal := tx.WithContext(ctx).Where("team_id IS NULL AND name = ? AND is_active = ?", req.Name, true).
+			First(&agentRec).Error; errGlobal != nil {
+			return fmt.Errorf("load agent %q: %w", req.Name, err)
+		}
 	}
 
 	payload := models.AgentJobPayload{
@@ -520,4 +562,17 @@ func mapOutcomeToTaskState(o models.RouterDecisionOutcome) (models.TaskState, er
 	default:
 		return "", fmt.Errorf("orchestrator: unknown router outcome %q", o)
 	}
+}
+
+func getProjectTeamID(db *gorm.DB, projectID uuid.UUID) (uuid.UUID, error) {
+	var team models.Team
+	// Try development team first
+	if err := db.Where("project_id = ? AND type = ?", projectID, "development").First(&team).Error; err == nil {
+		return team.ID, nil
+	}
+	// Fallback to any team of this project
+	if err := db.Where("project_id = ?", projectID).First(&team).Error; err == nil {
+		return team.ID, nil
+	}
+	return uuid.Nil, fmt.Errorf("no team found for project %s", projectID)
 }

@@ -137,7 +137,7 @@ func (s *teamService) Create(ctx context.Context, projectID uuid.UUID, req dto.C
 			return err
 		}
 		if s.agentSvc != nil {
-			if err := s.agentSvc.CreateDefaultProjectAgents(txCtx, team.ID); err != nil {
+			if err := s.agentSvc.CreateDefaultProjectAgents(txCtx, team.ID, string(team.Type)); err != nil {
 				return err
 			}
 		}
@@ -265,17 +265,96 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 		}
 	}
 
-	if req.ModelPresent() {
-		if req.ModelClear() {
-			agent.Model = nil
-		} else if v, ok := req.ModelValue(); ok {
+	if req.CodeBackendPresent() {
+		if req.CodeBackendClear() {
+			agent.CodeBackend = nil
+			agent.ExecutionKind = models.AgentExecutionKindLLM
+			// transition model from settings JSON to column if needed
+			var settings AgentCodeBackendSettings
+			if len(agent.CodeBackendSettings) > 0 {
+				_ = json.Unmarshal(agent.CodeBackendSettings, &settings)
+			}
+			if settings.Model != "" {
+				m := settings.Model
+				agent.Model = &m
+				settings.Model = ""
+				bytes, _ := json.Marshal(settings)
+				agent.CodeBackendSettings = bytes
+			}
+		} else if v, ok := req.CodeBackendValue(); ok {
 			trimmed := strings.TrimSpace(v)
 			if trimmed == "" {
-				agent.Model = nil
-			} else if len(trimmed) > maxAgentModelLen {
-				return nil, ErrTeamAgentInvalidModel
+				agent.CodeBackend = nil
+				agent.ExecutionKind = models.AgentExecutionKindLLM
+				// transition model from settings JSON to column if needed
+				var settings AgentCodeBackendSettings
+				if len(agent.CodeBackendSettings) > 0 {
+					_ = json.Unmarshal(agent.CodeBackendSettings, &settings)
+				}
+				if settings.Model != "" {
+					m := settings.Model
+					agent.Model = &m
+					settings.Model = ""
+					bytes, _ := json.Marshal(settings)
+					agent.CodeBackendSettings = bytes
+				}
 			} else {
-				agent.Model = &trimmed
+				cb := models.CodeBackend(trimmed)
+				if !cb.IsValid() {
+					return nil, ErrTeamAgentInvalidCodeBackend
+				}
+				agent.CodeBackend = &cb
+				agent.ExecutionKind = models.AgentExecutionKindSandbox
+				// transition model from column to settings JSON if needed
+				if agent.Model != nil {
+					var settings AgentCodeBackendSettings
+					if len(agent.CodeBackendSettings) > 0 {
+						_ = json.Unmarshal(agent.CodeBackendSettings, &settings)
+					}
+					settings.Model = *agent.Model
+					bytes, _ := json.Marshal(settings)
+					agent.CodeBackendSettings = bytes
+					agent.Model = nil
+				}
+			}
+		}
+	}
+
+	if req.ModelPresent() {
+		if agent.ExecutionKind == models.AgentExecutionKindSandbox {
+			var settings AgentCodeBackendSettings
+			if len(agent.CodeBackendSettings) > 0 {
+				if err := json.Unmarshal(agent.CodeBackendSettings, &settings); err != nil {
+					return nil, err
+				}
+			}
+			if req.ModelClear() {
+				settings.Model = ""
+			} else if v, ok := req.ModelValue(); ok {
+				trimmed := strings.TrimSpace(v)
+				if len(trimmed) > maxAgentModelLen {
+					return nil, ErrTeamAgentInvalidModel
+				}
+				settings.Model = trimmed
+			}
+			settingsBytes, err := json.Marshal(settings)
+			if err != nil {
+				return nil, err
+			}
+			agent.CodeBackendSettings = settingsBytes
+			agent.Model = nil
+		} else {
+			if req.ModelClear() {
+				agent.Model = nil
+			} else if v, ok := req.ModelValue(); ok {
+				trimmed := strings.TrimSpace(v)
+				if trimmed == "" {
+					agent.Model = nil
+				} else if len(trimmed) > maxAgentModelLen {
+					return nil, ErrTeamAgentInvalidModel
+				} else {
+					agent.Model = &trimmed
+				}
 			}
 		}
 	}
@@ -295,18 +374,6 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 			agent.SystemPrompt = nil
 		} else if v, ok := req.SystemPromptValue(); ok {
 			agent.SystemPrompt = &v
-		}
-	}
-
-	if req.CodeBackendPresent() {
-		if req.CodeBackendClear() {
-			agent.CodeBackend = nil
-		} else if v, ok := req.CodeBackendValue(); ok {
-			cb := models.CodeBackend(v)
-			if !cb.IsValid() {
-				return nil, ErrTeamAgentInvalidCodeBackend
-			}
-			agent.CodeBackend = &cb
 		}
 	}
 
@@ -395,12 +462,37 @@ func (s *teamService) UpdateAgentSettings(ctx context.Context, actor AgentSettin
 		trimmed := strings.TrimSpace(*req.CodeBackend)
 		if trimmed == "" {
 			a.CodeBackend = nil
+			a.ExecutionKind = models.AgentExecutionKindLLM
+			// transition model from settings JSON to column
+			var settings AgentCodeBackendSettings
+			if len(a.CodeBackendSettings) > 0 {
+				_ = json.Unmarshal(a.CodeBackendSettings, &settings)
+			}
+			if settings.Model != "" {
+				m := settings.Model
+				a.Model = &m
+				settings.Model = ""
+				bytes, _ := json.Marshal(settings)
+				a.CodeBackendSettings = bytes
+			}
 		} else {
 			cb := models.CodeBackend(trimmed)
 			if !cb.IsValid() {
 				return nil, ErrTeamAgentInvalidCodeBackend
 			}
 			a.CodeBackend = &cb
+			a.ExecutionKind = models.AgentExecutionKindSandbox
+			// transition model from column to settings JSON
+			if a.Model != nil {
+				var settings AgentCodeBackendSettings
+				if len(a.CodeBackendSettings) > 0 {
+					_ = json.Unmarshal(a.CodeBackendSettings, &settings)
+				}
+				settings.Model = *a.Model
+				bytes, _ := json.Marshal(settings)
+				a.CodeBackendSettings = bytes
+				a.Model = nil
+			}
 		}
 	}
 
@@ -408,6 +500,20 @@ func (s *teamService) UpdateAgentSettings(ctx context.Context, actor AgentSettin
 		// Проверим, что это валидный JSON-объект.
 		if !isJSONObject(req.CodeBackendSettings) {
 			return nil, fmt.Errorf("code_backend_settings must be a JSON object")
+		}
+		// If transitioning/transitioned to sandbox, and model is not set in incoming settings, copy it from previous settings.
+		if a.ExecutionKind == models.AgentExecutionKindSandbox {
+			var newSettings AgentCodeBackendSettings
+			if err := json.Unmarshal(req.CodeBackendSettings, &newSettings); err == nil && newSettings.Model == "" {
+				var currentSettings AgentCodeBackendSettings
+				if len(a.CodeBackendSettings) > 0 {
+					_ = json.Unmarshal(a.CodeBackendSettings, &currentSettings)
+				}
+				if currentSettings.Model != "" {
+					newSettings.Model = currentSettings.Model
+					req.CodeBackendSettings, _ = json.Marshal(newSettings)
+				}
+			}
 		}
 		// Sprint 15.N4 (extends M1): строгая валидация — DisallowUnknownFields отсекает мусор,
 		// плюс regex-проверки на model/MCP-имена/env-ключи. Без этого «{"shell":"/bin/bash"}»

@@ -19,6 +19,8 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
   
   AgentV2? _lastAgent;
   LlmIntegrationProvider? _selectedProvider;
+  String? _selectedSttProvider;
+  final _sttModelSearchController = SearchController();
   bool _isSaving = false;
   String? _errorMessage;
 
@@ -35,6 +37,7 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
   @override
   void dispose() {
     _modelSearchController.dispose();
+    _sttModelSearchController.dispose();
     super.dispose();
   }
 
@@ -96,8 +99,36 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
         return 'Zhipu AI';
       case LlmIntegrationProvider.openrouter:
         return 'OpenRouter';
+      case LlmIntegrationProvider.openai:
+        return 'OpenAI';
+      case LlmIntegrationProvider.gemini:
+        return 'Gemini';
       default:
         return provider.name;
+    }
+  }
+
+  List<String> _sttSuggestionsFor(String providerKind) {
+    switch (providerKind) {
+      case 'openai':
+        return [
+          'whisper-1',
+        ];
+      case 'openrouter':
+        return [
+          'openai/whisper-large-v3',
+        ];
+      case 'gemini':
+        return [
+          'gemini-2.5-flash',
+          'gemini-1.5-flash',
+        ];
+      case 'groq':
+        return [
+          'whisper-large-v3',
+        ];
+      default:
+        return const [];
     }
   }
 
@@ -168,11 +199,23 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
       final repo = ref.read(myAgentsRepositoryProvider);
       final kind = _providerToKind(_selectedProvider!);
       final model = _modelSearchController.text.trim();
+      final currentSettings = Map<String, dynamic>.from(_lastAgent?.settings ?? const {});
+      if (_selectedSttProvider == null) {
+        currentSettings['stt_provider'] = null;
+        currentSettings['stt_model'] = null;
+      } else if (_selectedSttProvider == 'system') {
+        currentSettings['stt_provider'] = 'system';
+        currentSettings['stt_model'] = null;
+      } else {
+        currentSettings['stt_provider'] = _selectedSttProvider;
+        currentSettings['stt_model'] = _sttModelSearchController.text.trim();
+      }
 
       await repo.update(
         agentId,
         providerKind: kind,
         model: model,
+        settings: currentSettings,
       );
 
       // Инвалидируем провайдеры для обновления UI и статуса ассистента
@@ -250,6 +293,30 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
               ? _kindToProvider(assistant.providerKind!)
               : null;
           _modelSearchController.text = assistant.model ?? '';
+          
+          final oldSttModel = assistant.settings['stt_model'] as String?;
+          _selectedSttProvider = assistant.settings['stt_provider'] as String?;
+          if (_selectedSttProvider == null && oldSttModel != null && oldSttModel.isNotEmpty) {
+            // Migrate old configs
+            if (oldSttModel == 'system') {
+              _selectedSttProvider = 'system';
+              _sttModelSearchController.text = '';
+            } else if (oldSttModel == 'whisper_openai') {
+              _selectedSttProvider = 'openai';
+              _sttModelSearchController.text = 'whisper-1';
+            } else if (oldSttModel == 'whisper_groq') {
+              _selectedSttProvider = 'groq';
+              _sttModelSearchController.text = 'whisper-large-v3';
+            } else if (oldSttModel == 'gemini_voice') {
+              _selectedSttProvider = 'gemini';
+              _sttModelSearchController.text = 'gemini-1.5-flash';
+            } else {
+              _selectedSttProvider = 'system';
+              _sttModelSearchController.text = '';
+            }
+          } else {
+            _sttModelSearchController.text = oldSttModel ?? '';
+          }
         }
 
         // Получаем текущие подключения LLM-провайдеров
@@ -503,6 +570,192 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
                       return list;
                     },
                   ),
+                  const SizedBox(height: 20),
+
+                  // Выпадающий список для провайдера распознавания речи
+                  DropdownButtonFormField<String>(
+                    value: _selectedSttProvider,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Провайдер распознавания речи',
+                      prefixIcon: const Icon(Icons.mic_none_outlined),
+                      helperText: 'Выберите провайдера для активации голосового ввода',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('Выключен'),
+                      ),
+                      const DropdownMenuItem<String>(
+                        value: 'system',
+                        child: Text('Системное (локально)'),
+                      ),
+                      // Подключенные провайдеры
+                      ...LlmIntegrationProvider.values.where((p) {
+                        return integrationsState.connections[p]?.status ==
+                            LlmProviderConnectionStatus.connected;
+                      }).map((p) {
+                        final name = _getProviderName(p);
+                        return DropdownMenuItem<String>(
+                          value: p.jsonValue,
+                          child: Text('$name (API)'),
+                        );
+                      }),
+                      // Если текущий провайдер сохранен, но не подключен (или не в списке), показываем его тоже
+                      if (_selectedSttProvider != null &&
+                          _selectedSttProvider != 'system' &&
+                          !LlmIntegrationProvider.values.any((p) =>
+                              p.jsonValue == _selectedSttProvider &&
+                              integrationsState.connections[p]?.status ==
+                                  LlmProviderConnectionStatus.connected))
+                        DropdownMenuItem<String>(
+                          value: _selectedSttProvider,
+                          child: Text(
+                            '${LlmIntegrationProvider.tryParse(_selectedSttProvider!) != null ? _getProviderName(LlmIntegrationProvider.tryParse(_selectedSttProvider!)!) : _selectedSttProvider} (API, Не подключен)',
+                          ),
+                        ),
+                    ],
+                    onChanged: _isSaving
+                        ? null
+                        : (val) {
+                            setState(() {
+                              _selectedSttProvider = val;
+                              // Устанавливаем дефолтную модель при смене провайдера, если нужно
+                              if (val != null && val != 'system') {
+                                final suggestions = _sttSuggestionsFor(val);
+                                if (suggestions.isNotEmpty) {
+                                  _sttModelSearchController.text = suggestions.first;
+                                } else {
+                                  _sttModelSearchController.text = '';
+                                }
+                              } else {
+                                _sttModelSearchController.text = '';
+                              }
+                            });
+                          },
+                  ),
+
+                  if (_selectedSttProvider != null && _selectedSttProvider != 'system') ...[
+                    const SizedBox(height: 20),
+                    // Поле выбора модели распознавания со строкой поиска
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final sttProviderKind = _selectedSttProvider!;
+                        final AsyncValue<List<String>> sttModelsAsync = ref.watch(
+                          availableModelsProvider(sttProviderKind),
+                        );
+
+                        return SearchAnchor(
+                          searchController: _sttModelSearchController,
+                          builder: (BuildContext context, SearchController controller) {
+                            return TextFormField(
+                              controller: controller,
+                              enabled: !_isSaving,
+                              decoration: InputDecoration(
+                                labelText: 'Модель распознавания речи',
+                                prefixIcon: const Icon(Icons.psychology_outlined),
+                                suffixIcon: sttModelsAsync.maybeWhen(
+                                  loading: () => const Padding(
+                                    padding: EdgeInsets.all(12.0),
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  ),
+                                  orElse: () => const Icon(Icons.arrow_drop_down),
+                                ),
+                                helperText: 'Введите название модели распознавания или выберите из списка',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              onTap: () {
+                                controller.openView();
+                              },
+                              onChanged: (_) {
+                                controller.openView();
+                              },
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Укажите модель распознавания речи';
+                                }
+                                return null;
+                              },
+                            );
+                          },
+                          suggestionsBuilder: (BuildContext context, SearchController controller) {
+                            final text = controller.text;
+                            
+                            final List<String> allSuggestions;
+                            final dynamicModels = sttModelsAsync.asData?.value;
+                            if (dynamicModels != null && dynamicModels.isNotEmpty) {
+                              // Приоритизируем whisper/audio/voice/speech модели в списке
+                              final sttModels = dynamicModels
+                                  .where((m) =>
+                                      m.toLowerCase().contains('whisper') ||
+                                      m.toLowerCase().contains('audio') ||
+                                      m.toLowerCase().contains('voice') ||
+                                      m.toLowerCase().contains('speech'))
+                                  .toList();
+                              final otherModels = dynamicModels
+                                  .where((m) => !sttModels.contains(m))
+                                  .toList();
+                              allSuggestions = [...sttModels, ...otherModels];
+                            } else {
+                              allSuggestions = _sttSuggestionsFor(sttProviderKind);
+                            }
+                            
+                            final isExactMatch = allSuggestions.any((s) => s.toLowerCase() == text.trim().toLowerCase());
+                            final filtered = isExactMatch
+                                ? allSuggestions
+                                : allSuggestions
+                                    .where((m) => m.toLowerCase().contains(text.toLowerCase()))
+                                    .toList();
+
+                            final List<Widget> list = [];
+
+                            if (text.isNotEmpty && !allSuggestions.contains(text)) {
+                              list.add(
+                                ListTile(
+                                  leading: const Icon(Icons.add),
+                                  title: Text('Использовать кастомную модель: "$text"'),
+                                  onTap: () {
+                                    controller.closeView(text);
+                                  },
+                                ),
+                              );
+                            }
+
+                            list.addAll(
+                              filtered.map((model) => ListTile(
+                                title: Text(model),
+                                onTap: () {
+                                  controller.closeView(model);
+                                },
+                              )),
+                            );
+
+                            if (list.isEmpty) {
+                              list.add(
+                                ListTile(
+                                  title: const Text('Модели не найдены. Нажмите Enter, чтобы использовать введенный текст.'),
+                                  onTap: () {
+                                    controller.closeView(text);
+                                  },
+                                ),
+                              );
+                            }
+
+                            return list;
+                          },
+                        );
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 24),
 
                   if (_errorMessage != null) ...[

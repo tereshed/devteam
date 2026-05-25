@@ -1743,7 +1743,7 @@ func TestProjectService_Reindex_LocalProject_Error(t *testing.T) {
 }
 
 // newAgentSvcForProjectTest builds an AgentService with in-memory repos and
-// seeded role prompts for orchestrator + router, suitable for project creation tests.
+// seeded role prompts for all default agents, suitable for project creation tests.
 func newAgentSvcForProjectTest(t *testing.T) (*AgentService, *memAgentRepo) {
 	t.Helper()
 	agentRepo := newMemAgentRepo()
@@ -1751,6 +1751,12 @@ func newAgentSvcForProjectTest(t *testing.T) (*AgentService, *memAgentRepo) {
 	rolePromptRepo := newMemRolePromptRepo()
 	rolePromptRepo.seed(string(models.AgentRoleOrchestrator), "You are the orchestrator.")
 	rolePromptRepo.seed(string(models.AgentRoleRouter), "You are the router.")
+	rolePromptRepo.seed(string(models.AgentRolePlanner), "You are the planner.")
+	rolePromptRepo.seed(string(models.AgentRoleDecomposer), "You are the decomposer.")
+	rolePromptRepo.seed(string(models.AgentRoleReviewer), "You are the reviewer.")
+	rolePromptRepo.seed(string(models.AgentRoleDeveloper), "You are the developer.")
+	rolePromptRepo.seed(string(models.AgentRoleTester), "You are the tester.")
+	rolePromptRepo.seed(string(models.AgentRoleMerger), "You are the merger.")
 
 	svc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
 	svc.WithRolePromptRepo(rolePromptRepo)
@@ -1787,8 +1793,8 @@ func TestProjectService_Create_CreatesDefaultProjectAgents(t *testing.T) {
 
 	// Verify that orchestrator and router agents were created in the agent repo.
 	agents, total, _ := agentRepo.List(ctx, repository.AgentFilter{})
-	require.Equal(t, int64(2), total)
-	require.Equal(t, 2, len(agents))
+	require.Equal(t, int64(8), total)
+	require.Equal(t, 8, len(agents))
 
 	roles := map[models.AgentRole]models.Agent{}
 	for _, a := range agents {

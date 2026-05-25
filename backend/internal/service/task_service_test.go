@@ -551,6 +551,32 @@ func TestTaskCreate_AgentNotInTeam(t *testing.T) {
 	assert.ErrorIs(t, err, ErrAgentNotInTeam)
 }
 
+func TestTaskCreate_WithTeam_Success(t *testing.T) {
+	tr, _, ps, ts, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	teamID := uuid.New()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+	ts.On("ListByProjectID", ctx, tsProjectID).Return([]models.Team{{ID: teamID, ProjectID: tsProjectID}}, nil)
+	tr.On("Create", ctx, mock.Anything).Run(func(args mock.Arguments) {
+		args.Get(1).(*models.Task).ID = tsTaskID
+	}).Return(nil)
+
+	got, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{Title: "x", TeamID: &teamID})
+	require.NoError(t, err)
+	assert.Equal(t, &teamID, got.TeamID)
+}
+
+func TestTaskCreate_WithTeam_NotFound(t *testing.T) {
+	_, _, ps, ts, _, svc := newTaskServiceHarness()
+	ctx := context.Background()
+	teamID := uuid.New()
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+	ts.On("ListByProjectID", ctx, tsProjectID).Return([]models.Team{}, nil)
+
+	_, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{Title: "x", TeamID: &teamID})
+	assert.ErrorIs(t, err, ErrTeamNotInProject)
+}
+
 func TestTaskGetByID_Success(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()

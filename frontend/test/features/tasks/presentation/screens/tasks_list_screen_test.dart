@@ -460,11 +460,11 @@ void main() {
           items: [
             makeTaskListItemFixture(
               id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-              status: 'pending',
+              status: 'active',
             ),
             makeTaskListItemFixture(
               id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-              status: 'completed',
+              status: 'done',
             ),
           ],
           total: 2,
@@ -489,8 +489,8 @@ void main() {
         final l10n = AppLocalizations.of(
           tester.element(find.byType(TasksListScreen)),
         )!;
-        expect(find.text(l10n.taskStatusPending), findsAtLeastNWidgets(2));
-        expect(find.text(l10n.taskStatusCompleted), findsAtLeastNWidgets(2));
+        expect(find.text(l10n.taskStatusActive), findsAtLeastNWidgets(2));
+        expect(find.text(l10n.taskStatusDone), findsAtLeastNWidgets(2));
       },
     );
 
@@ -636,7 +636,7 @@ void main() {
       const tid = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
       final seed = makeTaskListStateFixture(
         items: [
-          makeTaskListItemFixture(id: tid, status: 'pending', title: 'WS row'),
+          makeTaskListItemFixture(id: tid, status: 'active', title: 'WS row'),
         ],
         total: 1,
       );
@@ -654,7 +654,7 @@ void main() {
       final l10n = AppLocalizations.of(
         tester.element(find.byType(TasksListScreen)),
       )!;
-      expect(find.text(taskStatusLabel(l10n, 'pending')), findsWidgets);
+      expect(find.text(taskStatusLabel(l10n, 'active')), findsWidgets);
 
       final container = ProviderScope.containerOf(
         tester.element(find.byType(TasksListScreen)),
@@ -667,8 +667,8 @@ void main() {
               v: 1,
               projectId: kTaskFixtureProjectId,
               taskId: tid,
-              previousStatus: 'pending',
-              status: 'in_progress',
+              previousStatus: 'active',
+              status: 'done',
               parentTaskId: null,
               assignedAgentId: null,
               agentRole: null,
@@ -676,7 +676,7 @@ void main() {
             ),
           );
       await tester.pump();
-      expect(find.text(taskStatusLabel(l10n, 'in_progress')), findsWidgets);
+      expect(find.text(taskStatusLabel(l10n, 'done')), findsWidgets);
     });
   });
 }

@@ -761,6 +761,12 @@ func newAgentSvcWithFactories(t *testing.T) (*AgentService, *memAgentRepo, *memS
 	rolePromptRepo.seed(string(models.AgentRoleAssistant), "You are the assistant.")
 	rolePromptRepo.seed(string(models.AgentRoleOrchestrator), "You are the orchestrator.")
 	rolePromptRepo.seed(string(models.AgentRoleRouter), "You are the router.")
+	rolePromptRepo.seed(string(models.AgentRolePlanner), "You are the planner.")
+	rolePromptRepo.seed(string(models.AgentRoleDecomposer), "You are the decomposer.")
+	rolePromptRepo.seed(string(models.AgentRoleReviewer), "You are the reviewer.")
+	rolePromptRepo.seed(string(models.AgentRoleDeveloper), "You are the developer.")
+	rolePromptRepo.seed(string(models.AgentRoleTester), "You are the tester.")
+	rolePromptRepo.seed(string(models.AgentRoleMerger), "You are the merger.")
 
 	svc := NewAgentService(agentRepo, secretRepo, makeAESEncryptor(t), newMemTxManager())
 	svc.WithRolePromptRepo(rolePromptRepo).WithApiKeyRepo(apiKeyRepo)
@@ -834,7 +840,58 @@ func TestAgentService_CreateDefaultProjectAgents_HappyPath(t *testing.T) {
 	svc, agentRepo, _, _ := newAgentSvcWithFactories(t)
 	teamID := uuid.New()
 
-	if err := svc.CreateDefaultProjectAgents(context.Background(), teamID); err != nil {
+	if err := svc.CreateDefaultProjectAgents(context.Background(), teamID, "development"); err != nil {
+		t.Fatalf("CreateDefaultProjectAgents: %v", err)
+	}
+
+	agents, total, _ := agentRepo.List(context.Background(), repository.AgentFilter{TeamID: &teamID})
+	if total != 8 {
+		t.Fatalf("expected 8 agents, got %d", total)
+	}
+
+	roles := map[models.AgentRole]bool{}
+	for _, a := range agents {
+		roles[a.Role] = true
+		if a.TeamID == nil || *a.TeamID != teamID {
+			t.Errorf("agent %s: team_id mismatch", a.Name)
+		}
+		if a.SystemPrompt == nil || *a.SystemPrompt == "" {
+			t.Errorf("agent %s: system_prompt should be set", a.Name)
+		}
+		// model should only be non-nil for router, planner, decomposer, reviewer
+		switch a.Role {
+		case models.AgentRoleRouter, models.AgentRolePlanner, models.AgentRoleDecomposer, models.AgentRoleReviewer:
+			if a.Model == nil || *a.Model == "" {
+				t.Errorf("agent %s: expected configured model, got nil", a.Name)
+			}
+		default:
+			if a.Model != nil {
+				t.Errorf("agent %s: expected unconfigured model, got %v", a.Name, *a.Model)
+			}
+		}
+	}
+	expectedRoles := []models.AgentRole{
+		models.AgentRoleOrchestrator,
+		models.AgentRoleRouter,
+		models.AgentRolePlanner,
+		models.AgentRoleDecomposer,
+		models.AgentRoleReviewer,
+		models.AgentRoleDeveloper,
+		models.AgentRoleTester,
+		models.AgentRoleMerger,
+	}
+	for _, r := range expectedRoles {
+		if !roles[r] {
+			t.Errorf("role %s not created", r)
+		}
+	}
+}
+
+func TestAgentService_CreateDefaultProjectAgents_NonDevelopmentTeam(t *testing.T) {
+	svc, agentRepo, _, _ := newAgentSvcWithFactories(t)
+	teamID := uuid.New()
+
+	if err := svc.CreateDefaultProjectAgents(context.Background(), teamID, "marketing"); err != nil {
 		t.Fatalf("CreateDefaultProjectAgents: %v", err)
 	}
 
@@ -852,15 +909,30 @@ func TestAgentService_CreateDefaultProjectAgents_HappyPath(t *testing.T) {
 		if a.SystemPrompt == nil || *a.SystemPrompt == "" {
 			t.Errorf("agent %s: system_prompt should be set", a.Name)
 		}
-		if a.Model != nil {
-			t.Errorf("agent %s: model should be nil (unconfigured)", a.Name)
+	}
+
+	expectedRoles := []models.AgentRole{
+		models.AgentRoleOrchestrator,
+		models.AgentRoleRouter,
+	}
+	for _, r := range expectedRoles {
+		if !roles[r] {
+			t.Errorf("role %s not created", r)
 		}
 	}
-	if !roles[models.AgentRoleOrchestrator] {
-		t.Error("orchestrator not created")
+
+	unexpectedRoles := []models.AgentRole{
+		models.AgentRolePlanner,
+		models.AgentRoleDecomposer,
+		models.AgentRoleReviewer,
+		models.AgentRoleDeveloper,
+		models.AgentRoleTester,
+		models.AgentRoleMerger,
 	}
-	if !roles[models.AgentRoleRouter] {
-		t.Error("router not created")
+	for _, r := range unexpectedRoles {
+		if roles[r] {
+			t.Errorf("role %s should not be created for non-development team", r)
+		}
 	}
 }
 

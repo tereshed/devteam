@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/devteam/backend/internal/models"
@@ -32,6 +33,7 @@ type AgentResponse struct {
 	Model        *string                `json:"model"`
 	PromptID     *string                `json:"prompt_id,omitempty"`
 	PromptName   *string                `json:"prompt_name"`
+	SystemPrompt *string                `json:"system_prompt,omitempty"`
 	CodeBackend  *string                `json:"code_backend"`
 	ProviderKind *string                `json:"provider_kind,omitempty"`
 	IsActive     bool                   `json:"is_active"`
@@ -109,13 +111,24 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 			Category:         category,
 		})
 	}
+	var modelVal *string = agent.Model
+	if modelVal == nil && agent.ExecutionKind == models.AgentExecutionKindSandbox && len(agent.CodeBackendSettings) > 0 {
+		var settings struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(agent.CodeBackendSettings, &settings); err == nil && settings.Model != "" {
+			modelVal = &settings.Model
+		}
+	}
+
 	return AgentResponse{
 		ID:           agent.ID.String(),
 		Name:         agent.Name,
 		Role:         string(agent.Role),
-		Model:        agent.Model,
+		Model:        modelVal,
 		PromptID:     promptID,
 		PromptName:   promptName,
+		SystemPrompt: agent.SystemPrompt,
 		CodeBackend:  codeBackend,
 		ProviderKind: providerKind,
 		IsActive:     agent.IsActive,

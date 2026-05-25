@@ -81,6 +81,7 @@ func (a AgentRequest) TargetArtifactID() (uuid.UUID, bool) {
 // (поле Content в Artifact оставляется пустым/обрезанным; Router его не видит).
 type RouterState struct {
 	Task      *models.Task
+	TeamID    uuid.UUID
 	Agents    []*models.Agent     // только enabled (is_active=true)
 	Artifacts []models.Artifact   // только metadata (без content); только status=ready
 	InFlight  []models.TaskEvent  // незавершённые agent_job для этой задачи
@@ -106,6 +107,7 @@ func DefaultRouterConfig() RouterConfig {
 // (мокаем без gorm.DB). В реальной DI — поверх *gorm.DB.
 type AgentLoader interface {
 	GetAgentByName(ctx context.Context, name string) (*models.Agent, error)
+	GetAgentByTeamAndName(ctx context.Context, teamID uuid.UUID, name string) (*models.Agent, error)
 }
 
 // RouterService — оркестрационный сервис Router'а.
@@ -150,7 +152,7 @@ func (r *RouterService) Decide(ctx context.Context, state RouterState) (Decision
 		return Decision{}, fmt.Errorf("router: state.Task is required")
 	}
 
-	a, err := r.loader.GetAgentByName(ctx, r.cfg.RouterAgentName)
+	a, err := r.loader.GetAgentByTeamAndName(ctx, state.TeamID, r.cfg.RouterAgentName)
 	if err != nil {
 		return Decision{}, fmt.Errorf("router: load %q agent: %w", r.cfg.RouterAgentName, err)
 	}

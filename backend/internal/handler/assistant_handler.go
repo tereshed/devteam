@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -82,6 +83,54 @@ func (h *AssistantHandler) GetStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, status)
+}
+
+// Transcribe распознает аудиофайл в текст с использованием настроенного Speech-to-Text провайдера.
+// @Summary Распознавание аудио в текст
+// @Description Принимает аудиофайл (multipart/form-data) и возвращает распознанный текст.
+// @Tags assistant
+// @Security BearerAuth
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "Аудиофайл"
+// @Success 200 {object} map[string]string "Успешный ответ с текстом"
+// @Failure 400 {object} apierror.ErrorResponse "Невалидный запрос"
+// @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
+// @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
+// @Router /assistant/transcribe [post]
+func (h *AssistantHandler) Transcribe(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "missing file in request")
+		return
+	}
+
+	f, err := fileHeader.Open()
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "failed to open uploaded file")
+		return
+	}
+	defer f.Close()
+
+	audioBytes, err := io.ReadAll(f)
+	if err != nil {
+		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "failed to read uploaded file")
+		return
+	}
+
+	text, err := h.service.TranscribeAudio(c.Request.Context(), uid, audioBytes, fileHeader.Filename)
+	if err != nil {
+		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"text": text})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

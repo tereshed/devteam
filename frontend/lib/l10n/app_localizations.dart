@@ -2378,6 +2378,24 @@ abstract class AppLocalizations {
   /// **'Неизвестный статус'**
   String get taskStatusUnknownStatus;
 
+  /// Статус задачи active (в работе)
+  ///
+  /// In ru, this message translates to:
+  /// **'В работе'**
+  String get taskStatusActive;
+
+  /// Статус задачи done (выполнена)
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get taskStatusDone;
+
+  /// Статус задачи needs_human (требуется помощь)
+  ///
+  /// In ru, this message translates to:
+  /// **'Нужна помощь'**
+  String get taskStatusNeedsHuman;
+
   /// Подсказка поля поиска списка задач (12.4)
   ///
   /// In ru, this message translates to:
@@ -3013,6 +3031,24 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'{name} ({category})'**
   String teamAgentEditToolsListEntryLabel(String name, String category);
+
+  /// Кнопка тестового запуска задачи для агента
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестовый запуск'**
+  String get teamAgentEditTestRun;
+
+  /// Снекбар при успешном запуске тестовой задачи
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестовая задача успешно запущена'**
+  String get teamAgentEditTestRunSuccess;
+
+  /// Снекбар при ошибке запуска тестовой задачи
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось запустить тестовую задачу'**
+  String get teamAgentEditTestRunError;
 
   /// Подсказка кнопки копирования блока кода в чате
   ///
@@ -4897,6 +4933,24 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Настроить агентов'**
   String get onboardingGoToTeam;
+
+  /// No description provided for @chatInputVoiceTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Голосовой ввод (Alt+V)'**
+  String get chatInputVoiceTooltip;
+
+  /// No description provided for @chatInputVoiceDisabledTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Голосовой ввод не активен (настройте модель распознавания речи в настройках ассистента)'**
+  String get chatInputVoiceDisabledTooltip;
+
+  /// No description provided for @chatInputVoiceRecordingHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Идет запись... Говорите ({seconds}с). Нажмите Alt+V для завершения'**
+  String chatInputVoiceRecordingHint(int seconds);
 }
 
 class _AppLocalizationsDelegate

@@ -496,6 +496,9 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				// Статус конфигурации ассистента (есть ли ключи у пользователя).
 				assistant.GET("/status", deps.AssistantHandler.GetStatus)
 
+				// Распознавание аудио
+				assistant.POST("/transcribe", deps.AssistantHandler.Transcribe)
+
 				// Сессии: CRUD + история + send + confirm.
 				assistant.POST("/sessions", deps.AssistantHandler.CreateSession)
 				assistant.GET("/sessions", deps.AssistantHandler.ListSessions)

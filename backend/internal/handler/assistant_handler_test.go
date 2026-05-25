@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -103,6 +104,11 @@ func (m *MockAssistantService) StartStaleRecovery(ctx context.Context) {
 	m.Called(ctx)
 }
 
+func (m *MockAssistantService) TranscribeAudio(ctx context.Context, userID uuid.UUID, audioBytes []byte, filename string) (string, error) {
+	args := m.Called(ctx, userID, audioBytes, filename)
+	return args.String(0), args.Error(1)
+}
+
 func setupAssistantRouter(mockSvc *MockAssistantService, withAuth bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -120,6 +126,8 @@ func setupAssistantRouter(mockSvc *MockAssistantService, withAuth bool) *gin.Eng
 	}
 	{
 		assistant.GET("/active-tasks", h.ListActiveTasks)
+		assistant.GET("/status", h.GetStatus)
+		assistant.POST("/transcribe", h.Transcribe)
 		assistant.POST("/sessions", h.CreateSession)
 		assistant.GET("/sessions", h.ListSessions)
 		assistant.GET("/sessions/:id", h.GetSession)
@@ -269,4 +277,29 @@ func TestAssistant_ConfirmToolCall_NoPending(t *testing.T) {
 	var er apierror.ErrorResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &er))
 	assert.Equal(t, "no_pending_confirmation", er.Error)
+}
+
+func TestAssistant_Transcribe_Success(t *testing.T) {
+	mockSvc := new(MockAssistantService)
+	audioBytes := []byte("audio-data")
+	mockSvc.On("TranscribeAudio", mock.Anything, testAssistantUserID, audioBytes, "voice.wav").
+		Return("Hello from voice", nil)
+
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "voice.wav")
+	require.NoError(t, err)
+	_, err = part.Write(audioBytes)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/assistant/transcribe", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	setupAssistantRouter(mockSvc, true).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var got map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Equal(t, "Hello from voice", got["text"])
 }

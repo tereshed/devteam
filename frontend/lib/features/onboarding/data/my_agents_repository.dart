@@ -19,6 +19,7 @@ class MyAgentsRepository {
     String id, {
     String? model,
     String? providerKind,
+    Map<String, dynamic>? settings,
     CancelToken? cancelToken,
   }) async {
     final response = await _dio.put(
@@ -26,6 +27,7 @@ class MyAgentsRepository {
       data: {
         if (model != null) 'model': model,
         if (providerKind != null) 'provider_kind': providerKind,
+        if (settings != null) 'settings': settings,
       },
       cancelToken: cancelToken,
     );

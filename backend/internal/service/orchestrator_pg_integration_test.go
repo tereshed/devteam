@@ -20,6 +20,7 @@ import (
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/internal/seed"
 	"github.com/devteam/backend/internal/service"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -141,6 +142,10 @@ func reuseHarness(t *testing.T, dsn string, scriptedRouterOutputs []string, opts
 	gdb, err := gorm.Open(gormpostgres.New(gormpostgres.Config{DSN: dsn}), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("gorm.Open: %v", err)
+	}
+
+	if err := seed.SeedRolePrompts(context.Background(), gdb, nil); err != nil {
+		t.Fatalf("seed role prompts: %v", err)
 	}
 
 	cleanup := []func(){
@@ -321,6 +326,42 @@ func (h *pgHarness) createMinimalActiveTask(t *testing.T) uuid.UUID {
 		u.ID,
 	).Scan(&p).Error; err != nil {
 		t.Fatalf("insert project: %v", err)
+	}
+	var tm idRow
+	if err := h.gormDB.WithContext(ctx).Raw(
+		`INSERT INTO teams (id, project_id, name, type, created_at, updated_at)
+		 VALUES (gen_random_uuid(), ?, 'Default Dev Team', 'development', NOW(), NOW()) RETURNING id`,
+		p.ID,
+	).Scan(&tm).Error; err != nil {
+		t.Fatalf("insert team: %v", err)
+	}
+
+	// Seed team-level agents from agent_role_prompts for the new team.
+	// 1. LLM agents
+	if err := h.gormDB.WithContext(ctx).Exec(
+		`INSERT INTO agents (id, name, role, execution_kind, provider_kind, model, temperature, max_tokens, system_prompt, role_description, team_id, skills, settings, model_config, code_backend_settings, sandbox_permissions, is_active)
+		 SELECT gen_random_uuid(), role, role, 'llm',
+		        CASE WHEN role = 'reviewer' THEN 'anthropic' ELSE 'openrouter' END,
+		        CASE WHEN role = 'reviewer' THEN 'claude-haiku-4-5-20251001' ELSE 'deepseek/deepseek-v4-flash' END,
+		        CASE WHEN role = 'reviewer' THEN 0.2 WHEN role = 'planner' THEN 0.3 WHEN role = 'decomposer' THEN 0.3 ELSE 0.2 END,
+		        CASE WHEN role = 'reviewer' THEN 8192 WHEN role = 'planner' THEN 8192 WHEN role = 'decomposer' THEN 8192 ELSE 4096 END,
+		        content, description, ?, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, true
+		 FROM agent_role_prompts
+		 WHERE role IN ('orchestrator', 'router', 'planner', 'decomposer', 'reviewer')`,
+		tm.ID,
+	).Error; err != nil {
+		t.Fatalf("seed llm agents for team: %v", err)
+	}
+
+	// 2. Sandbox agents
+	if err := h.gormDB.WithContext(ctx).Exec(
+		`INSERT INTO agents (id, name, role, execution_kind, code_backend, system_prompt, role_description, team_id, skills, settings, model_config, code_backend_settings, sandbox_permissions, is_active, requires_code_context)
+		 SELECT gen_random_uuid(), role, role, 'sandbox', 'claude-code', content, description, ?, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, '{"permission_mode": "auto"}'::jsonb, '{"env_secret_keys": ["ANTHROPIC_API_KEY"]}'::jsonb, true, true
+		 FROM agent_role_prompts
+		 WHERE role IN ('developer', 'tester', 'merger')`,
+		tm.ID,
+	).Error; err != nil {
+		t.Fatalf("seed sandbox agents for team: %v", err)
 	}
 	if err := h.gormDB.WithContext(ctx).Raw(
 		`INSERT INTO tasks (id, project_id, title, description, priority, state, cancel_requested, current_step_no,
@@ -796,3 +837,97 @@ func TestPGIntegration_CancelAfterDone_Returns409(t *testing.T) {
 		t.Fatalf("GetByIDForUpdate after lock release: %v", err)
 	}
 }
+
+func TestPGIntegration_TaskWithExplicitTeam(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	h := startPgHarness(t, []string{
+		`{"done": true, "outcome": "done", "agents": [], "reason": "marketing task handled"}`,
+	})
+	defer h.Close()
+
+	ctx := context.Background()
+
+	// 1. Create User
+	type idRow struct{ ID string }
+	var u, p, tm, ta idRow
+	if err := h.gormDB.WithContext(ctx).Raw(
+		`INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
+		 VALUES (gen_random_uuid(), gen_random_uuid() || '@test', 'x', 'user', NOW(), NOW()) RETURNING id`,
+	).Scan(&u).Error; err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+
+	// 2. Create Project
+	if err := h.gormDB.WithContext(ctx).Raw(
+		`INSERT INTO projects (id, user_id, name, git_url, git_default_branch, created_at, updated_at)
+		 VALUES (gen_random_uuid(), ?, 'marketing-project', 'https://example.com/repo.git', 'main', NOW(), NOW()) RETURNING id`,
+		u.ID,
+	).Scan(&p).Error; err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	// 3. Create Team Type 'marketing' (if not exists)
+	if err := h.gormDB.WithContext(ctx).Exec(
+		`INSERT INTO team_types (id, code, name, is_system, created_at, updated_at)
+		 VALUES (gen_random_uuid(), 'marketing', 'Marketing', false, NOW(), NOW())
+		 ON CONFLICT (code) DO NOTHING`,
+	).Error; err != nil {
+		t.Fatalf("insert team type: %v", err)
+	}
+
+	// 4. Create Team 'marketing'
+	if err := h.gormDB.WithContext(ctx).Raw(
+		`INSERT INTO teams (id, project_id, name, type, created_at, updated_at)
+		 VALUES (gen_random_uuid(), ?, 'Marketing Team', 'marketing', NOW(), NOW()) RETURNING id`,
+		p.ID,
+	).Scan(&tm).Error; err != nil {
+		t.Fatalf("insert team: %v", err)
+	}
+
+	// 5. Seed Router Agent for this team
+	if err := h.gormDB.WithContext(ctx).Exec(
+		`INSERT INTO agents (id, name, role, execution_kind, provider_kind, model, temperature, max_tokens, system_prompt, role_description, team_id, skills, settings, model_config, code_backend_settings, sandbox_permissions, is_active)
+		 VALUES (gen_random_uuid(), 'router', 'router', 'llm', 'openrouter', 'deepseek/deepseek-v4-flash', 0.2, 4096, 'You are the marketing router.', 'Marketing Router', ?, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, true)`,
+		tm.ID,
+	).Error; err != nil {
+		t.Fatalf("insert agent: %v", err)
+	}
+
+	// 6. Create Task referencing the marketing team
+	if err := h.gormDB.WithContext(ctx).Raw(
+		`INSERT INTO tasks (id, project_id, team_id, title, description, priority, state, cancel_requested, current_step_no,
+		 created_by_type, created_by_id, context, artifacts, created_at, updated_at)
+		 VALUES (gen_random_uuid(), ?, ?, 'marketing campaign', 'campaign details', 'medium', 'active', false, 0,
+		         'user', ?, '{}'::jsonb, '{}'::jsonb, NOW(), NOW()) RETURNING id`,
+		p.ID, tm.ID, u.ID,
+	).Scan(&ta).Error; err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	taskUUID, err := uuid.Parse(ta.ID)
+	if err != nil {
+		t.Fatalf("parse task id %q: %v", ta.ID, err)
+	}
+
+	// Enqueue initial step
+	if err := h.orchestrator.EnqueueInitialStep(ctx, taskUUID); err != nil {
+		t.Fatalf("EnqueueInitialStep: %v", err)
+	}
+
+	// Step - should load the marketing router agent and execute it
+	if err := h.orchestrator.Step(ctx, taskUUID); err != nil {
+		t.Fatalf("Step: %v", err)
+	}
+
+	// Verify task state is done
+	var got struct{ State string }
+	if err := h.gormDB.Raw(`SELECT state FROM tasks WHERE id = ?`, taskUUID).Scan(&got).Error; err != nil {
+		t.Fatalf("read task state: %v", err)
+	}
+	if got.State != "done" {
+		t.Errorf("expected state=done, got %q", got.State)
+	}
+}
+

@@ -15,11 +15,17 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime/multipart"
+	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -183,6 +189,9 @@ type AssistantService interface {
 	// StartStaleRecovery — фоновая горутина с тикером, сбрасывающая busy
 	// у зависших сессий. Блокируется до ctx.Done().
 	StartStaleRecovery(ctx context.Context)
+
+	// TranscribeAudio распознает аудио в текст с использованием настроенного провайдера.
+	TranscribeAudio(ctx context.Context, userID uuid.UUID, audioBytes []byte, filename string) (string, error)
 }
 
 // ActiveTaskSummary — короткая карточка для Tasks-tab.
@@ -843,6 +852,227 @@ func jsonbBytes(b []byte) datatypes.JSON {
 		return nil
 	}
 	return datatypes.JSON(b)
+}
+
+func (s *assistantService) TranscribeAudio(ctx context.Context, userID uuid.UUID, audioBytes []byte, filename string) (string, error) {
+	if userID == uuid.Nil {
+		return "", ErrAssistantInvalidInput
+	}
+	if len(audioBytes) == 0 {
+		return "", fmt.Errorf("empty audio data")
+	}
+
+	agent, err := s.getOrProvisionAssistantAgent(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get assistant agent: %w", err)
+	}
+
+	var settings map[string]any
+	if len(agent.Settings) > 0 {
+		_ = json.Unmarshal(agent.Settings, &settings)
+	}
+
+	sttProvider, _ := settings["stt_provider"].(string)
+	sttModel, _ := settings["stt_model"].(string)
+
+	if sttProvider == "" || sttProvider == "disabled" {
+		return "", fmt.Errorf("speech to text is not configured (disabled)")
+	}
+
+	// Fallbacks
+	if sttModel == "" {
+		switch sttProvider {
+		case "openai":
+			sttModel = "whisper-1"
+		case "openrouter":
+			sttModel = "openai/whisper-large-v3"
+		case "gemini":
+			sttModel = "gemini-1.5-flash"
+		default:
+			return "", fmt.Errorf("unsupported or unconfigured speech to text provider: %s", sttProvider)
+		}
+	}
+
+	// Fetch API key for the user provider
+	apiKey, err := s.deps.UserCreds.GetPlaintext(ctx, userID, models.UserLLMProvider(sttProvider))
+	if err != nil || apiKey == "" {
+		return "", fmt.Errorf("speech to text API key is not configured for provider %s", sttProvider)
+	}
+
+	switch sttProvider {
+	case "openai":
+		bodyBuf := &bytes.Buffer{}
+		bodyWriter := multipart.NewWriter(bodyBuf)
+
+		fileWriter, err := bodyWriter.CreateFormFile("file", filename)
+		if err != nil {
+			return "", fmt.Errorf("create form file failed: %w", err)
+		}
+		if _, err := fileWriter.Write(audioBytes); err != nil {
+			return "", fmt.Errorf("write audio file failed: %w", err)
+		}
+
+		if err := bodyWriter.WriteField("model", sttModel); err != nil {
+			return "", fmt.Errorf("write model field failed: %w", err)
+		}
+
+		contentType := bodyWriter.FormDataContentType()
+		if err := bodyWriter.Close(); err != nil {
+			return "", fmt.Errorf("close body writer failed: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/audio/transcriptions", bodyBuf)
+		if err != nil {
+			return "", fmt.Errorf("failed to create http request: %w", err)
+		}
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+
+		client := &http.Client{Timeout: 60 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("transcription proxy request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			resBody, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("transcription API returned status %d: %s", resp.StatusCode, string(resBody))
+		}
+
+		var result struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", fmt.Errorf("failed to decode response: %w", err)
+		}
+		return result.Text, nil
+
+	case "openrouter":
+		ext := "m4a"
+		if strings.HasSuffix(strings.ToLower(filename), ".mp3") {
+			ext = "mp3"
+		} else if strings.HasSuffix(strings.ToLower(filename), ".wav") {
+			ext = "wav"
+		} else if strings.HasSuffix(strings.ToLower(filename), ".ogg") {
+			ext = "ogg"
+		}
+
+		b64Data := base64.StdEncoding.EncodeToString(audioBytes)
+		payload := map[string]any{
+			"model": sttModel,
+			"input_audio": map[string]any{
+				"data":   b64Data,
+				"format": ext,
+			},
+		}
+
+		reqBytes, err := json.Marshal(payload)
+		if err != nil {
+			return "", fmt.Errorf("marshal openrouter request failed: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/audio/transcriptions", bytes.NewBuffer(reqBytes))
+		if err != nil {
+			return "", fmt.Errorf("failed to create openrouter request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+
+		client := &http.Client{Timeout: 60 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("openrouter transcription proxy request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			resBody, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("openrouter transcription API returned status %d: %s", resp.StatusCode, string(resBody))
+		}
+
+		var result struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", fmt.Errorf("failed to decode response: %w", err)
+		}
+		return result.Text, nil
+
+	case "gemini":
+		mimeType := "audio/wav"
+		if strings.HasSuffix(strings.ToLower(filename), ".mp3") {
+			mimeType = "audio/mp3"
+		} else if strings.HasSuffix(strings.ToLower(filename), ".m4a") {
+			mimeType = "audio/m4a"
+		} else if strings.HasSuffix(strings.ToLower(filename), ".ogg") {
+			mimeType = "audio/ogg"
+		}
+
+		b64Data := base64.StdEncoding.EncodeToString(audioBytes)
+		payload := map[string]any{
+			"contents": []map[string]any{
+				{
+					"parts": []map[string]any{
+						{
+							"inlineData": map[string]any{
+								"mimeType": mimeType,
+								"data":     b64Data,
+							},
+						},
+						{
+							"text": "Transcribe this audio exactly. Do not add any commentary, explanations, or formatting. Just output the transcription.",
+						},
+					},
+				},
+			},
+		}
+
+		reqBytes, err := json.Marshal(payload)
+		if err != nil {
+			return "", fmt.Errorf("marshal gemini request failed: %w", err)
+		}
+
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", sttModel, apiKey)
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBytes))
+		if err != nil {
+			return "", fmt.Errorf("create gemini request failed: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 60 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("gemini transcription proxy request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			resBody, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("gemini generative API returned status %d: %s", resp.StatusCode, string(resBody))
+		}
+
+		var geminiResp struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+			return "", fmt.Errorf("decode gemini response failed: %w", err)
+		}
+		if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+			return "", fmt.Errorf("gemini transcription api returned empty parts")
+		}
+
+		return strings.TrimSpace(geminiResp.Candidates[0].Content.Parts[0].Text), nil
+
+	default:
+		return "", fmt.Errorf("unsupported speech to text provider: %s", sttProvider)
+	}
 }
 
 // Unused import guards (компилятор иначе ругается, если ветка кода уходит).

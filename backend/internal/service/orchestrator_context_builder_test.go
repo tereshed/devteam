@@ -132,3 +132,20 @@ func TestContextBuilder_WithCodeChunks(t *testing.T) {
 		assert.NotContains(t, input.PromptUser, "symbol=")
 	})
 }
+
+func TestContextBuilder_Build_SandboxAgentModelFromSettings(t *testing.T) {
+	builder := NewContextBuilder(nil, nil)
+	input, err := builder.Build(context.Background(),
+		&models.Task{Title: "test"},
+		&models.Agent{
+			Name:                "tester",
+			Role:                models.AgentRoleTester,
+			ExecutionKind:       models.AgentExecutionKindSandbox,
+			Model:               nil,
+			CodeBackendSettings: []byte(`{"model": "deepseek/deepseek-v4-flash"}`),
+		},
+		&models.Project{},
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "deepseek/deepseek-v4-flash", input.Model)
+}

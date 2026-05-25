@@ -78,6 +78,7 @@ type updateAgentRequest struct {
 	MaxTokens          *int     `json:"max_tokens,omitempty"`
 	IsActive           *bool    `json:"is_active,omitempty"`
 	InternalMCPEnabled *bool    `json:"internal_mcp_enabled,omitempty"`
+	Settings           *map[string]any `json:"settings,omitempty"`
 }
 
 type setSecretRequest struct {
@@ -271,6 +272,7 @@ func (h *AgentV2Handler) Update(c *gin.Context) {
 		MaxTokens:          req.MaxTokens,
 		IsActive:           req.IsActive,
 		InternalMCPEnabled: req.InternalMCPEnabled,
+		Settings:           req.Settings,
 	}
 	if req.ClearPromptID != nil {
 		in.ClearPromptID = *req.ClearPromptID

@@ -12,6 +12,9 @@ void main() {
 
   group('taskStatusLabel', () {
     test('maps normative statuses to taskStatus* keys', () {
+      expect(taskStatusLabel(l10n, 'active'), l10n.taskStatusActive);
+      expect(taskStatusLabel(l10n, 'done'), l10n.taskStatusDone);
+      expect(taskStatusLabel(l10n, 'needs_human'), l10n.taskStatusNeedsHuman);
       expect(taskStatusLabel(l10n, 'pending'), l10n.taskStatusPending);
       expect(taskStatusLabel(l10n, 'planning'), l10n.taskStatusPlanning);
       expect(taskStatusLabel(l10n, 'in_progress'), l10n.taskStatusInProgress);

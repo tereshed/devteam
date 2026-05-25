@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/json"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -79,6 +80,7 @@ type UpdateAgentInput struct {
 	MaxTokens          *int
 	IsActive           *bool
 	InternalMCPEnabled *bool
+	Settings           *map[string]any
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -360,6 +362,13 @@ func (s *AgentService) applyUpdatePatch(current *models.Agent, in UpdateAgentInp
 	if in.InternalMCPEnabled != nil {
 		current.InternalMCPEnabled = *in.InternalMCPEnabled
 	}
+	if in.Settings != nil {
+		bytes, err := json.Marshal(*in.Settings)
+		if err != nil {
+			return fmt.Errorf("%w: failed to marshal settings JSON: %w", ErrAgentValidation, err)
+		}
+		current.Settings = datatypes.JSON(bytes)
+	}
 	return nil
 }
 
@@ -586,28 +595,144 @@ func (s *AgentService) CreateDefaultAssistant(ctx context.Context, userID uuid.U
 	return s.provisionMCPKey(ctx, agent.ID, userID)
 }
 
-// CreateDefaultProjectAgents creates orchestrator + router for a team.
-// Each gets a system prompt from agent_role_prompts. LLM settings are left NULL.
-func (s *AgentService) CreateDefaultProjectAgents(ctx context.Context, teamID uuid.UUID) error {
+// CreateDefaultProjectAgents creates default agents for a team.
+// For development teams, all 8 agents (orchestrator, router, planner, decomposer, reviewer, developer, tester, merger) are created.
+// For other team types, only orchestrator and router are created.
+// Each gets a system prompt and description from agent_role_prompts. Default LLM/sandbox settings are pre-configured.
+func (s *AgentService) CreateDefaultProjectAgents(ctx context.Context, teamID uuid.UUID, teamType string) error {
 	if s.rolePromptRepo == nil {
 		return fmt.Errorf("AgentService: rolePromptRepo is required for CreateDefaultProjectAgents")
 	}
 
+	sHelper := func(str string) *string { return &str }
+	fHelper := func(f float64) *float64 { return &f }
+	iHelper := func(i int) *int { return &i }
+	pHelper := func(p models.AgentProviderKind) *models.AgentProviderKind { return &p }
+	cbHelper := func(cb models.CodeBackend) *models.CodeBackend { return &cb }
+
 	roles := []struct {
-		name string
-		role models.AgentRole
+		name         string
+		role         models.AgentRole
+		kind         models.AgentExecutionKind
+		providerKind *models.AgentProviderKind
+		model        *string
+		codeBackend  *models.CodeBackend
+		temperature  *float64
+		maxTokens    *int
+		settings     string
+		perms        string
 	}{
-		{"orchestrator", models.AgentRoleOrchestrator},
-		{"router", models.AgentRoleRouter},
+		{
+			name: "orchestrator",
+			role: models.AgentRoleOrchestrator,
+			kind: models.AgentExecutionKindLLM,
+		},
+		{
+			name:         "router",
+			role:         models.AgentRoleRouter,
+			kind:         models.AgentExecutionKindLLM,
+			providerKind: pHelper(models.AgentProviderKindOpenRouter),
+			model:        sHelper("deepseek/deepseek-v4-flash"),
+			temperature:  fHelper(0.2),
+			maxTokens:    iHelper(4096),
+		},
 	}
+
+	if teamType == "development" {
+		roles = append(roles, []struct {
+			name         string
+			role         models.AgentRole
+			kind         models.AgentExecutionKind
+			providerKind *models.AgentProviderKind
+			model        *string
+			codeBackend  *models.CodeBackend
+			temperature  *float64
+			maxTokens    *int
+			settings     string
+			perms        string
+		}{
+			{
+				name:         "planner",
+				role:         models.AgentRolePlanner,
+				kind:         models.AgentExecutionKindLLM,
+				providerKind: pHelper(models.AgentProviderKindOpenRouter),
+				model:        sHelper("deepseek/deepseek-v4-flash"),
+				temperature:  fHelper(0.3),
+				maxTokens:    iHelper(8192),
+			},
+			{
+				name:         "decomposer",
+				role:         models.AgentRoleDecomposer,
+				kind:         models.AgentExecutionKindLLM,
+				providerKind: pHelper(models.AgentProviderKindOpenRouter),
+				model:        sHelper("deepseek/deepseek-v4-flash"),
+				temperature:  fHelper(0.3),
+				maxTokens:    iHelper(8192),
+			},
+			{
+				name:         "reviewer",
+				role:         models.AgentRoleReviewer,
+				kind:         models.AgentExecutionKindLLM,
+				providerKind: pHelper(models.AgentProviderKindAnthropic),
+				model:        sHelper("claude-haiku-4-5-20251001"),
+				temperature:  fHelper(0.2),
+				maxTokens:    iHelper(8192),
+			},
+			{
+				name:        "developer",
+				role:        models.AgentRoleDeveloper,
+				kind:        models.AgentExecutionKindSandbox,
+				codeBackend: cbHelper(models.CodeBackendClaudeCode),
+				settings:    `{"permission_mode": "auto"}`,
+				perms:       `{"env_secret_keys": ["ANTHROPIC_API_KEY"]}`,
+			},
+			{
+				name:        "tester",
+				role:        models.AgentRoleTester,
+				kind:        models.AgentExecutionKindSandbox,
+				codeBackend: cbHelper(models.CodeBackendClaudeCode),
+				settings:    `{"permission_mode": "auto"}`,
+				perms:       `{"env_secret_keys": ["ANTHROPIC_API_KEY"]}`,
+			},
+			{
+				name:        "merger",
+				role:        models.AgentRoleMerger,
+				kind:        models.AgentExecutionKindSandbox,
+				codeBackend: cbHelper(models.CodeBackendClaudeCode),
+				settings:    `{"permission_mode": "auto"}`,
+				perms:       `{"env_secret_keys": ["ANTHROPIC_API_KEY"]}`,
+			},
+		}...)
+	}
+
 	for _, r := range roles {
 		prompt, err := s.rolePromptRepo.GetByRole(ctx, string(r.role))
 		if err != nil {
 			return fmt.Errorf("default prompt for %s: %w", r.role, err)
 		}
 
-		agent := newBaseAgent(r.name, r.role, models.AgentExecutionKindLLM, &prompt.Content)
+		agent := newBaseAgent(r.name, r.role, r.kind, &prompt.Content)
 		agent.TeamID = &teamID
+		agent.ProviderKind = r.providerKind
+		agent.Model = r.model
+		agent.CodeBackend = r.codeBackend
+		agent.Temperature = r.temperature
+		agent.MaxTokens = r.maxTokens
+		if prompt.Description != nil {
+			agent.RoleDescription = prompt.Description
+		} else {
+			desc := "Default " + r.name + " agent"
+			agent.RoleDescription = &desc
+		}
+		if r.settings != "" {
+			agent.CodeBackendSettings = datatypes.JSON([]byte(r.settings))
+		}
+		if r.perms != "" {
+			agent.SandboxPermissions = datatypes.JSON([]byte(r.perms))
+		}
+		if r.kind == models.AgentExecutionKindSandbox {
+			agent.RequiresCodeContext = true
+		}
 
 		if err := s.agentRepo.Create(ctx, agent); err != nil {
 			return fmt.Errorf("create %s agent: %w", r.name, err)

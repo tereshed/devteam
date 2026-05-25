@@ -19,7 +19,11 @@ import 'package:frontend/features/team/data/tools_repository.dart';
 import 'package:frontend/features/team/domain/models/tool_binding_response_model.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_card.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_edit_dialog.dart';
+import 'package:frontend/features/tasks/data/task_providers.dart';
+import 'package:frontend/features/tasks/data/task_repository.dart';
 import 'package:frontend/l10n/app_localizations_ru.dart';
+import 'package:frontend/l10n/app_localizations.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 
@@ -40,6 +44,83 @@ void main() {
         'created_at': '2026-04-27T09:00:00Z',
         'updated_at': '2026-04-27T09:15:00Z',
       };
+
+  Map<String, dynamic> taskJson(String taskId) => <String, dynamic>{
+        'id': taskId,
+        'project_id': projectId,
+        'title': 'Test Task',
+        'description': '',
+        'status': 'pending',
+        'priority': 'medium',
+        'assigned_agent_id': agentId,
+        'created_by_type': 'user',
+        'created_by_id': 'user-1',
+        'created_at': '2026-04-27T09:00:00Z',
+        'updated_at': '2026-04-27T09:15:00Z',
+      };
+
+  Widget wrapWithRouter({
+    required Widget body,
+    required MockDio dio,
+    required String targetPath,
+    required List<String> navigatedPaths,
+    Size? viewSize,
+  }) {
+    final scoped = ProviderScope(
+      retry: (_, _) => null,
+      overrides: [
+        dioClientProvider.overrideWithValue(dio),
+        teamRepositoryProvider.overrideWithValue(TeamRepository(dio: dio)),
+        promptsRepositoryProvider
+            .overrideWithValue(PromptsRepository(dio: dio)),
+        toolsRepositoryProvider.overrideWithValue(ToolsRepository(dio: dio)),
+        taskRepositoryProvider.overrideWithValue(TaskRepository(dio: dio)),
+      ],
+      child: MaterialApp.router(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('ru'),
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        routerConfig: GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => Scaffold(
+                body: Builder(
+                  builder: (ctx) => Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.of(ctx).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => Scaffold(body: body),
+                          ),
+                        );
+                      },
+                      child: const Text('__open_dialog__'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            GoRoute(
+              path: targetPath,
+              builder: (context, state) {
+                navigatedPaths.add(state.uri.toString());
+                return const SizedBox();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+    if (viewSize != null) {
+      return MediaQuery(
+        data: MediaQueryData(size: viewSize),
+        child: scoped,
+      );
+    }
+    return scoped;
+  }
 
   AgentModel sampleAgent({
     String? promptId,
@@ -1263,5 +1344,168 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('claude-3-5-sonnet-latest'), findsOneWidget);
+  });
+
+  testWidgets('Test Run без изменений — создаёт задачу и переходит на её детальный экран', (tester) async {
+    useViewSize(tester, const Size(800, 1000));
+    final dio = createDio();
+    stubDialogDio(dio);
+    final testTaskId = '11111111-2222-3333-4444-555555555555';
+    
+    when(
+      dio.post<Map<String, dynamic>>(
+        '/projects/$projectId/tasks',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => Response<Map<String, dynamic>>(
+        data: taskJson(testTaskId),
+        statusCode: 201,
+        requestOptions: RequestOptions(path: '/projects/$projectId/tasks'),
+      ),
+    );
+
+    final navigatedPaths = <String>[];
+    await tester.pumpWidget(
+      wrapWithRouter(
+        dio: dio,
+        navigatedPaths: navigatedPaths,
+        targetPath: '/projects/:id/tasks/:taskId',
+        body: agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(),
+          useAutofocus: false,
+        ),
+        viewSize: const Size(800, 1000),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('__open_dialog__'));
+    await tester.pumpAndSettle();
+
+    final testBtn = find.byKey(const Key('agentEditDialog_testRunButton'));
+    expect(testBtn, findsOneWidget);
+    await tester.ensureVisible(testBtn);
+    await tester.tap(testBtn);
+    await tester.pumpAndSettle();
+
+    // Verify task creation request was sent
+    verify(
+      dio.post<Map<String, dynamic>>(
+        '/projects/$projectId/tasks',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).called(1);
+
+    // Verify PATCH was not called (not dirty)
+    verifyNever(
+      dio.patch(
+        any,
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    );
+
+    // Verify navigated to the task detail page
+    expect(navigatedPaths, contains('/projects/$projectId/tasks/$testTaskId'));
+  });
+
+  testWidgets('Test Run при наличии изменений — сначала PATCH сохраняет, затем создаёт задачу и переходит', (tester) async {
+    useViewSize(tester, const Size(800, 1000));
+    final dio = createDio();
+    stubDialogDio(dio);
+    final testTaskId = '11111111-2222-3333-4444-555555555555';
+
+    // Stub PATCH
+    when(
+      dio.patch(
+        '/projects/$projectId/team/agents/$agentId',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => Response<dynamic>(
+        data: teamJson(),
+        statusCode: 200,
+        requestOptions: RequestOptions(path: '/projects/$projectId/team/agents/$agentId'),
+      ),
+    );
+
+    // Stub GET team (triggered by ref.invalidate / refetch in save)
+    stubTeamGet(dio);
+
+    // Stub POST task
+    when(
+      dio.post<Map<String, dynamic>>(
+        '/projects/$projectId/tasks',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => Response<Map<String, dynamic>>(
+        data: taskJson(testTaskId),
+        statusCode: 201,
+        requestOptions: RequestOptions(path: '/projects/$projectId/tasks'),
+      ),
+    );
+
+    final navigatedPaths = <String>[];
+    await tester.pumpWidget(
+      wrapWithRouter(
+        dio: dio,
+        navigatedPaths: navigatedPaths,
+        targetPath: '/projects/:id/tasks/:taskId',
+        body: agentEditDialogBodyForTesting(
+          projectId: projectId,
+          agent: sampleAgent(isActive: false),
+          useAutofocus: false,
+        ),
+        viewSize: const Size(800, 1000),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('__open_dialog__'));
+    await tester.pumpAndSettle();
+
+    // Make the form dirty (toggle isActive switch)
+    final switchTile = find.byType(SwitchListTile);
+    await tester.ensureVisible(switchTile);
+    await tester.tap(switchTile);
+    await tester.pumpAndSettle();
+
+    final testBtn = find.byKey(const Key('agentEditDialog_testRunButton'));
+    await tester.ensureVisible(testBtn);
+    await tester.tap(testBtn);
+    await tester.pumpAndSettle();
+
+    // Verify PATCH was called first
+    verify(
+      dio.patch(
+        '/projects/$projectId/team/agents/$agentId',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).called(1);
+
+    // Verify task creation was sent
+    verify(
+      dio.post<Map<String, dynamic>>(
+        '/projects/$projectId/tasks',
+        data: anyNamed('data'),
+        options: anyNamed('options'),
+        cancelToken: anyNamed('cancelToken'),
+      ),
+    ).called(1);
+
+    // Verify navigated to the task detail page
+    expect(navigatedPaths, contains('/projects/$projectId/tasks/$testTaskId'));
   });
 }

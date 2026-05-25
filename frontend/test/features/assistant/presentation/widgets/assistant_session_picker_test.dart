@@ -82,6 +82,9 @@ void main() {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
+          theme: ThemeData(
+            splashFactory: NoSplash.splashFactory,
+          ),
           // Picker занимает ширину родителя — даём ему конечный размер.
           home: const Scaffold(
             body: SizedBox(width: 320, child: AssistantSessionPicker()),

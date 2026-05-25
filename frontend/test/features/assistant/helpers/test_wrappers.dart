@@ -13,6 +13,9 @@ Widget wrapAssistantWidget(
     locale: locale,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
+    theme: ThemeData(
+      splashFactory: NoSplash.splashFactory,
+    ),
     home: Scaffold(body: child),
   );
 }

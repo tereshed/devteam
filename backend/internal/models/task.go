@@ -80,6 +80,8 @@ type Task struct {
 	ID              uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	ProjectID       uuid.UUID      `gorm:"type:uuid;not null" json:"project_id"`
 	Project         *Project       `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	TeamID          *uuid.UUID     `gorm:"type:uuid" json:"team_id"`
+	Team            *Team          `gorm:"foreignKey:TeamID" json:"team,omitempty"`
 	ParentTaskID    *uuid.UUID     `gorm:"type:uuid" json:"parent_task_id"`
 	ParentTask      *Task          `gorm:"foreignKey:ParentTaskID" json:"parent_task,omitempty"`
 	SubTasks        []Task         `gorm:"foreignKey:ParentTaskID" json:"sub_tasks,omitempty"`

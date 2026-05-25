@@ -67,6 +67,13 @@ func (m *mockLoader) GetAgentByName(ctx context.Context, name string) (*models.A
 	return m.agent, nil
 }
 
+func (m *mockLoader) GetAgentByTeamAndName(ctx context.Context, teamID uuid.UUID, name string) (*models.Agent, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.agent, nil
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────

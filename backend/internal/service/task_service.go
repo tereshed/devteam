@@ -41,6 +41,7 @@ var (
 	ErrTaskMessageNotFound    = errors.New("task message not found")
 	ErrTaskMessageInvalidType = errors.New("invalid message type")
 	ErrTaskInvalidTimeout     = errors.New("custom_timeout must be in range 1m..72h")
+	ErrTeamNotInProject       = errors.New("team does not belong to the project")
 )
 
 const (
@@ -573,6 +574,7 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 	}
 	task := &models.Task{
 		ProjectID:     projectID,
+		TeamID:        req.TeamID,
 		Title:         strings.TrimSpace(req.Title),
 		Description:   req.Description,
 		State:         models.TaskStateActive,
@@ -587,6 +589,22 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 
 	var created *models.Task
 	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		if req.TeamID != nil {
+			teams, err := s.teamSvc.ListByProjectID(txCtx, projectID)
+			if err != nil {
+				return err
+			}
+			found := false
+			for _, t := range teams {
+				if t.ID == *req.TeamID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return ErrTeamNotInProject
+			}
+		}
 		if req.ParentTaskID != nil {
 			parent, err := s.taskRepo.GetByID(txCtx, *req.ParentTaskID)
 			if err != nil {

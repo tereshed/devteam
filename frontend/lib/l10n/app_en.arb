@@ -668,6 +668,12 @@
   "@taskStatusPaused": { "description": "Task status paused" },
   "taskStatusUnknownStatus": "Unknown status",
   "@taskStatusUnknownStatus": { "description": "Unknown backend status string" },
+  "taskStatusActive": "In progress",
+  "@taskStatusActive": { "description": "Task status active" },
+  "taskStatusDone": "Done",
+  "@taskStatusDone": { "description": "Task status done" },
+  "taskStatusNeedsHuman": "Needs human",
+  "@taskStatusNeedsHuman": { "description": "Task status needs_human" },
   "tasksSearchHint": "Search tasks",
   "@tasksSearchHint": { "description": "Tasks list search field (12.4)" },
   "tasksEmpty": "No tasks yet",
@@ -894,6 +900,12 @@
       "category": { "type": "String" }
     }
   },
+  "teamAgentEditTestRun": "Test run",
+  "@teamAgentEditTestRun": { "description": "Button to trigger a test task for the agent" },
+  "teamAgentEditTestRunSuccess": "Test task successfully started",
+  "@teamAgentEditTestRunSuccess": { "description": "Snackbar shown when test task is successfully started" },
+  "teamAgentEditTestRunError": "Failed to start test task",
+  "@teamAgentEditTestRunError": { "description": "Snackbar shown when starting test task fails" },
   "chatMessageCopyCode": "Copy code",
   "@chatMessageCopyCode": { "description": "Tooltip for fenced code copy button in chat" },
   "chatMessageStreamingPlaceholder": "Typing…",
@@ -1458,6 +1470,19 @@
   "onboardingConfigureProjectAgents": "Configure the orchestrator and router agents — select an LLM provider and model for each so that task orchestration can begin.",
   "@onboardingConfigureProjectAgents": { "description": "Phase 7: onboarding banner after project creation — agents not configured" },
   "onboardingGoToTeam": "Configure agents",
-  "@onboardingGoToTeam": { "description": "Phase 7: onboarding banner CTA — navigate to team agents" }
+  "@onboardingGoToTeam": { "description": "Phase 7: onboarding banner CTA — navigate to team agents" },
+  "chatInputVoiceTooltip": "Voice input (Alt+V)",
+  "@chatInputVoiceTooltip": { "description": "Tooltip for active voice input button" },
+  "chatInputVoiceDisabledTooltip": "Voice input is not active (configure the speech recognition model in assistant settings)",
+  "@chatInputVoiceDisabledTooltip": { "description": "Tooltip for disabled voice input button" },
+  "chatInputVoiceRecordingHint": "Recording... Speak ({seconds}s). Press Alt+V to complete",
+  "@chatInputVoiceRecordingHint": {
+    "description": "Textfield hint during active recording",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  }
 }
 

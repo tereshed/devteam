@@ -1316,6 +1316,15 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskStatusUnknownStatus => 'Неизвестный статус';
 
   @override
+  String get taskStatusActive => 'В работе';
+
+  @override
+  String get taskStatusDone => 'Готово';
+
+  @override
+  String get taskStatusNeedsHuman => 'Нужна помощь';
+
+  @override
   String get tasksSearchHint => 'Поиск задач';
 
   @override
@@ -1654,6 +1663,16 @@ class AppLocalizationsRu extends AppLocalizations {
   String teamAgentEditToolsListEntryLabel(String name, String category) {
     return '$name ($category)';
   }
+
+  @override
+  String get teamAgentEditTestRun => 'Тестовый запуск';
+
+  @override
+  String get teamAgentEditTestRunSuccess => 'Тестовая задача успешно запущена';
+
+  @override
+  String get teamAgentEditTestRunError =>
+      'Не удалось запустить тестовую задачу';
 
   @override
   String get chatMessageCopyCode => 'Копировать код';
@@ -2669,4 +2688,16 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get onboardingGoToTeam => 'Настроить агентов';
+
+  @override
+  String get chatInputVoiceTooltip => 'Голосовой ввод (Alt+V)';
+
+  @override
+  String get chatInputVoiceDisabledTooltip =>
+      'Голосовой ввод не активен (настройте модель распознавания речи в настройках ассистента)';
+
+  @override
+  String chatInputVoiceRecordingHint(int seconds) {
+    return 'Идет запись... Говорите ($secondsс). Нажмите Alt+V для завершения';
+  }
 }

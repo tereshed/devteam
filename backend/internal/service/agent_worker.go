@@ -242,11 +242,35 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		}()
 	}
 
-	// Загружаем агента (актуальный snapshot — system_prompt/model могли обновить).
-	var agentRec models.Agent
-	if err := w.db.WithContext(execCtx).Preload("Prompt").Where("name = ?", payload.AgentName).First(&agentRec).Error; err != nil {
-		w.failEvent(parentCtx, ev, fmt.Errorf("load agent %q: %w", payload.AgentName, err))
+	// Загружаем task для description/title (executor их использует).
+	var task models.Task
+	if err := w.db.WithContext(execCtx).Preload("Project").Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
+		w.failEvent(parentCtx, ev, fmt.Errorf("load task %s: %w", ev.TaskID, err))
 		return
+	}
+
+	var teamID uuid.UUID
+	var err error
+	if task.TeamID != nil {
+		teamID = *task.TeamID
+	} else {
+		teamID, err = getProjectTeamID(w.db, task.ProjectID)
+		if err != nil {
+			w.failEvent(parentCtx, ev, fmt.Errorf("find project team: %w", err))
+			return
+		}
+	}
+
+	// Загружаем агента (актуальный snapshot — system_prompt/model могли обновить).
+	// Пытаемся загрузить командного агента, с фоллбеком на глобального.
+	var agentRec models.Agent
+	err = w.db.WithContext(execCtx).Preload("Prompt").Where("team_id = ? AND name = ?", teamID, payload.AgentName).First(&agentRec).Error
+	if err != nil {
+		// Fallback to global agent
+		if errGlobal := w.db.WithContext(execCtx).Preload("Prompt").Where("team_id IS NULL AND name = ?", payload.AgentName).First(&agentRec).Error; errGlobal != nil {
+			w.failEvent(parentCtx, ev, fmt.Errorf("load agent %q: %w", payload.AgentName, err))
+			return
+		}
 	}
 
 	// Sandbox-агенту нужен worktree. Allocate ЗДЕСЬ (just-in-time), а не в Orchestrator.Step,
@@ -270,13 +294,6 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 			w.failEvent(parentCtx, ev, fmt.Errorf("mark worktree in_use: %w", err))
 			return
 		}
-	}
-
-	// Загружаем task для description/title (executor их использует).
-	var task models.Task
-	if err := w.db.WithContext(execCtx).Preload("Project").Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
-		w.failEvent(parentCtx, ev, fmt.Errorf("load task %s: %w", ev.TaskID, err))
-		return
 	}
 
 	executor, err := w.dispatcher.BuildExecutor(execCtx, &agentRec)
@@ -733,6 +750,12 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 		promptParts = append(promptParts, *agentRec.SystemPrompt)
 	}
 	promptSystem := strings.Join(promptParts, "\n\n")
+	modelName := derefString(agentRec.Model)
+	if modelName == "" && agentRec.ExecutionKind == models.AgentExecutionKindSandbox && len(agentRec.CodeBackendSettings) > 0 {
+		if settings, err := decodeCodeBackendSettings(agentRec.CodeBackendSettings); err == nil && settings.Model != "" {
+			modelName = settings.Model
+		}
+	}
 
 	in := agent.ExecutionInput{
 		TaskID:            task.ID.String(),
@@ -743,7 +766,7 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 		AgentID:           agentRec.ID.String(),
 		AgentName:         agentRec.Name,
 		Role:              string(agentRec.Role),
-		Model:             derefString(agentRec.Model),
+		Model:             modelName,
 		PromptSystem:      promptSystem,
 		StructuredContext: inputJSON,
 		Temperature:       agentRec.Temperature,

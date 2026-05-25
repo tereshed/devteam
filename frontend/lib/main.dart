@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,6 +12,21 @@ import 'package:frontend/l10n/app_localizations.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
+
+  // Cleanup leftover voice files in temp directory
+  if (!kIsWeb) {
+    try {
+      final tempDir = Directory.systemTemp;
+      if (tempDir.existsSync()) {
+        final files = tempDir.listSync();
+        for (final entity in files) {
+          if (entity is File && entity.path.contains('devteam_voice_')) {
+            entity.deleteSync();
+          }
+        }
+      }
+    } catch (_) {}
+  }
 
   runApp(const ProviderScope(child: MainApp()));
 }

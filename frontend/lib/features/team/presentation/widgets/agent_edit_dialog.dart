@@ -21,6 +21,10 @@ import 'package:frontend/features/team/domain/tools_exceptions.dart';
 import 'package:frontend/features/team/domain/update_agent_patch.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_sandbox_settings_dialog.dart';
 import 'package:frontend/l10n/app_localizations.dart';
+import 'package:go_router/go_router.dart';
+import 'package:frontend/features/tasks/data/task_providers.dart';
+import 'package:frontend/features/tasks/domain/requests.dart';
+import 'package:frontend/features/tasks/data/task_exceptions.dart';
 
 /// Только для `test/` — в продакшене используйте [showAgentEditDialog].
 @visibleForTesting
@@ -113,6 +117,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
   CancelToken? _promptsCancel;
   CancelToken? _patchCancel;
   CancelToken? _toolsCancel;
+  CancelToken? _testCancel;
   bool _promptsLoading = true;
   Object? _promptsError;
   List<Prompt> _prompts = [];
@@ -133,6 +138,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
 
   bool _dirty = false;
   bool _saving = false;
+  bool _testing = false;
 
   @override
   void initState() {
@@ -315,6 +321,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     _promptsCancel?.cancel();
     _patchCancel?.cancel();
     _toolsCancel?.cancel();
+    _testCancel?.cancel();
     _modelController.removeListener(_recomputeDirty);
     _modelController.dispose();
     _systemPromptController.removeListener(_recomputeDirty);
@@ -582,10 +589,102 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       );
       return;
     }
-    if (!mounted) {
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _sendTestTask() async {
+    print('DEBUG: _sendTestTask started, _saving: $_saving, _testing: $_testing, _dirty: $_dirty');
+    if (_saving || _testing) {
+      print('DEBUG: _sendTestTask early exit due to _saving/testing');
       return;
     }
-    Navigator.of(context).pop();
+    final l10n = requireAppLocalizations(context, where: 'agentEditDialog.testRun');
+    
+    // 1. If form is dirty, we must save first.
+    if (_dirty) {
+      print('DEBUG: form is dirty, patching agent first');
+      final patch = _buildPatch();
+      final body = patch.toWireJson();
+      if (body.isNotEmpty) {
+        setState(() => _testing = true);
+        final patchToken = CancelToken();
+        _patchCancel = patchToken;
+        try {
+          await ref.read(teamRepositoryProvider).patchAgent(
+                widget.projectId,
+                widget.agent.id,
+                body,
+                cancelToken: patchToken,
+              );
+          // Invalidate providers to refresh team data.
+          ref.invalidate(teamProvider(widget.projectId));
+          ref.invalidate(teamsProvider(widget.projectId));
+          print('DEBUG: patch agent succeeded');
+        } catch (e) {
+          print('DEBUG: patch agent failed: $e');
+          if (mounted) {
+            setState(() => _testing = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(l10n.teamAgentEditSaveError)),
+            );
+          }
+          return;
+        }
+      }
+    }
+
+    if (!mounted) {
+      print('DEBUG: not mounted after patch check');
+      return;
+    }
+
+    setState(() => _testing = true);
+    
+    final testToken = CancelToken();
+    _testCancel = testToken;
+    try {
+      print('DEBUG: calling taskRepo.createTask');
+      final taskRepo = ref.read(taskRepositoryProvider);
+      final req = CreateTaskRequest(
+        title: '${l10n.teamAgentEditTestRun}: ${widget.agent.name}',
+        description: 'Автоматическая тестовая задача для проверки конфигурации агента ${widget.agent.name}.',
+        assignedAgentId: widget.agent.id,
+      );
+      final task = await taskRepo.createTask(
+        widget.projectId,
+        req,
+        cancelToken: testToken,
+      );
+      
+      if (!mounted) {
+        return;
+      }
+      
+      // Capture ScaffoldMessenger and GoRouter before pop to avoid deactivated BuildContext usage.
+      final messenger = ScaffoldMessenger.of(context);
+      final router = GoRouter.of(context);
+
+      // Pop the agent edit dialog first.
+      Navigator.of(context).pop();
+      
+      // Show success SnackBar.
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.teamAgentEditTestRunSuccess)),
+      );
+      
+      // Navigate to the newly created task page.
+      router.go('/projects/${widget.projectId}/tasks/${task.id}');
+    } catch (e, st) {
+      print('DEBUG: _sendTestTask caught exception: $e\n$st');
+      if (mounted) {
+        setState(() => _testing = false);
+        if (e is! TaskCancelledException) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.teamAgentEditTestRunError)),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -821,13 +920,13 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         TextButton(
-                          onPressed: _saving ? null : _onCancel,
+                          onPressed: _saving || _testing ? null : _onCancel,
                           child: Text(l10n.teamAgentEditCancel),
                         ),
                         // Sprint 15.32 — advanced-настройки (модель/MCP/Skills/permissions).
                         OutlinedButton.icon(
                           icon: const Icon(Icons.tune),
-                          onPressed: _saving
+                          onPressed: _saving || _testing
                               ? null
                               : () => showAgentSandboxSettingsDialog(
                                     context,
@@ -835,20 +934,26 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                                   ),
                           label: Text(l10n.teamAgentEditAdvanced),
                         ),
+                        OutlinedButton.icon(
+                          key: const Key('agentEditDialog_testRunButton'),
+                          icon: const Icon(Icons.play_circle_outline),
+                          onPressed: _saving || _testing ? null : _sendTestTask,
+                          label: Text(l10n.teamAgentEditTestRun),
+                        ),
                       ],
                     ),
                     Wrap(
                       spacing: 8,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        if (_saving)
+                        if (_saving || _testing)
                           const SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         FilledButton(
-                          onPressed: _saving ? null : _save,
+                          onPressed: _saving || _testing ? null : _save,
                           child: Text(l10n.teamAgentEditSave),
                         ),
                       ],
@@ -859,7 +964,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
             ),
           ),
         ),
-        if (_saving)
+        if (_saving || _testing)
           Positioned.fill(
               child: AbsorbPointer(
                 child: DecoratedBox(

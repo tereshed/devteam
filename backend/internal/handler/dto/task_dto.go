@@ -14,6 +14,7 @@ type CreateTaskRequest struct {
 	Description     string         `json:"description"`
 	Priority        string         `json:"priority"`
 	ParentTaskID    *uuid.UUID     `json:"parent_task_id"`
+	TeamID          *uuid.UUID     `json:"team_id"`
 	AssignedAgentID *uuid.UUID     `json:"assigned_agent_id"`
 	Context         datatypes.JSON `json:"context" swaggertype:"string"`
 	// BranchName — необязательное имя git-ветки, которое sandbox-исполнитель
@@ -98,6 +99,7 @@ type TaskResponse struct {
 	ID            string         `json:"id"`
 	ProjectID     string         `json:"project_id"`
 	ParentTaskID  *string        `json:"parent_task_id,omitempty"`
+	TeamID        *string        `json:"team_id,omitempty"`
 	Title         string         `json:"title"`
 	Description   string         `json:"description"`
 	Status        string         `json:"status"`
@@ -124,6 +126,7 @@ type TaskListItem struct {
 	ID            string        `json:"id"`
 	ProjectID     string        `json:"project_id"`
 	ParentTaskID  *string       `json:"parent_task_id,omitempty"`
+	TeamID        *string       `json:"team_id,omitempty"`
 	Title         string        `json:"title"`
 	Status        string        `json:"status"`
 	Priority      string        `json:"priority"`
@@ -218,6 +221,7 @@ func ToTaskResponse(t *models.Task) TaskResponse {
 		ID:            t.ID.String(),
 		ProjectID:     t.ProjectID.String(),
 		ParentTaskID:  uuidPtrToStringPtr(t.ParentTaskID),
+		TeamID:        uuidPtrToStringPtr(t.TeamID),
 		Title:         t.Title,
 		Description:   t.Description,
 		Status:        string(t.State),
@@ -248,6 +252,7 @@ func ToTaskListItem(t *models.Task) TaskListItem {
 		ID:            t.ID.String(),
 		ProjectID:     t.ProjectID.String(),
 		ParentTaskID:  uuidPtrToStringPtr(t.ParentTaskID),
+		TeamID:        uuidPtrToStringPtr(t.TeamID),
 		Title:         t.Title,
 		Status:        string(t.State),
 		Priority:      string(t.Priority),

@@ -95,6 +95,9 @@ void main() {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
+          theme: ThemeData(
+            splashFactory: NoSplash.splashFactory,
+          ),
           home: const Scaffold(
             body: SizedBox(width: 400, height: 720, child: AssistantChatPanel()),
           ),

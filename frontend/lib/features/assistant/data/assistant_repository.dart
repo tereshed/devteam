@@ -305,6 +305,28 @@ class AssistantRepository {
     }
   }
 
+  /// `POST /assistant/transcribe` — распознать аудиофайл в текст.
+  Future<String> transcribe({
+    required List<int> bytes,
+    required String filename,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: filename),
+      });
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/assistant/transcribe',
+        data: formData,
+        cancelToken: cancelToken,
+      );
+      final json = _jsonBody(response);
+      return json['text'] as String? ?? '';
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   // ──────────────────────────── Error mapping ────────────────────────────
 
   Exception _handleDioError(DioException error) {
