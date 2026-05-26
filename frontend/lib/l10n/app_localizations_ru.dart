@@ -1094,7 +1094,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get projectDashboardFallbackTitle => 'Проект';
 
   @override
-  String get projectDashboardChat => 'Чат';
+  String get projectDashboardChat => 'Дашборд';
 
   @override
   String get projectDashboardTasks => 'Задачи';
@@ -1437,6 +1437,22 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get taskDetailSectionSubtasks => 'Подзадачи';
+
+  @override
+  String get taskDetailSectionSandboxLogs => 'Логи песочницы (Realtime)';
+
+  @override
+  String get taskDetailSandboxLogsEmpty =>
+      'Логи песочницы пока отсутствуют. Они появятся здесь в реальном времени при запуске агента (Developer/Tester).';
+
+  @override
+  String get taskDetailSandboxLogsClear => 'Очистить';
+
+  @override
+  String get taskDetailSandboxLogsCopy => 'Копировать';
+
+  @override
+  String get taskDetailSandboxLogsCopied => 'Логи скопированы в буфер обмена';
 
   @override
   String get taskDetailNoDiff => 'Нет diff';

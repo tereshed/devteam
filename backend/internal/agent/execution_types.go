@@ -18,8 +18,9 @@ const stringLogTruncate = 256
 // String реализует fmt.Stringer: значения EnvSecrets маскируются как "***" (защита от случайного логирования).
 // Запрещено логировать структуру через reflect или %#v в обход String().
 type ExecutionInput struct {
-	TaskID    string
-	ProjectID string
+	TaskID      string
+	ProjectID   string
+	ExecutionID string
 
 	Title       string
 	Description string
@@ -93,6 +94,8 @@ func (in ExecutionInput) String() string {
 	b.WriteString(in.TaskID)
 	b.WriteString(" ProjectID:")
 	b.WriteString(in.ProjectID)
+	b.WriteString(" ExecutionID:")
+	b.WriteString(in.ExecutionID)
 	b.WriteString(" Title:")
 	b.WriteString(truncateForLog(in.Title, stringLogTruncate))
 	b.WriteString(" Description:")

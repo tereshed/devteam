@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/utils/uuid.dart';
-import 'package:frontend/features/chat/presentation/screens/chat_conversation_placeholder_screen.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
+import 'package:frontend/features/projects/presentation/screens/project_dashboard_overview_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/project_settings_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
 import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
@@ -213,7 +213,7 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
             final id = state.pathParameters['id']!;
             return NoTransitionPage(
               key: state.pageKey,
-              child: ChatConversationPlaceholderScreen(projectId: id),
+              child: ProjectDashboardOverviewScreen(projectId: id),
             );
           },
           routes: [

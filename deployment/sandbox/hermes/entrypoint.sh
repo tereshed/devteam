@@ -296,7 +296,14 @@ PHASE="prepare_hermes_dotdir"
 HERMES_HOME="/home/sandbox/.hermes"
 if [[ -d "$HERMES_HOME" ]]; then
   chmod 0700 "$HERMES_HOME" 2>/dev/null || true
-  [[ -f "$HERMES_HOME/config.yaml" ]] && chmod 0600 "$HERMES_HOME/config.yaml" || true
+  if [[ -f "$HERMES_HOME/config.yaml" ]]; then
+    chmod 0600 "$HERMES_HOME/config.yaml" || true
+    sed -i -e 's/- file_ops/- file/g' \
+           -e 's/- shell/- terminal/g' \
+           -e 's/- web_fetch/- web/g' \
+           -e 's/- web_search/- web/g' \
+           "$HERMES_HOME/config.yaml" || true
+  fi
   [[ -f "$HERMES_HOME/mcp.json"   ]] && chmod 0600 "$HERMES_HOME/mcp.json"   || true
   if [[ -f "$HERMES_HOME/mcp.json" ]]; then
     # Sanity check: пытаемся распарсить mcp.json через hermes; падение — ошибка валидации
@@ -345,7 +352,19 @@ fi
 # Sprint 16.C — per-agent toolsets/skills/permission_mode/max_turns.
 HERMES_TOOLSETS_ARGS=()
 if [[ -n "${DEVTEAM_HERMES_TOOLSETS:-}" ]]; then
-  HERMES_TOOLSETS_ARGS+=("-t" "${DEVTEAM_HERMES_TOOLSETS}")
+  # Translate toolset names: file_ops -> file, shell -> terminal, web_fetch -> web, web_search -> web
+  translated=""
+  IFS=',' read -ra ADDR <<< "$DEVTEAM_HERMES_TOOLSETS"
+  for i in "${ADDR[@]}"; do
+    case "$i" in
+      file_ops)   translated="${translated:+$translated,}file" ;;
+      shell)      translated="${translated:+$translated,}terminal" ;;
+      web_fetch)  translated="${translated:+$translated,}web" ;;
+      web_search) translated="${translated:+$translated,}web" ;;
+      *)          translated="${translated:+$translated,}$i" ;;
+    esac
+  done
+  HERMES_TOOLSETS_ARGS+=("-t" "$translated")
 fi
 
 HERMES_SKILLS_ARGS=()
@@ -459,7 +478,7 @@ COMMIT_HASH="$(git rev-parse HEAD)"
 # --- push (только если был свой коммит) ---
 PHASE="push"
 PUSH_URL=""
-if [[ "$COMMITTED" -eq 1 ]]; then
+if [[ "$COMMITTED" -eq 1 ]] || [[ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/${START_REF_RESOLVED}")" ]]; then
   if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
     PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
   elif [[ "${REPO_URL}" =~ ^file:// || "${REPO_URL}" =~ ^ssh:// || "${REPO_URL}" =~ ^git@ ]]; then

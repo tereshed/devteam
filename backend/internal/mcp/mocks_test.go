@@ -530,3 +530,14 @@ func (m *mockTransactionManager) WithTransaction(ctx context.Context, fn func(ct
 	return fn(ctx)
 }
 
+// --- TaskOrchestrator mock ---
+
+type mockTaskOrchestrator struct {
+	mock.Mock
+}
+
+func (m *mockTaskOrchestrator) EnqueueInitialStep(ctx context.Context, taskID uuid.UUID) error {
+	args := m.Called(ctx, taskID)
+	return args.Error(0)
+}
+

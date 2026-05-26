@@ -561,3 +561,98 @@ func TestAuthorizedExecutor_TeamTypeDelete(t *testing.T) {
 	assert.Equal(t, "ok", response.Status)
 }
 
+func TestAuthorizedExecutor_TaskCreateAndUpdate(t *testing.T) {
+	mockTaskSvc := new(mockTaskService)
+	mockOrchSvc := new(mockTaskOrchestrator)
+	executor := NewAuthorizedExecutor(AuthorizedExecutorDeps{
+		TaskService:         mockTaskSvc,
+		OrchestratorService: mockOrchSvc,
+	})
+
+	uid := uuid.New()
+	pid := uuid.New()
+	tid := uuid.New()
+	auth := agentloop.AuthContext{UserID: uid.String(), ProjectID: pid.String()}
+
+	t.Run("Create Task Success", func(t *testing.T) {
+		taskDesc := "Test task description"
+		taskPriority := "medium"
+		mockTask := &models.Task{
+			ID:          tid,
+			ProjectID:   pid,
+			Title:       "Test Task",
+			Description: taskDesc,
+			State:       models.TaskStateActive,
+		}
+
+		mockTaskSvc.On("Create", mock.Anything, uid, models.RoleUser, pid, dto.CreateTaskRequest{
+			Title:       "Test Task",
+			Description: taskDesc,
+			Priority:    taskPriority,
+		}).Return(mockTask, nil).Once()
+
+		mockOrchSvc.On("EnqueueInitialStep", mock.Anything, tid).Return(nil).Once()
+
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `","title":"Test Task","description":"Test task description","priority":"medium"}`)
+		res, err := executor.taskCreate(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status string `json:"status"`
+			Data   models.Task `json:"data"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "ok", response.Status)
+		assert.Equal(t, tid, response.Data.ID)
+
+		// Wait briefly for background goroutine to execute
+		time.Sleep(50 * time.Millisecond)
+
+		mockTaskSvc.AssertExpectations(t)
+		mockOrchSvc.AssertExpectations(t)
+	})
+
+	t.Run("Update Task to Active triggers orchestration", func(t *testing.T) {
+		mockTask := &models.Task{
+			ID:        tid,
+			ProjectID: pid,
+			Title:     "Test Task",
+			State:     models.TaskStateActive,
+		}
+		mockTaskSvc.On("GetByID", mock.Anything, uid, models.RoleUser, tid).Return(mockTask, nil).Once()
+
+		activeState := "active"
+		updatedTask := &models.Task{
+			ID:        tid,
+			ProjectID: pid,
+			Title:     "Test Task",
+			State:     models.TaskStateActive,
+		}
+		mockTaskSvc.On("Update", mock.Anything, uid, models.RoleUser, tid, dto.UpdateTaskRequest{
+			Status: &activeState,
+		}).Return(updatedTask, nil).Once()
+
+		mockOrchSvc.On("EnqueueInitialStep", mock.Anything, tid).Return(nil).Once()
+
+		args := json.RawMessage(`{"task_id":"` + tid.String() + `","status":"active"}`)
+		res, err := executor.taskUpdate(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status string `json:"status"`
+			Data   models.Task `json:"data"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "ok", response.Status)
+		assert.Equal(t, models.TaskStateActive, response.Data.State)
+
+		// Wait briefly for background goroutine to execute
+		time.Sleep(50 * time.Millisecond)
+
+		mockTaskSvc.AssertExpectations(t)
+		mockOrchSvc.AssertExpectations(t)
+	})
+}
+

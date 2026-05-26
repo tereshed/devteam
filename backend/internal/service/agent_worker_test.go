@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -111,6 +112,32 @@ func TestParseAgentEnvelope_FromArtifactsJSON(t *testing.T) {
 	}
 }
 
+// TestParseAgentEnvelope_MarkdownFenced — envelope извлекается из Output, когда он обернут в markdown fences.
+func TestParseAgentEnvelope_MarkdownFenced(t *testing.T) {
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output: `Some verbose logs before
+` + "```json" + `
+{
+	"kind": "review",
+	"summary": "fenced review",
+	"content": {"approved": true}
+}
+` + "```" + `
+Some verbose logs after`,
+	}
+	env, ok := parseAgentEnvelope(result)
+	if !ok {
+		t.Fatal("expected successful parse from fenced markdown in Output")
+	}
+	if env.Kind != "review" {
+		t.Errorf("Kind = %q, want review", env.Kind)
+	}
+	if env.Summary != "fenced review" {
+		t.Errorf("Summary = %q, want fenced review", env.Summary)
+	}
+}
+
 // TestParseAgentEnvelope_FallbackOnNonJSON — агент вернул свободный текст, не JSON.
 func TestParseAgentEnvelope_FallbackOnNonJSON(t *testing.T) {
 	result := &agent.ExecutionResult{
@@ -134,6 +161,151 @@ func TestParseAgentEnvelope_FallbackOnEmptyKind(t *testing.T) {
 		t.Error("expected parse to FAIL when kind is empty")
 	}
 }
+
+// TestParseAgentEnvelope_DirectReview — парсинг прямого JSON ревью с оборачиванием в envelope.
+func TestParseAgentEnvelope_DirectReview(t *testing.T) {
+	target := &models.Artifact{
+		ID:             uuid.New(),
+		ProducerAgent:  "planner",
+		Kind:           models.ArtifactKindPlan,
+	}
+
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output: `Some logs
+` + "```json" + `
+{
+	"decision": "approve",
+	"comments": [{"message": "all good"}]
+}
+` + "```" + `
+More logs`,
+	}
+
+	env, ok := parseAgentEnvelope(result, target)
+	if !ok {
+		t.Fatal("expected successful parse of direct review JSON")
+	}
+	if env.Kind != "review" {
+		t.Errorf("Kind = %q, want review", env.Kind)
+	}
+	if env.Summary != "Review decision: approved" {
+		t.Errorf("Summary = %q, want Review decision: approved", env.Summary)
+	}
+	if env.ParentArtifactID == nil || *env.ParentArtifactID != target.ID {
+		t.Errorf("ParentArtifactID mismatch")
+	}
+}
+
+// TestParseAgentEnvelope_DirectTestResult — парсинг прямого JSON тестов с оборачиванием в envelope.
+func TestParseAgentEnvelope_DirectTestResult(t *testing.T) {
+	target := &models.Artifact{
+		ID:             uuid.New(),
+		ProducerAgent:  "developer",
+		Kind:           models.ArtifactKindCodeDiff,
+	}
+
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output:  `{"decision": "passed", "test_result": "pass", "summary": "tests passed successfully"}`,
+	}
+
+	env, ok := parseAgentEnvelope(result, target)
+	if !ok {
+		t.Fatal("expected successful parse of direct test result JSON")
+	}
+	if env.Kind != "test_result" {
+		t.Errorf("Kind = %q, want test_result", env.Kind)
+	}
+	if env.Summary != "tests passed successfully" {
+		t.Errorf("Summary = %q, want tests passed successfully", env.Summary)
+	}
+	if env.ParentArtifactID == nil || *env.ParentArtifactID != target.ID {
+		t.Errorf("ParentArtifactID mismatch")
+	}
+}
+
+// TestParseAgentEnvelope_WithPreambleAndDirectReview — парсинг прямого JSON ревью с не-JSON преамбулой без markdown fences.
+func TestParseAgentEnvelope_WithPreambleAndDirectReview(t *testing.T) {
+	target := &models.Artifact{
+		ID:            uuid.New(),
+		ProducerAgent: "decomposer",
+		Kind:          models.ArtifactKindSubtaskDescription,
+	}
+
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output: `Cloning into '/workspace/repo'...
+From https://github.com/tereshed/spanish-tutor-app
+ * branch            main       -> FETCH_HEAD
+Reset branch 'main'
+branch 'main' set up to track 'origin/main'.
+Your branch is up to date with 'origin/main'.
+Warning: Unknown toolsets: file_ops, shell
+
+session_id: 20260525_183715_59b273
+{
+  "kind": "review",
+  "summary": "changes_requested: Subtask descriptions lack details",
+  "parent_artifact_id": "50d891b8-98af-4fde-b94b-a134f996f923",
+  "content": {
+    "decision": "changes_requested",
+    "issues": [{"severity": "major", "comment": "Subtask 4 requires PR"}]
+  }
+}
+`,
+	}
+
+	env, ok := parseAgentEnvelope(result, target)
+	if !ok {
+		t.Fatal("expected successful parse of review JSON even with preamble")
+	}
+	if env.Kind != "review" {
+		t.Errorf("Kind = %q, want review", env.Kind)
+	}
+	if env.Summary != "changes_requested: Subtask descriptions lack details" {
+		t.Errorf("Summary = %q", env.Summary)
+	}
+	if env.ParentArtifactID == nil || env.ParentArtifactID.String() != "50d891b8-98af-4fde-b94b-a134f996f923" {
+		t.Errorf("ParentArtifactID mismatch")
+	}
+}
+
+// TestParseAgentEnvelope_WithShortParentArtifactID — парсинг JSON с некорректным UUID в parent_artifact_id (например, короткий хэш).
+func TestParseAgentEnvelope_WithShortParentArtifactID(t *testing.T) {
+	target := &models.Artifact{
+		ID:            uuid.New(),
+		ProducerAgent: "decomposer",
+		Kind:          models.ArtifactKindSubtaskDescription,
+	}
+
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output: `{
+  "kind": "review",
+  "summary": "changes_requested: Subtask descriptions lack details",
+  "parent_artifact_id": "50d891b8",
+  "content": {
+    "decision": "changes_requested",
+    "issues": [{"severity": "major", "comment": "Subtask 4 requires PR"}]
+  }
+}
+`,
+	}
+
+	env, ok := parseAgentEnvelope(result, target)
+	if !ok {
+		t.Fatal("expected successful parse even with short parent_artifact_id")
+	}
+	if env.Kind != "review" {
+		t.Errorf("Kind = %q, want review", env.Kind)
+	}
+	// Должен подставиться target.ID, т.к. "50d891b8" не распарсился как UUID
+	if env.ParentArtifactID == nil || *env.ParentArtifactID != target.ID {
+		t.Errorf("ParentArtifactID mismatch: got %v, want %s", env.ParentArtifactID, target.ID)
+	}
+}
+
 
 // TestSaveArtifact_HappyPath — заваливаем валидный envelope, ожидаем созданный артефакт
 // в repo с теми же kind/summary, status=ready.
@@ -350,7 +522,76 @@ func TestSaveArtifact_LeakCanaryNotLogged(t *testing.T) {
 	}
 }
 
+func TestExtractMultipleArtifacts(t *testing.T) {
+	taskID := uuid.New()
+	parentID := uuid.New()
+
+	t.Run("ValidArrayOfArtifacts", func(t *testing.T) {
+		output := fmt.Sprintf(`[
+			{"kind": "subtask_description", "summary": "First", "parent": "%s"},
+			{"kind": "subtask_description", "summary": "Second", "parent": "%s"}
+		]`, parentID, parentID)
+
+		result := &agent.ExecutionResult{Output: output}
+		arts, ok := extractMultipleArtifacts(result, "developer", taskID, nil)
+		if !ok {
+			t.Fatal("expected true")
+		}
+		if len(arts) != 2 {
+			t.Fatalf("expected 2 artifacts, got %d", len(arts))
+		}
+		if arts[0].Kind != "subtask_description" || arts[0].Summary != "First" {
+			t.Errorf("incorrect art[0]: %+v", arts[0])
+		}
+		if arts[1].Kind != "subtask_description" || arts[1].Summary != "Second" {
+			t.Errorf("incorrect art[1]: %+v", arts[1])
+		}
+		if arts[0].ParentID == nil || *arts[0].ParentID != parentID {
+			t.Errorf("expected parent ID %s, got %v", parentID, arts[0].ParentID)
+		}
+	})
+
+	t.Run("ValidObjectWithArtifactsField", func(t *testing.T) {
+		output := fmt.Sprintf(`{
+			"artifacts": [
+				{"kind": "subtask_description", "title": "Subtask Title", "parent": "%s"}
+			]
+		}`, parentID)
+
+		result := &agent.ExecutionResult{Output: output}
+		arts, ok := extractMultipleArtifacts(result, "developer", taskID, nil)
+		if !ok {
+			t.Fatal("expected true")
+		}
+		if len(arts) != 1 {
+			t.Fatalf("expected 1 artifact, got %d", len(arts))
+		}
+		if arts[0].Kind != "subtask_description" || arts[0].Summary != "Subtask Title" {
+			t.Errorf("incorrect art[0]: %+v", arts[0])
+		}
+	})
+
+	t.Run("FallbackOnSingleEnvelope", func(t *testing.T) {
+		output := `{"kind": "review", "summary": "approved"}`
+		result := &agent.ExecutionResult{Output: output}
+		_, ok := extractMultipleArtifacts(result, "developer", taskID, nil)
+		if ok {
+			t.Fatal("expected false for single envelope")
+		}
+	})
+
+	t.Run("FallbackOnPlainText", func(t *testing.T) {
+		output := `Not a JSON at all`
+		result := &agent.ExecutionResult{Output: output}
+		_, ok := extractMultipleArtifacts(result, "developer", taskID, nil)
+		if ok {
+			t.Fatal("expected false for plain text")
+		}
+	})
+}
+
 // Unused import guard:
 var _ = io.Discard
 var _ error
 var _ = errors.New
+

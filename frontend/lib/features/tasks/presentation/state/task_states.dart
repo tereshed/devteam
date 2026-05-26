@@ -55,6 +55,7 @@ abstract class TaskDetailState with _$TaskDetailState {
     @Default(false) bool realtimeMutationBlocked,
     WsServiceFailure? realtimeServiceFailure,
     @Default(false) bool taskDeleted,
+    @Default(<WsAgentLogEvent>[]) List<WsAgentLogEvent> sandboxLogs,
     /// Ошибка догрузки сообщений (провайдер остаётся AsyncData).
     Object? messagesLoadMoreError,
     /// Текущая lifecycle-мутация (mutex cancel), только из контроллера (12.8).

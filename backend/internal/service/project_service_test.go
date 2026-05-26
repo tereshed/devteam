@@ -1343,13 +1343,16 @@ func TestUpdate_GitURLChanged_Revalidated(t *testing.T) {
 	pr.On("Update", ctx, mock.MatchedBy(func(p *models.Project) bool {
 		return p.GitURL == newU
 	})).Return(nil)
-	cloneDone := make(chan struct{})
-	mp.On("Clone", mock.Anything, newU, mock.Anything).Run(func(mock.Arguments) { close(cloneDone) }).Return(nil)
+	pipelineDone := make(chan struct{})
+	pr.On("UpdateStatusAndCommit", mock.Anything, pid, models.ProjectStatusIndexing, models.ProjectStatusReady, mock.Anything).
+		Run(func(mock.Arguments) { close(pipelineDone) }).
+		Return(nil)
+	mp.On("Clone", mock.Anything, newU, mock.Anything).Return(nil)
 
 	_, err := svc.Update(ctx, userID, models.RoleUser, pid, dto.UpdateProjectRequest{GitURL: &newU})
 	require.NoError(t, err)
 	mp.AssertCalled(t, "ValidateAccess", ctx, newU)
-	<-cloneDone
+	<-pipelineDone
 }
 
 func TestUpdate_GitURLChanged_OldCloneRemoved(t *testing.T) {
@@ -1379,12 +1382,17 @@ func TestUpdate_GitURLChanged_OldCloneRemoved(t *testing.T) {
 	pr.On("Update", ctx, mock.Anything).Return(nil)
 	blockClone := make(chan struct{})
 	mp.On("Clone", mock.Anything, newU, mock.Anything).Run(func(mock.Arguments) { <-blockClone }).Return(nil).Maybe()
+	pipelineDone := make(chan struct{})
+	pr.On("UpdateStatusAndCommit", mock.Anything, pid, models.ProjectStatusIndexing, models.ProjectStatusReady, mock.Anything).
+		Run(func(mock.Arguments) { close(pipelineDone) }).
+		Return(nil)
 
 	_, err := svc.Update(ctx, userID, models.RoleUser, pid, dto.UpdateProjectRequest{GitURL: &newU})
 	require.NoError(t, err)
 	_, statErr := os.Stat(marker)
 	require.True(t, os.IsNotExist(statErr), "old clone dir should be removed before async clone recreates it")
 	close(blockClone)
+	<-pipelineDone
 }
 
 func TestUpdate_NoGitChange_NoRevalidation(t *testing.T) {
@@ -1484,12 +1492,15 @@ func TestUpdate_LocalToRemote_TriggersCloneWithoutURLChange(t *testing.T) {
 	pr.On("Update", ctx, mock.MatchedBy(func(p *models.Project) bool {
 		return p.GitProvider == models.GitProviderGitHub && p.GitURL == u
 	})).Return(nil)
-	done := make(chan struct{})
-	mp.On("Clone", mock.Anything, u, mock.Anything).Run(func(mock.Arguments) { close(done) }).Return(nil)
+	pipelineDone := make(chan struct{})
+	pr.On("UpdateStatusAndCommit", mock.Anything, pid, models.ProjectStatusIndexing, models.ProjectStatusReady, mock.Anything).
+		Run(func(mock.Arguments) { close(pipelineDone) }).
+		Return(nil)
+	mp.On("Clone", mock.Anything, u, mock.Anything).Return(nil)
 
 	_, err := svc.Update(ctx, userID, models.RoleUser, pid, dto.UpdateProjectRequest{GitProvider: &gp})
 	require.NoError(t, err)
-	<-done
+	<-pipelineDone
 }
 
 func TestUpdate_UsesDbTransaction(t *testing.T) {

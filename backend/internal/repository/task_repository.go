@@ -264,6 +264,9 @@ func (r *taskRepository) Update(ctx context.Context, task *models.Task, expected
 		"error_message":     task.ErrorMessage,
 		"started_at":        task.StartedAt,
 		"completed_at":      task.CompletedAt,
+		"current_step_no":   task.CurrentStepNo,
+		"cancel_requested":  task.CancelRequested,
+		"custom_timeout":    task.CustomTimeout,
 		"updated_at":        now,
 	}
 	result := db.WithContext(ctx).Model(&models.Task{}).

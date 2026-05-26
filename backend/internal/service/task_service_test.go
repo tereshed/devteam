@@ -884,11 +884,20 @@ func TestTaskCancel_RowLocked_ReturnsAlreadyTerminal(t *testing.T) {
 func TestTaskResume_FromPausedV2(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStatePaused}
+	base := &models.Task{
+		ID:              tsTaskID,
+		ProjectID:       tsProjectID,
+		State:           models.TaskStatePaused,
+		CurrentStepNo:   10,
+		CancelRequested: true,
+	}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.State == models.TaskStateActive && tk.CompletedAt == nil
+		return tk.State == models.TaskStateActive &&
+			tk.CompletedAt == nil &&
+			tk.CurrentStepNo == 10 &&
+			tk.CancelRequested == false
 	}), models.TaskStatePaused, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Resume(ctx, tsUserID, models.RoleUser, tsTaskID)
@@ -898,11 +907,24 @@ func TestTaskResume_FromPausedV2(t *testing.T) {
 func TestTaskResume_FromNeedsHuman(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateNeedsHuman, CompletedAt: ptrTime(time.Now())}
+	em := "some error"
+	base := &models.Task{
+		ID:              tsTaskID,
+		ProjectID:       tsProjectID,
+		State:           models.TaskStateNeedsHuman,
+		CompletedAt:     ptrTime(time.Now()),
+		ErrorMessage:    &em,
+		CurrentStepNo:   15,
+		CancelRequested: true,
+	}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.State == models.TaskStateActive && tk.CompletedAt == nil
+		return tk.State == models.TaskStateActive &&
+			tk.CompletedAt == nil &&
+			tk.ErrorMessage == nil &&
+			tk.CurrentStepNo == 0 &&
+			tk.CancelRequested == false
 	}), models.TaskStateNeedsHuman, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Resume(ctx, tsUserID, models.RoleUser, tsTaskID)
@@ -912,11 +934,24 @@ func TestTaskResume_FromNeedsHuman(t *testing.T) {
 func TestTaskResume_FromFailed(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateFailed, CompletedAt: ptrTime(time.Now())}
+	em := "boom"
+	base := &models.Task{
+		ID:              tsTaskID,
+		ProjectID:       tsProjectID,
+		State:           models.TaskStateFailed,
+		CompletedAt:     ptrTime(time.Now()),
+		ErrorMessage:    &em,
+		CurrentStepNo:   42,
+		CancelRequested: true,
+	}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
 	tr.On("Update", ctx, mock.MatchedBy(func(tk *models.Task) bool {
-		return tk.State == models.TaskStateActive && tk.CompletedAt == nil
+		return tk.State == models.TaskStateActive &&
+			tk.CompletedAt == nil &&
+			tk.ErrorMessage == nil &&
+			tk.CurrentStepNo == 0 &&
+			tk.CancelRequested == false
 	}), models.TaskStateFailed, mock.AnythingOfType("time.Time")).Return(nil)
 
 	_, err := svc.Resume(ctx, tsUserID, models.RoleUser, tsTaskID)
@@ -1144,7 +1179,7 @@ func TestTaskUpdate_AcceptsBoundaryValues(t *testing.T) {
 func TestTaskUpdate_EmptyTimeoutClearsOverride(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
-	prev := models.IntervalDuration(2 * time.Hour)
+	prev := models.IntervalDuration{Val: 2 * time.Hour}
 	base := &models.Task{ID: tsTaskID, ProjectID: tsProjectID, State: models.TaskStateActive, CustomTimeout: &prev}
 	tr.On("GetByID", ctx, tsTaskID).Return(base, nil).Once()
 	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)

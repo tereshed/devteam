@@ -1082,7 +1082,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectDashboardFallbackTitle => 'Project';
 
   @override
-  String get projectDashboardChat => 'Chat';
+  String get projectDashboardChat => 'Dashboard';
 
   @override
   String get projectDashboardTasks => 'Tasks';
@@ -1421,6 +1421,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taskDetailSectionSubtasks => 'Subtasks';
+
+  @override
+  String get taskDetailSectionSandboxLogs => 'Sandbox Logs (Realtime)';
+
+  @override
+  String get taskDetailSandboxLogsEmpty =>
+      'No sandbox logs yet. They will stream here in real-time when the agent (Developer/Tester) starts running.';
+
+  @override
+  String get taskDetailSandboxLogsClear => 'Clear';
+
+  @override
+  String get taskDetailSandboxLogsCopy => 'Copy';
+
+  @override
+  String get taskDetailSandboxLogsCopied => 'Logs copied to clipboard';
 
   @override
   String get taskDetailNoDiff => 'No diff';

@@ -31,8 +31,8 @@ class ProjectDashboardShell extends StatelessWidget {
           })
         >[
           (
-            icon: Icons.chat_outlined,
-            selectedIcon: Icons.chat,
+            icon: Icons.dashboard_outlined,
+            selectedIcon: Icons.dashboard,
             label: l10n.projectDashboardChat,
           ),
           (

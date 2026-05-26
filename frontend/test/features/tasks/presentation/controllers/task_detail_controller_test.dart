@@ -1677,6 +1677,62 @@ void main() {
           await waitDetail();
         },
       );
+
+      test('T14 applyWsAgentLog appends log, filters duplicates, sorts by seq', () async {
+        stubList();
+        when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
+            .thenAnswer((_) async => task());
+        stubMessages(
+          const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
+        );
+
+        listenDetailAlive();
+        final ctrl = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid).notifier);
+        await waitDetail();
+
+        final e1 = WsAgentLogEvent(
+          ts: DateTime.utc(2026, 5, 1, 10, 0),
+          v: 1,
+          projectId: pid,
+          taskId: tid,
+          sandboxId: 'sb1',
+          stream: 'stdout',
+          line: 'line 1',
+          seq: 1,
+        );
+        final e2 = WsAgentLogEvent(
+          ts: DateTime.utc(2026, 5, 1, 10, 1),
+          v: 1,
+          projectId: pid,
+          taskId: tid,
+          sandboxId: 'sb1',
+          stream: 'stdout',
+          line: 'line 2',
+          seq: 2,
+        );
+
+        // Emit out of order to verify sorting by seq
+        wsEvents.add(WsClientEvent.server(WsServerEvent.agentLog(e2)));
+        wsEvents.add(WsClientEvent.server(WsServerEvent.agentLog(e1)));
+        await Future<void>.delayed(Duration.zero);
+
+        var v = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid)).requireValue;
+        expect(v.sandboxLogs, hasLength(2));
+        expect(v.sandboxLogs[0].seq, 1);
+        expect(v.sandboxLogs[1].seq, 2);
+
+        // Emit duplicate (same seq & sandboxId)
+        wsEvents.add(WsClientEvent.server(WsServerEvent.agentLog(e1)));
+        await Future<void>.delayed(Duration.zero);
+
+        v = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid)).requireValue;
+        expect(v.sandboxLogs, hasLength(2));
+
+        // Clear logs
+        ctrl.clearSandboxLogs();
+        v = container.read(taskDetailControllerProvider(projectId: pid, taskId: tid)).requireValue;
+        expect(v.sandboxLogs, isEmpty);
+      });
     });
   });
 }

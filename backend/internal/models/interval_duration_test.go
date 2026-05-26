@@ -39,7 +39,7 @@ func TestIntervalDuration_ScanNil(t *testing.T) {
 	if err := d.Scan(nil); err != nil {
 		t.Fatalf("Scan(nil) error: %v", err)
 	}
-	if d != 0 {
+	if d.Val != 0 {
 		t.Errorf("Scan(nil) = %v, want 0", d)
 	}
 }
@@ -56,7 +56,7 @@ func TestIntervalDuration_ScanBytes(t *testing.T) {
 }
 
 func TestIntervalDuration_ValueRoundtrip(t *testing.T) {
-	original := IntervalDuration(2 * time.Hour)
+	original := IntervalDuration{Val: 2 * time.Hour}
 	v, err := original.Value()
 	if err != nil {
 		t.Fatalf("Value() error: %v", err)

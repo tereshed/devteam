@@ -329,50 +329,7 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
               LlmProviderConnectionStatus.connected;
         }).toList();
 
-        // Формируем список опций для выпадающего списка.
-        // Добавляем текущего провайдера, даже если он отключен, чтобы избежать ошибок отображения.
-        final dropdownOptions = <LlmIntegrationProvider>[];
-        for (final p in connectedProviders) {
-          if (!dropdownOptions.contains(p)) {
-            dropdownOptions.add(p);
-          }
-        }
-        if (_selectedProvider != null && !dropdownOptions.contains(_selectedProvider)) {
-          dropdownOptions.add(_selectedProvider!);
-        }
-
-        if (dropdownOptions.isEmpty) {
-          return Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Настройки ассистента',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Для настройки ассистента сначала подключите хотя бы один из поддерживаемых LLM-провайдеров выше (Claude Code, Anthropic, DeepSeek, Zhipu, OpenRouter).',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+        final dropdownOptions = _supportedProviders;
         return Card(
           elevation: 1,
           shape: RoundedRectangleBorder(
@@ -431,7 +388,7 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
                       
                       return DropdownMenuItem<LlmIntegrationProvider>(
                         value: provider,
-                        enabled: isConnected,
+                        enabled: true,
                         child: Text(
                           label,
                           style: TextStyle(
@@ -457,9 +414,6 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
                     validator: (val) {
                       if (val == null) {
                         return 'Выберите провайдера';
-                      }
-                      if (!connectedProviders.contains(val)) {
-                        return 'Этот провайдер не подключен. Подключите его в списке выше.';
                       }
                       return null;
                     },

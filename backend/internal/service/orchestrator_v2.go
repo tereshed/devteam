@@ -294,7 +294,7 @@ func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *m
 	// Фильтруем по (team_id = teamID OR team_id IS NULL) и дедуплицируем, предпочитая командных агентов.
 	var loaded []*models.Agent
 	if err := tx.WithContext(ctx).
-		Where("(team_id = ? OR team_id IS NULL) AND is_active = ? AND role_description IS NOT NULL AND role_description <> ''", teamID, true).
+		Where("(team_id = ? OR (team_id IS NULL AND user_id IS NULL)) AND role <> ? AND is_active = ? AND role_description IS NOT NULL AND role_description <> ''", teamID, string(models.AgentRoleAssistant), true).
 		Find(&loaded).Error; err != nil {
 		return RouterState{}, fmt.Errorf("load agents: %w", err)
 	}

@@ -90,6 +90,7 @@ func TestTaskRepository_Create_Success(t *testing.T) {
 		ErrorMessage:    &errMsg,
 		StartedAt:       &started,
 		CompletedAt:     &completed,
+		CustomTimeout:   func() *models.IntervalDuration { d := models.IntervalDuration{Val: 30 * time.Minute}; return &d }(),
 	}
 	require.NoError(t, repo.Create(ctx, task))
 	assert.NotEqual(t, uuid.Nil, task.ID)
@@ -713,4 +714,48 @@ func TestTaskRepository_List_LimitDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(60), total)
 	assert.Len(t, list, 50)
+}
+
+func TestTaskRepository_Update_NewFields(t *testing.T) {
+	db := setupTestDB(t)
+	defer cleanupProjectIntegrationDB(t, db)
+
+	user, p := taskRepoTestUserProject(t, db)
+	repo := NewTaskRepository(db)
+	ctx := context.Background()
+
+	timeoutVal := models.IntervalDuration{Val: 30 * time.Minute}
+	task := &models.Task{
+		ProjectID:       p.ID,
+		Title:           "Original Task",
+		State:           models.TaskStateActive,
+		CreatedByType:   models.CreatedByUser,
+		CreatedByID:     user.ID,
+		CustomTimeout:   &timeoutVal,
+		CurrentStepNo:   5,
+		CancelRequested: false,
+	}
+
+	require.NoError(t, repo.Create(ctx, task))
+	assert.NotEqual(t, uuid.Nil, task.ID)
+
+	// Keep track of expected state and updated at
+	origState := task.State
+	origUpdatedAt := task.UpdatedAt
+
+	// Update fields
+	newTimeoutVal := models.IntervalDuration{Val: 45 * time.Minute}
+	task.CustomTimeout = &newTimeoutVal
+	task.CurrentStepNo = 10
+	task.CancelRequested = true
+
+	require.NoError(t, repo.Update(ctx, task, origState, origUpdatedAt))
+
+	// Retrieve and assert
+	got, err := repo.GetByID(ctx, task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 10, got.CurrentStepNo)
+	assert.True(t, got.CancelRequested)
+	require.NotNil(t, got.CustomTimeout)
+	assert.Equal(t, 45*time.Minute, got.CustomTimeout.Duration())
 }

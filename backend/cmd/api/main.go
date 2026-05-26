@@ -671,7 +671,7 @@ func main() {
 	log.Printf("Orchestrator v2 workers started: %d step + %d agent", stepWorkersCount, agentWorkersCount)
 
 	// Retention: 30 дней router_decisions + 1 сутки released worktrees. Раз в час.
-	v2Retention := service.NewRetentionService(routerDecisionRepoV2, v2WorktreeMgr, v2Logger, service.DefaultRetentionConfig())
+	v2Retention := service.NewRetentionService(routerDecisionRepoV2, taskEventRepoV2, v2WorktreeMgr, v2Logger, service.DefaultRetentionConfig())
 	go func() {
 		if err := v2Retention.Run(ctxWorker); err != nil {
 			log.Printf("retention service exited with error: %v", err)
@@ -704,6 +704,7 @@ func main() {
 			routerDecisionRepoV2,
 			worktreeRepoV2,
 		),
+		OrchestratorService:   orchestratorService,
 	})
 	assistantSessionRepo := repository.NewAssistantSessionRepository(db)
 	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{

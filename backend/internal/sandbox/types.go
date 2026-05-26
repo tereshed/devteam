@@ -99,7 +99,8 @@ type SandboxOptions struct {
 	TaskID string
 	// ProjectID — опционально; в текущем контракте 5.5 не участвует в имени контейнера и хостовых путях.
 	// Если позже ID попадёт в эти строки — сохраняйте ValidateProjectID (тот же формат, что TaskID) в Validate().
-	ProjectID string
+	ProjectID   string
+	ExecutionID string
 
 	Backend CodeBackendType
 	Image   string

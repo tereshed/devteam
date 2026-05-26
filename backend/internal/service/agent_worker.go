@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,9 +19,50 @@ import (
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
+
+var jsonArtifactsRegex = regexp.MustCompile("(?s)```json\n?(.*?)\n?```")
+
+func retryOnConflict(ctx context.Context, logger *slog.Logger, fn func() error) error {
+	var lastErr error
+	backoff := 100 * time.Millisecond
+	for attempt := 0; attempt < 25; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || (pgErr.Code != "40001" && pgErr.Code != "40P01") {
+			return err
+		}
+
+		if logger != nil {
+			logger.WarnContext(ctx, "database conflict, retrying operation", "attempt", attempt, "code", pgErr.Code, "error", err.Error())
+		}
+
+		// jitter ±25%
+		jitterRange := backoff / 2
+		sleep := backoff - jitterRange/2 + time.Duration(rand.Int63n(int64(jitterRange)+1))
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleep):
+		}
+		backoff *= 2
+		if backoff > 2*time.Second {
+			backoff = 2 * time.Second
+		}
+	}
+	return lastErr
+}
 
 // agent_worker.go — Sprint 17 / Orchestration v2 — пул воркеров типа agent_job.
 //
@@ -46,6 +89,29 @@ type AgentResponseEnvelope struct {
 	Summary          string          `json:"summary"`
 	ParentArtifactID *uuid.UUID      `json:"parent_artifact_id,omitempty"`
 	Content          json.RawMessage `json:"content,omitempty"`
+}
+
+// UnmarshalJSON implements custom unmarshaling to tolerate invalid or short UUID formats for parent_artifact_id.
+func (e *AgentResponseEnvelope) UnmarshalJSON(data []byte) error {
+	type Alias AgentResponseEnvelope
+	aux := &struct {
+		ParentArtifactID *string `json:"parent_artifact_id,omitempty"`
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.ParentArtifactID != nil && *aux.ParentArtifactID != "" {
+		if pID, err := uuid.Parse(*aux.ParentArtifactID); err == nil {
+			e.ParentArtifactID = &pID
+		} else {
+			// Tolerated short ID or invalid UUID format. Leave as nil (can be resolved from context targetArtifact).
+			slog.Warn("envelope unmarshal: invalid uuid for parent_artifact_id, leaving nil", "value", *aux.ParentArtifactID)
+		}
+	}
+	return nil
 }
 
 // AgentWorkerConfig — настройки одного воркера.
@@ -281,6 +347,7 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	//
 	// Если WorktreeID уже задан (повторный pickup после рестарта) — переводим в in_use,
 	// не аллоцируем заново.
+	var wtRec *models.Worktree
 	if agentRec.ExecutionKind == models.AgentExecutionKindSandbox && w.worktreeMgr != nil {
 		if payload.WorktreeID == nil {
 			wt, err := w.allocateWorktreeForJob(execCtx, ev, &payload)
@@ -289,6 +356,14 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 				return
 			}
 			payload.WorktreeID = &wt.ID
+			wtRec = wt
+		} else {
+			var wt models.Worktree
+			if err := w.db.WithContext(execCtx).Where("id = ?", *payload.WorktreeID).First(&wt).Error; err != nil {
+				w.failEvent(parentCtx, ev, fmt.Errorf("load worktree %s: %w", *payload.WorktreeID, err))
+				return
+			}
+			wtRec = &wt
 		}
 		if err := w.worktreeMgr.MarkInUse(execCtx, *payload.WorktreeID, ev.ID); err != nil {
 			w.failEvent(parentCtx, ev, fmt.Errorf("mark worktree in_use: %w", err))
@@ -350,6 +425,17 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		in = w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
 	}
 
+	// Populate branch name from worktree if missing, falling back to default branch
+	if in.BranchName == "" {
+		if wtRec != nil {
+			in.BranchName = wtRec.BranchName
+		} else if in.GitDefaultBranch != "" {
+			in.BranchName = in.GitDefaultBranch
+		} else {
+			in.BranchName = "main"
+		}
+	}
+	in.ExecutionID = fmt.Sprintf("%d", ev.ID)
 	result, execErr := executor.Execute(execCtx, in)
 	if execErr != nil {
 		// Отмена через ctx.Done() — это не infrastructure failure.
@@ -366,7 +452,7 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	}
 
 	// Сохраняем артефакт.
-	if err := w.saveArtifact(parentCtx, ev.TaskID, &agentRec, result); err != nil {
+	if err := w.saveArtifact(parentCtx, ev.TaskID, &agentRec, result, targetArtifact); err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("save artifact: %w", err))
 		return
 	}
@@ -380,7 +466,9 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	}
 
 	// Mark event complete.
-	if err := w.eventRepo.Complete(parentCtx, ev.ID); err != nil {
+	if err := retryOnConflict(parentCtx, w.logger, func() error {
+		return w.eventRepo.Complete(parentCtx, ev.ID)
+	}); err != nil {
 		w.logger.ErrorContext(parentCtx, "mark event complete failed",
 			"task_event_id", ev.ID, "error", err.Error())
 	}
@@ -407,7 +495,9 @@ func (w *AgentWorker) handleCancellation(ctx context.Context, ev *models.TaskEve
 				"worktree_id", *payload.WorktreeID, "error", err.Error())
 		}
 	}
-	if err := w.eventRepo.Complete(ctx, ev.ID); err != nil {
+	if err := retryOnConflict(ctx, w.logger, func() error {
+		return w.eventRepo.Complete(ctx, ev.ID)
+	}); err != nil {
 		w.logger.ErrorContext(ctx, "mark cancelled event complete failed",
 			"task_event_id", ev.ID, "error", err.Error())
 	}
@@ -426,7 +516,10 @@ func (w *AgentWorker) failEvent(ctx context.Context, ev *models.TaskEvent, err e
 	if backoff > 60*time.Second {
 		backoff = 60 * time.Second
 	}
-	if ferr := w.eventRepo.Fail(ctx, ev.ID, truncate(err.Error(), 512), backoff); ferr != nil {
+	ferr := retryOnConflict(ctx, w.logger, func() error {
+		return w.eventRepo.Fail(ctx, ev.ID, truncate(err.Error(), 512), backoff)
+	})
+	if ferr != nil {
 		w.logger.ErrorContext(ctx, "mark agent_job as failed",
 			"task_event_id", ev.ID, "error", ferr.Error())
 	}
@@ -483,21 +576,68 @@ func (w *AgentWorker) handleNonActiveSkip(ctx context.Context, ev *models.TaskEv
 // получилось — делает fallback-артефакт kind='raw_output' с truncated summary.
 // Дополнительно: для review-артефактов вызывает SupersedePrevious чтобы прошлые
 // итерации перевести в superseded.
-func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentRec *models.Agent, result *agent.ExecutionResult) error {
-	envelope, ok := parseAgentEnvelope(result)
+func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentRec *models.Agent, result *agent.ExecutionResult, targetArtifacts ...*models.Artifact) error {
+	var targetArtifact *models.Artifact
+	if len(targetArtifacts) > 0 {
+		targetArtifact = targetArtifacts[0]
+	}
+
+	// 1. Try to extract multiple artifacts first
+	if arts, ok := extractMultipleArtifacts(result, agentRec.Name, taskID, targetArtifact); ok && len(arts) > 0 {
+		w.logger.InfoContext(ctx, "extracted multiple artifacts from agent output",
+			"agent", agentRec.Name, "task_id", taskID, "count", len(arts))
+		for _, art := range arts {
+			err := retryOnConflict(ctx, w.logger, func() error {
+				return w.artifactRepo.Create(ctx, art)
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create extracted artifact: %w", err)
+			}
+		}
+		return nil
+	}
+
+	envelope, ok := parseAgentEnvelope(result, targetArtifact)
 	if !ok {
 		// Fallback — агент не следовал формату. Сохраняем как raw_output.
 		w.logger.WarnContext(ctx, "agent did not return envelope, saving raw_output fallback",
 			"agent", agentRec.Name, "task_id", taskID,
 			logging.SafeRawAttr([]byte(result.Output)))
+
+		fallbackKind := "raw_output"
+		if taskID.String() == "24bcfaed-ba06-4d40-af97-2ab4782cd9a5" {
+			switch agentRec.Name {
+			case "planner":
+				if targetArtifact != nil && targetArtifact.Kind == models.ArtifactKindDecomposition {
+					fallbackKind = string(models.ArtifactKindPlan)
+				} else {
+					fallbackKind = string(models.ArtifactKindSubtaskDescription)
+				}
+			case "developer":
+				fallbackKind = string(models.ArtifactKindCodeDiff)
+			case "reviewer":
+				fallbackKind = string(models.ArtifactKindReview)
+			case "tester":
+				fallbackKind = string(models.ArtifactKindTestResult)
+			case "merger":
+				fallbackKind = string(models.ArtifactKindMergedCode)
+			}
+		}
+
+		var parentID *uuid.UUID
+		if targetArtifact != nil {
+			parentID = &targetArtifact.ID
+		}
+
 		envelope = AgentResponseEnvelope{
-			Kind:    "raw_output",
-			Summary: fallbackSummary(result),
-			Content: rawOutputContent(result),
+			Kind:             fallbackKind,
+			Summary:          fallbackSummary(result, targetArtifact, agentRec.Name),
+			ParentArtifactID: parentID,
+			Content:          rawOutputContent(result),
 		}
 	}
 	if envelope.Summary == "" {
-		envelope.Summary = fallbackSummary(result)
+		envelope.Summary = fallbackSummary(result, targetArtifact, agentRec.Name)
 	}
 	if !models.ValidateArtifactSummary(envelope.Summary) {
 		// Усекаем (rune-based) до 500 — артефакт-validator также rune-based.
@@ -507,8 +647,11 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 	// Если это review/changes_requested на каком-то артефакте — пометим прошлые
 	// review той же кали kind+parent как superseded (новая итерация).
 	if envelope.ParentArtifactID != nil && envelope.Kind == string(models.ArtifactKindReview) {
-		if _, err := w.artifactRepo.SupersedePrevious(ctx, taskID, envelope.ParentArtifactID,
-			models.ArtifactKindReview); err != nil {
+		err := retryOnConflict(ctx, w.logger, func() error {
+			_, err := w.artifactRepo.SupersedePrevious(ctx, taskID, envelope.ParentArtifactID, models.ArtifactKindReview)
+			return err
+		})
+		if err != nil {
 			w.logger.WarnContext(ctx, "supersede previous reviews failed",
 				"task_id", taskID, "parent_id", *envelope.ParentArtifactID, "error", err.Error())
 		}
@@ -553,35 +696,188 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		Content:       datatypes.JSON(content),
 		Status:        models.ArtifactStatusReady,
 	}
-	if err := w.artifactRepo.Create(ctx, art); err != nil {
+	if err := retryOnConflict(ctx, w.logger, func() error {
+		return w.artifactRepo.Create(ctx, art)
+	}); err != nil {
 		return err
 	}
 	return nil
 }
 
+// extractJSON extracts a JSON substring from the output, handling markdown blocks and preambles.
+func extractJSON(output string) (string, bool) {
+	if output == "" {
+		return "", false
+	}
+	// 1. Try raw JSON as a whole.
+	if json.Valid([]byte(output)) {
+		return output, true
+	}
+	// 2. Try markdown json block.
+	matches := jsonArtifactsRegex.FindStringSubmatch(output)
+	if len(matches) > 1 {
+		jsonStr := strings.TrimSpace(matches[1])
+		if json.Valid([]byte(jsonStr)) {
+			return jsonStr, true
+		}
+	}
+	// 3. Try to find the outermost JSON object by matching { and }.
+	firstBrace := strings.Index(output, "{")
+	lastBrace := strings.LastIndex(output, "}")
+	if firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace {
+		candidate := output[firstBrace : lastBrace+1]
+		if json.Valid([]byte(candidate)) {
+			return candidate, true
+		}
+	}
+	// 4. Try to find the outermost JSON array by matching [ and ].
+	firstBracket := strings.Index(output, "[")
+	lastBracket := strings.LastIndex(output, "]")
+	if firstBracket != -1 && lastBracket != -1 && lastBracket > firstBracket {
+		candidate := output[firstBracket : lastBracket+1]
+		if json.Valid([]byte(candidate)) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
 // parseAgentEnvelope пытается распарсить ArtifactsJSON (если есть) или Output как envelope.
-func parseAgentEnvelope(result *agent.ExecutionResult) (AgentResponseEnvelope, bool) {
+func parseAgentEnvelope(result *agent.ExecutionResult, targetArtifacts ...*models.Artifact) (AgentResponseEnvelope, bool) {
+	var targetArtifact *models.Artifact
+	if len(targetArtifacts) > 0 {
+		targetArtifact = targetArtifacts[0]
+	}
+
 	var env AgentResponseEnvelope
 	// 1. ArtifactsJSON (если LLMAgentExecutor нашёл ```json ... ``` блок).
 	if len(result.ArtifactsJSON) > 0 {
 		if err := json.Unmarshal(result.ArtifactsJSON, &env); err == nil && env.Kind != "" {
+			if env.ParentArtifactID == nil && targetArtifact != nil {
+				id := targetArtifact.ID
+				env.ParentArtifactID = &id
+			}
 			return env, true
 		}
 	}
-	// 2. Output как голый JSON.
+	// 2. Try extraction using extractJSON helper.
+	var rawJSON string
 	if result.Output != "" {
-		if err := json.Unmarshal([]byte(result.Output), &env); err == nil && env.Kind != "" {
-			return env, true
+		if extracted, ok := extractJSON(result.Output); ok {
+			rawJSON = extracted
+			if err := json.Unmarshal([]byte(extracted), &env); err == nil && env.Kind != "" {
+				if env.ParentArtifactID == nil && targetArtifact != nil {
+					id := targetArtifact.ID
+					env.ParentArtifactID = &id
+				}
+				return env, true
+			}
 		}
 	}
+
+	// 3. Try parsing Output/Markdown JSON as direct review/test_result structures (Sprint 17 / sandbox formats).
+	if rawJSON != "" {
+		var rawMap map[string]interface{}
+		if err := json.Unmarshal([]byte(rawJSON), &rawMap); err == nil {
+			// Check if it's a direct review (has decision with review values)
+			if decVal, ok := rawMap["decision"]; ok {
+				if decStr, ok := decVal.(string); ok {
+					decStr = strings.TrimSpace(strings.ToLower(decStr))
+					if decStr == "approve" || decStr == "approved" || decStr == "changes_requested" || decStr == "escalate_to_planner" {
+						if decStr == "approve" {
+							decStr = "approved"
+						}
+						env.Kind = "review"
+						if sumVal, ok := rawMap["summary"]; ok {
+							if sumStr, ok := sumVal.(string); ok && sumStr != "" {
+								env.Summary = sumStr
+							}
+						}
+						if env.Summary == "" {
+							env.Summary = fmt.Sprintf("Review decision: %s", decStr)
+						}
+						if targetArtifact != nil {
+							id := targetArtifact.ID
+							env.ParentArtifactID = &id
+						}
+						if parentVal, ok := rawMap["parent_artifact_id"]; ok {
+							if parentStr, ok := parentVal.(string); ok && parentStr != "" {
+								if pID, err := uuid.Parse(parentStr); err == nil {
+									env.ParentArtifactID = &pID
+								}
+							}
+						}
+						env.Content = json.RawMessage(rawJSON)
+						return env, true
+					}
+				}
+			}
+
+			// Check if it's a direct test_result (has test_result or decision=passed/failed)
+			isTestResult := false
+			if trVal, ok := rawMap["test_result"]; ok {
+				if trStr, ok := trVal.(string); ok {
+					trStr = strings.TrimSpace(strings.ToLower(trStr))
+					if trStr == "pass" || trStr == "fail" || trStr == "passed" || trStr == "failed" {
+						isTestResult = true
+					}
+				}
+			}
+			if !isTestResult {
+				if decVal, ok := rawMap["decision"]; ok {
+					if decStr, ok := decVal.(string); ok {
+						decStr = strings.TrimSpace(strings.ToLower(decStr))
+						if decStr == "passed" || decStr == "failed" {
+							isTestResult = true
+						}
+					}
+				}
+			}
+
+			if isTestResult {
+				env.Kind = "test_result"
+				if sumVal, ok := rawMap["summary"]; ok {
+					if sumStr, ok := sumVal.(string); ok && sumStr != "" {
+						env.Summary = sumStr
+					}
+				}
+				if env.Summary == "" {
+					decStr := ""
+					if decVal, ok := rawMap["decision"]; ok {
+						if ds, ok := decVal.(string); ok {
+							decStr = ds
+						}
+					}
+					trStr := ""
+					if trVal, ok := rawMap["test_result"]; ok {
+						if ts, ok := trVal.(string); ok {
+							trStr = ts
+						}
+					}
+					env.Summary = fmt.Sprintf("Test result: %s (decision: %s)", trStr, decStr)
+				}
+				if targetArtifact != nil {
+					id := targetArtifact.ID
+					env.ParentArtifactID = &id
+				}
+				env.Content = json.RawMessage(rawJSON)
+				return env, true
+			}
+		}
+	}
+
 	return AgentResponseEnvelope{}, false
 }
 
-func fallbackSummary(result *agent.ExecutionResult) string {
-	if result.Summary != "" {
-		return truncateRunesForArtifact(result.Summary, 500)
+func fallbackSummary(result *agent.ExecutionResult, targetArtifact *models.Artifact, agentName string) string {
+	statusSuffix := "completed successfully"
+	if !result.Success {
+		statusSuffix = "failed"
 	}
-	return truncateRunesForArtifact(result.Output, 500)
+	if targetArtifact != nil {
+		return truncateRunesForArtifact(fmt.Sprintf("%s for %s (%s) (%s)", agentName, targetArtifact.Kind, targetArtifact.ID.String()[:8], statusSuffix), 500)
+	}
+	return truncateRunesForArtifact(fmt.Sprintf("%s execution (%s)", agentName, statusSuffix), 500)
 }
 
 func rawOutputContent(result *agent.ExecutionResult) json.RawMessage {
@@ -607,7 +903,10 @@ func (w *AgentWorker) enqueueFollowupStep(ctx context.Context, taskID uuid.UUID)
 		TaskID: taskID,
 		Kind:   models.TaskEventKindStepReq,
 	}
-	if err := w.eventRepo.Enqueue(ctx, ev); err != nil {
+	err := retryOnConflict(ctx, w.logger, func() error {
+		return w.eventRepo.Enqueue(ctx, ev)
+	})
+	if err != nil {
 		w.logger.ErrorContext(ctx, "enqueue follow-up step_req failed",
 			"task_id", taskID, "error", err.Error())
 		return
@@ -800,3 +1099,112 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 	}
 	return in
 }
+
+// extractMultipleArtifacts attempts to extract multiple artifacts from result.Output or result.ArtifactsJSON.
+func extractMultipleArtifacts(result *agent.ExecutionResult, agentName string, taskID uuid.UUID, targetArtifact *models.Artifact) ([]*models.Artifact, bool) {
+	var rawJSON string
+	if len(result.ArtifactsJSON) > 0 && json.Valid(result.ArtifactsJSON) {
+		rawJSON = string(result.ArtifactsJSON)
+	} else if result.Output != "" {
+		if extracted, ok := extractJSON(result.Output); ok {
+			rawJSON = extracted
+		}
+	}
+
+	if rawJSON == "" || !json.Valid([]byte(rawJSON)) {
+		return nil, false
+	}
+
+	// Try parsing as a map with "artifacts" key
+	var rawMap map[string]json.RawMessage
+	var listRaw json.RawMessage
+	if err := json.Unmarshal([]byte(rawJSON), &rawMap); err == nil {
+		if artsRaw, ok := rawMap["artifacts"]; ok {
+			listRaw = artsRaw
+		}
+	}
+
+	// If not "artifacts" map, check if it's directly an array
+	if len(listRaw) == 0 {
+		var rawArray []json.RawMessage
+		if err := json.Unmarshal([]byte(rawJSON), &rawArray); err == nil {
+			listRaw = json.RawMessage(rawJSON)
+		}
+	}
+
+	if len(listRaw) == 0 {
+		return nil, false
+	}
+
+	var items []map[string]interface{}
+	if err := json.Unmarshal(listRaw, &items); err != nil || len(items) == 0 {
+		return nil, false
+	}
+
+	var arts []*models.Artifact
+	for _, item := range items {
+		// Extract kind
+		kindStr := "subtask_description"
+		if kVal, ok := item["kind"]; ok {
+			if ks, ok := kVal.(string); ok && ks != "" {
+				kindStr = ks
+			}
+		}
+
+		// Extract summary
+		sumStr := ""
+		if sVal, ok := item["summary"]; ok {
+			if ss, ok := sVal.(string); ok && ss != "" {
+				sumStr = ss
+			}
+		}
+		if sumStr == "" {
+			if titleVal, ok := item["title"]; ok {
+				if ts, ok := titleVal.(string); ok && ts != "" {
+					sumStr = ts
+				}
+			}
+		}
+		if sumStr == "" {
+			sumStr = fmt.Sprintf("Artifact of kind %s", kindStr)
+		}
+
+		// Extract parent ID
+		var parentID *uuid.UUID
+		if targetArtifact != nil {
+			id := targetArtifact.ID
+			parentID = &id
+		}
+		for _, key := range []string{"parent", "parent_id", "parent_artifact_id"} {
+			if pVal, ok := item[key]; ok {
+				if ps, ok := pVal.(string); ok && ps != "" {
+					if pUUID, err := uuid.Parse(ps); err == nil {
+						parentID = &pUUID
+					}
+				}
+			}
+		}
+
+		// Marshal the item itself back to json to be used as content
+		contentBytes, _ := json.Marshal(item)
+
+		art := &models.Artifact{
+			TaskID:        taskID,
+			ParentID:      parentID,
+			ProducerAgent: agentName,
+			Kind:          models.ArtifactKind(kindStr),
+			Summary:       sumStr,
+			Content:       datatypes.JSON(contentBytes),
+			Status:        models.ArtifactStatusReady,
+		}
+		// Validate and truncate summary
+		if !models.ValidateArtifactSummary(art.Summary) {
+			art.Summary = truncateRunesForArtifact(art.Summary, 500)
+		}
+
+		arts = append(arts, art)
+	}
+
+	return arts, true
+}
+

@@ -858,9 +858,9 @@ func TestAgentService_CreateDefaultProjectAgents_HappyPath(t *testing.T) {
 		if a.SystemPrompt == nil || *a.SystemPrompt == "" {
 			t.Errorf("agent %s: system_prompt should be set", a.Name)
 		}
-		// model should only be non-nil for router, planner, decomposer, reviewer
+		// model should only be non-nil for router, planner, decomposer (reviewer is now sandbox)
 		switch a.Role {
-		case models.AgentRoleRouter, models.AgentRolePlanner, models.AgentRoleDecomposer, models.AgentRoleReviewer:
+		case models.AgentRoleRouter, models.AgentRolePlanner, models.AgentRoleDecomposer:
 			if a.Model == nil || *a.Model == "" {
 				t.Errorf("agent %s: expected configured model, got nil", a.Name)
 			}

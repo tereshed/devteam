@@ -262,11 +262,13 @@ func TestSandboxAgentExecutor_buildInstruction(t *testing.T) {
 
 	t.Run("Normal input", func(t *testing.T) {
 		input := ExecutionInput{
-			Title:       "Test Task",
-			Description: "Create API endpoint",
-			PromptUser:  "Use gin framework",
+			PromptSystem: "You are a senior reviewer",
+			Title:        "Test Task",
+			Description:  "Create API endpoint",
+			PromptUser:   "Use gin framework",
 		}
 		res := executor.buildInstruction(input)
+		assert.Contains(t, res, "System Prompt:\nYou are a senior reviewer")
 		assert.Contains(t, res, "Title: Test Task")
 		assert.Contains(t, res, "Description: Create API endpoint")
 		assert.Contains(t, res, "Instruction: Use gin framework")

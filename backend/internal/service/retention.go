@@ -32,6 +32,10 @@ type RetentionConfig struct {
 	// удаляются с диска. Default 24 часа (план §2.9).
 	WorktreesReleasedAge time.Duration
 
+	// TaskEventsStuckAge — зависшие блокировки событий задач старше этого возраста освобождаются.
+	// Default 15 минут.
+	TaskEventsStuckAge time.Duration
+
 	// Interval — частота прогона полного цикла. Default 1 час.
 	Interval time.Duration
 }
@@ -41,6 +45,7 @@ func DefaultRetentionConfig() RetentionConfig {
 	return RetentionConfig{
 		RouterDecisionsAge:   30 * 24 * time.Hour,
 		WorktreesReleasedAge: 24 * time.Hour,
+		TaskEventsStuckAge:   15 * time.Minute,
 		Interval:             1 * time.Hour,
 	}
 }
@@ -48,6 +53,7 @@ func DefaultRetentionConfig() RetentionConfig {
 // RetentionService — координатор фоновых retention-операций.
 type RetentionService struct {
 	decisionRepo repository.RouterDecisionRepository
+	eventRepo    repository.TaskEventRepository
 	worktreeMgr  *WorktreeManager // опционально; если nil — worktree cleanup пропускается
 	logger       *slog.Logger
 	cfg          RetentionConfig
@@ -57,6 +63,7 @@ type RetentionService struct {
 // (например, для процесса который занимается ТОЛЬКО router_decisions retention).
 func NewRetentionService(
 	decisionRepo repository.RouterDecisionRepository,
+	eventRepo repository.TaskEventRepository,
 	worktreeMgr *WorktreeManager,
 	logger *slog.Logger,
 	cfg RetentionConfig,
@@ -70,11 +77,14 @@ func NewRetentionService(
 	if cfg.WorktreesReleasedAge <= 0 {
 		cfg.WorktreesReleasedAge = 24 * time.Hour
 	}
+	if cfg.TaskEventsStuckAge <= 0 {
+		cfg.TaskEventsStuckAge = 15 * time.Minute
+	}
 	if cfg.Interval <= 0 {
 		cfg.Interval = 1 * time.Hour
 	}
 	return &RetentionService{
-		decisionRepo: decisionRepo, worktreeMgr: worktreeMgr,
+		decisionRepo: decisionRepo, eventRepo: eventRepo, worktreeMgr: worktreeMgr,
 		logger: logger, cfg: cfg,
 	}
 }
@@ -94,6 +104,24 @@ func (s *RetentionService) RunOnceRouterDecisions(ctx context.Context) (int64, e
 	return n, nil
 }
 
+// RunOnceStuckLocks — синхронный прогон освобождения зависших task_events.
+// Возвращает количество освобождённых locks.
+func (s *RetentionService) RunOnceStuckLocks(ctx context.Context) (int64, error) {
+	if s.eventRepo == nil {
+		return 0, nil
+	}
+	cutoff := time.Now().Add(-s.cfg.TaskEventsStuckAge)
+	n, err := s.eventRepo.ReleaseStuckLocks(ctx, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("task_events stuck locks retention: %w", err)
+	}
+	if n > 0 {
+		s.logger.InfoContext(ctx, "task_events stuck locks released",
+			"released_count", n, "older_than", cutoff)
+	}
+	return n, nil
+}
+
 // RunOnceWorktrees — синхронный прогон очистки worktrees. No-op если worktreeMgr=nil.
 // Возвращает количество физически удалённых worktree'ев.
 func (s *RetentionService) RunOnceWorktrees(ctx context.Context) (int, error) {
@@ -108,13 +136,19 @@ func (s *RetentionService) RunOnceWorktrees(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-// RunOnce — один полный цикл (decision + worktrees). Удобно для CLI и тестов.
+// RunOnce — один полный цикл (decision + stuck locks + worktrees). Удобно для CLI и тестов.
 // При ошибке одной из операций продолжает вторую и возвращает aggregate error.
 func (s *RetentionService) RunOnce(ctx context.Context) error {
 	var firstErr error
 	if _, err := s.RunOnceRouterDecisions(ctx); err != nil {
 		firstErr = err
 		s.logger.ErrorContext(ctx, "router_decisions cleanup failed", "error", err.Error())
+	}
+	if _, err := s.RunOnceStuckLocks(ctx); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+		s.logger.ErrorContext(ctx, "stuck locks cleanup failed", "error", err.Error())
 	}
 	if _, err := s.RunOnceWorktrees(ctx); err != nil {
 		if firstErr == nil {
@@ -131,6 +165,7 @@ func (s *RetentionService) Run(ctx context.Context) error {
 	s.logger.InfoContext(ctx, "retention service started",
 		"interval", s.cfg.Interval,
 		"router_decisions_age", s.cfg.RouterDecisionsAge,
+		"task_events_stuck_age", s.cfg.TaskEventsStuckAge,
 		"worktrees_released_age", s.cfg.WorktreesReleasedAge,
 	)
 

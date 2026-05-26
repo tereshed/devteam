@@ -1976,10 +1976,10 @@ abstract class AppLocalizations {
   /// **'Проект'**
   String get projectDashboardFallbackTitle;
 
-  /// Раздел дашборда: чат
+  /// Раздел дашборда: обзор проекта
   ///
   /// In ru, this message translates to:
-  /// **'Чат'**
+  /// **'Дашборд'**
   String get projectDashboardChat;
 
   /// Раздел дашборда: задачи
@@ -2605,6 +2605,36 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Подзадачи'**
   String get taskDetailSectionSubtasks;
+
+  /// Секция логов песочницы на экране деталей задачи
+  ///
+  /// In ru, this message translates to:
+  /// **'Логи песочницы (Realtime)'**
+  String get taskDetailSectionSandboxLogs;
+
+  /// Сообщение о пустом логе песочницы
+  ///
+  /// In ru, this message translates to:
+  /// **'Логи песочницы пока отсутствуют. Они появятся здесь в реальном времени при запуске агента (Developer/Tester).'**
+  String get taskDetailSandboxLogsEmpty;
+
+  /// Кнопка очистки логов песочницы
+  ///
+  /// In ru, this message translates to:
+  /// **'Очистить'**
+  String get taskDetailSandboxLogsClear;
+
+  /// Кнопка копирования логов песочницы
+  ///
+  /// In ru, this message translates to:
+  /// **'Копировать'**
+  String get taskDetailSandboxLogsCopy;
+
+  /// Снекбар о копировании логов песочницы
+  ///
+  /// In ru, this message translates to:
+  /// **'Логи скопированы в буфер обмена'**
+  String get taskDetailSandboxLogsCopied;
 
   /// Пустой артефакт diff (12.5)
   ///

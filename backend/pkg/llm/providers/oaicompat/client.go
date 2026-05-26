@@ -18,7 +18,7 @@ import (
 
 // defaultHTTPTimeout — таймаут запроса по умолчанию (Sprint 15.M8). Не «бесконечность» —
 // иначе зависший провайдер удерживает goroutine оркестратора надолго.
-const defaultHTTPTimeout = 60 * time.Second
+const defaultHTTPTimeout = 120 * time.Second
 
 // maxRetries — количество retry на 429/503/5xx-ошибки (Sprint 15.M8). Backoff экспоненциальный
 // от 500ms до 4s; общая длительность ≤ ~8s, что вписывается в healthTimeout сервиса (10s).
@@ -107,13 +107,20 @@ func (c *Client) doWithRetry(ctx context.Context, method, url string, body []byt
 				return nil, nil, fmt.Errorf("oaicompat: do request: %w", doErr)
 			}
 		} else {
-			payload, _ := io.ReadAll(resp.Body)
+			payload, readErr := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			// retriable: 429 + любой 5xx.
-			retriable := resp.StatusCode == http.StatusTooManyRequests ||
-				(resp.StatusCode >= 500 && resp.StatusCode <= 599)
-			if !retriable || attempt >= maxRetries {
-				return resp, payload, nil
+			if readErr != nil {
+				if attempt >= maxRetries || ctx.Err() != nil {
+					return nil, nil, fmt.Errorf("oaicompat: read response body: %w", readErr)
+				}
+				// Retry on body read errors (e.g. timeout during response streaming)
+			} else {
+				// retriable: 429 + любой 5xx.
+				retriable := resp.StatusCode == http.StatusTooManyRequests ||
+					(resp.StatusCode >= 500 && resp.StatusCode <= 599)
+				if !retriable || attempt >= maxRetries {
+					return resp, payload, nil
+				}
 			}
 			// Уважаем Retry-After (sec) до экспоненциального backoff.
 			// Sprint 15.minor: cap до 30s — провайдер может прислать `Retry-After: 3600`,

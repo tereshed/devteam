@@ -13,7 +13,7 @@ TeamRepository teamRepository(Ref ref) {
   return TeamRepository(dio: dio);
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 Future<TeamModel> team(Ref ref, String projectId) {
   final cancelToken = CancelToken();
   ref.onDispose(cancelToken.cancel);
@@ -23,7 +23,7 @@ Future<TeamModel> team(Ref ref, String projectId) {
       );
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 Future<List<TeamModel>> teams(Ref ref, String projectId) {
   final cancelToken = CancelToken();
   ref.onDispose(cancelToken.cancel);
@@ -33,7 +33,7 @@ Future<List<TeamModel>> teams(Ref ref, String projectId) {
       );
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 Future<List<TeamTypeModel>> teamTypes(Ref ref) {
   final cancelToken = CancelToken();
   ref.onDispose(cancelToken.cancel);

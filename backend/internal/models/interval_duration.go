@@ -16,24 +16,33 @@ import (
 // как string "01:00:00", "1 day 02:30:00", "30:00" — единого формата нет.
 //
 // Контракт:
-//   - Сериализация (Value): "%d microseconds" — это валидный INTERVAL литерал в PG,
-//     точность достаточная для секундных таймаутов, и Yugabyte интерпретирует одинаково.
+//   - Сериализация (Value): "HH:MM:SS.ffffff" — стандартный INTERVAL-литерал,
+//     который pgx/v5 корректно парсит на клиенте при подготовке параметров.
 //   - Парсинг (Scan): принимает string/[]byte в любом из распространённых форматов:
 //     "HH:MM:SS[.ffffff]", "D days HH:MM:SS", "N microseconds", "N seconds".
 //   - NULL → IntervalDuration(0).
 //
 // Использование в моделях: `*IntervalDuration` (nullable) или `IntervalDuration` (с default 0).
-type IntervalDuration time.Duration
+type IntervalDuration struct {
+	Val time.Duration
+}
 
 // Duration возвращает значение как обычный time.Duration.
 func (i IntervalDuration) Duration() time.Duration {
-	return time.Duration(i)
+	return i.Val
 }
 
-// Value реализует driver.Valuer. Формат "%d microseconds" — PG INTERVAL-литерал.
+// Value реализует driver.Valuer. Формат "HH:MM:SS.ffffff" — стандартный PG INTERVAL-литерал.
 func (i IntervalDuration) Value() (driver.Value, error) {
-	micros := time.Duration(i).Microseconds()
-	return fmt.Sprintf("%d microseconds", micros), nil
+	d := i.Val
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+	d -= s * time.Second
+	micros := d / time.Microsecond
+	return fmt.Sprintf("%02d:%02d:%02d.%06d", h, m, s, micros), nil
 }
 
 // Scan реализует sql.Scanner.
@@ -44,7 +53,7 @@ func (i IntervalDuration) Value() (driver.Value, error) {
 // но через рефлексию, чтобы не тянуть pgx как dependency в models.
 func (i *IntervalDuration) Scan(value any) error {
 	if value == nil {
-		*i = 0
+		i.Val = 0
 		return nil
 	}
 
@@ -58,7 +67,7 @@ func (i *IntervalDuration) Scan(value any) error {
 		// Поддержим time.Duration напрямую если драйвер уже сконвертировал
 		// (некоторые драйверы умеют).
 		if d, ok := value.(time.Duration); ok {
-			*i = IntervalDuration(d)
+			i.Val = d
 			return nil
 		}
 		return fmt.Errorf("IntervalDuration.Scan: unsupported source type %T", value)
@@ -68,7 +77,7 @@ func (i *IntervalDuration) Scan(value any) error {
 	if err != nil {
 		return fmt.Errorf("IntervalDuration.Scan: %w", err)
 	}
-	*i = IntervalDuration(d)
+	i.Val = d
 	return nil
 }
 

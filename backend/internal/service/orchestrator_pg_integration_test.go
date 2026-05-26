@@ -341,13 +341,13 @@ func (h *pgHarness) createMinimalActiveTask(t *testing.T) uuid.UUID {
 	if err := h.gormDB.WithContext(ctx).Exec(
 		`INSERT INTO agents (id, name, role, execution_kind, provider_kind, model, temperature, max_tokens, system_prompt, role_description, team_id, skills, settings, model_config, code_backend_settings, sandbox_permissions, is_active)
 		 SELECT gen_random_uuid(), role, role, 'llm',
-		        CASE WHEN role = 'reviewer' THEN 'anthropic' ELSE 'openrouter' END,
-		        CASE WHEN role = 'reviewer' THEN 'claude-haiku-4-5-20251001' ELSE 'deepseek/deepseek-v4-flash' END,
-		        CASE WHEN role = 'reviewer' THEN 0.2 WHEN role = 'planner' THEN 0.3 WHEN role = 'decomposer' THEN 0.3 ELSE 0.2 END,
-		        CASE WHEN role = 'reviewer' THEN 8192 WHEN role = 'planner' THEN 8192 WHEN role = 'decomposer' THEN 8192 ELSE 4096 END,
+		        'openrouter',
+		        'deepseek/deepseek-v4-flash',
+		        CASE WHEN role = 'planner' THEN 0.3 WHEN role = 'decomposer' THEN 0.3 ELSE 0.2 END,
+		        CASE WHEN role = 'planner' THEN 8192 WHEN role = 'decomposer' THEN 8192 ELSE 4096 END,
 		        content, description, ?, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, true
 		 FROM agent_role_prompts
-		 WHERE role IN ('orchestrator', 'router', 'planner', 'decomposer', 'reviewer')`,
+		 WHERE role IN ('orchestrator', 'router', 'planner', 'decomposer')`,
 		tm.ID,
 	).Error; err != nil {
 		t.Fatalf("seed llm agents for team: %v", err)
@@ -358,7 +358,7 @@ func (h *pgHarness) createMinimalActiveTask(t *testing.T) uuid.UUID {
 		`INSERT INTO agents (id, name, role, execution_kind, code_backend, system_prompt, role_description, team_id, skills, settings, model_config, code_backend_settings, sandbox_permissions, is_active, requires_code_context)
 		 SELECT gen_random_uuid(), role, role, 'sandbox', 'claude-code', content, description, ?, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, '{"permission_mode": "auto"}'::jsonb, '{"env_secret_keys": ["ANTHROPIC_API_KEY"]}'::jsonb, true, true
 		 FROM agent_role_prompts
-		 WHERE role IN ('developer', 'tester', 'merger')`,
+		 WHERE role IN ('developer', 'tester', 'merger', 'reviewer')`,
 		tm.ID,
 	).Error; err != nil {
 		t.Fatalf("seed sandbox agents for team: %v", err)

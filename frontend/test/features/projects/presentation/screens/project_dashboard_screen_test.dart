@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/api/websocket_events.dart';
@@ -42,6 +43,27 @@ class MockProjectRepository extends Mock implements ProjectRepository {}
 class MockConversationRepository extends Mock implements ConversationRepository {}
 
 class FakeCancelToken extends Fake implements CancelToken {}
+
+ProviderScope _buildProviderScope({
+  required List<Override> overrides,
+  required Widget child,
+}) {
+  final taskSeed = makeTaskListStateFixture(
+    isLoadingInitial: false,
+    items: const [],
+    total: 0,
+  );
+  return ProviderScope(
+    retry: (_, _) => null,
+    overrides: [
+      taskListControllerProvider.overrideWith(
+        () => _StubTaskListForDashboardShellTest(taskSeed),
+      ),
+      ...overrides,
+    ],
+    child: child,
+  );
+}
 
 void main() {
   setUpAll(() {
@@ -95,8 +117,7 @@ void main() {
         initialLocation: '/projects/$kTestProjectUuid/chat',
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -116,7 +137,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text(kTestDashboardProjectNameFixtureAlpha), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text(kTestDashboardProjectNameFixtureAlpha),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('загрузка: до ответа виден CircularProgressIndicator', (
@@ -127,8 +154,7 @@ void main() {
         initialLocation: '/projects/$kTestProjectUuid/chat',
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -153,7 +179,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text(kTestDashboardProjectNameAfterLoading), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text(kTestDashboardProjectNameAfterLoading),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
@@ -164,8 +196,7 @@ void main() {
           initialLocation: '/projects/$kTestProjectUuid/chat',
         );
         await tester.pumpWidget(
-          ProviderScope(
-            retry: (_, _) => null,
+          _buildProviderScope(
             overrides: [
               webSocketServiceProvider.overrideWithValue(_Ws()),
               conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -202,7 +233,13 @@ void main() {
         expect(find.byKey(const ValueKey('project-dashboard-error')), findsOneWidget);
         await tester.tap(find.text(l10n.retry));
         await tester.pumpAndSettle();
-        expect(find.text(kTestDashboardProjectNameAfterRetry), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text(kTestDashboardProjectNameAfterRetry),
+          ),
+          findsOneWidget,
+        );
         expect(attempt, 2);
       },
     );
@@ -215,8 +252,7 @@ void main() {
           initialLocation: '/projects/$kTestProjectUuid/chat',
         );
         await tester.pumpWidget(
-          ProviderScope(
-            retry: (_, _) => null,
+          _buildProviderScope(
             overrides: [
               webSocketServiceProvider.overrideWithValue(_Ws()),
               conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -262,8 +298,7 @@ void main() {
           initialLocation: '/projects/$kTestProjectUuid/chat',
         );
         await tester.pumpWidget(
-          ProviderScope(
-            retry: (_, _) => null,
+          _buildProviderScope(
             overrides: [
               webSocketServiceProvider.overrideWithValue(_Ws()),
               conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -306,8 +341,7 @@ void main() {
         ],
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -329,7 +363,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('__OPEN_PROJECT__'));
       await tester.pumpAndSettle();
-      expect(find.text(kTestDashboardProjectNamePopped), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text(kTestDashboardProjectNamePopped),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
       expect(find.text('__OPEN_PROJECT__'), findsOneWidget);
@@ -340,8 +380,7 @@ void main() {
         initialLocation: '/projects/$kTestProjectUuid/chat',
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -370,8 +409,7 @@ void main() {
         initialLocation: '/projects/$kTestProjectUuid/',
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -388,7 +426,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat/$kTestChatConversationUuid');
+      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat');
     });
 
     testWidgets('редирект: невалидный UUID → /projects', (tester) async {
@@ -415,8 +453,7 @@ void main() {
         initialLocation: '/projects/$kTestProjectUuid/typo',
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -433,7 +470,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat/$kTestChatConversationUuid');
+      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat');
     });
 
     testWidgets(
@@ -443,23 +480,14 @@ void main() {
         final router = buildProjectDashboardTestRouter(
           initialLocation: '/projects/$kTestProjectUuid/chat',
         );
-        final taskSeed = makeTaskListStateFixture(
-          isLoadingInitial: false,
-          items: const [],
-          total: 0,
-        );
         await tester.pumpWidget(
-          ProviderScope(
-            retry: (_, _) => null,
+          _buildProviderScope(
             overrides: [
               webSocketServiceProvider.overrideWithValue(_Ws()),
               conversationRepositoryProvider.overrideWithValue(mockConvRepo),
               projectProvider(
                 kTestProjectUuid,
               ).overrideWith((ref) async => makeProject(id: kTestProjectUuid)),
-              taskListControllerProvider.overrideWith(
-                () => _StubTaskListForDashboardShellTest(taskSeed),
-              ),
             ],
             child: MaterialApp.router(
               localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -499,8 +527,7 @@ void main() {
       });
 
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -531,8 +558,7 @@ void main() {
         initialLocation: '/projects/$kTestProjectUuid/chat',
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -565,8 +591,7 @@ void main() {
         initialLocation: '/projects/$kTestProjectUuid/chat',
       );
       await tester.pumpWidget(
-        ProviderScope(
-          retry: (_, _) => null,
+        _buildProviderScope(
           overrides: [
             webSocketServiceProvider.overrideWithValue(_Ws()),
             conversationRepositoryProvider.overrideWithValue(mockConvRepo),
@@ -592,11 +617,23 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text(kTestDashboardNavProjectNameA), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text(kTestDashboardNavProjectNameA),
+        ),
+        findsOneWidget,
+      );
 
       router.go('/projects/$kTestProjectUuidNavB/chat');
       await tester.pumpAndSettle();
-      expect(find.text(kTestDashboardNavProjectNameB), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text(kTestDashboardNavProjectNameB),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

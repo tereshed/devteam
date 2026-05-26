@@ -121,6 +121,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	opts := sandbox.SandboxOptions{
 		TaskID:        in.TaskID,
 		ProjectID:     in.ProjectID,
+		ExecutionID:   in.ExecutionID,
 		Backend:       sandbox.CodeBackendType(in.CodeBackend),
 		Image:         e.resolveImage(in.CodeBackend),
 		RepoURL:       in.GitURL,
@@ -227,8 +228,13 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 func (e *SandboxAgentExecutor) buildInstruction(in ExecutionInput) string {
 	var sb strings.Builder
 	// Оптимизация аллокаций
-	sb.Grow(len(in.Title) + len(in.Description) + len(in.PromptUser) + 100)
+	sb.Grow(len(in.Title) + len(in.Description) + len(in.PromptUser) + len(in.PromptSystem) + 100)
 
+	if in.PromptSystem != "" {
+		sb.WriteString("System Prompt:\n")
+		sb.WriteString(in.PromptSystem)
+		sb.WriteString("\n\n")
+	}
 	if in.Title != "" {
 		sb.WriteString("Title: ")
 		sb.WriteString(in.Title)

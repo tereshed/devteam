@@ -281,7 +281,7 @@ class TaskDetailController extends _$TaskDetailController {
         event.when(
           taskStatus: applyWsTaskStatus,
           taskMessage: applyWsTaskMessage,
-          agentLog: (_) {},
+          agentLog: applyWsAgentLog,
           error: (err) {
             if (err.projectId != _projectId) {
               return;
@@ -353,6 +353,7 @@ class TaskDetailController extends _$TaskDetailController {
         isLoadingTask: true,
         isLoadingMessages: true,
         taskDeleted: false,
+        sandboxLogs: const [],
         realtimeMutationBlocked: prev?.realtimeMutationBlocked ?? false,
         realtimeSessionFailure: prev?.realtimeSessionFailure,
         realtimeServiceFailure: prev?.realtimeServiceFailure,
@@ -986,5 +987,26 @@ class TaskDetailController extends _$TaskDetailController {
         messages: mergeTaskMessagesCanonical(s.messages, [m]),
       ),
     );
+  }
+
+  void applyWsAgentLog(WsAgentLogEvent e) {
+    if (e.projectId != _projectId || e.taskId != _taskId) {
+      return;
+    }
+    _patchState((s) {
+      final exists = s.sandboxLogs.any(
+        (l) => l.seq == e.seq && l.sandboxId == e.sandboxId,
+      );
+      if (exists) {
+        return s;
+      }
+      final nextLogs = List<WsAgentLogEvent>.from(s.sandboxLogs)..add(e);
+      nextLogs.sort((a, b) => a.seq.compareTo(b.seq));
+      return s.copyWith(sandboxLogs: nextLogs);
+    });
+  }
+
+  void clearSandboxLogs() {
+    _patchState((s) => s.copyWith(sandboxLogs: const []));
   }
 }

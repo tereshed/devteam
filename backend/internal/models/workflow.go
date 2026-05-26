@@ -138,7 +138,7 @@ func (k AgentProviderKind) AnthropicBaseURL() string {
 	case AgentProviderKindZhipu:
 		return "https://open.bigmodel.cn/api/anthropic"
 	case AgentProviderKindOpenRouter:
-		return "https://openrouter.ai/api/v1"
+		return "https://openrouter.ai/api"
 	default:
 		return ""
 	}

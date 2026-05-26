@@ -166,7 +166,7 @@ func makeSandboxAgent(name string) *models.Agent {
 // reviewer(code) → tester → DONE. Проверяем что каждое решение распарсилось и валидно.
 func TestScenario_Sequential_PlanReviewCodeReviewTest(t *testing.T) {
 	planner := makeLLMAgent("planner")
-	reviewer := makeLLMAgent("reviewer")
+	reviewer := makeSandboxAgent("reviewer")
 	developer := makeSandboxAgent("developer")
 	tester := makeSandboxAgent("tester")
 	enabled := []*models.Agent{planner, reviewer, developer, tester}
@@ -345,7 +345,7 @@ func TestScenario_Parallel_TwoDevsThenMerger(t *testing.T) {
 // fan-out → fan-out review → конвергенция к merger → tester → done.
 func TestScenario_Parallel_ThreeDevsThreeReviewsMergerTester(t *testing.T) {
 	developer := makeSandboxAgent("developer")
-	reviewer := makeLLMAgent("reviewer")
+	reviewer := makeSandboxAgent("reviewer")
 	merger := makeSandboxAgent("merger")
 	tester := makeSandboxAgent("tester")
 	enabled := []*models.Agent{developer, reviewer, merger, tester}

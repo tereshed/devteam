@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 
@@ -76,6 +77,7 @@ type AuthorizedExecutor struct {
 	agentSvc          *service.AgentService
 	querySvc          *service.OrchestrationQueryService
 	gitIntegrationSvc service.GitIntegrationService
+	orchestratorSvc   service.TaskOrchestrator
 }
 
 // AuthorizedExecutorDeps — DI-структура (для удобства main.go).
@@ -87,6 +89,7 @@ type AuthorizedExecutorDeps struct {
 	AgentService          *service.AgentService
 	QueryService          *service.OrchestrationQueryService
 	GitIntegrationService service.GitIntegrationService
+	OrchestratorService   service.TaskOrchestrator
 }
 
 // NewAuthorizedExecutor — конструктор.
@@ -99,6 +102,7 @@ func NewAuthorizedExecutor(deps AuthorizedExecutorDeps) *AuthorizedExecutor {
 		agentSvc:          deps.AgentService,
 		querySvc:          deps.QueryService,
 		gitIntegrationSvc: deps.GitIntegrationService,
+		orchestratorSvc:   deps.OrchestratorService,
 	}
 }
 
@@ -168,6 +172,20 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 				InputSchema:          schemaTaskGet, // тот же {task_id}
 				RequiresConfirmation: true,
 				Handler:              e.taskCancel,
+			},
+			agentloop.Tool{
+				Name:                 "task_create",
+				Description:          "Создать задачу в проекте. Требует подтверждения.",
+				InputSchema:          schemaTaskCreate,
+				RequiresConfirmation: true,
+				Handler:              e.taskCreate,
+			},
+			agentloop.Tool{
+				Name:                 "task_update",
+				Description:          "Обновить задачу. Требует подтверждения.",
+				InputSchema:          schemaTaskUpdate,
+				RequiresConfirmation: true,
+				Handler:              e.taskUpdate,
 			},
 		)
 	}
@@ -774,6 +792,150 @@ func (e *AuthorizedExecutor) taskCancel(ctx context.Context, auth agentloop.Auth
 	return marshalResult(t)
 }
 
+type taskCreateArgs struct {
+	ProjectID       string  `json:"project_id"`
+	Title           string  `json:"title"`
+	Description     *string `json:"description,omitempty"`
+	Priority        *string `json:"priority,omitempty"`
+	AssignedAgentID *string `json:"assigned_agent_id,omitempty"`
+	ParentTaskID    *string `json:"parent_task_id,omitempty"`
+}
+
+func (e *AuthorizedExecutor) taskCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a taskCreateArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id is required (UUID)")
+	}
+
+	createReq := dto.CreateTaskRequest{
+		Title: a.Title,
+	}
+	if a.Description != nil {
+		createReq.Description = *a.Description
+	}
+	if a.Priority != nil {
+		createReq.Priority = *a.Priority
+	}
+	if a.AssignedAgentID != nil && *a.AssignedAgentID != "" {
+		agentID, err := uuid.Parse(*a.AssignedAgentID)
+		if err != nil {
+			return businessErr("validation", fmt.Sprintf("invalid assigned_agent_id: %q", *a.AssignedAgentID))
+		}
+		createReq.AssignedAgentID = &agentID
+	}
+	if a.ParentTaskID != nil && *a.ParentTaskID != "" {
+		parentID, err := uuid.Parse(*a.ParentTaskID)
+		if err != nil {
+			return businessErr("validation", fmt.Sprintf("invalid parent_task_id: %q", *a.ParentTaskID))
+		}
+		createReq.ParentTaskID = &parentID
+	}
+
+	task, err := e.taskSvc.Create(ctx, uid, models.RoleUser, pid, createReq)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+
+	if e.orchestratorSvc != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("Panic in background task orchestration (assistant create)", "error", r, "task_id", task.ID)
+				}
+			}()
+			if err := e.orchestratorSvc.EnqueueInitialStep(context.Background(), task.ID); err != nil {
+				slog.Error("Background task orchestration failed (assistant create)", "error", err, "task_id", task.ID)
+			}
+		}()
+	}
+
+	return marshalResult(task)
+}
+
+type taskUpdateArgs struct {
+	TaskID             string  `json:"task_id"`
+	Title              *string `json:"title,omitempty"`
+	Description        *string `json:"description,omitempty"`
+	Priority           *string `json:"priority,omitempty"`
+	Status             *string `json:"status,omitempty"`
+	AssignedAgentID    *string `json:"assigned_agent_id,omitempty"`
+	ClearAssignedAgent bool    `json:"clear_assigned_agent,omitempty"`
+	BranchName         *string `json:"branch_name,omitempty"`
+}
+
+func (e *AuthorizedExecutor) taskUpdate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a taskUpdateArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	tid, err := uuid.Parse(a.TaskID)
+	if err != nil {
+		return businessErr("validation", "task_id is required (UUID)")
+	}
+
+	t, err := e.taskSvc.GetByID(ctx, uid, models.RoleUser, tid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	if auth.ProjectID != "" && t.ProjectID.String() != auth.ProjectID {
+		return businessErr("forbidden", "доступ к другим проектам запрещён")
+	}
+
+	updateReq := dto.UpdateTaskRequest{
+		Title:              a.Title,
+		Description:        a.Description,
+		Priority:           a.Priority,
+		Status:             a.Status,
+		ClearAssignedAgent: a.ClearAssignedAgent,
+		BranchName:         a.BranchName,
+	}
+	if a.AssignedAgentID != nil && *a.AssignedAgentID != "" {
+		agentID, err := uuid.Parse(*a.AssignedAgentID)
+		if err != nil {
+			return businessErr("validation", fmt.Sprintf("invalid assigned_agent_id: %q", *a.AssignedAgentID))
+		}
+		updateReq.AssignedAgentID = &agentID
+	}
+
+	updatedTask, err := e.taskSvc.Update(ctx, uid, models.RoleUser, tid, updateReq)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+
+	if a.Status != nil && *a.Status == string(models.TaskStateActive) && e.orchestratorSvc != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("Panic in background task orchestration (assistant update)", "error", r, "task_id", updatedTask.ID)
+				}
+			}()
+			if err := e.orchestratorSvc.EnqueueInitialStep(context.Background(), updatedTask.ID); err != nil {
+				slog.Error("Background task orchestration failed (assistant update)", "error", err, "task_id", updatedTask.ID)
+			}
+		}()
+	}
+
+	return marshalResult(updatedTask)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Handlers: conversation_*
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1241,6 +1403,8 @@ var (
 	schemaProjectUpdate     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
 	schemaTaskList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaTaskGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
+	schemaTaskCreate        = json.RawMessage(`{"type":"object","required":["project_id","title"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"assigned_agent_id":{"type":"string","format":"uuid"},"parent_task_id":{"type":"string","format":"uuid"}}}`)
+	schemaTaskUpdate        = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"status":{"type":"string"},"assigned_agent_id":{"type":"string","format":"uuid"},"clear_assigned_agent":{"type":"boolean"},"branch_name":{"type":"string"}}}`)
 	schemaConvList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaConvGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
 	schemaConvCreate        = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"}}}`)

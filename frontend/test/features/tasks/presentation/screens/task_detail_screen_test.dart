@@ -439,7 +439,7 @@ void main() {
         createdAt: DateTime.utc(2026, 1, 1),
       );
       final seed = TaskDetailState.initial().copyWith(
-        task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId),
+        task: _minimalTask(id: _kTid, projectId: kTaskFixtureProjectId, status: 'planning'),
         isLoadingTask: false,
         isLoadingMessages: false,
         messages: [msg],

@@ -373,5 +373,101 @@ void main() {
       expect(myAgentsRepo.lastSettings!['stt_provider'], 'openai');
       expect(myAgentsRepo.lastSettings!['stt_model'], 'whisper-1');
     });
+
+    testWidgets('Allows selecting and saving a disconnected provider', (tester) async {
+      final assistantAgent = AgentV2(
+        id: 'agent-123',
+        name: 'My Assistant',
+        role: 'assistant',
+        roleDescription: 'Personal assistant',
+        executionKind: 'llm',
+        isActive: true,
+        internalMcpEnabled: false,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        providerKind: 'deepseek',
+        model: 'deepseek-chat',
+      );
+
+      final myAgentsRepo = _FakeMyAgentsRepository(
+        agents: AgentV2Page(total: 1, items: [assistantAgent], limit: 10, offset: 0),
+      );
+
+      // DeepSeek is connected, but OpenRouter is disconnected (not in apiKey connections)
+      final llmRepo = _FakeLlmIntegrationsRepository(
+        apiKey: const [
+          LlmProviderConnection(
+            provider: LlmIntegrationProvider.deepseek,
+            status: LlmProviderConnectionStatus.connected,
+          ),
+        ],
+      );
+      final ws = _FakeWebSocketService();
+
+      final container = ProviderContainer(
+        overrides: [
+          myAgentsRepositoryProvider.overrideWithValue(myAgentsRepo),
+          llmIntegrationsRepositoryProvider.overrideWithValue(llmRepo),
+          webSocketServiceProvider.overrideWithValue(ws),
+          assistantStatusProvider.overrideWith(
+            (ref) async => const AssistantStatusModel(isConfigured: true, requiredProvider: 'deepseek'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(llmIntegrationsControllerProvider).refresh();
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: ThemeData(
+              splashFactory: NoSplash.splashFactory,
+            ),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: AssistantSettingsCard()),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Find the LLM Provider dropdown
+      final providerDropdownFinder = find.byWidgetPredicate(
+        (widget) => widget is DropdownButtonFormField<LlmIntegrationProvider> && 
+                    widget.decoration.labelText == 'LLM Провайдер',
+      );
+      expect(providerDropdownFinder, findsOneWidget);
+
+      // Tap to open LLM Provider dropdown
+      await tester.tap(providerDropdownFinder);
+      await tester.pumpAndSettle();
+
+      // Select OpenRouter which is NOT connected (so it should display "OpenRouter (Не подключен)")
+      final openRouterOptionFinder = find.text('OpenRouter (Не подключен)').last;
+      await tester.tap(openRouterOptionFinder);
+      await tester.pumpAndSettle();
+
+      // Verify selected provider updated to openrouter
+      final providerDropdownState = tester.state<FormFieldState<LlmIntegrationProvider>>(providerDropdownFinder);
+      expect(providerDropdownState.value, LlmIntegrationProvider.openrouter);
+
+      // Verify that model search controller text changed to one of the default suggestions for openrouter (e.g. 'deepseek/deepseek-r1')
+      final modelFieldFinder = find.byType(TextFormField).first;
+      final modelFieldWidget = tester.widget<TextFormField>(modelFieldFinder);
+      expect(modelFieldWidget.controller?.text, 'deepseek/deepseek-r1');
+
+      // Save settings
+      final saveBtnFinder = find.text('Сохранить настройки');
+      await tester.tap(saveBtnFinder);
+      await tester.pumpAndSettle();
+
+      // Verify myAgentsRepo update was called with openrouter details
+      expect(myAgentsRepo.updateCalled, isTrue);
+      expect(myAgentsRepo.lastProviderKind, 'openrouter');
+      expect(myAgentsRepo.lastModel, 'deepseek/deepseek-r1');
+    });
   });
 }

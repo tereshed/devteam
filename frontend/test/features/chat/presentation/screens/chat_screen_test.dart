@@ -10,7 +10,6 @@ import 'package:frontend/features/chat/data/chat_providers.dart';
 import 'package:frontend/features/chat/data/conversation_exceptions.dart';
 import 'package:frontend/features/chat/domain/linked_task_snapshots.dart';
 import 'package:frontend/features/chat/domain/models.dart';
-import 'package:frontend/features/chat/domain/requests.dart';
 import 'package:frontend/features/chat/presentation/controllers/chat_controller.dart';
 import 'package:frontend/features/chat/presentation/screens/chat_screen.dart'
     show ChatScreen, ChatScreenScroll, kTasksCrossBranchPushMaxRetries;
@@ -1058,65 +1057,6 @@ void main() {
     },
   );
 
-  testWidgets('маршрут без conversationId: автоматический редирект на существующую беседу', (
-    tester,
-  ) async {
-    when(
-      repo.listConversations(
-        kTestChatProjectUuid,
-        limit: anyNamed('limit'),
-        offset: anyNamed('offset'),
-        cancelToken: anyNamed('cancelToken'),
-      ),
-    ).thenAnswer(
-      (_) async => ConversationListResponse(
-        conversations: [
-          makeConversation(),
-        ],
-      ),
-    );
-
-    when(
-      repo.getConversation(
-        kTestChatConversationUuid,
-        cancelToken: anyNamed('cancelToken'),
-      ),
-    ).thenAnswer((_) async => makeConversation());
-
-    when(
-      repo.getMessages(
-        kTestChatConversationUuid,
-        limit: anyNamed('limit'),
-        offset: anyNamed('offset'),
-        cancelToken: anyNamed('cancelToken'),
-      ),
-    ).thenAnswer((_) async => const MessageListResponse());
-
-    final router = buildChatTestRouter(
-      initialLocation: chatTestPathChatPlaceholder(kTestChatProjectUuid),
-    );
-
-    await tester.pumpWidget(
-      wrapChatDashboardRouter(
-        router: router,
-        overrides: defaultOverrides(),
-      ),
-    );
-
-    // Сначала виден CircularProgressIndicator с ключом плейсхолдера
-    expect(
-      find.byKey(const ValueKey('chat-placeholder-$kTestChatProjectUuid')),
-      findsOneWidget,
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(
-      router.state.uri.path,
-      '/projects/$kTestChatProjectUuid/chat/$kTestChatConversationUuid',
-    );
-    expect(find.byType(ChatScreen), findsOneWidget);
-  });
 
   testWidgets('адаптив: TextScaler 1.5 — send hitTestable, без overflow', (
     tester,

@@ -15,6 +15,7 @@ import 'package:frontend/features/tasks/presentation/utils/task_message_metadata
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/features/tasks/presentation/widgets/artifacts_dag_section.dart';
 import 'package:frontend/features/tasks/presentation/widgets/router_timeline_section.dart';
+import 'package:frontend/features/tasks/presentation/widgets/sandbox_logs_viewer.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_timeout_editor.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/shared/widgets/diff_viewer.dart';
@@ -642,6 +643,16 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             child: RouterTimelineSection(taskId: widget.taskId),
           ),
         ),
+        if (data.task?.status == 'active' || data.sandboxLogs.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: SandboxLogsViewer(
+                projectId: widget.projectId,
+                taskId: widget.taskId,
+              ),
+            ),
+          ),
         SliverToBoxAdapter(
           child: _MessageFiltersBar(
             l10n: l10n,

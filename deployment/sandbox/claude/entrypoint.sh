@@ -226,6 +226,10 @@ if [[ "$BACKEND" == "claude-code" ]]; then
     MESSAGE="claude-code authentication is required"
     exit 1
   fi
+  # Map ANTHROPIC_AUTH_TOKEN to ANTHROPIC_API_KEY if needed (Claude Code expects ANTHROPIC_API_KEY)
+  if [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    export ANTHROPIC_API_KEY="$ANTHROPIC_AUTH_TOKEN"
+  fi
 fi
 
 BASE_REF_RESOLVED="${BASE_REF:-${GIT_DEFAULT_BRANCH:-main}}"
@@ -406,7 +410,7 @@ esac
     cat "$PROMPT_FILE"
     printf '\n---\n'
     cat "$CONTEXT_FILE"
-  } | claude -p "DevTeam sandbox: полные инструкции и контекст переданы через stdin; работай только в этом репозитории." \
+  } | claude -p \
     "${CLAUDE_PERMS_ARGS[@]}" \
     "${CLAUDE_MODEL_ARGS[@]}" \
     --allowedTools "Bash,Edit,Read,Write,Glob,NotebookEdit" \
@@ -483,7 +487,7 @@ COMMIT_HASH="$(git rev-parse HEAD)"
 PHASE="push"
 PUSHED=0
 PUSH_URL=""
-if [[ "$COMMITTED" -eq 1 ]]; then
+if [[ "$COMMITTED" -eq 1 ]] || [[ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/${START_REF_RESOLVED}")" ]]; then
   if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
     PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
   elif [[ "${REPO_URL}" =~ ^file:// || "${REPO_URL}" =~ ^ssh:// || "${REPO_URL}" =~ ^git@ ]]; then

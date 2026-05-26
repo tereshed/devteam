@@ -535,8 +535,12 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	}
 
 	cName := taskContainerName(opts.TaskID)
-	if _, err := r.cli.ContainerInspect(ctx, cName); err == nil {
-		return nil, ErrSandboxRunConflict
+	if opts.ExecutionID != "" {
+		cName = fmt.Sprintf("%s-%s", cName, opts.ExecutionID)
+	}
+	if inspect, err := r.cli.ContainerInspect(ctx, cName); err == nil {
+		slog.Warn("sandbox: run conflict detected, removing existing container", "task_id", opts.TaskID, "container_id", inspect.ID)
+		r.removeContainerForceLogged(ctx, opts.TaskID, inspect.ID, "run_conflict_resolution")
 	} else if !errdefs.IsNotFound(err) {
 		return nil, fmt.Errorf("inspect container name: %w", errors.Join(ErrSandboxDocker, err))
 	}
@@ -546,11 +550,11 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	st.stopGracePeriod = opts.EffectiveStopGrace()
 
 	r.mu.Lock()
-	if _, dup := r.creating[opts.TaskID]; dup {
+	if _, dup := r.creating[cName]; dup {
 		r.mu.Unlock()
 		return nil, ErrSandboxRunConflict
 	}
-	r.creating[opts.TaskID] = st
+	r.creating[cName] = st
 	r.mu.Unlock()
 
 	var (
@@ -561,7 +565,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	)
 	defer func() {
 		r.mu.Lock()
-		delete(r.creating, opts.TaskID)
+		delete(r.creating, cName)
 		r.mu.Unlock()
 		if !registeredRun && containerID != "" {
 			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "run_task_defer")
@@ -767,7 +771,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	scheduleSandboxBusinessDeadline(st, r.stopper, containerID, eff, opts.TaskID)
 
 	r.mu.Lock()
-	delete(r.creating, opts.TaskID)
+	delete(r.creating, cName)
 	r.instances[containerID] = st
 	registeredRun = true
 	r.mu.Unlock()
@@ -1152,10 +1156,16 @@ func (r *DockerSandboxRunner) StopTask(ctx context.Context, taskID string) error
 		return fmt.Errorf("docker client is nil: %w", ErrSandboxDocker)
 	}
 	r.mu.Lock()
-	if st, ok := r.creating[taskID]; ok {
-		st.mu.Lock()
-		st.initCancelRequested = true
-		st.mu.Unlock()
+	foundCreating := false
+	for _, st := range r.creating {
+		if st.taskID == taskID {
+			st.mu.Lock()
+			st.initCancelRequested = true
+			st.mu.Unlock()
+			foundCreating = true
+		}
+	}
+	if foundCreating {
 		r.mu.Unlock()
 		return nil
 	}

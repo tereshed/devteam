@@ -72,7 +72,7 @@ func parseCustomTimeout(s string) (*models.IntervalDuration, error) {
 	if d < minCustomTimeout || d > maxCustomTimeout {
 		return nil, ErrTaskInvalidTimeout
 	}
-	iv := models.IntervalDuration(d)
+	iv := models.IntervalDuration{Val: d}
 	return &iv, nil
 }
 
@@ -916,6 +916,11 @@ func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 		prevState = task.State
 		task.State = models.TaskStateActive
 		applyTimestampsOnStateChange(task, prevState, models.TaskStateActive)
+		task.ErrorMessage = nil
+		task.CancelRequested = false
+		if prevState == models.TaskStateFailed || prevState == models.TaskStateNeedsHuman {
+			task.CurrentStepNo = 0
+		}
 		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
 			return mapTaskRepoErr(err)
 		}
