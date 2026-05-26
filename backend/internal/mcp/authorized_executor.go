@@ -472,6 +472,8 @@ func mapServiceErr(err error) (json.RawMessage, error) {
 		return businessErr("not_found", "проект не найден")
 	case errors.Is(err, service.ErrTaskNotFound):
 		return businessErr("not_found", "задача не найдена")
+	case errors.Is(err, service.ErrArtifactNotInTask):
+		return businessErr("not_found", "артефакт не найден")
 	case errors.Is(err, service.ErrProjectNameExists):
 		return businessErr("validation", "проект с таким именем уже существует")
 	case errors.Is(err, repository.ErrGitIntegrationNotFound):
