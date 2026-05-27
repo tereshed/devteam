@@ -1,12 +1,16 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -148,6 +152,24 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 				InputSchema:          schemaProjectGet, // тот же {id/project_id}
 				RequiresConfirmation: true,
 				Handler:              e.projectDelete,
+			},
+			agentloop.Tool{
+				Name:        "code_search",
+				Description: "Контекстный поиск по проиндексированному коду проекта с использованием семантического поиска Weaviate.",
+				InputSchema: schemaCodeSearch,
+				Handler:     e.codeSearch,
+			},
+			agentloop.Tool{
+				Name:        "code_file_read",
+				Description: "Чтение содержимого файла в репозитории проекта по относительному пути.",
+				InputSchema: schemaCodeFileRead,
+				Handler:     e.codeFileRead,
+			},
+			agentloop.Tool{
+				Name:        "code_dir_list",
+				Description: "Просмотр списка файлов и папок в директории репозитория проекта по относительному пути.",
+				InputSchema: schemaCodeDirList,
+				Handler:     e.codeDirList,
 			},
 		)
 	}
@@ -1430,6 +1452,9 @@ var (
 	schemaTeamTypeList   = json.RawMessage(`{"type":"object","properties":{}}`)
 	schemaTeamTypeCreate = json.RawMessage(`{"type":"object","required":["code","name"],"properties":{"code":{"type":"string"},"name":{"type":"string"}}}`)
 	schemaTeamTypeDelete = json.RawMessage(`{"type":"object","required":["code"],"properties":{"code":{"type":"string"}}}`)
+	schemaCodeSearch     = json.RawMessage(`{"type":"object","required":["project_id","query"],"properties":{"project_id":{"type":"string","format":"uuid"},"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}}}`)
+	schemaCodeFileRead   = json.RawMessage(`{"type":"object","required":["project_id","path"],"properties":{"project_id":{"type":"string","format":"uuid"},"path":{"type":"string"},"line_start":{"type":"integer","minimum":1},"line_end":{"type":"integer","minimum":1}}}`)
+	schemaCodeDirList    = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"path":{"type":"string"}}}`)
 )
 
 func (e *AuthorizedExecutor) teamGet(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
@@ -1884,4 +1909,250 @@ func (e *AuthorizedExecutor) teamTypeDelete(ctx context.Context, auth agentloop.
 		return mapServiceErr(err)
 	}
 	return marshalResult(nil)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func sanitizeRelativePath(repoRoot, relativePath string) (string, error) {
+	cleaned := filepath.Clean(relativePath)
+
+	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") || strings.HasPrefix(relativePath, "/") || strings.HasPrefix(relativePath, "\\") {
+		return "", errors.New("invalid relative path: path traversal detected or absolute path not allowed")
+	}
+
+	resolved := filepath.Join(repoRoot, cleaned)
+
+	cleanRoot := filepath.Clean(repoRoot)
+	cleanResolved := filepath.Clean(resolved)
+
+	if cleanResolved != cleanRoot && !strings.HasPrefix(cleanResolved, cleanRoot+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected: path is outside of repository root")
+	}
+
+	return cleanResolved, nil
+}
+
+type codeSearchArgs struct {
+	ProjectID string `json:"project_id"`
+	Query     string `json:"query"`
+	Limit     int    `json:"limit,omitempty"`
+}
+
+func (e *AuthorizedExecutor) codeSearch(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a codeSearchArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id must be a valid UUID")
+	}
+	if a.Query == "" {
+		return businessErr("validation", "query is required")
+	}
+	limit := a.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	chunks, err := e.projectSvc.SearchCode(ctx, uid, models.RoleUser, pid, a.Query, limit)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+	return marshalResult(chunks)
+}
+
+type codeFileReadArgs struct {
+	ProjectID string `json:"project_id"`
+	Path      string `json:"path"`
+	LineStart *int   `json:"line_start,omitempty"`
+	LineEnd   *int   `json:"line_end,omitempty"`
+}
+
+func (e *AuthorizedExecutor) codeFileRead(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a codeFileReadArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id must be a valid UUID")
+	}
+	if a.Path == "" {
+		return businessErr("validation", "path is required")
+	}
+
+	repoPath, err := e.projectSvc.GetProjectRepoPath(ctx, uid, models.RoleUser, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+
+	fullPath, err := sanitizeRelativePath(repoPath, a.Path)
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return businessErr("not_found", "файл не найден")
+		}
+		return businessErr("error", fmt.Sprintf("не удалось получить информацию о файле: %v", err))
+	}
+	if info.IsDir() {
+		return businessErr("validation", "указанный путь является директорией, используйте code_dir_list")
+	}
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		return businessErr("error", fmt.Sprintf("не удалось открыть файл: %v", err))
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		if !errors.Is(err, bufio.ErrTooLong) {
+			return businessErr("error", fmt.Sprintf("ошибка чтения файла: %v", err))
+		}
+	}
+
+	totalLines := len(lines)
+	start := 1
+	if a.LineStart != nil {
+		start = *a.LineStart
+	}
+	end := totalLines
+	if a.LineEnd != nil {
+		end = *a.LineEnd
+	}
+
+	if start < 1 {
+		start = 1
+	}
+	if end > totalLines {
+		end = totalLines
+	}
+	if start > end || start > totalLines {
+		return marshalResult(struct {
+			Content    string `json:"content"`
+			TotalLines int    `json:"total_lines"`
+			LineStart  int    `json:"line_start"`
+			LineEnd    int    `json:"line_end"`
+		}{
+			Content:    "",
+			TotalLines: totalLines,
+			LineStart:  start,
+			LineEnd:    end,
+		})
+	}
+
+	content := strings.Join(lines[start-1:end], "\n")
+	return marshalResult(struct {
+		Content    string `json:"content"`
+		TotalLines int    `json:"total_lines"`
+		LineStart  int    `json:"line_start"`
+		LineEnd    int    `json:"line_end"`
+	}{
+		Content:    content,
+		TotalLines: totalLines,
+		LineStart:  start,
+		LineEnd:    end,
+	})
+}
+
+type codeDirListArgs struct {
+	ProjectID string `json:"project_id"`
+	Path      string `json:"path,omitempty"`
+}
+
+type dirEntry struct {
+	Name  string `json:"name"`
+	IsDir bool   `json:"is_dir"`
+	Size  int64  `json:"size"`
+}
+
+func (e *AuthorizedExecutor) codeDirList(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	ctx, uid, err := injectAuth(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	var a codeDirListArgs
+	if err := parseArgs(args, &a); err != nil {
+		return businessErr("validation", err.Error())
+	}
+	if auth.ProjectID != "" {
+		if a.ProjectID != "" && a.ProjectID != auth.ProjectID {
+			return businessErr("forbidden", "доступ к другим проектам запрещён")
+		}
+		a.ProjectID = auth.ProjectID
+	}
+	pid, err := uuid.Parse(a.ProjectID)
+	if err != nil {
+		return businessErr("validation", "project_id must be a valid UUID")
+	}
+
+	repoPath, err := e.projectSvc.GetProjectRepoPath(ctx, uid, models.RoleUser, pid)
+	if err != nil {
+		return mapServiceErr(err)
+	}
+
+	fullPath, err := sanitizeRelativePath(repoPath, a.Path)
+	if err != nil {
+		return businessErr("validation", err.Error())
+	}
+
+	entries, err := os.ReadDir(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return businessErr("not_found", "директория не найдена")
+		}
+		return businessErr("error", fmt.Sprintf("не удалось прочитать директорию: %v", err))
+	}
+
+	var result []dirEntry
+	for _, entry := range entries {
+		info, err := entry.Info()
+		var size int64
+		if err == nil {
+			size = info.Size()
+		}
+		result = append(result, dirEntry{
+			Name:  entry.Name(),
+			IsDir: entry.IsDir(),
+			Size:  size,
+		})
+	}
+
+	return marshalResult(result)
 }

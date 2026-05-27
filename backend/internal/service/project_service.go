@@ -71,6 +71,10 @@ type ProjectService interface {
 	GetOwnerID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 	// RunBackgroundReindexing запускает фоновую переиндексацию для измененных проектов.
 	RunBackgroundReindexing(ctx context.Context) error
+	// SearchCode выполняет контекстный поиск по проиндексированному коду проекта.
+	SearchCode(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error)
+	// GetProjectRepoPath возвращает локальный путь к репозиторию проекта.
+	GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error)
 }
 
 type projectService struct {
@@ -510,24 +514,25 @@ func (s *projectService) runIndexingPipeline(
 		)
 		return
 	}
-	workDir, err := os.MkdirTemp(s.importDir, fmt.Sprintf("project-%s-*", projectID))
-	if err != nil {
-		pipelineErr = fmt.Errorf("failed to create temp workdir: %w", err)
-		slog.Error("failed to create temp workdir",
+	workDir := filepath.Join(s.importDir, projectID.String())
+	// Clean up existing folder to guarantee a clean clone
+	if err := os.RemoveAll(workDir); err != nil {
+		slog.Warn("failed to clean up existing workdir before cloning",
 			slog.String("project_id", projectID.String()),
 			slog.String("error", err.Error()),
 		)
-		return
 	}
 
-	// 4. Cleanup Logic (guaranteed removal)
+	// 4. Cleanup Logic (removal ONLY on failure)
 	defer func() {
-		if rmErr := os.RemoveAll(workDir); rmErr != nil {
-			slog.Error("failed to remove workdir",
-				slog.String("project_id", projectID.String()),
-				slog.String("work_dir", workDir),
-				slog.String("error", rmErr.Error()),
-			)
+		if pipelineErr != nil {
+			if rmErr := os.RemoveAll(workDir); rmErr != nil {
+				slog.Error("failed to remove workdir on failure",
+					slog.String("project_id", projectID.String()),
+					slog.String("work_dir", workDir),
+					slog.String("error", rmErr.Error()),
+				)
+			}
 		}
 	}()
 
@@ -750,6 +755,11 @@ func (s *projectService) Delete(ctx context.Context, userID uuid.UUID, userRole 
 	err = s.projectRepo.Delete(ctx, projectID)
 	if err != nil {
 		return mapProjectRepoErr(err)
+	}
+
+	// Удаляем локальный клон проекта
+	if s.importDir != "" {
+		_ = os.RemoveAll(filepath.Join(s.importDir, projectID.String()))
 	}
 
 	// Публикуем событие удаления проекта для очистки Weaviate и других ресурсов
@@ -986,4 +996,32 @@ func (s *projectService) initializeEmptyRepo(
 
 	return nil
 }
+
+// SearchCode выполняет контекстный поиск по проиндексированному коду проекта.
+func (s *projectService) SearchCode(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return nil, mapProjectRepoErr(err)
+	}
+	if err := s.checkProjectAccess(project, userID, userRole); err != nil {
+		return nil, err
+	}
+	return s.indexer.SearchContext(ctx, projectID, query, limit)
+}
+
+// GetProjectRepoPath возвращает локальный путь к репозиторию проекта.
+func (s *projectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return "", mapProjectRepoErr(err)
+	}
+	if err := s.checkProjectAccess(project, userID, userRole); err != nil {
+		return "", err
+	}
+	if project.GitProvider == models.GitProviderLocal {
+		return project.GitURL, nil
+	}
+	return filepath.Join(s.importDir, projectID.String()), nil
+}
+
 

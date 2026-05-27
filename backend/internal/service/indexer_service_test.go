@@ -114,6 +114,12 @@ func (m *mockIdxProjectService) GetOwnerID(ctx context.Context, projectID uuid.U
 func (m *mockIdxProjectService) RunBackgroundReindexing(ctx context.Context) error {
 	return m.Called(ctx).Error(0)
 }
+func (m *mockIdxProjectService) SearchCode(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	return nil, nil
+}
+func (m *mockIdxProjectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
+	return "", nil
+}
 
 type mockIdxSyncRepo struct{ mock.Mock }
 

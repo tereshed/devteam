@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -188,7 +189,9 @@ func TestDecide_Parallel_TwoDevelopers(t *testing.T) {
 	}
 	svc, _ := newTestRouter(t, responses, []*models.Agent{dev})
 
-	state := makeState([]*models.Agent{dev}, nil)
+	art1 := models.Artifact{ID: artA, Kind: "subtask"}
+	art2 := models.Artifact{ID: artB, Kind: "subtask"}
+	state := makeState([]*models.Agent{dev}, []models.Artifact{art1, art2})
 	d, err := svc.Decide(context.Background(), state)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -405,7 +408,8 @@ func TestDecide_RetriesOnDuplicateArtifactID(t *testing.T) {
 	logger := slog.New(logging.NewHandler(slog.NewTextHandler(io.Discard, nil)))
 	svc := NewRouterService(loader, disp, logger, DefaultRouterConfig())
 
-	d, err := svc.Decide(context.Background(), makeState([]*models.Agent{dev}, nil))
+	dupID := uuid.MustParse(dup)
+	d, err := svc.Decide(context.Background(), makeState([]*models.Agent{dev}, []models.Artifact{{ID: dupID, Kind: "plan"}}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -517,7 +521,7 @@ func TestDecide_FailsIfRouterAgentNotLLM(t *testing.T) {
 func TestParseAndValidate_RejectsDoneWithAgents(t *testing.T) {
 	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
 	raw := []byte(`{"done": true, "outcome": "done", "agents": [{"agent":"planner"}], "reason": "x"}`)
-	_, correction := parseAndValidateDecision(raw, enabled)
+	_, correction := parseAndValidateDecision(raw, enabled, nil)
 	if correction == nil {
 		t.Fatal("expected validation error for done=true with non-empty agents")
 	}
@@ -531,7 +535,7 @@ func TestParseAndValidate_RejectsDoneWithAgents(t *testing.T) {
 
 func TestParseAndValidate_RejectsInvalidOutcome(t *testing.T) {
 	raw := []byte(`{"done": true, "outcome": "completed", "agents": [], "reason": "x"}`)
-	_, correction := parseAndValidateDecision(raw, nil)
+	_, correction := parseAndValidateDecision(raw, nil, nil)
 	if correction == nil {
 		t.Fatal("expected validation error for invalid outcome value")
 	}
@@ -543,12 +547,37 @@ func TestParseAndValidate_RejectsInvalidOutcome(t *testing.T) {
 func TestParseAndValidate_RejectsMissingReason(t *testing.T) {
 	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
 	raw := []byte(`{"done": false, "agents": [{"agent": "planner"}], "reason": ""}`)
-	_, correction := parseAndValidateDecision(raw, enabled)
+	_, correction := parseAndValidateDecision(raw, enabled, nil)
 	if correction == nil {
 		t.Fatal("expected validation error for empty reason")
 	}
 	if correction.LogCode != correctionCodeMissingReason {
 		t.Errorf("expected LogCode=%q, got %q", correctionCodeMissingReason, correction.LogCode)
+	}
+}
+
+func TestParseAndValidate_RejectsUnknownArtifact(t *testing.T) {
+	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
+	artID := uuid.New()
+	raw := []byte(fmt.Sprintf(`{"done": false, "agents": [{"agent": "planner", "input": {"target_artifact_id": "%s"}}], "reason": "x"}`, artID))
+	
+	// Test rejection when no artifacts are provided
+	_, correction := parseAndValidateDecision(raw, enabled, nil)
+	if correction == nil {
+		t.Fatal("expected validation error for unknown artifact ID")
+	}
+	if correction.LogCode != correctionCodeUnknownArtifact {
+		t.Errorf("expected LogCode=%q, got %q", correctionCodeUnknownArtifact, correction.LogCode)
+	}
+	if !strings.Contains(correction.PromptText, "does not exist") {
+		t.Errorf("expected description of missing artifact, got: %s", correction.PromptText)
+	}
+
+	// Test acceptance when artifact is provided
+	artifacts := []models.Artifact{{ID: artID, Kind: "plan"}}
+	_, correction = parseAndValidateDecision(raw, enabled, artifacts)
+	if correction != nil {
+		t.Fatalf("unexpected validation error: %v", correction)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/internal/indexer"
 	"gorm.io/datatypes"
 )
 
@@ -88,6 +89,19 @@ func (m *MockProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID
 	args := m.Called(ctx, projectID)
 	id, _ := args.Get(0).(uuid.UUID)
 	return id, args.Error(1)
+}
+
+func (m *MockProjectService) SearchCode(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	args := m.Called(ctx, userID, userRole, projectID, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]indexer.Chunk), args.Error(1)
+}
+
+func (m *MockProjectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
+	args := m.Called(ctx, userID, userRole, projectID)
+	return args.String(0), args.Error(1)
 }
 
 func setupProjectRouter(mockSvc *MockProjectService, withAuth bool) *gin.Engine {

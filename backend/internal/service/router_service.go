@@ -201,7 +201,7 @@ func (r *RouterService) Decide(ctx context.Context, state RouterState) (Decision
 		}
 
 		raw := []byte(result.Output)
-		decision, correction := parseAndValidateDecision(raw, state.Agents)
+		decision, correction := parseAndValidateDecision(raw, state.Agents, state.Artifacts)
 		if correction == nil {
 			r.logger.DebugContext(ctx, "router decision accepted",
 				"task_id", state.Task.ID,
@@ -289,11 +289,12 @@ const (
 	correctionCodeAgentNameEmpty     = "agent_name_empty"
 	correctionCodeUnknownAgent       = "unknown_agent"
 	correctionCodeDuplicateArtifact  = "duplicate_artifact_id"
+	correctionCodeUnknownArtifact    = "unknown_artifact"
 )
 
 // parseAndValidateDecision выполняет: strip fences → unmarshal → validate.
 // Возвращает (Decision, nil) при успехе или (zero, *correctionHint) при ошибке.
-func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent) (Decision, *correctionHint) {
+func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent, existingArtifacts []models.Artifact) (Decision, *correctionHint) {
 	stripped := stripMarkdownFences(raw)
 	if len(stripped) == 0 {
 		return Decision{}, &correctionHint{
@@ -370,12 +371,31 @@ func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent) (Decisi
 	}
 
 	// Защита от дублей target_artifact_id в одном Decision (Router не должен запускать
-	// двух воркеров на один артефакт параллельно).
+	// двух воркеров на один артефакт параллельно) и валидация существования артефакта.
 	seen := make(map[uuid.UUID]int)
+	artifactsMap := make(map[uuid.UUID]models.Artifact, len(existingArtifacts))
+	for _, art := range existingArtifacts {
+		artifactsMap[art.ID] = art
+	}
+
 	for i, req := range d.Agents {
 		id, ok := req.TargetArtifactID()
 		if !ok {
 			continue
+		}
+		if _, exists := artifactsMap[id]; !exists {
+			var validIDs []string
+			for _, art := range existingArtifacts {
+				validIDs = append(validIDs, fmt.Sprintf("%s (%s)", art.ID, art.Kind))
+			}
+			validList := strings.Join(validIDs, ", ")
+			if validList == "" {
+				validList = "(no artifacts exist)"
+			}
+			return Decision{}, &correctionHint{
+				LogCode:    correctionCodeUnknownArtifact,
+				PromptText: fmt.Sprintf(`agents[%d] targets artifact %s which does not exist in this task. Choose from the available artifacts: %s.`, i, id, validList),
+			}
 		}
 		if prev, dup := seen[id]; dup {
 			return Decision{}, &correctionHint{

@@ -12,6 +12,7 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -140,6 +141,12 @@ func (m *mockProjectSvc) GetOwnerID(ctx context.Context, projectID uuid.UUID) (u
 }
 func (m *mockProjectSvc) RunBackgroundReindexing(ctx context.Context) error {
 	return m.Called(ctx).Error(0)
+}
+func (m *mockProjectSvc) SearchCode(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	return nil, nil
+}
+func (m *mockProjectSvc) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
+	return "", nil
 }
 
 type mockTaskSvc struct{ mock.Mock }

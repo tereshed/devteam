@@ -212,6 +212,15 @@ if [[ "$BACKEND" != "claude-code" ]]; then
 fi
 
 if [[ "$BACKEND" == "claude-code" ]]; then
+  # Map Antigravity credentials to Anthropic variables if needed (Antigravity acts as Anthropic proxy)
+  if [[ -n "${ANTIGRAVITY_API_KEY:-}" ]]; then
+    export ANTHROPIC_API_KEY="$ANTIGRAVITY_API_KEY"
+    export ANTHROPIC_BASE_URL="${ANTIGRAVITY_BASE_URL:-https://api.antigravity.ai/v1}"
+  elif [[ -n "${ANTIGRAVITY_OAUTH_TOKEN:-}" ]]; then
+    export ANTHROPIC_API_KEY="$ANTIGRAVITY_OAUTH_TOKEN"
+    export ANTHROPIC_BASE_URL="${ANTIGRAVITY_BASE_URL:-https://api.antigravity.ai/v1}"
+  fi
+
   # Sprint 15.14 + Sprint 15.e2e: принимаем любую из трёх форм аутентификации:
   #   - CLAUDE_CODE_OAUTH_TOKEN (подписка Claude Code, kind=anthropic_oauth)
   #   - ANTHROPIC_AUTH_TOKEN    (Bearer для native Anthropic endpoint провайдера +
@@ -348,15 +357,40 @@ export START_REF_RESOLVED
 # git switch -C: создать ветку или переключиться с reset на ref (если имя совпадает с дефолтной после clone — не падаем).
 # «--» перед start-point: не истолковать пользовательский ref как опцию (5.4).
 PHASE="branch"
-if ! git switch -C "$BRANCH_NAME" -- "origin/${START_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
-  echo "entrypoint: could not create/switch to branch ${BRANCH_NAME} at origin/${START_REF_RESOLVED}" >&2
-  LAST_EXIT_CODE=1
-  MESSAGE="git switch -C failed"
-  exit 1
+if git fetch origin --depth=50 "+refs/heads/${BRANCH_NAME}:refs/remotes/origin/${BRANCH_NAME}" >>"$AGENT_LOG" 2>&1; then
+  echo "entrypoint: branch ${BRANCH_NAME} exists on origin, checking out" >>"$AGENT_LOG"
+  if ! git switch -C "$BRANCH_NAME" -- "origin/${BRANCH_NAME}" >>"$AGENT_LOG" 2>&1; then
+    echo "entrypoint: could not switch to existing branch ${BRANCH_NAME}" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="git switch -C existing failed"
+    exit 1
+  fi
+else
+  echo "entrypoint: branch ${BRANCH_NAME} not found on origin, creating from origin/${START_REF_RESOLVED}" >>"$AGENT_LOG"
+  if ! git switch -C "$BRANCH_NAME" -- "origin/${START_REF_RESOLVED}" >>"$AGENT_LOG" 2>&1; then
+    echo "entrypoint: could not create/switch to branch ${BRANCH_NAME} at origin/${START_REF_RESOLVED}" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="git switch -C failed"
+    exit 1
+  fi
 fi
 
 git config --global user.name "DevTeam Agent"
 git config --global user.email "agent@devteam.local"
+
+# --- configure git excludes ---
+mkdir -p .git/info
+cat << 'EOF' >> .git/info/exclude
+plan_*.json
+review_*.json
+subtask_*.json
+merged_artifact.json
+plan_output.json
+plan_revised.json
+plan_revised_v2.json
+review_output.json
+EOF
+
 
 # Sprint 15.22 / 15.M4: .mcp.json в корне репозитория, exit-code check + mode 0600.
 if [[ -f /workspace/.mcp.json ]]; then

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/internal/indexer"
 )
 
 func TestAuthorizedExecutor_Catalog(t *testing.T) {
@@ -653,6 +656,203 @@ func TestAuthorizedExecutor_TaskCreateAndUpdate(t *testing.T) {
 
 		mockTaskSvc.AssertExpectations(t)
 		mockOrchSvc.AssertExpectations(t)
+	})
+}
+
+func TestAuthorizedExecutor_CodeSearch(t *testing.T) {
+	mockProjectSvc := new(mockProjectService)
+	executor := NewAuthorizedExecutor(AuthorizedExecutorDeps{
+		ProjectService: mockProjectSvc,
+	})
+
+	uid := uuid.New()
+	pid := uuid.New()
+	auth := agentloop.AuthContext{UserID: uid.String(), ProjectID: pid.String()}
+
+	t.Run("Success", func(t *testing.T) {
+		expectedChunks := []indexer.Chunk{
+			{FilePath: "main.go", Content: "package main"},
+		}
+		mockProjectSvc.On("SearchCode", mock.Anything, uid, models.RoleUser, pid, "my query", 10).Return(expectedChunks, nil).Once()
+
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `","query":"my query"}`)
+		res, err := executor.codeSearch(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status string          `json:"status"`
+			Data   []indexer.Chunk `json:"data"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "ok", response.Status)
+		require.Len(t, response.Data, 1)
+		assert.Equal(t, "main.go", response.Data[0].FilePath)
+		mockProjectSvc.AssertExpectations(t)
+	})
+
+	t.Run("Validation Error", func(t *testing.T) {
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `"}`) // missing query
+		res, err := executor.codeSearch(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "validation", response.Status)
+		assert.Contains(t, response.Message, "query is required")
+	})
+}
+
+func TestAuthorizedExecutor_CodeFileRead(t *testing.T) {
+	mockProjectSvc := new(mockProjectService)
+	executor := NewAuthorizedExecutor(AuthorizedExecutorDeps{
+		ProjectService: mockProjectSvc,
+	})
+
+	uid := uuid.New()
+	pid := uuid.New()
+	auth := agentloop.AuthContext{UserID: uid.String(), ProjectID: pid.String()}
+	tmpDir := t.TempDir()
+
+	// Write a test file
+	filePath := filepath.Join(tmpDir, "test.txt")
+	fileContent := "line1\nline2\nline3\nline4\nline5"
+	err := os.WriteFile(filePath, []byte(fileContent), 0644)
+	require.NoError(t, err)
+
+	t.Run("Success full read", func(t *testing.T) {
+		mockProjectSvc.On("GetProjectRepoPath", mock.Anything, uid, models.RoleUser, pid).Return(tmpDir, nil).Once()
+
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `","path":"test.txt"}`)
+		res, err := executor.codeFileRead(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status string `json:"status"`
+			Data   struct {
+				Content    string `json:"content"`
+				TotalLines int    `json:"total_lines"`
+				LineStart  int    `json:"line_start"`
+				LineEnd    int    `json:"line_end"`
+			} `json:"data"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "ok", response.Status)
+		assert.Equal(t, fileContent, response.Data.Content)
+		assert.Equal(t, 5, response.Data.TotalLines)
+		assert.Equal(t, 1, response.Data.LineStart)
+		assert.Equal(t, 5, response.Data.LineEnd)
+		mockProjectSvc.AssertExpectations(t)
+	})
+
+	t.Run("Success partial read", func(t *testing.T) {
+		mockProjectSvc.On("GetProjectRepoPath", mock.Anything, uid, models.RoleUser, pid).Return(tmpDir, nil).Once()
+
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `","path":"test.txt","line_start":2,"line_end":4}`)
+		res, err := executor.codeFileRead(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status string `json:"status"`
+			Data   struct {
+				Content    string `json:"content"`
+				TotalLines int    `json:"total_lines"`
+				LineStart  int    `json:"line_start"`
+				LineEnd    int    `json:"line_end"`
+			} `json:"data"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "ok", response.Status)
+		assert.Equal(t, "line2\nline3\nline4", response.Data.Content)
+		assert.Equal(t, 5, response.Data.TotalLines)
+		assert.Equal(t, 2, response.Data.LineStart)
+		assert.Equal(t, 4, response.Data.LineEnd)
+		mockProjectSvc.AssertExpectations(t)
+	})
+
+	t.Run("Path Traversal Blocked", func(t *testing.T) {
+		mockProjectSvc.On("GetProjectRepoPath", mock.Anything, uid, models.RoleUser, pid).Return(tmpDir, nil).Once()
+
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `","path":"../etc/passwd"}`)
+		res, err := executor.codeFileRead(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "validation", response.Status)
+		assert.Contains(t, response.Message, "path traversal detected")
+		mockProjectSvc.AssertExpectations(t)
+	})
+}
+
+func TestAuthorizedExecutor_CodeDirList(t *testing.T) {
+	mockProjectSvc := new(mockProjectService)
+	executor := NewAuthorizedExecutor(AuthorizedExecutorDeps{
+		ProjectService: mockProjectSvc,
+	})
+
+	uid := uuid.New()
+	pid := uuid.New()
+	auth := agentloop.AuthContext{UserID: uid.String(), ProjectID: pid.String()}
+	tmpDir := t.TempDir()
+
+	// Write some files/directories
+	err := os.Mkdir(filepath.Join(tmpDir, "subdir"), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tmpDir, "file.txt"), []byte("hello"), 0644)
+	require.NoError(t, err)
+
+	t.Run("Success list root", func(t *testing.T) {
+		mockProjectSvc.On("GetProjectRepoPath", mock.Anything, uid, models.RoleUser, pid).Return(tmpDir, nil).Once()
+
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `"}`)
+		res, err := executor.codeDirList(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status string     `json:"status"`
+			Data   []dirEntry `json:"data"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "ok", response.Status)
+		require.Len(t, response.Data, 2)
+
+		var names []string
+		for _, e := range response.Data {
+			names = append(names, e.Name)
+		}
+		assert.Contains(t, names, "subdir")
+		assert.Contains(t, names, "file.txt")
+		mockProjectSvc.AssertExpectations(t)
+	})
+
+	t.Run("Path Traversal Blocked", func(t *testing.T) {
+		mockProjectSvc.On("GetProjectRepoPath", mock.Anything, uid, models.RoleUser, pid).Return(tmpDir, nil).Once()
+
+		args := json.RawMessage(`{"project_id":"` + pid.String() + `","path":"../"}`)
+		res, err := executor.codeDirList(context.Background(), auth, args)
+		require.NoError(t, err)
+
+		var response struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		}
+		err = json.Unmarshal(res, &response)
+		require.NoError(t, err)
+		assert.Equal(t, "validation", response.Status)
+		assert.Contains(t, response.Message, "path traversal detected")
+		mockProjectSvc.AssertExpectations(t)
 	})
 }
 

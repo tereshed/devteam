@@ -353,7 +353,7 @@ func TestSaveArtifact_FallbackOnInvalidEnvelope(t *testing.T) {
 		artifactRepo: repo,
 		logger:       discardLogger(),
 	}
-	agentRec := &models.Agent{Name: "developer"}
+	agentRec := &models.Agent{Name: "unknown_agent"}
 	result := &agent.ExecutionResult{
 		Success: true,
 		Output:  "Я сделал то-то и то-то, без JSON-обёртки, прости.",
@@ -370,6 +370,31 @@ func TestSaveArtifact_FallbackOnInvalidEnvelope(t *testing.T) {
 	}
 	if got.Summary == "" {
 		t.Error("Summary must be filled from result.Output")
+	}
+}
+
+// TestSaveArtifact_FallbackWithMappedAgent — проверяет, что маппинг fallbackKind
+// работает для известных агентов без привязки к конкретному taskID.
+func TestSaveArtifact_FallbackWithMappedAgent(t *testing.T) {
+	repo := newMemArtifactRepo()
+	w := &AgentWorker{
+		artifactRepo: repo,
+		logger:       discardLogger(),
+	}
+	agentRec := &models.Agent{Name: "developer"}
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output:  "Я сделал то-то и то-то, без JSON-обёртки, прости.",
+	}
+	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result); err != nil {
+		t.Fatalf("saveArtifact: %v", err)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("expected 1 artifact, got %d", len(repo.created))
+	}
+	got := repo.created[0]
+	if got.Kind != models.ArtifactKindCodeDiff {
+		t.Errorf("expected Kind=code_diff for fallback developer, got %q", got.Kind)
 	}
 }
 

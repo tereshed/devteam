@@ -605,23 +605,21 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 			logging.SafeRawAttr([]byte(result.Output)))
 
 		fallbackKind := "raw_output"
-		if taskID.String() == "24bcfaed-ba06-4d40-af97-2ab4782cd9a5" {
-			switch agentRec.Name {
-			case "planner":
-				if targetArtifact != nil && targetArtifact.Kind == models.ArtifactKindDecomposition {
-					fallbackKind = string(models.ArtifactKindPlan)
-				} else {
-					fallbackKind = string(models.ArtifactKindSubtaskDescription)
-				}
-			case "developer":
-				fallbackKind = string(models.ArtifactKindCodeDiff)
-			case "reviewer":
-				fallbackKind = string(models.ArtifactKindReview)
-			case "tester":
-				fallbackKind = string(models.ArtifactKindTestResult)
-			case "merger":
-				fallbackKind = string(models.ArtifactKindMergedCode)
+		switch agentRec.Name {
+		case "planner":
+			if targetArtifact != nil && (targetArtifact.Kind == models.ArtifactKindDecomposition || targetArtifact.Kind == models.ArtifactKindPlan) {
+				fallbackKind = string(models.ArtifactKindPlan)
+			} else {
+				fallbackKind = string(models.ArtifactKindSubtaskDescription)
 			}
+		case "developer":
+			fallbackKind = string(models.ArtifactKindCodeDiff)
+		case "reviewer":
+			fallbackKind = string(models.ArtifactKindReview)
+		case "tester":
+			fallbackKind = string(models.ArtifactKindTestResult)
+		case "merger":
+			fallbackKind = string(models.ArtifactKindMergedCode)
 		}
 
 		var parentID *uuid.UUID

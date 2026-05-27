@@ -11,6 +11,7 @@ import (
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/pkg/llm"
 )
 
@@ -424,6 +425,19 @@ func (m *mockProjectService) GetOwnerID(ctx context.Context, projectID uuid.UUID
 
 func (m *mockProjectService) RunBackgroundReindexing(ctx context.Context) error {
 	return nil
+}
+
+func (m *mockProjectService) SearchCode(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	args := m.Called(ctx, userID, userRole, projectID, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]indexer.Chunk), args.Error(1)
+}
+
+func (m *mockProjectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
+	args := m.Called(ctx, userID, userRole, projectID)
+	return args.String(0), args.Error(1)
 }
 
 func (m *mockTaskService) Close() error {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,8 @@ import (
 )
 
 // TODO(7.x): перейти на transactional outbox для гарантии at-least-once доставки.
+
+var branchNameSlugRe = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 
 var (
 	ErrTaskNotFound           = errors.New("task not found")
@@ -546,6 +549,23 @@ func (s *taskService) deleteTaskAsync(ctx context.Context, taskID uuid.UUID) {
 	})
 }
 
+func generateBranchName(taskID uuid.UUID, title string) string {
+	slug := strings.ToLower(title)
+	slug = branchNameSlugRe.ReplaceAllString(slug, "-")
+	slug = strings.Trim(slug, "-")
+
+	if len(slug) > 40 {
+		slug = slug[:40]
+		slug = strings.TrimSuffix(slug, "-")
+	}
+
+	prefix := taskID.String()[:8]
+	if slug == "" {
+		return "task/" + prefix
+	}
+	return "task/" + prefix + "-" + slug
+}
+
 func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.CreateTaskRequest) (*models.Task, error) {
 	if _, err := s.projectSvc.GetByID(ctx, userID, userRole, projectID); err != nil {
 		return nil, err
@@ -572,7 +592,17 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		}
 		customTimeout = ct
 	}
+
+	taskID := uuid.New()
+	var branchName string
+	if req.BranchName != nil && *req.BranchName != "" {
+		branchName = *req.BranchName
+	} else {
+		branchName = generateBranchName(taskID, req.Title)
+	}
+
 	task := &models.Task{
+		ID:            taskID,
 		ProjectID:     projectID,
 		TeamID:        req.TeamID,
 		Title:         strings.TrimSpace(req.Title),
@@ -583,7 +613,7 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		CreatedByID:   userID,
 		Context:       ctxJSON,
 		Artifacts:     datatypes.JSON([]byte("{}")),
-		BranchName:    req.BranchName,
+		BranchName:    &branchName,
 		CustomTimeout: customTimeout,
 	}
 

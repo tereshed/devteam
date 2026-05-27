@@ -13,6 +13,7 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/internal/indexer"
 	"log/slog"
 	"os"
 	"gorm.io/datatypes"
@@ -215,6 +216,12 @@ func (m *mockTaskProjectService) GetOwnerID(ctx context.Context, projectID uuid.
 func (m *mockTaskProjectService) RunBackgroundReindexing(ctx context.Context) error {
 	return m.Called(ctx).Error(0)
 }
+func (m *mockTaskProjectService) SearchCode(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, query string, limit int) ([]indexer.Chunk, error) {
+	return nil, nil
+}
+func (m *mockTaskProjectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
+	return "", nil
+}
 
 type mockTaskTeamService struct{ mock.Mock }
 
@@ -330,6 +337,7 @@ func newTaskServiceHarnessFull() (*mockTaskRepository, *mockTaskMessageRepositor
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	txm.On("WithTransaction", mock.Anything, mock.Anything).Return(nil).Maybe()
 	bus.On("Publish", mock.Anything, mock.Anything).Return().Maybe()
+	idx.On("IndexTaskFromModel", mock.Anything, mock.Anything).Return(nil).Maybe()
 	svc := NewTaskService(tr, tmr, ps, tms, txm, bus, idx, logger)
 	return tr, tmr, ps, tms, txm, bus, idx, svc
 }
@@ -354,6 +362,52 @@ func TestTaskCreate_Success(t *testing.T) {
 	assert.Equal(t, models.TaskStateActive, got.State)
 	assert.Equal(t, models.CreatedByUser, got.CreatedByType)
 	assert.Equal(t, tsUserID, got.CreatedByID)
+
+	svc.Close()
+	tr.AssertExpectations(t)
+	idx.AssertExpectations(t)
+}
+
+func TestTaskCreate_AutoBranchName(t *testing.T) {
+	tr, _, ps, _, _, _, idx, svc := newTaskServiceHarnessFull()
+	ctx := context.Background()
+
+	ps.On("GetByID", ctx, tsUserID, models.RoleUser, tsProjectID).Return(ownedProject(), nil)
+	idx.On("IndexTaskFromModel", mock.Anything, mock.Anything).Return(nil)
+
+	// Test Case 1: Auto-generate branch name from English title
+	tr.On("Create", ctx, mock.Anything).Return(nil).Once()
+
+	got1, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{
+		Title: "Fix Database Schema!",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got1.BranchName)
+	prefix1 := got1.ID.String()[:8]
+	assert.Equal(t, "task/"+prefix1+"-fix-database-schema", *got1.BranchName)
+
+	// Test Case 2: Use explicitly provided branch name
+	customBranch := "my-custom-feature-branch"
+	tr.On("Create", ctx, mock.Anything).Return(nil).Once()
+
+	got2, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{
+		Title:      "Some Task",
+		BranchName: &customBranch,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got2.BranchName)
+	assert.Equal(t, customBranch, *got2.BranchName)
+
+	// Test Case 3: Fallback when title has no alphanumeric chars (e.g. Cyrillic only / symbols only)
+	tr.On("Create", ctx, mock.Anything).Return(nil).Once()
+
+	got3, err := svc.Create(ctx, tsUserID, models.RoleUser, tsProjectID, dto.CreateTaskRequest{
+		Title: "!!! Русский Текст !!!",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got3.BranchName)
+	prefix3 := got3.ID.String()[:8]
+	assert.Equal(t, "task/"+prefix3, *got3.BranchName)
 
 	svc.Close()
 	tr.AssertExpectations(t)

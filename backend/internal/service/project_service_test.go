@@ -1542,10 +1542,14 @@ func TestProjectService_IndexingPipeline_Success(t *testing.T) {
 	// Ожидаем клон
 	mp.On("Clone", mock.Anything, gitURL, mock.MatchedBy(func(opts gitprovider.CloneOptions) bool {
 		return opts.Branch == branch
-	})).Return(nil)
+	})).Run(func(args mock.Arguments) {
+		opts := args.Get(2).(gitprovider.CloneOptions)
+		_ = os.MkdirAll(opts.DestPath, 0755)
+		_ = os.WriteFile(filepath.Join(opts.DestPath, "dummy.txt"), []byte("data"), 0644)
+	}).Return(nil)
 	// Ожидаем индексацию
 	idx.On("IndexProject", mock.Anything, mock.MatchedBy(func(req indexer.IndexingRequest) bool {
-		return req.ProjectID == projectID && strings.Contains(req.RepoPath, "project-"+projectID.String())
+		return req.ProjectID == projectID && strings.Contains(req.RepoPath, projectID.String())
 	})).Return(nil)
 
 	// Запускаем пайплайн (синхронно для теста, вызывая внутренний метод)
@@ -1555,9 +1559,9 @@ func TestProjectService_IndexingPipeline_Success(t *testing.T) {
 	mp.AssertExpectations(t)
 	idx.AssertExpectations(t)
 
-	// Проверяем, что временная директория удалена
+	// Проверяем, что временная директория НЕ удалена на успех
 	files, _ := os.ReadDir(importDir)
-	assert.Empty(t, files, "temp directory should be cleaned up")
+	assert.NotEmpty(t, files, "cloned repository directory should be preserved on success")
 }
 
 func TestProjectService_IndexingPipeline_EmptyRepo(t *testing.T) {
@@ -1617,11 +1621,19 @@ func TestProjectService_IndexingPipeline_CloneError(t *testing.T) {
 	// Ожидаем обновление статуса на IndexingFailed
 	pr.On("UpdateStatus", mock.Anything, projectID, models.ProjectStatusIndexing, models.ProjectStatusIndexingFailed).Return(nil)
 	// Ожидаем ошибку клона
-	mp.On("Clone", mock.Anything, gitURL, mock.Anything).Return(errors.New("clone failed"))
+	mp.On("Clone", mock.Anything, gitURL, mock.Anything).Run(func(args mock.Arguments) {
+		opts := args.Get(2).(gitprovider.CloneOptions)
+		_ = os.MkdirAll(opts.DestPath, 0755)
+		_ = os.WriteFile(filepath.Join(opts.DestPath, "dummy.txt"), []byte("data"), 0644)
+	}).Return(errors.New("clone failed"))
 
 	svc.(*projectService).runIndexingPipeline(mp, projectID, gitURL, "main", "")
 
 	pr.AssertExpectations(t)
+
+	// Проверяем, что временная директория удалена при ошибке
+	files, _ := os.ReadDir(importDir)
+	assert.Empty(t, files, "temp directory should be cleaned up on clone error")
 }
 
 func TestProjectService_IndexingPipeline_PanicRecovery(t *testing.T) {
@@ -1958,5 +1970,79 @@ func TestProjectService_RunBackgroundReindexing(t *testing.T) {
 	pr.AssertExpectations(t)
 	gf.AssertExpectations(t)
 	mp.AssertExpectations(t)
+}
+
+func TestProjectService_SearchCode(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	projectID := uuid.New()
+
+	pr := new(MockProjectRepository)
+	idx := new(MockCodeIndexer)
+	svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, idx, "")
+
+	existing := &models.Project{
+		ID:     projectID,
+		UserID: userID,
+		Status: models.ProjectStatusReady,
+	}
+
+	pr.On("GetByID", ctx, projectID).Return(existing, nil)
+	
+	expectedChunks := []indexer.Chunk{
+		{FilePath: "main.go", Content: "package main"},
+	}
+	idx.On("SearchContext", ctx, projectID, "test query", 5).Return(expectedChunks, nil)
+
+	chunks, err := svc.SearchCode(ctx, userID, models.RoleUser, projectID, "test query", 5)
+	require.NoError(t, err)
+	assert.Equal(t, expectedChunks, chunks)
+
+	pr.AssertExpectations(t)
+	idx.AssertExpectations(t)
+}
+
+func TestProjectService_GetProjectRepoPath(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	projectID := uuid.New()
+	importDir := "/tmp/import"
+
+	t.Run("Remote project path", func(t *testing.T) {
+		pr := new(MockProjectRepository)
+		svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, nil, importDir)
+
+		existing := &models.Project{
+			ID:          projectID,
+			UserID:      userID,
+			GitProvider: models.GitProviderGitHub,
+		}
+
+		pr.On("GetByID", ctx, projectID).Return(existing, nil)
+
+		path, err := svc.GetProjectRepoPath(ctx, userID, models.RoleUser, projectID)
+		require.NoError(t, err)
+		assert.Equal(t, filepath.Join(importDir, projectID.String()), path)
+		pr.AssertExpectations(t)
+	})
+
+	t.Run("Local project path", func(t *testing.T) {
+		pr := new(MockProjectRepository)
+		svc := newProjectServiceWithIndexer(pr, new(MockTeamRepository), new(MockGitCredentialRepository), noopTxManager{}, nil, nil, nil, importDir)
+
+		existing := &models.Project{
+			ID:          projectID,
+			UserID:      userID,
+			GitProvider: models.GitProviderLocal,
+			GitURL:      "/user/local/repo",
+		}
+
+		pr.On("GetByID", ctx, projectID).Return(existing, nil)
+
+		path, err := svc.GetProjectRepoPath(ctx, userID, models.RoleUser, projectID)
+		require.NoError(t, err)
+		assert.Equal(t, "/user/local/repo", path)
+		pr.AssertExpectations(t)
+	})
 }
 

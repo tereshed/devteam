@@ -303,7 +303,12 @@ func TestScenario_Parallel_TwoDevsThenMerger(t *testing.T) {
 	task := &models.Task{ID: uuid.New(), ProjectID: uuid.New(), Title: "feature", State: models.TaskStateActive}
 
 	// Step 1 — пустой state, ждём fan-out.
-	d, err := svc.Decide(context.Background(), RouterState{Task: task, Agents: enabled})
+	subtask1 := models.Artifact{ID: sub1, TaskID: task.ID, Kind: models.ArtifactKindDecomposition, Summary: "subtask 1", Status: models.ArtifactStatusReady}
+	subtask2 := models.Artifact{ID: sub2, TaskID: task.ID, Kind: models.ArtifactKindDecomposition, Summary: "subtask 2", Status: models.ArtifactStatusReady}
+	d, err := svc.Decide(context.Background(), RouterState{
+		Task: task, Agents: enabled,
+		Artifacts: []models.Artifact{subtask1, subtask2},
+	})
 	if err != nil {
 		t.Fatalf("step 1: %v", err)
 	}
@@ -381,7 +386,13 @@ func TestScenario_Parallel_ThreeDevsThreeReviewsMergerTester(t *testing.T) {
 	task := &models.Task{ID: uuid.New(), ProjectID: uuid.New(), State: models.TaskStateActive}
 
 	// Step 1
-	d, err := svc.Decide(context.Background(), RouterState{Task: task, Agents: enabled})
+	subtask1 := models.Artifact{ID: sub1, TaskID: task.ID, Kind: models.ArtifactKindDecomposition, Summary: "subtask 1", Status: models.ArtifactStatusReady}
+	subtask2 := models.Artifact{ID: sub2, TaskID: task.ID, Kind: models.ArtifactKindDecomposition, Summary: "subtask 2", Status: models.ArtifactStatusReady}
+	subtask3 := models.Artifact{ID: sub3, TaskID: task.ID, Kind: models.ArtifactKindDecomposition, Summary: "subtask 3", Status: models.ArtifactStatusReady}
+	d, err := svc.Decide(context.Background(), RouterState{
+		Task: task, Agents: enabled,
+		Artifacts: []models.Artifact{subtask1, subtask2, subtask3},
+	})
 	if err != nil || len(d.Agents) != 3 {
 		t.Fatalf("step1: want 3 parallel agents, got %+v err=%v", d, err)
 	}
