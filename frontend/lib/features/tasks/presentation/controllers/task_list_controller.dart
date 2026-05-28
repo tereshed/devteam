@@ -205,6 +205,7 @@ class TaskListController extends _$TaskListController {
         return;
       case WsClientEventSubprotocolMismatch():
       case WsClientEventParseError():
+      case WsClientEventConnected():
         _clearRealtimeTransientFailure();
         return;
       case WsClientEventServer(:final event):

@@ -342,11 +342,8 @@ func (b *contextBuilder) appendPipelineHandoff(ctx context.Context, input *agent
 			}
 			sb.WriteString("\n<previous_steps>\n")
 			for _, m := range msgs[start:] {
-				// Пропускаем сообщения от самого себя (при ре-итерациях
-				// developer ↔ reviewer — себя в истории показывать смысла мало).
-				if currentAgent != nil && m.SenderID == currentAgent.ID {
-					continue
-				}
+				// We no longer skip messages from the agent itself to provide autobiographical memory
+				// (context of previous attempts within the conversation).
 				fmt.Fprintf(&sb, "<step agent_id=%q type=%q at=%q>\n",
 					m.SenderID.String(), string(m.MessageType), m.CreatedAt.Format("2006-01-02T15:04:05Z"))
 				sb.WriteString(b.scrub(m.Content))

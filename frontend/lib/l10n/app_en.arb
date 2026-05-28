@@ -1493,6 +1493,21 @@
         "type": "int"
       }
     }
-  }
+  },
+  "agentMatrixTitle": "The Agent Matrix",
+  "agentMatrixTimelineTab": "Timeline",
+  "agentMatrixGraphTab": "Graph",
+  "agentMatrixStatusPending": "Pending",
+  "agentMatrixStatusRunning": "Running",
+  "agentMatrixStatusSuccess": "Success",
+  "agentMatrixStatusFailed": "Failed",
+  "agentMatrixInspectorTitle": "Agent Inspection",
+  "agentMatrixInspectorSubtasks": "Subtasks",
+  "agentMatrixInspectorLogs": "Logs",
+  "agentMatrixInspectorArtifacts": "Artifacts",
+  "agentMatrixInspectorNoSubtasks": "No subtasks executed by this agent yet.",
+  "agentMatrixInspectorNoArtifacts": "No artifacts created by this agent yet.",
+  "agentMatrixInspectorSelectSubtask": "Select Subtask",
+  "agentMatrixInspectorGeneralDiscussion": "Discussion & Actions"
 }
 

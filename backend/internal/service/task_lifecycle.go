@@ -53,7 +53,7 @@ func (s *TaskLifecycleService) RequestCancel(ctx context.Context, taskID uuid.UU
 	// отмены, или попытка отменить уже завершённую задачу).
 	result := s.db.WithContext(ctx).
 		Model(&models.Task{}).
-		Where("id = ? AND state = ?", taskID, models.TaskStateActive).
+		Where("id = ? AND state IN (?)", taskID, []models.TaskState{models.TaskStateActive, models.TaskStateCancelled}).
 		Update("cancel_requested", true)
 	if result.Error != nil {
 		return fmt.Errorf("task lifecycle: set cancel_requested: %w", result.Error)

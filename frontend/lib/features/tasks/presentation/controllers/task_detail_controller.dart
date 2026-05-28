@@ -8,6 +8,7 @@ import 'package:frontend/core/api/realtime_session_failure.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/utils/uuid.dart';
+import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/data/task_providers.dart';
 import 'package:frontend/features/tasks/data/task_repository.dart';
@@ -272,6 +273,7 @@ class TaskDetailController extends _$TaskDetailController {
         return;
       case WsClientEventSubprotocolMismatch():
       case WsClientEventParseError():
+      case WsClientEventConnected():
         _clearRealtimeTransientFailure();
         return;
       case WsClientEventServer(:final event):
@@ -335,6 +337,8 @@ class TaskDetailController extends _$TaskDetailController {
     _messagesHistoryToken?.cancel();
     _taskHistoryToken = CancelToken();
     _messagesHistoryToken = CancelToken();
+
+    _invalidateOrchestrationV2Providers();
 
     final prev = switch (state) {
       AsyncData<TaskDetailState>(:final value) => value,
@@ -724,6 +728,7 @@ class TaskDetailController extends _$TaskDetailController {
       );
     }
     _patchState((s) => s.copyWith(task: task));
+    _invalidateOrchestrationV2Providers();
   }
 
   Future<TaskMutationOutcome> _runLifecycleMutation(
@@ -941,6 +946,7 @@ class TaskDetailController extends _$TaskDetailController {
         errorMessage: e.errorMessage,
       );
       _patchState((s) => s.copyWith(task: next));
+      _invalidateOrchestrationV2Providers();
 
       final aid = e.assignedAgentId;
       if (aid != null &&
@@ -949,6 +955,7 @@ class TaskDetailController extends _$TaskDetailController {
         _scheduleWsRefetch(() async {
           try {
             await _reloadTaskOnly();
+            _invalidateOrchestrationV2Providers();
           } catch (e, st) {
             log(
               'WS agent-change reload getTask failed',
@@ -975,6 +982,7 @@ class TaskDetailController extends _$TaskDetailController {
     final nextSubs = List<TaskSummaryModel>.from(task.subTasks);
     nextSubs[subIdx] = patchedSub;
     _patchState((s) => s.copyWith(task: task.copyWith(subTasks: nextSubs)));
+    _invalidateOrchestrationV2Providers();
   }
 
   void applyWsTaskMessage(WsTaskMessageEvent e) {
@@ -1008,5 +1016,10 @@ class TaskDetailController extends _$TaskDetailController {
 
   void clearSandboxLogs() {
     _patchState((s) => s.copyWith(sandboxLogs: const []));
+  }
+
+  void _invalidateOrchestrationV2Providers() {
+    ref.invalidate(taskRouterDecisionsProvider(_taskId));
+    ref.invalidate(taskArtifactsProvider(_taskId));
   }
 }

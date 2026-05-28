@@ -430,6 +430,7 @@ abstract class WsServerEvent with _$WsServerEvent {
 @freezed
 abstract class WsClientEvent with _$WsClientEvent {
   const factory WsClientEvent.server(WsServerEvent event) = WsClientEventServer;
+  const factory WsClientEvent.connected() = WsClientEventConnected;
   const factory WsClientEvent.parseError(WsParseError error) =
       WsClientEventParseError;
   const factory WsClientEvent.serviceFailure(WsServiceFailure failure) =

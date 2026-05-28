@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/devteam/backend/internal/logging"
@@ -182,6 +184,18 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 			postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID))
 			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
 				fmt.Sprintf("max_steps_per_task=%d exceeded", o.cfg.MaxStepsPerTask))
+		}
+
+		// 5.5. Loop detection
+		isLoop, loopReason, err := o.detectCycle(ctx, tx, task.ID)
+		if err != nil {
+			o.logger.WarnContext(ctx, "failed to run loop detector", "task_id", task.ID, "error", err.Error())
+		} else if isLoop {
+			o.logger.WarnContext(ctx, "loop detected, escalating to needs_human",
+				"task_id", task.ID, "reason", loopReason)
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID))
+			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
+				fmt.Sprintf("loop detected: %s", loopReason))
 		}
 
 		// 6. Загружаем state для Router'а (metadata only, без content артефактов).
@@ -469,9 +483,17 @@ func (o *Orchestrator) enqueueOneAgentJob(ctx context.Context, tx *gorm.DB, task
 	return nil
 }
 
-// resolveBaseBranch — порядок: Project.GitDefaultBranch → cfg.DefaultBaseBranch.
+// resolveBaseBranch — порядок: task.BranchName → Project.GitDefaultBranch → cfg.DefaultBaseBranch.
 // Также валидирует результат через ValidateBaseBranch (защита от мусора в БД).
 func (o *Orchestrator) resolveBaseBranch(ctx context.Context, tx *gorm.DB, task *models.Task) (string, error) {
+	if task.BranchName != nil && *task.BranchName != "" {
+		if err := ValidateBaseBranch(*task.BranchName); err == nil {
+			return *task.BranchName, nil
+		} else {
+			o.logger.WarnContext(ctx, "task branch name invalid, falling back", "task_id", task.ID, "branch_name", *task.BranchName, "error", err.Error())
+		}
+	}
+
 	var project models.Project
 	if err := tx.WithContext(ctx).Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
 		o.logger.WarnContext(ctx, "load project failed, falling back to cfg default branch",
@@ -575,4 +597,189 @@ func getProjectTeamID(db *gorm.DB, projectID uuid.UUID) (uuid.UUID, error) {
 		return team.ID, nil
 	}
 	return uuid.Nil, fmt.Errorf("no team found for project %s", projectID)
+}
+
+// detectCycle checks if the agent workflow has entered a loop (e.g. infinite developer <-> reviewer updates).
+// A loop is detected if:
+// 1. There are at least 3 review artifacts with decision='changes_requested'.
+// 2. There are at least 3 code_diff artifacts.
+// 3. The list of modified files in the last 3 code_diffs is identical.
+// 4. The Jaccard similarity of reviewer issues across the last 3 reviews is > 80%.
+func (o *Orchestrator) detectCycle(ctx context.Context, tx *gorm.DB, taskID uuid.UUID) (bool, string, error) {
+	// 1. Fetch last 3 ready/superseded reviews with decision = 'changes_requested'
+	var reviews []models.Artifact
+	if err := tx.WithContext(ctx).
+		Where("task_id = ? AND kind = ?", taskID, models.ArtifactKindReview).
+		Order("created_at DESC").
+		Limit(3).
+		Find(&reviews).Error; err != nil {
+		return false, "", err
+	}
+
+	if len(reviews) < 3 {
+		return false, "", nil
+	}
+
+	// 2. Fetch last 3 ready/superseded code_diff artifacts
+	var diffs []models.Artifact
+	if err := tx.WithContext(ctx).
+		Where("task_id = ? AND kind = ?", taskID, models.ArtifactKindCodeDiff).
+		Order("created_at DESC").
+		Limit(3).
+		Find(&diffs).Error; err != nil {
+		return false, "", err
+	}
+
+	if len(diffs) < 3 {
+		return false, "", nil
+	}
+
+	// Helper to extract reviewer comments and ensure all decisions are 'changes_requested'
+	extractCommentsAndValidate := func(art models.Artifact) ([]string, bool) {
+		var rc struct {
+			Decision string `json:"decision"`
+			Issues   []struct {
+				Comment string `json:"comment"`
+			} `json:"issues"`
+		}
+		if err := json.Unmarshal(art.Content, &rc); err != nil {
+			return nil, false
+		}
+		if rc.Decision != "changes_requested" {
+			return nil, false
+		}
+		var comments []string
+		for _, iss := range rc.Issues {
+			if c := strings.TrimSpace(iss.Comment); c != "" {
+				comments = append(comments, c)
+			}
+		}
+		return comments, true
+	}
+
+	// Validate reviews decisions and extract comments
+	var allComments [][]string
+	for _, rev := range reviews {
+		comments, ok := extractCommentsAndValidate(rev)
+		if !ok || len(comments) == 0 {
+			return false, "", nil
+		}
+		allComments = append(allComments, comments)
+	}
+
+	// Helper to extract changed files from diff/raw_output inside artifact content
+	extractChangedFiles := func(art models.Artifact) []string {
+		var wrapper struct {
+			RawOutput string `json:"raw_output"`
+			Diff      string `json:"diff"`
+		}
+		_ = json.Unmarshal(art.Content, &wrapper)
+		text := wrapper.Diff
+		if text == "" {
+			text = wrapper.RawOutput
+		}
+		re := regexp.MustCompile(`diff --git a/([^\s]+) b/`)
+		matches := re.FindAllStringSubmatch(text, -1)
+
+		var files []string
+		seen := make(map[string]bool)
+		for _, m := range matches {
+			if len(m) > 1 && !seen[m[1]] {
+				seen[m[1]] = true
+				files = append(files, m[1])
+			}
+		}
+		return files
+	}
+
+	// Extract files and compare
+	files0 := extractChangedFiles(diffs[0])
+	files1 := extractChangedFiles(diffs[1])
+	files2 := extractChangedFiles(diffs[2])
+
+	equalStringSlices := func(a, b []string) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		m := make(map[string]int)
+		for _, x := range a {
+			m[x]++
+		}
+		for _, x := range b {
+			m[x]--
+			if m[x] < 0 {
+				return false
+			}
+		}
+		return true
+	}
+
+	filesMatch := false
+	if len(files0) > 0 && len(files1) > 0 && len(files2) > 0 {
+		if equalStringSlices(files0, files1) && equalStringSlices(files1, files2) {
+			filesMatch = true
+		}
+	} else {
+		// Fallback: if we couldn't parse any git files (e.g. no git output captured),
+		// assume they match to rely solely on similarity of comments.
+		filesMatch = true
+	}
+
+	if !filesMatch {
+		return false, "", nil
+	}
+
+	// Jaccard similarity helpers
+	getWords := func(s string) map[string]bool {
+		words := make(map[string]bool)
+		f := func(c rune) bool {
+			return !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= 'А' && c <= 'Я') || (c >= 'а' && c <= 'я') || (c >= '0' && c <= '9') || c == '_')
+		}
+		fields := strings.FieldsFunc(strings.ToLower(s), f)
+		for _, w := range fields {
+			if len(w) > 2 {
+				words[w] = true
+			}
+		}
+		return words
+	}
+
+	jaccardSimilarity := func(s1, s2 string) float64 {
+		w1 := getWords(s1)
+		w2 := getWords(s2)
+		if len(w1) == 0 && len(w2) == 0 {
+			return 1.0
+		}
+		intersection := 0
+		for w := range w1 {
+			if w2[w] {
+				intersection++
+			}
+		}
+		union := len(w1)
+		for w := range w2 {
+			if !w1[w] {
+				union++
+			}
+		}
+		return float64(intersection) / float64(union)
+	}
+
+	str0 := strings.Join(allComments[0], " ")
+	str1 := strings.Join(allComments[1], " ")
+	str2 := strings.Join(allComments[2], " ")
+
+	sim1 := jaccardSimilarity(str0, str1)
+	sim2 := jaccardSimilarity(str1, str2)
+
+	if sim1 > 0.8 && sim2 > 0.8 {
+		filesStr := strings.Join(files0, ", ")
+		if filesStr == "" {
+			filesStr = "unknown files"
+		}
+		reason := fmt.Sprintf("repeated reviewer comments (similarity %.1f%% and %.1f%%) on same files [%s]", sim1*100, sim2*100, filesStr)
+		return true, reason, nil
+	}
+
+	return false, "", nil
 }

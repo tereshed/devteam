@@ -503,7 +503,7 @@ COMMIT_HASH="$(git rev-parse HEAD)"
 # --- push (только если был свой коммит) ---
 PHASE="push"
 PUSH_URL=""
-if [[ "$COMMITTED" -eq 1 ]] || [[ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/${START_REF_RESOLVED}")" ]]; then
+if [[ "$COMMITTED" -eq 1 ]]; then
   if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
     PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
   elif [[ "${REPO_URL}" =~ ^file:// || "${REPO_URL}" =~ ^ssh:// || "${REPO_URL}" =~ ^git@ ]]; then

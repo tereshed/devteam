@@ -499,6 +499,7 @@ class WebSocketService {
     _socketEndCommittedSession = null;
     _armIdleTimer(session, projectId);
     _armStableOpenTimer(session);
+    _emit(const WsClientEvent.connected());
 
     _socketSub = ch.stream.listen(
       (dynamic data) {
@@ -876,5 +877,18 @@ class WebSocketService {
       }
       _backoffAttempt = 0;
     });
+  }
+
+  void handleTokenRefreshed() {
+    if (_phase == _WsPhase.disposed) {
+      return;
+    }
+    if (_terminalAuth) {
+      _terminalAuth = false;
+      final pid = _activeProjectId;
+      if (pid != null) {
+        _kickConnectSession(pid);
+      }
+    }
   }
 }

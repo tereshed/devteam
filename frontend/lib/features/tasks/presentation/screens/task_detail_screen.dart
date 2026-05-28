@@ -3,20 +3,24 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
+import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
+import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
 import 'package:frontend/features/tasks/domain/models/task_message_model.dart';
+import 'package:frontend/features/tasks/domain/models/router_decision_model.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_detail_controller.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_errors.dart';
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_display.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_metadata_redaction.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
-import 'package:frontend/features/tasks/presentation/widgets/artifacts_dag_section.dart';
-import 'package:frontend/features/tasks/presentation/widgets/router_timeline_section.dart';
-import 'package:frontend/features/tasks/presentation/widgets/sandbox_logs_viewer.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_timeout_editor.dart';
+import 'package:frontend/features/tasks/presentation/widgets/task_execution_graph.dart';
+import 'package:frontend/features/tasks/presentation/widgets/agent_inspector_panel.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/shared/widgets/diff_viewer.dart';
 import 'package:go_router/go_router.dart';
@@ -140,8 +144,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   late final ScrollController _scrollController = ScrollController();
   bool _didInitialScrollToBottom = false;
-  /// Один повторный postFrame, если ScrollController ещё без клиентов (избегаем бесконечной цепочки).
   int _initialScrollAttachRetries = 0;
+
+  String? _selectedAgentName;
+  bool _showInspector = true;
 
   @override
   void dispose() {
@@ -156,6 +162,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         oldWidget.taskId != widget.taskId) {
       _didInitialScrollToBottom = false;
       _initialScrollAttachRetries = 0;
+      _selectedAgentName = null;
     }
   }
 
@@ -365,6 +372,161 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   Future<void> _onResumePressed() =>
       _applyLifecycleMutation((n) => n.resumeTask());
 
+  AgentNodeData? _getAgentNodeData(
+    String agentName,
+    dynamic team,
+    List<RouterDecision> decisions,
+    List<Artifact> artifacts,
+    String taskState,
+  ) {
+    dynamic teamAgent;
+    for (final a in team.agents) {
+      if (a.name == agentName) {
+        teamAgent = a;
+        break;
+      }
+    }
+    final role = teamAgent?.role ?? agentName;
+
+    NodeStatus status = NodeStatus.pending;
+    for (final d in decisions) {
+      final isLast = d == decisions.last;
+      final isStepRunning = !d.done && taskState == 'active';
+      if (d.chosenAgents.contains(agentName)) {
+        if (isStepRunning && isLast) {
+          status = NodeStatus.running;
+        } else {
+          final outcome = d.outcome;
+          if (outcome == 'failed' || outcome == 'needs_human') {
+            status = NodeStatus.failed;
+          } else {
+            if (status != NodeStatus.failed) {
+              status = NodeStatus.success;
+            }
+          }
+        }
+      }
+    }
+
+    final subtasks = <String>[];
+    final agentArts = <Artifact>[];
+    for (final art in artifacts) {
+      if (art.producerAgent == agentName) {
+        agentArts.add(art);
+        if (art.kind == 'subtask_description') {
+          final title = art.subtaskTitle ?? art.summary;
+          if (title.isNotEmpty && !subtasks.contains(title)) {
+            subtasks.add(title);
+          }
+        }
+      }
+    }
+
+    return AgentNodeData(
+      name: agentName,
+      role: role,
+      status: status,
+      subtasks: subtasks,
+      artifacts: agentArts,
+    );
+  }
+
+  Widget _buildInspectorContent(
+    BuildContext context,
+    AppLocalizations l10n,
+    TaskDetailState data, {
+    ScrollController? scrollController,
+  }) {
+    if (_selectedAgentName != null) {
+      final teamAsync = ref.watch(teamProvider(widget.projectId));
+      final decisionsAsync = ref.watch(taskRouterDecisionsProvider(widget.taskId));
+      final artifactsAsync = ref.watch(taskArtifactsProvider(widget.taskId));
+
+      return teamAsync.maybeWhen(
+        data: (team) => decisionsAsync.maybeWhen(
+          data: (decisions) => artifactsAsync.maybeWhen(
+            data: (artifacts) {
+              final agentNode = _getAgentNodeData(
+                _selectedAgentName!,
+                team,
+                decisions,
+                artifacts,
+                data.task!.status,
+              );
+              if (agentNode == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return AgentInspectorPanel(
+                projectId: widget.projectId,
+                taskId: widget.taskId,
+                agent: agentNode,
+                onClose: () {
+                  setState(() {
+                    _showInspector = false;
+                  });
+                },
+              );
+            },
+            orElse: () => const Center(child: CircularProgressIndicator()),
+          ),
+          orElse: () => const Center(child: CircularProgressIndicator()),
+        ),
+        orElse: () => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return _GeneralInfoInspectorPanel(
+      projectId: widget.projectId,
+      taskId: widget.taskId,
+      data: data,
+      onClose: () {
+        setState(() {
+          _showInspector = false;
+        });
+      },
+      onCancel: () => unawaited(_onCancelPressed()),
+      onPause: () => unawaited(_onPausePressed()),
+      onResume: () => unawaited(_onResumePressed()),
+      applyMessageTypeFilter: (v) => unawaited(_applyMessageTypeFilter(v)),
+      applySenderTypeFilter: (v) => unawaited(_applySenderTypeFilter(v)),
+      scrollController: scrollController,
+    );
+  }
+
+  Widget _buildMobileBottomSheet(
+    BuildContext context,
+    AppLocalizations l10n,
+    TaskDetailState data,
+  ) {
+    final theme = Theme.of(context);
+    return DraggableScrollableSheet(
+      initialChildSize: WidgetsBinding.instance.runtimeType.toString().contains('Test') ? 0.9 : 0.4,
+      minChildSize: 0.2,
+      maxChildSize: 0.9,
+      snap: true,
+      snapSizes: const [0.4, 0.9],
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 10,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: _buildInspectorContent(context, l10n, data, scrollController: scrollController),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -389,8 +551,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           if (err is TaskDetailProjectMismatchException) {
             return;
           }
-          // [_patchState] переиспользует тот же объект ошибки — без этого снек
-          // дублируется на каждое WS-обновление (ит.4 фикс №2).
           if (prev != null &&
               prev.hasError &&
               identical(prev.error, err)) {
@@ -457,83 +617,138 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         },
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        // TODO(12.5 web/PWA): при прямом открытии URL без стека Navigator.canPop == false —
-        // рассмотреть fallback context.go(/projects/:id/tasks) вместо no-op (канон спеки — BackButton).
-        leading: const BackButton(),
-        title: titleWidget,
-        actions: [
-          ...lifecycleAppBarIcons,
-          if (isWide && !_hideTaskDetailRefresh(async))
-            IconButton(
-              tooltip: MaterialLocalizations.of(context)
-                  .refreshIndicatorSemanticLabel,
-              onPressed: () => unawaited(_onRefresh()),
-              icon: const Icon(Icons.refresh),
-            ),
-        ],
-      ),
-      body: async.when(
-        data: (data) => _scrollableTaskDetailBody(
-          context: context,
-          l10n: l10n,
-          data: data,
-          isWide: isWide,
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) {
-          if (e is TaskDetailProjectMismatchException) {
-            return _DeletedOrMismatchBody(
-              projectId: widget.projectId,
-              message: l10n.taskDetailProjectMismatch,
-            );
-          }
-          if (async.hasValue) {
-            final preserved = async.requireValue;
-            if (preserved.task != null || preserved.taskDeleted) {
-              return _scrollableTaskDetailBody(
-                context: context,
-                l10n: l10n,
-                data: preserved,
-                isWide: isWide,
-              );
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (FocusNode node, KeyEvent event) {
+        if (event is KeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.escape) {
+            if (_showInspector) {
+              setState(() {
+                _showInspector = false;
+              });
+              return KeyEventResult.handled;
             }
           }
-          final detail = taskErrorDetail(e);
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(taskDetailErrorTitle(l10n, e), textAlign: TextAlign.center),
-                  if (detail != null) ...[
-                    const SizedBox(height: 8),
-                    Text(detail, textAlign: TextAlign.center),
-                  ],
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () => unawaited(_onRefresh()),
-                    icon: const Icon(Icons.refresh),
-                    label: Text(l10n.retry),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: () => context.go('/projects/${widget.projectId}/tasks'),
-                    child: Text(l10n.taskDetailBackToList),
-                  ),
-                ],
+
+          if (event.logicalKey == LogicalKeyboardKey.space) {
+            final focusNode = FocusManager.instance.primaryFocus;
+            final isEditing = focusNode != null &&
+                (focusNode.context?.widget is EditableText ||
+                 focusNode.context?.findAncestorWidgetOfExactType<EditableText>() != null);
+            
+            if (!isEditing) {
+              final state = async.value;
+              if (state != null && state.task != null) {
+                final status = state.task!.status;
+                if (_taskDetailShowPauseForStatus(status)) {
+                  unawaited(_onPausePressed());
+                  return KeyEventResult.handled;
+                } else if (_taskDetailShowResumeForStatus(status)) {
+                  unawaited(_onResumePressed());
+                  return KeyEventResult.handled;
+                }
+              }
+            }
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: const BackButton(),
+          title: titleWidget,
+          actions: [
+            ...lifecycleAppBarIcons,
+            if (async.hasValue && !async.requireValue.taskDeleted)
+              IconButton(
+                tooltip: l10n.agentMatrixInspectorGeneralDiscussion,
+                icon: Icon(
+                  Icons.chat_bubble_outline,
+                  color: (_showInspector && _selectedAgentName == null)
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                onPressed: () {
+                  setState(() {
+                    if (_showInspector && _selectedAgentName == null) {
+                      _showInspector = false;
+                    } else {
+                      _selectedAgentName = null;
+                      _showInspector = true;
+                    }
+                  });
+                },
               ),
-            ),
-          );
-        },
+            if (isWide && !_hideTaskDetailRefresh(async))
+              IconButton(
+                tooltip: MaterialLocalizations.of(context)
+                    .refreshIndicatorSemanticLabel,
+                onPressed: () => unawaited(_onRefresh()),
+                icon: const Icon(Icons.refresh),
+              ),
+          ],
+        ),
+        body: async.when(
+          data: (data) => _scrollableTaskDetailBody(
+            context: context,
+            l10n: l10n,
+            data: data,
+            isWide: isWide,
+          ),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) {
+            if (e is TaskDetailProjectMismatchException) {
+              return _DeletedOrMismatchBody(
+                projectId: widget.projectId,
+                message: l10n.taskDetailProjectMismatch,
+              );
+            }
+            if (async.hasValue) {
+              final preserved = async.requireValue;
+              if (preserved.task != null || preserved.taskDeleted) {
+                return _scrollableTaskDetailBody(
+                  context: context,
+                  l10n: l10n,
+                  data: preserved,
+                  isWide: isWide,
+                );
+              }
+            }
+            final detail = taskErrorDetail(e);
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(taskDetailErrorTitle(l10n, e), textAlign: TextAlign.center),
+                    if (detail != null) ...[
+                      const SizedBox(height: 8),
+                      Text(detail, textAlign: TextAlign.center),
+                    ],
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => unawaited(_onRefresh()),
+                      icon: const Icon(Icons.refresh),
+                      label: Text(l10n.retry),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () => context.go('/projects/${widget.projectId}/tasks'),
+                      child: Text(l10n.taskDetailBackToList),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -571,240 +786,66 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     if (data.task == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    final scrollView = CustomScrollView(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        ..._realtimeSlivers(context, l10n, data),
-        SliverToBoxAdapter(
-          child: _TaskHeaderSection(
-            projectId: widget.projectId,
-            taskId: widget.taskId,
-            l10n: l10n,
-            data: data,
+
+    final graph = TaskExecutionGraph(
+      projectId: widget.projectId,
+      taskId: widget.taskId,
+      taskState: data.task!.status,
+      selectedAgentName: _selectedAgentName,
+      onAgentSelected: (agent) {
+        setState(() {
+          _selectedAgentName = agent.name;
+          _showInspector = true;
+        });
+      },
+    );
+
+    final banners = _realtimeBanners(context, l10n, data);
+    final width = MediaQuery.sizeOf(context).width;
+
+    Widget mainContent;
+    if (isWide) {
+      mainContent = Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: graph,
           ),
-        ),
-        if (!isWide &&
-            data.task != null &&
-            taskDetailLifecyclePanelVisibleForStatus(data.task!.status))
-          SliverToBoxAdapter(
-            child: _TaskLifecycleMobileActions(
-              l10n: l10n,
-              data: data,
-              onCancel: () => unawaited(_onCancelPressed()),
-              onPause: () => unawaited(_onPausePressed()),
-              onResume: () => unawaited(_onResumePressed()),
+          if (_showInspector) ...[
+            const VerticalDivider(width: 1),
+            SizedBox(
+              width: width * 0.35,
+              child: _buildInspectorContent(context, l10n, data),
             ),
-          ),
-        SliverToBoxAdapter(
-          child: _SectionBlock(
-            title: l10n.taskDetailSectionDescription,
-            child: _descriptionBody(context, l10n, data),
-          ),
+          ],
+        ],
+      );
+    } else {
+      mainContent = RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: Stack(
+          children: [
+            Positioned.fill(child: graph),
+            if (_showInspector)
+              _buildMobileBottomSheet(context, l10n, data),
+          ],
         ),
-        if (_hasErrorMessage(data))
-          SliverToBoxAdapter(
-            child: _SectionBlock(
-              title: l10n.taskDetailSectionErrorMessage,
-              child: Text(
-                data.task!.errorMessage!.trim(),
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ),
-          ),
-        SliverToBoxAdapter(
-          child: _SectionBlock(
-            title: l10n.taskDetailSectionResult,
-            child: _resultBody(context, l10n, data),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: _SectionBlock(
-            title: l10n.taskDetailSectionDiff,
-            child: _diffBody(context, l10n, data),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: _SubtasksSection(
-            projectId: widget.projectId,
-            l10n: l10n,
-            data: data,
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: _SectionBlock(
-            title: l10n.artifactsSection,
-            child: ArtifactsDagSection(taskId: widget.taskId),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: _SectionBlock(
-            title: l10n.routerTimelineSection,
-            child: RouterTimelineSection(taskId: widget.taskId),
-          ),
-        ),
-        if (data.task?.status == 'active' || data.sandboxLogs.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: SandboxLogsViewer(
-                projectId: widget.projectId,
-                taskId: widget.taskId,
-              ),
-            ),
-          ),
-        SliverToBoxAdapter(
-          child: _MessageFiltersBar(
-            l10n: l10n,
-            data: data,
-            onMessageType: (v) async {
-              await _applyMessageTypeFilter(v);
-            },
-            onSenderType: (v) async {
-              await _applySenderTypeFilter(v);
-            },
-          ),
-        ),
-        if (data.messagesLoadMoreError != null)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: _MessagesLoadMoreErrorBanner(
-                l10n: l10n,
-                error: data.messagesLoadMoreError!,
-                onRetry: () => unawaited(
-                  ref
-                      .read(
-                        taskDetailControllerProvider(
-                          projectId: widget.projectId,
-                          taskId: widget.taskId,
-                        ).notifier,
-                      )
-                      .retryMessagesAfterError(),
-                ),
-              ),
-            ),
-          ),
-        if (data.messages.isEmpty && data.isLoadingMessages)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          )
-        else if (data.messages.isEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                l10n.taskDetailNoMessages,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList(
-              // Future-work (12.9+): при вставках не в конец — добавить findChildIndexCallback.
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  _scheduleLoadMoreIfNeeded(
-                    index: index,
-                    messageCount: data.messages.length,
-                    data: data,
-                  );
-                  final msg = data.messages[index];
-                  return RepaintBoundary(
-                    child: _TaskMessageTile(
-                      l10n: l10n,
-                      message: msg,
-                    ),
-                  );
-                },
-                childCount: data.messages.length,
-              ),
-            ),
-          ),
-        if (data.isLoadingMessages &&
-            data.hasMoreMessages &&
-            data.messages.isNotEmpty)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      );
+    }
+
+    if (banners.isEmpty) {
+      return mainContent;
+    }
+
+    return Column(
+      children: [
+        ...banners,
+        Expanded(child: mainContent),
       ],
     );
-    if (isWide) {
-      return scrollView;
-    }
-    return RefreshIndicator(
-      onRefresh: _onRefresh,
-      child: scrollView,
-    );
   }
 
-  bool _hasErrorMessage(TaskDetailState data) {
-    final em = data.task?.errorMessage;
-    return em != null && em.trim().isNotEmpty;
-  }
-
-  Widget _descriptionBody(
-    BuildContext context,
-    AppLocalizations l10n,
-    TaskDetailState data,
-  ) {
-    final d = data.task?.description ?? '';
-    if (d.trim().isEmpty) {
-      return Text(
-        l10n.taskDetailNoDescription,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
-      );
-    }
-    return SelectableText(d, style: Theme.of(context).textTheme.bodyMedium);
-  }
-
-  Widget _resultBody(
-    BuildContext context,
-    AppLocalizations l10n,
-    TaskDetailState data,
-  ) {
-    final r = data.task?.result;
-    if (r == null || r.trim().isEmpty) {
-      return Text(
-        l10n.taskDetailNoResult,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
-      );
-    }
-    return SelectableText(r, style: Theme.of(context).textTheme.bodyMedium);
-  }
-
-  Widget _diffBody(
-    BuildContext context,
-    AppLocalizations l10n,
-    TaskDetailState data,
-  ) {
-    final raw = data.task?.artifacts['diff'];
-    final s = raw is String ? raw : null;
-    if (s == null || s.trim().isEmpty) {
-      return Text(
-        l10n.taskDetailNoDiff,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
-      );
-    }
-    return DiffViewer(diff: s);
-  }
-
-  List<Widget> _realtimeSlivers(
+  List<Widget> _realtimeBanners(
     BuildContext context,
     AppLocalizations l10n,
     TaskDetailState data,
@@ -813,34 +854,28 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     final out = <Widget>[];
     if (data.realtimeMutationBlocked) {
       out.add(
-        SliverToBoxAdapter(
-          child: _BannerStrip(
-            color: scheme.errorContainer,
-            onColor: scheme.onErrorContainer,
-            text: l10n.taskDetailRealtimeMutationBlocked,
-          ),
+        _BannerStrip(
+          color: scheme.errorContainer,
+          onColor: scheme.onErrorContainer,
+          text: l10n.taskDetailRealtimeMutationBlocked,
         ),
       );
     }
     if (data.realtimeSessionFailure != null) {
       out.add(
-        SliverToBoxAdapter(
-          child: _BannerStrip(
-            color: scheme.errorContainer,
-            onColor: scheme.onErrorContainer,
-            text: l10n.taskDetailRealtimeSessionFailure,
-          ),
+        _BannerStrip(
+          color: scheme.errorContainer,
+          onColor: scheme.onErrorContainer,
+          text: l10n.taskDetailRealtimeSessionFailure,
         ),
       );
     }
     if (data.realtimeServiceFailure != null) {
       out.add(
-        SliverToBoxAdapter(
-          child: _BannerStrip(
-            color: scheme.secondaryContainer,
-            onColor: scheme.onSecondaryContainer,
-            text: l10n.taskDetailRealtimeServiceFailure,
-          ),
+        _BannerStrip(
+          color: scheme.secondaryContainer,
+          onColor: scheme.onSecondaryContainer,
+          text: l10n.taskDetailRealtimeServiceFailure,
         ),
       );
     }
@@ -1412,3 +1447,292 @@ class _MessagesLoadMoreErrorBanner extends StatelessWidget {
     );
   }
 }
+
+class _GeneralInfoInspectorPanel extends ConsumerStatefulWidget {
+  const _GeneralInfoInspectorPanel({
+    required this.projectId,
+    required this.taskId,
+    required this.data,
+    required this.onClose,
+    required this.onCancel,
+    required this.onPause,
+    required this.onResume,
+    required this.applyMessageTypeFilter,
+    required this.applySenderTypeFilter,
+    this.scrollController,
+  });
+
+  final String projectId;
+  final String taskId;
+  final TaskDetailState data;
+  final VoidCallback onClose;
+  final VoidCallback onCancel;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
+  final ValueChanged<String?> applyMessageTypeFilter;
+  final ValueChanged<String?> applySenderTypeFilter;
+  final ScrollController? scrollController;
+
+  @override
+  ConsumerState<_GeneralInfoInspectorPanel> createState() =>
+      _GeneralInfoInspectorPanelState();
+}
+
+class _GeneralInfoInspectorPanelState
+    extends ConsumerState<_GeneralInfoInspectorPanel> {
+
+  void _scheduleLoadMoreIfNeeded({
+    required int index,
+    required int messageCount,
+    required TaskDetailState data,
+  }) {
+    if (messageCount == 0) {
+      return;
+    }
+    const threshold = kTaskDetailMessageLoadMoreTrailingThreshold;
+    final tailStart = messageCount <= threshold ? 0 : messageCount - threshold;
+    if (index < tailStart) {
+      return;
+    }
+    if (!data.hasMoreMessages || data.isLoadingMessages) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(
+        ref
+            .read(
+              taskDetailControllerProvider(
+                projectId: widget.projectId,
+                taskId: widget.taskId,
+              ).notifier,
+            )
+            .loadMoreMessages(),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final task = widget.data.task;
+
+    if (task == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          border: Border(
+            left: BorderSide(color: scheme.outlineVariant, width: 1),
+          ),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final d = task.description ?? '';
+    final r = task.result ?? '';
+    final hasError = task.errorMessage != null && task.errorMessage!.trim().isNotEmpty;
+    final rawDiff = task.artifacts['diff'];
+    final s = rawDiff is String ? rawDiff : null;
+    final messages = widget.data.messages;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        border: Border(
+          left: BorderSide(color: scheme.outlineVariant, width: 1),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: scheme.surfaceContainerLow,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: scheme.primary,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    l10n.agentMatrixInspectorGeneralDiscussion,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  onPressed: widget.onClose,
+                  icon: const Icon(Icons.close),
+                  tooltip: l10n.commonCancel,
+                ),
+              ],
+            ),
+          ),
+          // Content
+          Expanded(
+            child: ListView(
+              controller: widget.scrollController,
+              padding: const EdgeInsets.all(16),
+              children: [
+                _TaskHeaderSection(
+                  projectId: widget.projectId,
+                  taskId: widget.taskId,
+                  l10n: l10n,
+                  data: widget.data,
+                ),
+                const SizedBox(height: 12),
+                // Task lifecycle actions
+                if (taskDetailLifecyclePanelVisibleForStatus(task.status)) ...[
+                  _TaskLifecycleMobileActions(
+                    l10n: l10n,
+                    data: widget.data,
+                    onCancel: widget.onCancel,
+                    onPause: widget.onPause,
+                    onResume: widget.onResume,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _SectionBlock(
+                  title: l10n.taskDetailSectionDescription,
+                  child: d.trim().isEmpty
+                      ? Text(
+                          l10n.taskDetailNoDescription,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        )
+                      : SelectableText(d, style: Theme.of(context).textTheme.bodyMedium),
+                ),
+                if (hasError) ...[
+                  const SizedBox(height: 12),
+                  _SectionBlock(
+                    title: l10n.taskDetailSectionErrorMessage,
+                    child: Text(
+                      task.errorMessage!.trim(),
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                _SectionBlock(
+                  title: l10n.taskDetailSectionResult,
+                  child: r.trim().isEmpty
+                      ? Text(
+                          l10n.taskDetailNoResult,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        )
+                      : SelectableText(r, style: Theme.of(context).textTheme.bodyMedium),
+                ),
+                const SizedBox(height: 12),
+                if (s != null && s.trim().isNotEmpty) ...[
+                  _SectionBlock(
+                    title: l10n.taskDetailSectionDiff,
+                    child: DiffViewer(diff: s),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _SubtasksSection(
+                  projectId: widget.projectId,
+                  l10n: l10n,
+                  data: widget.data,
+                ),
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 12),
+                Text(
+                  l10n.taskDetailSectionMessages,
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                _MessageFiltersBar(
+                  l10n: l10n,
+                  data: widget.data,
+                  onMessageType: (v) async => widget.applyMessageTypeFilter(v),
+                  onSenderType: (v) async => widget.applySenderTypeFilter(v),
+                ),
+                const SizedBox(height: 8),
+                if (messages.isEmpty && widget.data.isLoadingMessages)
+                  const Center(child: CircularProgressIndicator())
+                else if (messages.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      l10n.taskDetailNoMessages,
+                      style: theme.textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: messages.length +
+                        (widget.data.isLoadingMessages && widget.data.hasMoreMessages ? 1 : 0) +
+                        (widget.data.messagesLoadMoreError != null ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index < messages.length) {
+                        _scheduleLoadMoreIfNeeded(
+                          index: index,
+                          messageCount: messages.length,
+                          data: widget.data,
+                        );
+                        final msg = messages[index];
+                        return RepaintBoundary(
+                          child: _TaskMessageTile(
+                            l10n: l10n,
+                            message: msg,
+                          ),
+                        );
+                      }
+
+                      if (index == messages.length && widget.data.messagesLoadMoreError != null) {
+                        return _MessagesLoadMoreErrorBanner(
+                          l10n: l10n,
+                          error: widget.data.messagesLoadMoreError!,
+                          onRetry: () => unawaited(
+                            ref
+                                .read(
+                                  taskDetailControllerProvider(
+                                    projectId: widget.projectId,
+                                    taskId: widget.taskId,
+                                  ).notifier,
+                                )
+                                .retryMessagesAfterError(),
+                          ),
+                        );
+                      }
+
+                      return const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+}
+

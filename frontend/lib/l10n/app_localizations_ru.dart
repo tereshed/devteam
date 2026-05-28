@@ -2716,4 +2716,51 @@ class AppLocalizationsRu extends AppLocalizations {
   String chatInputVoiceRecordingHint(int seconds) {
     return 'Идет запись... Говорите ($secondsс). Нажмите Alt+V для завершения';
   }
+
+  @override
+  String get agentMatrixTitle => 'Матрица агентов';
+
+  @override
+  String get agentMatrixTimelineTab => 'Таймлайн';
+
+  @override
+  String get agentMatrixGraphTab => 'Граф';
+
+  @override
+  String get agentMatrixStatusPending => 'В ожидании';
+
+  @override
+  String get agentMatrixStatusRunning => 'В работе';
+
+  @override
+  String get agentMatrixStatusSuccess => 'Успешно';
+
+  @override
+  String get agentMatrixStatusFailed => 'Ошибка';
+
+  @override
+  String get agentMatrixInspectorTitle => 'Инспекция агента';
+
+  @override
+  String get agentMatrixInspectorSubtasks => 'Подзадачи';
+
+  @override
+  String get agentMatrixInspectorLogs => 'Логи';
+
+  @override
+  String get agentMatrixInspectorArtifacts => 'Артефакты';
+
+  @override
+  String get agentMatrixInspectorNoSubtasks =>
+      'Этот агент еще не выполнял подзадач.';
+
+  @override
+  String get agentMatrixInspectorNoArtifacts =>
+      'Этот агент еще не создал ни одного артефакта.';
+
+  @override
+  String get agentMatrixInspectorSelectSubtask => 'Выбор подзадачи';
+
+  @override
+  String get agentMatrixInspectorGeneralDiscussion => 'Обсуждение и действия';
 }

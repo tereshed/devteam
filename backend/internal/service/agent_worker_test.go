@@ -321,7 +321,7 @@ func TestSaveArtifact_HappyPath(t *testing.T) {
 		Output:  `{"kind": "plan", "summary": "test plan", "content": {"steps": []}}`,
 	}
 	taskID := uuid.New()
-	if err := w.saveArtifact(context.Background(), taskID, agentRec, result); err != nil {
+	if err := w.saveArtifact(context.Background(), taskID, agentRec, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -358,7 +358,7 @@ func TestSaveArtifact_FallbackOnInvalidEnvelope(t *testing.T) {
 		Success: true,
 		Output:  "Я сделал то-то и то-то, без JSON-обёртки, прости.",
 	}
-	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -386,7 +386,7 @@ func TestSaveArtifact_FallbackWithMappedAgent(t *testing.T) {
 		Success: true,
 		Output:  "Я сделал то-то и то-то, без JSON-обёртки, прости.",
 	}
-	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -416,7 +416,7 @@ func TestSaveArtifact_SupersedePreviousReview(t *testing.T) {
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
 
-	if err := w.saveArtifact(context.Background(), taskID, &models.Agent{Name: "reviewer"}, result); err != nil {
+	if err := w.saveArtifact(context.Background(), taskID, &models.Agent{Name: "reviewer"}, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.superseded) != 1 {
@@ -447,7 +447,7 @@ func TestSaveArtifact_NoSupersedeForPlan(t *testing.T) {
 	}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.superseded) != 0 {
@@ -464,7 +464,7 @@ func TestSaveArtifact_LongSummaryTruncated(t *testing.T) {
 	envelope := AgentResponseEnvelope{Kind: "plan", Summary: long}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	got := repo.created[0]
@@ -481,7 +481,7 @@ func TestSaveArtifact_EmptyContentBecomesEmptyJSON(t *testing.T) {
 	envelope := AgentResponseEnvelope{Kind: "plan", Summary: "no content"}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	got := repo.created[0]
@@ -533,7 +533,7 @@ func TestSaveArtifact_LeakCanaryNotLogged(t *testing.T) {
 	canary := "AGENT_OUTPUT_CANARY_xyz_no_envelope"
 	// Output не-JSON, чтобы попасть в fallback path с SafeRawAttr-логом.
 	result := &agent.ExecutionResult{Success: true, Output: "Plain text: " + canary}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "developer"}, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "developer"}, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 

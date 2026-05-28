@@ -521,7 +521,7 @@ func TestDecide_FailsIfRouterAgentNotLLM(t *testing.T) {
 func TestParseAndValidate_RejectsDoneWithAgents(t *testing.T) {
 	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
 	raw := []byte(`{"done": true, "outcome": "done", "agents": [{"agent":"planner"}], "reason": "x"}`)
-	_, correction := parseAndValidateDecision(raw, enabled, nil)
+	_, correction := parseAndValidateDecision(raw, enabled, nil, false)
 	if correction == nil {
 		t.Fatal("expected validation error for done=true with non-empty agents")
 	}
@@ -535,7 +535,7 @@ func TestParseAndValidate_RejectsDoneWithAgents(t *testing.T) {
 
 func TestParseAndValidate_RejectsInvalidOutcome(t *testing.T) {
 	raw := []byte(`{"done": true, "outcome": "completed", "agents": [], "reason": "x"}`)
-	_, correction := parseAndValidateDecision(raw, nil, nil)
+	_, correction := parseAndValidateDecision(raw, nil, nil, false)
 	if correction == nil {
 		t.Fatal("expected validation error for invalid outcome value")
 	}
@@ -547,7 +547,7 @@ func TestParseAndValidate_RejectsInvalidOutcome(t *testing.T) {
 func TestParseAndValidate_RejectsMissingReason(t *testing.T) {
 	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
 	raw := []byte(`{"done": false, "agents": [{"agent": "planner"}], "reason": ""}`)
-	_, correction := parseAndValidateDecision(raw, enabled, nil)
+	_, correction := parseAndValidateDecision(raw, enabled, nil, false)
 	if correction == nil {
 		t.Fatal("expected validation error for empty reason")
 	}
@@ -562,7 +562,7 @@ func TestParseAndValidate_RejectsUnknownArtifact(t *testing.T) {
 	raw := []byte(fmt.Sprintf(`{"done": false, "agents": [{"agent": "planner", "input": {"target_artifact_id": "%s"}}], "reason": "x"}`, artID))
 	
 	// Test rejection when no artifacts are provided
-	_, correction := parseAndValidateDecision(raw, enabled, nil)
+	_, correction := parseAndValidateDecision(raw, enabled, nil, false)
 	if correction == nil {
 		t.Fatal("expected validation error for unknown artifact ID")
 	}
@@ -575,7 +575,7 @@ func TestParseAndValidate_RejectsUnknownArtifact(t *testing.T) {
 
 	// Test acceptance when artifact is provided
 	artifacts := []models.Artifact{{ID: artID, Kind: "plan"}}
-	_, correction = parseAndValidateDecision(raw, enabled, artifacts)
+	_, correction = parseAndValidateDecision(raw, enabled, artifacts, false)
 	if correction != nil {
 		t.Fatalf("unexpected validation error: %v", correction)
 	}
@@ -679,5 +679,25 @@ func TestDecide_DoesNotLeakErrErrorToLogs(t *testing.T) {
 	// Зато статичный LogCode ОБЯЗАН быть в логе (для аналитики).
 	if !strings.Contains(logged, correctionCodeJSONParseError) {
 		t.Errorf("log must contain static correction code %q for analytics, got: %s", correctionCodeJSONParseError, logged)
+	}
+}
+
+func TestParseAndValidate_AllowsEmptyAgentsWhenInFlight(t *testing.T) {
+	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
+	raw := []byte(`{"done": false, "agents": [], "reason": "waiting for code review to finish"}`)
+	
+	// If hasInFlight is false, empty agents list must be rejected
+	_, correction := parseAndValidateDecision(raw, enabled, nil, false)
+	if correction == nil {
+		t.Fatal("expected validation error for empty agents when hasInFlight is false")
+	}
+	if correction.LogCode != correctionCodeEmptyAgents {
+		t.Errorf("expected LogCode=%q, got %q", correctionCodeEmptyAgents, correction.LogCode)
+	}
+
+	// If hasInFlight is true, empty agents list must be allowed
+	_, correction = parseAndValidateDecision(raw, enabled, nil, true)
+	if correction != nil {
+		t.Fatalf("unexpected validation error: %v", correction)
 	}
 }

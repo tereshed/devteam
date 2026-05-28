@@ -838,6 +838,42 @@ func TestPGIntegration_CancelAfterDone_Returns409(t *testing.T) {
 	}
 }
 
+func TestPGIntegration_RequestCancel_AlreadyCancelled(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	h := startPgHarness(t, nil)
+	defer h.Close()
+
+	ctx := context.Background()
+	logger := slog.New(logging.NewHandler(slog.NewTextHandler(io.Discard, nil)))
+	lifecycle := service.NewTaskLifecycleService(h.gormDB, nil, logger)
+
+	taskID := h.createMinimalActiveTask(t)
+	if err := h.gormDB.Exec(
+		`UPDATE tasks SET state = 'cancelled', updated_at = NOW() WHERE id = ?`, taskID,
+	).Error; err != nil {
+		t.Fatalf("UPDATE state=cancelled: %v", err)
+	}
+
+	// RequestCancel should succeed even if the task was already cancelled by the legacy service.
+	if err := lifecycle.RequestCancel(ctx, taskID); err != nil {
+		t.Fatalf("RequestCancel: %v", err)
+	}
+
+	var got struct {
+		CancelRequested bool
+	}
+	if err := h.gormDB.Raw(
+		`SELECT cancel_requested FROM tasks WHERE id = ?`, taskID,
+	).Scan(&got).Error; err != nil {
+		t.Fatalf("read task cancel_requested: %v", err)
+	}
+	if !got.CancelRequested {
+		t.Errorf("expected cancel_requested to be true")
+	}
+}
+
 func TestPGIntegration_TaskWithExplicitTeam(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test (requires Docker)")
@@ -928,6 +964,82 @@ func TestPGIntegration_TaskWithExplicitTeam(t *testing.T) {
 	}
 	if got.State != "done" {
 		t.Errorf("expected state=done, got %q", got.State)
+	}
+}
+
+func TestPGIntegration_OrchestratorStep_LoopDetector(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	// Router-у не нужно отвечать, так как Step должен завершиться на Loop Detector
+	// до того как вызовет Router.Decide.
+	h := startPgHarness(t, nil)
+	defer h.Close()
+
+	ctx := context.Background()
+	taskID := h.createMinimalActiveTask(t)
+
+	// 1. Создаем 3 review-артефакта с decision = changes_requested
+	// У нас одинаковые замечания: "missing auth import"
+	reviewContent := `{"decision": "changes_requested", "issues": [{"severity": "major", "comment": "missing auth import in main.go"}]}`
+	for i := 0; i < 3; i++ {
+		rev := &models.Artifact{
+			ID:            uuid.New(),
+			TaskID:        taskID,
+			ProducerAgent: "reviewer",
+			Kind:          models.ArtifactKindReview,
+			Summary:       "review changes requested",
+			Content:       []byte(reviewContent),
+			Status:        models.ArtifactStatusReady,
+			Iteration:     i,
+			CreatedAt:     time.Now().Add(time.Duration(i) * time.Minute),
+		}
+		if err := h.gormDB.Create(rev).Error; err != nil {
+			t.Fatalf("create review artifact: %v", err)
+		}
+	}
+
+	// 2. Создаем 3 code_diff артефакта, содержащих одинаковые измененные файлы
+	// Измененный файл в diff: main.go
+	diffContent := `{"raw_output": "diff --git a/main.go b/main.go\n+ import _ \"github.com/golang-jwt/jwt/v5\""}`
+	for i := 0; i < 3; i++ {
+		cd := &models.Artifact{
+			ID:            uuid.New(),
+			TaskID:        taskID,
+			ProducerAgent: "developer",
+			Kind:          models.ArtifactKindCodeDiff,
+			Summary:       "implemented changes",
+			Content:       []byte(diffContent),
+			Status:        models.ArtifactStatusReady,
+			Iteration:     i,
+			CreatedAt:     time.Now().Add(time.Duration(i) * time.Minute + 30*time.Second),
+		}
+		if err := h.gormDB.Create(cd).Error; err != nil {
+			t.Fatalf("create code_diff artifact: %v", err)
+		}
+	}
+
+	// 3. Вызываем Step
+	if err := h.orchestrator.Step(ctx, taskID); err != nil {
+		t.Fatalf("Step: %v", err)
+	}
+
+	// 4. Проверяем, что задача перешла в needs_human
+	var got struct {
+		State        string
+		ErrorMessage *string `gorm:"column:error_message"`
+	}
+	if err := h.gormDB.Raw(
+		`SELECT state, error_message FROM tasks WHERE id = ?`, taskID,
+	).Scan(&got).Error; err != nil {
+		t.Fatalf("read task: %v", err)
+	}
+
+	if got.State != "needs_human" {
+		t.Errorf("expected state=needs_human, got %q", got.State)
+	}
+	if got.ErrorMessage == nil || !strings.Contains(*got.ErrorMessage, "loop detected") {
+		t.Errorf("expected error_message to mention loop detected, got %v", got.ErrorMessage)
 	}
 }
 

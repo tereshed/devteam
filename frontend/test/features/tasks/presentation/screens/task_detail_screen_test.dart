@@ -17,6 +17,9 @@ import 'package:frontend/features/tasks/data/task_providers.dart';
 import 'package:frontend/features/tasks/domain/models/task_message_model.dart';
 import 'package:frontend/features/tasks/domain/models/task_model.dart';
 import 'package:frontend/features/tasks/domain/requests.dart';
+import 'package:frontend/features/projects/domain/models.dart';
+import 'package:frontend/features/team/data/team_providers.dart';
+import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_detail_controller.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_errors.dart';
 import 'package:frontend/features/tasks/presentation/controllers/task_list_controller.dart';
@@ -132,6 +135,17 @@ Future<void> _pumpDetail(
   when(mockWs.connect(any)).thenAnswer((_) => wsEvents.stream);
 
   final built = <Override>[
+    teamProvider(kTaskFixtureProjectId).overrideWith((ref) async => TeamModel(
+          id: 'team1',
+          name: 'Mock Team',
+          projectId: kTaskFixtureProjectId,
+          type: 'dev',
+          agents: const [],
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        )),
+    taskRouterDecisionsProvider(_kTid).overrideWith((ref) async => const []),
+    taskArtifactsProvider(_kTid).overrideWith((ref) async => const []),
     ...overrides,
     if (detailController != null)
       taskDetailControllerProvider(
@@ -453,12 +467,16 @@ void main() {
       await _pumpDetail(tester, detailController: () => tracking);
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(kTaskDetailMessagesLoadMoreErrorBannerKey),
-        findsOneWidget,
-      );
+      final bannerFinder = find.byKey(kTaskDetailMessagesLoadMoreErrorBannerKey);
+      expect(bannerFinder, findsOneWidget);
 
-      await tester.tap(find.text('Retry'));
+      await tester.ensureVisible(bannerFinder);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.descendant(
+        of: bannerFinder,
+        matching: find.text('Retry'),
+      ));
       await tester.pump();
 
       expect(tracking.loadMoreCalls, 1);
@@ -564,6 +582,12 @@ void main() {
     await _pumpDetail(tester, overrides: [
       taskRepositoryProvider.overrideWithValue(mockRepo),
     ]);
+    await tester.pumpAndSettle();
+
+    final scrollableFinder = find.byWidgetPredicate(
+      (widget) => widget is ListView && widget.scrollDirection == Axis.vertical,
+    );
+    await tester.drag(scrollableFinder, const Offset(0, -450));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('batch_tag'), findsWidgets);

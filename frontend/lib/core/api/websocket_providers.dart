@@ -41,6 +41,13 @@ WebSocketService webSocketService(Ref ref) {
       return const WsAuth.none();
     },
   );
+
+  ref.listen<String?>(accessTokenProvider, (previous, next) {
+    if (next != null && next.isNotEmpty && next != previous) {
+      service.handleTokenRefreshed();
+    }
+  });
+
   ref.onDispose(service.dispose);
   return service;
 }

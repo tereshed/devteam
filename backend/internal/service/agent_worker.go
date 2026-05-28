@@ -425,11 +425,39 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		in = w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
 	}
 
-	// Populate branch name from worktree if missing, falling back to default branch
+	// Finalize branch name for sandbox agent execution
+	if agentRec.ExecutionKind == models.AgentExecutionKindSandbox {
+		switch agentRec.Role {
+		case models.AgentRoleDeveloper:
+			// Developer always works on the unique isolated branch of its worktree
+			if wtRec != nil {
+				in.BranchName = wtRec.BranchName
+			}
+		case models.AgentRoleReviewer, models.AgentRoleTester:
+			// Reviewer/Tester must work on the branch of the target artifact under test/review
+			if resolvedBranch, err := w.resolveBranchNameForArtifact(execCtx, targetArtifact); err == nil && resolvedBranch != "" {
+				in.BranchName = resolvedBranch
+			} else if task.BranchName != nil && *task.BranchName != "" {
+				in.BranchName = *task.BranchName
+			}
+		case models.AgentRoleMerger:
+			// Merger merges changes into the task-level branch
+			if task.BranchName != nil && *task.BranchName != "" {
+				in.BranchName = *task.BranchName
+			}
+		default:
+			// Fallback: use worktree's branch if available, else task branch
+			if wtRec != nil {
+				in.BranchName = wtRec.BranchName
+			} else if task.BranchName != nil && *task.BranchName != "" {
+				in.BranchName = *task.BranchName
+			}
+		}
+	}
+
+	// Double check fallback
 	if in.BranchName == "" {
-		if wtRec != nil {
-			in.BranchName = wtRec.BranchName
-		} else if in.GitDefaultBranch != "" {
+		if in.GitDefaultBranch != "" {
 			in.BranchName = in.GitDefaultBranch
 		} else {
 			in.BranchName = "main"
@@ -452,7 +480,7 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	}
 
 	// Сохраняем артефакт.
-	if err := w.saveArtifact(parentCtx, ev.TaskID, &agentRec, result, targetArtifact); err != nil {
+	if err := w.saveArtifact(parentCtx, ev.TaskID, &agentRec, result, wtRec, targetArtifact); err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("save artifact: %w", err))
 		return
 	}
@@ -576,7 +604,7 @@ func (w *AgentWorker) handleNonActiveSkip(ctx context.Context, ev *models.TaskEv
 // получилось — делает fallback-артефакт kind='raw_output' с truncated summary.
 // Дополнительно: для review-артефактов вызывает SupersedePrevious чтобы прошлые
 // итерации перевести в superseded.
-func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentRec *models.Agent, result *agent.ExecutionResult, targetArtifacts ...*models.Artifact) error {
+func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentRec *models.Agent, result *agent.ExecutionResult, wtRec *models.Worktree, targetArtifacts ...*models.Artifact) error {
 	var targetArtifact *models.Artifact
 	if len(targetArtifacts) > 0 {
 		targetArtifact = targetArtifacts[0]
@@ -660,6 +688,17 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		content = json.RawMessage(`{}`)
 	}
 
+	// Inject the branch name into code_diff content if we have a worktree
+	if wtRec != nil && envelope.Kind == string(models.ArtifactKindCodeDiff) {
+		var contentMap map[string]any
+		if err := json.Unmarshal(content, &contentMap); err == nil {
+			contentMap["branch_name"] = wtRec.BranchName
+			if updatedContent, err := json.Marshal(contentMap); err == nil {
+				content = updatedContent
+			}
+		}
+	}
+
 	// Sprint 4 review fix §1: scrubbing для test_result.raw_output_truncated.
 	// Tester может включить stack trace / env-dump в raw_output; пройдёмся
 	// secret_scrub'ом перед записью в artifact.content (jsonb незашифрован).
@@ -700,6 +739,46 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		return err
 	}
 	return nil
+}
+
+// resolveBranchNameForArtifact traverses up the artifact parent chain to find the git branch
+// name associated with the changes. Finds "branch_name" from code_diff or "merged_branch" from merged_code.
+func (w *AgentWorker) resolveBranchNameForArtifact(ctx context.Context, art *models.Artifact) (string, error) {
+	curr := art
+	for curr != nil {
+		if curr.Kind == models.ArtifactKindCodeDiff {
+			var contentMap map[string]any
+			if err := json.Unmarshal(curr.Content, &contentMap); err == nil {
+				if b, ok := contentMap["branch_name"].(string); ok && b != "" {
+					return b, nil
+				}
+			}
+			// Fallback to worktree lookup using parent_id (which is subtask_description id)
+			var wt models.Worktree
+			if curr.ParentID != nil {
+				if err := w.db.WithContext(ctx).Where("subtask_id = ?", *curr.ParentID).Order("allocated_at DESC").First(&wt).Error; err == nil {
+					return wt.BranchName, nil
+				}
+			}
+			break
+		}
+		if curr.Kind == models.ArtifactKindMergedCode {
+			var out models.MergerOutput
+			if err := json.Unmarshal(curr.Content, &out); err == nil && out.MergedBranch != "" {
+				return out.MergedBranch, nil
+			}
+			break
+		}
+		if curr.ParentID == nil {
+			break
+		}
+		parent, err := w.artifactRepo.GetByID(ctx, *curr.ParentID)
+		if err != nil {
+			return "", err
+		}
+		curr = parent
+	}
+	return "", nil
 }
 
 // extractJSON extracts a JSON substring from the output, handling markdown blocks and preambles.

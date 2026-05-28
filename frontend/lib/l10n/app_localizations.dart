@@ -4981,6 +4981,96 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Идет запись... Говорите ({seconds}с). Нажмите Alt+V для завершения'**
   String chatInputVoiceRecordingHint(int seconds);
+
+  /// No description provided for @agentMatrixTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Матрица агентов'**
+  String get agentMatrixTitle;
+
+  /// No description provided for @agentMatrixTimelineTab.
+  ///
+  /// In ru, this message translates to:
+  /// **'Таймлайн'**
+  String get agentMatrixTimelineTab;
+
+  /// No description provided for @agentMatrixGraphTab.
+  ///
+  /// In ru, this message translates to:
+  /// **'Граф'**
+  String get agentMatrixGraphTab;
+
+  /// No description provided for @agentMatrixStatusPending.
+  ///
+  /// In ru, this message translates to:
+  /// **'В ожидании'**
+  String get agentMatrixStatusPending;
+
+  /// No description provided for @agentMatrixStatusRunning.
+  ///
+  /// In ru, this message translates to:
+  /// **'В работе'**
+  String get agentMatrixStatusRunning;
+
+  /// No description provided for @agentMatrixStatusSuccess.
+  ///
+  /// In ru, this message translates to:
+  /// **'Успешно'**
+  String get agentMatrixStatusSuccess;
+
+  /// No description provided for @agentMatrixStatusFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get agentMatrixStatusFailed;
+
+  /// No description provided for @agentMatrixInspectorTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Инспекция агента'**
+  String get agentMatrixInspectorTitle;
+
+  /// No description provided for @agentMatrixInspectorSubtasks.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подзадачи'**
+  String get agentMatrixInspectorSubtasks;
+
+  /// No description provided for @agentMatrixInspectorLogs.
+  ///
+  /// In ru, this message translates to:
+  /// **'Логи'**
+  String get agentMatrixInspectorLogs;
+
+  /// No description provided for @agentMatrixInspectorArtifacts.
+  ///
+  /// In ru, this message translates to:
+  /// **'Артефакты'**
+  String get agentMatrixInspectorArtifacts;
+
+  /// No description provided for @agentMatrixInspectorNoSubtasks.
+  ///
+  /// In ru, this message translates to:
+  /// **'Этот агент еще не выполнял подзадач.'**
+  String get agentMatrixInspectorNoSubtasks;
+
+  /// No description provided for @agentMatrixInspectorNoArtifacts.
+  ///
+  /// In ru, this message translates to:
+  /// **'Этот агент еще не создал ни одного артефакта.'**
+  String get agentMatrixInspectorNoArtifacts;
+
+  /// No description provided for @agentMatrixInspectorSelectSubtask.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выбор подзадачи'**
+  String get agentMatrixInspectorSelectSubtask;
+
+  /// No description provided for @agentMatrixInspectorGeneralDiscussion.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обсуждение и действия'**
+  String get agentMatrixInspectorGeneralDiscussion;
 }
 
 class _AppLocalizationsDelegate

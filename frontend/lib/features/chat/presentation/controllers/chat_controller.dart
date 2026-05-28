@@ -320,6 +320,7 @@ class ChatController extends _$ChatController {
         return;
       case WsClientEventSubprotocolMismatch():
       case WsClientEventParseError():
+      case WsClientEventConnected():
         _clearRealtimeTransientFailure();
         return;
       case WsClientEventServer(:final event):

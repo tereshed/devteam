@@ -201,7 +201,7 @@ func (r *RouterService) Decide(ctx context.Context, state RouterState) (Decision
 		}
 
 		raw := []byte(result.Output)
-		decision, correction := parseAndValidateDecision(raw, state.Agents, state.Artifacts)
+		decision, correction := parseAndValidateDecision(raw, state.Agents, state.Artifacts, len(state.InFlight) > 0)
 		if correction == nil {
 			r.logger.DebugContext(ctx, "router decision accepted",
 				"task_id", state.Task.ID,
@@ -294,7 +294,7 @@ const (
 
 // parseAndValidateDecision выполняет: strip fences → unmarshal → validate.
 // Возвращает (Decision, nil) при успехе или (zero, *correctionHint) при ошибке.
-func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent, existingArtifacts []models.Artifact) (Decision, *correctionHint) {
+func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent, existingArtifacts []models.Artifact, hasInFlight bool) (Decision, *correctionHint) {
 	stripped := stripMarkdownFences(raw)
 	if len(stripped) == 0 {
 		return Decision{}, &correctionHint{
@@ -338,8 +338,8 @@ func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent, existin
 		return d, nil
 	}
 
-	// done=false — должен быть хотя бы один агент.
-	if len(d.Agents) == 0 {
+	// done=false — должен быть хотя бы один агент, если только нет активных in-flight задач (в этом случае допустимо ожидание).
+	if len(d.Agents) == 0 && !hasInFlight {
 		return Decision{}, &correctionHint{
 			LogCode:    correctionCodeEmptyAgents,
 			PromptText: `when done=false, "agents" must contain at least one agent.`,

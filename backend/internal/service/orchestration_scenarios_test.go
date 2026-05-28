@@ -587,7 +587,7 @@ func TestSaveArtifact_TestResult_FailsWhenContentNotObject(t *testing.T) {
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
 
-	err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "tester"}, result)
+	err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "tester"}, result, nil)
 	if err == nil {
 		t.Fatal("expected error when test_result content is not a JSON object (scrub+sentinel both unable to process)")
 	}
@@ -615,7 +615,7 @@ func TestSaveArtifact_TestResult_SentinelPathDoesNotTriggerOnValidObject(t *test
 	}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "tester"}, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "tester"}, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -743,7 +743,7 @@ func TestScenario_MergerOutputContract(t *testing.T) {
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
 
 	taskID := uuid.New()
-	if err := w.saveArtifact(context.Background(), taskID, &merger, result); err != nil {
+	if err := w.saveArtifact(context.Background(), taskID, &merger, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -792,7 +792,7 @@ func TestScenario_TestResultContract(t *testing.T) {
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
 
-	if err := w.saveArtifact(context.Background(), uuid.New(), &tester, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &tester, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	art := repo.created[0]
@@ -852,7 +852,7 @@ func TestScenario_SecurityCanary_EndToEnd(t *testing.T) {
 	workerLogger := slog.New(logging.NewHandler(slog.NewTextHandler(&workerLogs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	w := &AgentWorker{artifactRepo: repo, logger: workerLogger}
 	result := &agent.ExecutionResult{Success: true, Output: "free text: " + canary}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "x"}, result); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "x"}, result, nil); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if strings.Contains(workerLogs.String(), canary) {

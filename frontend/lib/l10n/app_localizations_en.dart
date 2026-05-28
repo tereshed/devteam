@@ -2693,4 +2693,51 @@ class AppLocalizationsEn extends AppLocalizations {
   String chatInputVoiceRecordingHint(int seconds) {
     return 'Recording... Speak (${seconds}s). Press Alt+V to complete';
   }
+
+  @override
+  String get agentMatrixTitle => 'The Agent Matrix';
+
+  @override
+  String get agentMatrixTimelineTab => 'Timeline';
+
+  @override
+  String get agentMatrixGraphTab => 'Graph';
+
+  @override
+  String get agentMatrixStatusPending => 'Pending';
+
+  @override
+  String get agentMatrixStatusRunning => 'Running';
+
+  @override
+  String get agentMatrixStatusSuccess => 'Success';
+
+  @override
+  String get agentMatrixStatusFailed => 'Failed';
+
+  @override
+  String get agentMatrixInspectorTitle => 'Agent Inspection';
+
+  @override
+  String get agentMatrixInspectorSubtasks => 'Subtasks';
+
+  @override
+  String get agentMatrixInspectorLogs => 'Logs';
+
+  @override
+  String get agentMatrixInspectorArtifacts => 'Artifacts';
+
+  @override
+  String get agentMatrixInspectorNoSubtasks =>
+      'No subtasks executed by this agent yet.';
+
+  @override
+  String get agentMatrixInspectorNoArtifacts =>
+      'No artifacts created by this agent yet.';
+
+  @override
+  String get agentMatrixInspectorSelectSubtask => 'Select Subtask';
+
+  @override
+  String get agentMatrixInspectorGeneralDiscussion => 'Discussion & Actions';
 }

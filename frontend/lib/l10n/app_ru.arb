@@ -1660,6 +1660,21 @@
         "type": "int"
       }
     }
-  }
+  },
+  "agentMatrixTitle": "Матрица агентов",
+  "agentMatrixTimelineTab": "Таймлайн",
+  "agentMatrixGraphTab": "Граф",
+  "agentMatrixStatusPending": "В ожидании",
+  "agentMatrixStatusRunning": "В работе",
+  "agentMatrixStatusSuccess": "Успешно",
+  "agentMatrixStatusFailed": "Ошибка",
+  "agentMatrixInspectorTitle": "Инспекция агента",
+  "agentMatrixInspectorSubtasks": "Подзадачи",
+  "agentMatrixInspectorLogs": "Логи",
+  "agentMatrixInspectorArtifacts": "Артефакты",
+  "agentMatrixInspectorNoSubtasks": "Этот агент еще не выполнял подзадач.",
+  "agentMatrixInspectorNoArtifacts": "Этот агент еще не создал ни одного артефакта.",
+  "agentMatrixInspectorSelectSubtask": "Выбор подзадачи",
+  "agentMatrixInspectorGeneralDiscussion": "Обсуждение и действия"
 }
 
