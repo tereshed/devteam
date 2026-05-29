@@ -48,6 +48,7 @@ type AntigravityOAuthToken struct {
 // AntigravityOAuthConfig — настройки OAuth-провайдера.
 type AntigravityOAuthConfig struct {
 	ClientID        string
+	ClientSecret    string
 	DeviceCodeURL   string
 	TokenURL        string
 	RevokeURL       string
@@ -134,6 +135,9 @@ func (p *antigravityDeviceFlow) PollDeviceToken(ctx context.Context, deviceCode 
 		"device_code": {deviceCode},
 		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
 	}
+	if p.cfg.ClientSecret != "" {
+		form.Set("client_secret", p.cfg.ClientSecret)
+	}
 	body, err := p.postForm(ctx, p.cfg.TokenURL, form)
 	if err != nil {
 		return nil, mapOAuthError(err)
@@ -146,6 +150,9 @@ func (p *antigravityDeviceFlow) RefreshToken(ctx context.Context, refreshToken s
 		"client_id":     {p.cfg.ClientID},
 		"refresh_token": {refreshToken},
 		"grant_type":    {"refresh_token"},
+	}
+	if p.cfg.ClientSecret != "" {
+		form.Set("client_secret", p.cfg.ClientSecret)
 	}
 	body, err := p.postForm(ctx, p.cfg.TokenURL, form)
 	if err != nil {
@@ -161,6 +168,9 @@ func (p *antigravityDeviceFlow) Revoke(ctx context.Context, token string) error 
 	form := url.Values{
 		"client_id": {p.cfg.ClientID},
 		"token":     {token},
+	}
+	if p.cfg.ClientSecret != "" {
+		form.Set("client_secret", p.cfg.ClientSecret)
 	}
 	_, err := p.postForm(ctx, p.cfg.RevokeURL, form)
 	return err

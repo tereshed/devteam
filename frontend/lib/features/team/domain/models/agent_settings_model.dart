@@ -37,6 +37,7 @@ const List<String> kSupportedCodeBackends = [
   'aider',
   'hermes',
   'custom',
+  'antigravity',
 ];
 
 /// Все допустимые значения agent.provider_kind на бэке (sync c models.AgentProviderKind).

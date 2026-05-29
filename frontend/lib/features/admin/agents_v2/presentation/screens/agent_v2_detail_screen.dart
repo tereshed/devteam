@@ -249,6 +249,7 @@ class _AgentV2DetailScreenState extends ConsumerState<AgentV2DetailScreen> {
                           value: 'claude-code', child: Text('claude-code')),
                       DropdownMenuItem(value: 'aider', child: Text('aider')),
                       DropdownMenuItem(value: 'hermes', child: Text('hermes')),
+                      DropdownMenuItem(value: 'antigravity', child: Text('antigravity')),
                       DropdownMenuItem(value: 'custom', child: Text('custom')),
                     ],
                     onChanged: (v) => setState(() => _codeBackend = v),

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -144,10 +146,88 @@ func (s *antigravityAuthService) CompleteDeviceCode(ctx context.Context, userID 
 	return toAntigravityStatus(sub), nil
 }
 
+type keyringTokenJSON struct {
+	Token *struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		TokenType    string `json:"token_type"`
+		Expiry       string `json:"expiry"`
+	} `json:"token"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
+	Expiry       string `json:"expiry"`
+}
+
+func tryDecodeKeyringToken(tokenStr string) (*AntigravityOAuthToken, error) {
+	if !strings.HasPrefix(tokenStr, "go-keyring-base64:") {
+		return nil, nil
+	}
+	encoded := strings.TrimPrefix(tokenStr, "go-keyring-base64:")
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64 keyring token: %w", err)
+	}
+
+	var parsed keyringTokenJSON
+	if err := json.Unmarshal(decoded, &parsed); err != nil {
+		return nil, fmt.Errorf("parse keyring token JSON: %w", err)
+	}
+
+	res := &AntigravityOAuthToken{}
+	if parsed.Token != nil {
+		res.AccessToken = parsed.Token.AccessToken
+		res.RefreshToken = parsed.Token.RefreshToken
+		res.TokenType = parsed.Token.TokenType
+		if parsed.Token.Expiry != "" {
+			if t, err := time.Parse(time.RFC3339, parsed.Token.Expiry); err == nil {
+				res.ExpiresAt = &t
+			} else if t, err := time.Parse("2006-01-02T15:04:05.999999999Z07:00", parsed.Token.Expiry); err == nil {
+				res.ExpiresAt = &t
+			}
+		}
+	} else {
+		res.AccessToken = parsed.AccessToken
+		res.RefreshToken = parsed.RefreshToken
+		res.TokenType = parsed.TokenType
+		if parsed.Expiry != "" {
+			if t, err := time.Parse(time.RFC3339, parsed.Expiry); err == nil {
+				res.ExpiresAt = &t
+			} else if t, err := time.Parse("2006-01-02T15:04:05.999999999Z07:00", parsed.Expiry); err == nil {
+				res.ExpiresAt = &t
+			}
+		}
+	}
+
+	if res.AccessToken == "" {
+		return nil, fmt.Errorf("no access_token found in keyring token")
+	}
+	return res, nil
+}
+
 func (s *antigravityAuthService) SaveManualToken(ctx context.Context, userID uuid.UUID, tok *AntigravityOAuthToken) (*AntigravityAuthStatus, error) {
 	if tok == nil || tok.AccessToken == "" {
 		return nil, fmt.Errorf("manual token: access_token is required")
 	}
+	
+	if decoded, err := tryDecodeKeyringToken(tok.AccessToken); err == nil && decoded != nil {
+		tok.AccessToken = decoded.AccessToken
+		if decoded.RefreshToken != "" {
+			tok.RefreshToken = decoded.RefreshToken
+		}
+		if decoded.TokenType != "" {
+			tok.TokenType = decoded.TokenType
+		}
+		if decoded.Scopes != "" {
+			tok.Scopes = decoded.Scopes
+		}
+		if decoded.ExpiresAt != nil {
+			tok.ExpiresAt = decoded.ExpiresAt
+		}
+	} else if err != nil {
+		return nil, err
+	}
+
 	persistCtx := context.WithoutCancel(ctx)
 	sub, err := s.persistToken(persistCtx, userID, tok)
 	if err != nil {

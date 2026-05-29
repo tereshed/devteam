@@ -63,12 +63,14 @@ const (
 	// мультипровайдерный агент. В sandbox запускается из образа devteam/sandbox-hermes.
 	CodeBackendHermes CodeBackend = "hermes"
 	CodeBackendCustom CodeBackend = "custom"
+	// CodeBackendAntigravity — Sprint 21: Antigravity CLI Agent (Google DeepMind).
+	CodeBackendAntigravity CodeBackend = "antigravity"
 )
 
 // IsValid проверяет валидность code backend
 func (cb CodeBackend) IsValid() bool {
 	switch cb {
-	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendHermes, CodeBackendCustom:
+	case CodeBackendClaudeCode, CodeBackendAider, CodeBackendHermes, CodeBackendCustom, CodeBackendAntigravity:
 		return true
 	default:
 		return false

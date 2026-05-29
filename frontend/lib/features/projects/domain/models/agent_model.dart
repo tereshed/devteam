@@ -80,4 +80,5 @@ const codeBackends = [
   'aider',         // Aider
   'hermes',        // Sprint 16: Hermes Agent (Nous Research, MIT)
   'custom',        // Пользовательский бэкенд
+  'antigravity',   // Antigravity CLI (agy)
 ];

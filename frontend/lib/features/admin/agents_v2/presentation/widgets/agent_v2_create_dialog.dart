@@ -35,7 +35,7 @@ class _AgentV2CreateDialogState extends ConsumerState<AgentV2CreateDialog> {
   ];
   String _role = 'developer';
   String _executionKind = 'llm'; // 'llm' | 'sandbox'
-  String _codeBackend = 'claude-code'; // claude-code|aider|hermes|custom
+  String _codeBackend = 'claude-code'; // claude-code|aider|hermes|antigravity|custom
   bool _isActive = true;
   bool _saving = false;
   String? _error;
@@ -261,6 +261,7 @@ class _AgentV2CreateDialogState extends ConsumerState<AgentV2CreateDialog> {
                           value: 'claude-code', child: Text('claude-code')),
                       DropdownMenuItem(value: 'aider', child: Text('aider')),
                       DropdownMenuItem(value: 'hermes', child: Text('hermes')),
+                      DropdownMenuItem(value: 'antigravity', child: Text('antigravity')),
                       DropdownMenuItem(value: 'custom', child: Text('custom')),
                     ],
                     onChanged: (v) =>

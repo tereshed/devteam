@@ -76,6 +76,8 @@ const (
 	// зовёт `hermes chat -q` с одной задачей.
 	CodeBackendHermes CodeBackendType = "hermes"
 	CodeBackendCustom CodeBackendType = "custom"
+	// CodeBackendAntigravity — Sprint 21: Antigravity CLI Agent (Google DeepMind).
+	CodeBackendAntigravity CodeBackendType = "antigravity"
 )
 
 // SandboxStatusType — фаза жизненного цикла инстанса с точки зрения раннера.

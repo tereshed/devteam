@@ -212,3 +212,45 @@ func TestBuildArtifacts_InvalidPermissionsBlock(t *testing.T) {
 	_, err := svc.BuildArtifacts(agent, nil, nil)
 	assert.Error(t, err)
 }
+
+func TestBuildArtifacts_Antigravity(t *testing.T) {
+	svc := NewAgentSettingsService()
+
+	perms := SandboxPermissions{
+		Allow:       []string{"Read", "Edit", "Bash(git diff:*)"},
+		DefaultMode: "acceptEdits",
+	}
+	permJSON, _ := json.Marshal(perms)
+
+	settings := AgentCodeBackendSettings{
+		Env: map[string]string{"ANTIGRAVITY_ENV": "1"},
+	}
+	settingsJSON, _ := json.Marshal(settings)
+
+	be := models.CodeBackendAntigravity
+	agent := &models.Agent{
+		ID:                  uuid.New(),
+		CodeBackend:         &be,
+		SandboxPermissions:  datatypes.JSON(permJSON),
+		CodeBackendSettings: datatypes.JSON(settingsJSON),
+	}
+
+	art, err := svc.BuildArtifacts(agent, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, art)
+	assert.Equal(t, "acceptEdits", art.PermissionMode)
+	assert.NotEmpty(t, art.SettingsJSON)
+
+	var parsed struct {
+		Permissions struct {
+			Allow       []string `json:"allow"`
+			DefaultMode string   `json:"defaultMode"`
+		} `json:"permissions"`
+		Env map[string]string `json:"env"`
+	}
+	require.NoError(t, json.Unmarshal(art.SettingsJSON, &parsed))
+	assert.Equal(t, "acceptEdits", parsed.Permissions.DefaultMode)
+	assert.Contains(t, parsed.Permissions.Allow, "Bash(git diff:*)")
+	assert.Equal(t, "1", parsed.Env["ANTIGRAVITY_ENV"])
+}
+

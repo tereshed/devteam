@@ -310,7 +310,7 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 
 	// Загружаем task для description/title (executor их использует).
 	var task models.Task
-	if err := w.db.WithContext(execCtx).Preload("Project").Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
+	if err := w.db.WithContext(execCtx).Preload("Project").Preload("Project.GitCredential").Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("load task %s: %w", ev.TaskID, err))
 		return
 	}
@@ -388,6 +388,92 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 					} else {
 						targetArtifact = art
 					}
+				}
+			}
+		}
+	}
+
+	// Если это агент-декомпозитор и на вход пришёл уже одобренный артефакт декомпозиции,
+	// то вместо вызова LLM/песочницы мы можем автоматически распарсить его subtasks и создать
+	// индивидуальные артефакты subtask_description. Это предотвращает бесконечные циклы
+	// и экономит ресурсы.
+	if agentRec.Name == "decomposer" && targetArtifact != nil && targetArtifact.Kind == models.ArtifactKindDecomposition {
+		w.logger.InfoContext(execCtx, "bypassing decomposer execution: splitting decomposition artifact directly", "artifact_id", targetArtifact.ID)
+		
+		var contentMap map[string]any
+		if err := json.Unmarshal(targetArtifact.Content, &contentMap); err == nil {
+			var subtasks []any
+			if subtasksVal, ok := contentMap["subtasks"]; ok {
+				if stSlice, ok := subtasksVal.([]any); ok {
+					subtasks = stSlice
+				}
+			} else if contentVal, ok := contentMap["content"]; ok {
+				if contentMapInner, ok := contentVal.(map[string]any); ok {
+					if stSlice, ok := contentMapInner["subtasks"]; ok {
+						if sts, ok := stSlice.([]any); ok {
+							subtasks = sts
+						}
+					}
+				}
+			}
+			
+			if len(subtasks) > 0 {
+				var arts []*models.Artifact
+				for _, stVal := range subtasks {
+					if stMap, ok := stVal.(map[string]any); ok {
+						title := "Subtask"
+						if t, ok := stMap["title"].(string); ok && t != "" {
+							title = t
+						}
+						
+						subtaskBytes, _ := json.Marshal(stMap)
+						parentID := targetArtifact.ID
+						
+						art := &models.Artifact{
+							TaskID:        ev.TaskID,
+							ParentID:      &parentID,
+							ProducerAgent: "decomposer",
+							Kind:          models.ArtifactKindSubtaskDescription,
+							Summary:       title,
+							Content:       datatypes.JSON(subtaskBytes),
+							Status:        models.ArtifactStatusReady,
+						}
+						if !models.ValidateArtifactSummary(art.Summary) {
+							art.Summary = truncateRunesForArtifact(art.Summary, 500)
+						}
+						arts = append(arts, art)
+					}
+				}
+				
+				if len(arts) > 0 {
+					for _, art := range arts {
+						err := retryOnConflict(parentCtx, w.logger, func() error {
+							return w.artifactRepo.Create(parentCtx, art)
+						})
+						if err != nil {
+							w.failEvent(parentCtx, ev, fmt.Errorf("failed to create split subtask: %w", err))
+							return
+						}
+					}
+					
+					// Releasing worktree if allocated (decomposer might have had one)
+					if payload.WorktreeID != nil && w.worktreeMgr != nil {
+						if err := w.worktreeMgr.Release(parentCtx, *payload.WorktreeID); err != nil {
+							w.logger.WarnContext(parentCtx, "release worktree after split success failed",
+								"worktree_id", *payload.WorktreeID, "error", err.Error())
+						}
+					}
+					
+					// Mark event complete
+					if err := retryOnConflict(parentCtx, w.logger, func() error {
+						return w.eventRepo.Complete(parentCtx, ev.ID)
+					}); err != nil {
+						w.logger.ErrorContext(parentCtx, "mark event complete failed",
+							"task_event_id", ev.ID, "error", err.Error())
+					}
+					
+					w.enqueueFollowupStep(parentCtx, ev.TaskID)
+					return
 				}
 			}
 		}

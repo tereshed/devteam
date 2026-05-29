@@ -279,6 +279,7 @@ func NewAgentSettingsServiceWithDeps(mcpRegistry MCPRegistryLookup, secretResolv
 	reg := NewArtifactBuilderRegistry()
 	reg.Register(NewClaudeArtifactBuilder())
 	reg.Register(NewHermesArtifactBuilder())
+	reg.Register(NewAntigravityArtifactBuilder())
 	return &agentSettingsService{
 		registry:       reg,
 		mcpRegistry:    mcpRegistry,

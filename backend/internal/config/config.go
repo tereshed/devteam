@@ -76,7 +76,8 @@ type ClaudeCodeOAuthConfig struct {
 
 // AntigravityOAuthConfig — env ANTIGRAVITY_OAUTH_*. Пустой ClientID отключает фичу
 type AntigravityOAuthConfig struct {
-	ClientID      string
+	ClientID     string
+	ClientSecret string
 	DeviceCodeURL string
 	TokenURL      string
 	RevokeURL     string
@@ -268,7 +269,8 @@ func Load() (*Config, error) {
 			Scopes:        getEnv("CLAUDE_CODE_OAUTH_SCOPES", "org:create_api_key user:profile user:inference"),
 		},
 		AntigravityOAuth: AntigravityOAuthConfig{
-			ClientID:      getEnv("ANTIGRAVITY_OAUTH_CLIENT_ID", ""),
+			ClientID:     getEnv("ANTIGRAVITY_OAUTH_CLIENT_ID", ""),
+			ClientSecret: getEnv("ANTIGRAVITY_OAUTH_CLIENT_SECRET", ""),
 			DeviceCodeURL: getEnv("ANTIGRAVITY_OAUTH_DEVICE_URL", "https://api.antigravity.ai/oauth/device"),
 			TokenURL:      getEnv("ANTIGRAVITY_OAUTH_TOKEN_URL", "https://api.antigravity.ai/oauth/token"),
 			RevokeURL:     getEnv("ANTIGRAVITY_OAUTH_REVOKE_URL", ""),

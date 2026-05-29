@@ -246,3 +246,49 @@ func TestResolver_Hermes_NoProviderKind_ReturnsEmpty(t *testing.T) {
 
 	assert.False(t, env.HasCredential())
 }
+
+func TestResolver_AntigravityBackend_AntigravityKind_UsesUserKey(t *testing.T) {
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderAntigravity: "ant-key-XYZ",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, nil, user, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(), &models.Agent{
+		CodeBackend:  cbPtr(models.CodeBackendAntigravity),
+		ProviderKind: kindPtr(models.AgentProviderKindAntigravity),
+	})
+
+	assert.Equal(t, "ant-key-XYZ", env.AntigravityAPIKey)
+	assert.Equal(t, "https://api.antigravity.ai/v1", env.AntigravityBaseURL)
+	assert.Empty(t, env.APIKey)
+}
+
+func TestResolver_AntigravityBackend_NoKind_FallbackToSubscriptionThenAPIKey(t *testing.T) {
+	// 1. Subscription exists -> Uses OAuth subscription token.
+	auth := &stubClaudeCodeAuthSvc{token: "ant-oauth-token-XYZ"}
+	user := &stubUserCreds{byProvider: map[models.UserLLMProvider]string{
+		models.UserLLMProviderAntigravity: "ant-key-XYZ",
+	}}
+	r := NewSandboxAuthEnvResolver(nil, auth, user, "FALLBACK", nil)
+
+	env := r.Resolve(context.Background(), newProject(), &models.Agent{
+		CodeBackend: cbPtr(models.CodeBackendAntigravity),
+	})
+
+	assert.Equal(t, "ant-oauth-token-XYZ", env.AntigravityOAuthToken)
+	assert.Equal(t, "https://api.antigravity.ai/v1", env.AntigravityBaseURL)
+	assert.Empty(t, env.AntigravityAPIKey)
+
+	// 2. Subscription not found -> Falls back to User Key.
+	authError := &stubClaudeCodeAuthSvc{err: repository.ErrAntigravitySubscriptionNotFound}
+	r2 := NewSandboxAuthEnvResolver(nil, authError, user, "FALLBACK", nil)
+
+	env2 := r2.Resolve(context.Background(), newProject(), &models.Agent{
+		CodeBackend: cbPtr(models.CodeBackendAntigravity),
+	})
+
+	assert.Equal(t, "ant-key-XYZ", env2.AntigravityAPIKey)
+	assert.Equal(t, "https://api.antigravity.ai/v1", env2.AntigravityBaseURL)
+	assert.Empty(t, env2.AntigravityOAuthToken)
+}
+

@@ -96,6 +96,11 @@ func (r *sandboxAuthEnvResolver) Resolve(ctx context.Context, project *models.Pr
 		return r.resolveHermes(ctx, project, agent)
 	}
 
+	// Sprint 21: Antigravity Agent — собственная схема с поддержкой подписки/OAuth и API-ключа.
+	if agent != nil && agent.CodeBackend != nil && *agent.CodeBackend == models.CodeBackendAntigravity {
+		return r.resolveAntigravity(ctx, project, agent)
+	}
+
 	// 1) Явный kind на агенте — основной путь после рефакторинга.
 	if agent != nil && agent.ProviderKind != nil && agent.ProviderKind.IsValid() {
 		return r.resolveByKind(ctx, project, *agent.ProviderKind)
@@ -254,5 +259,45 @@ func (r *sandboxAuthEnvResolver) resolveHermes(ctx context.Context, project *mod
 	if provName := kind.HermesProviderName(); provName != "" {
 		env.Extra["DEVTEAM_HERMES_PROVIDER"] = provName
 	}
+	return env
+}
+
+// resolveAntigravity — Sprint 21: env для Antigravity sandbox.
+// Поддерживает авторизацию как через OAuth-подписку (antigravity_oauth), так и по ключу (antigravity).
+func (r *sandboxAuthEnvResolver) resolveAntigravity(ctx context.Context, project *models.Project, agent *models.Agent) sandbox.ClaudeCodeAuthEnv {
+	env := sandbox.ClaudeCodeAuthEnv{}
+	logger := r.logger.With(
+		"project_id", project.ID.String(),
+		"user_id", project.UserID.String(),
+		"code_backend", "antigravity",
+	)
+
+	// 1) Если на агенте явно задан ProviderKind — используем его
+	if agent != nil && agent.ProviderKind != nil && agent.ProviderKind.IsValid() {
+		return r.resolveByKind(ctx, project, *agent.ProviderKind)
+	}
+
+	// 2) Fallback: сначала подписка (OAuth), затем API-ключ из credentials.
+	if r.antigravityAuth != nil {
+		token, err := r.antigravityAuth.AccessTokenForSandbox(ctx, project.UserID)
+		if err == nil && token != "" {
+			env.AntigravityOAuthToken = token
+			env.AntigravityBaseURL = "https://api.antigravity.ai/v1"
+			return env
+		}
+		if err != nil && !errors.Is(err, repository.ErrAntigravitySubscriptionNotFound) {
+			logger.Warn("antigravity oauth token lookup failed; falling back to api key", "err", err)
+		}
+	}
+
+	if r.userCreds != nil {
+		key, err := r.userCreds.GetPlaintext(ctx, project.UserID, models.UserLLMProviderAntigravity)
+		if err == nil && key != "" {
+			env.AntigravityAPIKey = key
+			env.AntigravityBaseURL = "https://api.antigravity.ai/v1"
+			return env
+		}
+	}
+
 	return env
 }

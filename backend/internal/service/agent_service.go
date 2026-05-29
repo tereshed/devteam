@@ -204,7 +204,7 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 			return nil, fmt.Errorf("%w: sandbox-agent requires code_backend", ErrAgentValidation)
 		}
 		if !in.CodeBackend.IsValid() {
-			return nil, fmt.Errorf("%w: invalid code_backend %q (allowed: claude-code/aider/hermes/custom)", ErrAgentValidation, *in.CodeBackend)
+			return nil, fmt.Errorf("%w: invalid code_backend %q (allowed: claude-code/aider/hermes/custom/antigravity)", ErrAgentValidation, *in.CodeBackend)
 		}
 		if in.Model != nil && *in.Model != "" {
 			return nil, fmt.Errorf("%w: sandbox-agent must NOT have model", ErrAgentValidation)
@@ -342,7 +342,7 @@ func (s *AgentService) applyUpdatePatch(current *models.Agent, in UpdateAgentInp
 			return fmt.Errorf("%w: code_backend is allowed only for sandbox-agents (current kind=%s)", ErrAgentValidation, current.ExecutionKind)
 		}
 		if !in.CodeBackend.IsValid() {
-			return fmt.Errorf("%w: invalid code_backend %q (allowed: claude-code/aider/hermes/custom)", ErrAgentValidation, *in.CodeBackend)
+			return fmt.Errorf("%w: invalid code_backend %q (allowed: claude-code/aider/hermes/custom/antigravity)", ErrAgentValidation, *in.CodeBackend)
 		}
 		current.CodeBackend = in.CodeBackend
 	}

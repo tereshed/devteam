@@ -329,6 +329,7 @@ func main() {
 		"devteam/sandbox-claude:local",
 		"devteam/sandbox-aider:local",
 		"devteam/sandbox-hermes:local",
+		"devteam/sandbox-antigravity:local",
 	}, sandbox.WithLogPublisher(sandboxLogAdapter))
 	// Sprint 16: per-backend образа. claude-code/aider/custom уходят в default
 	// (sandbox-claude), hermes — в свой образ. Если в будущем у aider будет
@@ -337,7 +338,8 @@ func main() {
 		sandboxRunner,
 		"devteam/sandbox-claude:local",
 		map[string]string{
-			string(models.CodeBackendHermes): "devteam/sandbox-hermes:local",
+			string(models.CodeBackendHermes):      "devteam/sandbox-hermes:local",
+			string(models.CodeBackendAntigravity): "devteam/sandbox-antigravity:local",
 		},
 	)
 
@@ -376,6 +378,7 @@ func main() {
 	antigravitySubRepo := repository.NewAntigravitySubscriptionRepository(db)
 	antigravityOAuthProvider := service.NewAntigravityOAuthProvider(service.AntigravityOAuthConfig{
 		ClientID:      cfg.AntigravityOAuth.ClientID,
+		ClientSecret:  cfg.AntigravityOAuth.ClientSecret,
 		DeviceCodeURL: cfg.AntigravityOAuth.DeviceCodeURL,
 		TokenURL:      cfg.AntigravityOAuth.TokenURL,
 		RevokeURL:     cfg.AntigravityOAuth.RevokeURL,
