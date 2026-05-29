@@ -791,6 +791,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       projectId: widget.projectId,
       taskId: widget.taskId,
       taskState: data.task!.status,
+      assignedAgentName: data.task!.assignedAgent?.name,
+      assignedAgentRole: data.task!.assignedAgent?.role,
       selectedAgentName: _selectedAgentName,
       onAgentSelected: (agent) {
         setState(() {

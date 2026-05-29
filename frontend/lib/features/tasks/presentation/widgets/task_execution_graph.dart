@@ -35,6 +35,8 @@ class TaskExecutionGraph extends ConsumerStatefulWidget {
     required this.taskState,
     required this.onAgentSelected,
     this.selectedAgentName,
+    this.assignedAgentName,
+    this.assignedAgentRole,
   });
 
   final String projectId;
@@ -42,6 +44,8 @@ class TaskExecutionGraph extends ConsumerStatefulWidget {
   final String taskState;
   final void Function(AgentNodeData node) onAgentSelected;
   final String? selectedAgentName;
+  final String? assignedAgentName;
+  final String? assignedAgentRole;
 
   @override
   ConsumerState<TaskExecutionGraph> createState() => _TaskExecutionGraphState();
@@ -120,43 +124,76 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                 ),
               ),
               data: (artifacts) {
-                // 1. Сбор всех уникальных агентов
+                // 1. Сбор участников и построение уровней вертикального графа
                 final teamAgents = team.agents;
-                final allAgentNames = <String>{};
-                for (final a in teamAgents) {
-                  allAgentNames.add(a.name);
-                }
+                final participatingAgentNames = <String>{};
                 for (final d in decisions) {
-                  allAgentNames.addAll(d.chosenAgents);
+                  participatingAgentNames.addAll(d.chosenAgents);
+                }
+                if (widget.assignedAgentName != null) {
+                  participatingAgentNames.add(widget.assignedAgentName!);
+                }
+
+                // Вспомогательный набор активных агентов
+                final activeAgents = <String>{};
+                if (decisions.isNotEmpty && !decisions.last.done && widget.taskState == 'active') {
+                  activeAgents.addAll(decisions.last.chosenAgents);
+                } else if (widget.taskState == 'active' && widget.assignedAgentName != null) {
+                  activeAgents.add(widget.assignedAgentName!);
                 }
 
                 // 2. Определение статусов агентов
                 final agentStatuses = <String, NodeStatus>{};
-                for (final name in allAgentNames) {
-                  agentStatuses[name] = NodeStatus.pending;
+                for (final name in participatingAgentNames) {
+                  if (activeAgents.contains(name)) {
+                    agentStatuses[name] = NodeStatus.running;
+                  } else {
+                    final agentDecisions = decisions.where((d) => d.chosenAgents.contains(name));
+                    final RouterDecision? lastDecisionForAgent = agentDecisions.isNotEmpty ? agentDecisions.last : null;
+                    if (lastDecisionForAgent == null) {
+                      agentStatuses[name] = NodeStatus.pending;
+                    } else if (lastDecisionForAgent.outcome == 'failed' || lastDecisionForAgent.outcome == 'needs_human') {
+                      agentStatuses[name] = NodeStatus.failed;
+                    } else if (lastDecisionForAgent.done) {
+                      agentStatuses[name] = NodeStatus.success;
+                    } else {
+                      agentStatuses[name] = NodeStatus.pending;
+                    }
+                  }
                 }
 
-                // Пройдемся по решениям для вычисления статуса
-                String? activeAgent;
-                for (final d in decisions) {
-                  final isLast = d == decisions.last;
-                  final isStepRunning = !d.done && widget.taskState == 'active';
+                // Строим уровни (Level 0 - активные, далее вглубь истории)
+                final placedAgents = <String>{};
+                final levels = <List<String>>[];
 
-                  for (final agentName in d.chosenAgents) {
-                    if (isStepRunning && isLast) {
-                      agentStatuses[agentName] = NodeStatus.running;
-                      activeAgent = agentName;
-                    } else {
-                      final outcome = d.outcome;
-                      if (outcome == 'failed' || outcome == 'needs_human') {
-                        agentStatuses[agentName] = NodeStatus.failed;
-                      } else {
-                        // Если уже был failed, не перетираем на success
-                        if (agentStatuses[agentName] != NodeStatus.failed) {
-                          agentStatuses[agentName] = NodeStatus.success;
-                        }
-                      }
-                    }
+                if (activeAgents.isNotEmpty) {
+                  levels.add(activeAgents.toList());
+                  placedAgents.addAll(activeAgents);
+                }
+
+                for (int i = decisions.length - 1; i >= 0; i--) {
+                  final d = decisions[i];
+                  final newAgentsInStep = d.chosenAgents
+                      .where((name) => !placedAgents.contains(name))
+                      .toList();
+                  if (newAgentsInStep.isNotEmpty) {
+                    levels.add(newAgentsInStep);
+                    placedAgents.addAll(newAgentsInStep);
+                  }
+                }
+
+                if (widget.assignedAgentName != null && !placedAgents.contains(widget.assignedAgentName)) {
+                  levels.add([widget.assignedAgentName!]);
+                  placedAgents.add(widget.assignedAgentName!);
+                }
+
+                // Если все еще пусто (например, новая задача без назначенного агента), покажем всех агентов команды
+                if (placedAgents.isEmpty && teamAgents.isNotEmpty) {
+                  for (final a in teamAgents) {
+                    levels.add([a.name]);
+                    placedAgents.add(a.name);
+                    participatingAgentNames.add(a.name);
+                    agentStatuses[a.name] = NodeStatus.pending;
                   }
                 }
 
@@ -164,7 +201,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                 final agentSubtasks = <String, List<String>>{};
                 final agentArtifacts = <String, List<Artifact>>{};
 
-                for (final name in allAgentNames) {
+                for (final name in participatingAgentNames) {
                   agentSubtasks[name] = [];
                   agentArtifacts[name] = [];
                 }
@@ -173,7 +210,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                 for (final art in artifacts) {
                   if (art.kind == 'subtask_description') {
                     final agent = art.producerAgent;
-                    if (allAgentNames.contains(agent)) {
+                    if (participatingAgentNames.contains(agent)) {
                       final title = art.subtaskTitle ?? art.summary;
                       if (title.isNotEmpty && !agentSubtasks[agent]!.contains(title)) {
                         agentSubtasks[agent]!.add(title);
@@ -181,19 +218,19 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                     }
                   }
                   final agent = art.producerAgent;
-                  if (allAgentNames.contains(agent)) {
+                  if (participatingAgentNames.contains(agent)) {
                     agentArtifacts[agent]!.add(art);
                   }
                 }
 
-                // 4. Построение графа
-                final nodesList = allAgentNames.map((name) {
+                // 4. Построение списка нод для графа
+                final nodesList = participatingAgentNames.map((name) {
                   final teamAgent = teamAgents.firstWhere(
                     (a) => a.name == name,
                     orElse: () => AgentModel(
                       id: name,
                       name: name,
-                      role: name,
+                      role: widget.assignedAgentName == name ? (widget.assignedAgentRole ?? name) : name,
                       isActive: true,
                     ),
                   );
@@ -220,6 +257,19 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                   }
                 }
 
+                // Переход от последнего шага к текущему назначенному агенту
+                if (widget.assignedAgentName != null && decisions.isNotEmpty) {
+                  final lastAgents = decisions.last.chosenAgents;
+                  for (final from in lastAgents) {
+                    if (from != widget.assignedAgentName && !edges.contains((from, widget.assignedAgentName!))) {
+                      edges.add((from, widget.assignedAgentName!));
+                    }
+                  }
+                }
+
+                // Активный агент для отрисовки подсветки связей (первый из списка активных)
+                final String? activeAgent = activeAgents.isNotEmpty ? activeAgents.first : null;
+
                 if (isMobile) {
                   return DefaultTabController(
                     length: 2,
@@ -242,7 +292,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                             physics: const NeverScrollableScrollPhysics(),
                             children: [
                               _buildMobileTimeline(context, decisions, nodesList),
-                              _build2DCanvas(context, nodesList, edges, activeAgent),
+                              _build2DCanvas(context, nodesList, edges, activeAgent, levels),
                             ],
                           ),
                         ),
@@ -250,7 +300,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                     ),
                   );
                 } else {
-                  return _build2DCanvas(context, nodesList, edges, activeAgent);
+                  return _build2DCanvas(context, nodesList, edges, activeAgent, levels);
                 }
               },
             );
@@ -265,7 +315,6 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
     List<RouterDecision> decisions,
     List<AgentNodeData> nodes,
   ) {
-    final l10n = requireAppLocalizations(context, where: 'task_execution_graph');
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: decisions.length,
@@ -394,47 +443,32 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
     List<AgentNodeData> nodes,
     List<(String, String)> edges,
     String? activeAgent,
+    List<List<String>> levels,
   ) {
-    // Детерминированная раскладка нод по колонкам (ролям)
-    final nodePositions = <String, Offset>{};
-    final stageColumns = <String, int>{
-      'planner': 0,
-      'supervisor': 0,
-      'decomposer': 1,
-      'developer': 2,
-      'worker': 2,
-      'reviewer': 3,
-      'tester': 4,
-      'devops': 4,
-      'merger': 5,
-    };
-
-    final columnCounts = <int, int>{};
-    for (final node in nodes) {
-      final role = node.role.toLowerCase();
-      final col = stageColumns[role] ?? 5;
-      columnCounts[col] = (columnCounts[col] ?? 0) + 1;
-    }
-
-    final columnCurrentIndex = <int, int>{};
-    for (final node in nodes) {
-      final role = node.role.toLowerCase();
-      final col = stageColumns[role] ?? 5;
-      final totalInCol = columnCounts[col] ?? 1;
-      final currentIdx = columnCurrentIndex[col] ?? 0;
-      columnCurrentIndex[col] = currentIdx + 1;
-
-      // Координаты X и Y
-      final double x = col * 260.0 + 80.0;
-      // Центрируем ноды вертикально в колонке
-      final double totalHeight = totalInCol * 130.0;
-      final double y = 250.0 - (totalHeight / 2) + (currentIdx * 130.0) + 50.0;
-
-      nodePositions[node.name] = Offset(x, y);
-    }
+    const double cardWidth = 180.0;
+    const double cardHeight = 90.0;
+    const double horizontalSpacing = 40.0;
+    const double verticalSpacing = 140.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final double canvasWidth = max(constraints.maxWidth, 800.0);
+        final double canvasHeight = max(constraints.maxHeight, levels.length * verticalSpacing + 100.0);
+
+        final nodePositions = <String, Offset>{};
+        for (int lvlIdx = 0; lvlIdx < levels.length; lvlIdx++) {
+          final lvlAgents = levels[lvlIdx];
+          final numInLvl = lvlAgents.length;
+          final double totalWidth = numInLvl * cardWidth + (numInLvl - 1) * horizontalSpacing;
+          final double y = lvlIdx * verticalSpacing + 50.0;
+
+          for (int i = 0; i < numInLvl; i++) {
+            final name = lvlAgents[i];
+            final double x = (canvasWidth / 2) - (totalWidth / 2) + i * (cardWidth + horizontalSpacing);
+            nodePositions[name] = Offset(x, y);
+          }
+        }
+
         if (!_initializedTransformation && nodePositions.isNotEmpty) {
           double minX = double.infinity;
           double maxX = -double.infinity;
@@ -443,9 +477,9 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
 
           for (final pos in nodePositions.values) {
             minX = min(minX, pos.dx);
-            maxX = max(maxX, pos.dx + 180.0);
+            maxX = max(maxX, pos.dx + cardWidth);
             minY = min(minY, pos.dy);
-            maxY = max(maxY, pos.dy + 90.0);
+            maxY = max(maxY, pos.dy + cardHeight);
           }
 
           final graphWidth = (maxX - minX) + 160.0;
@@ -472,10 +506,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
           child: AnimatedBuilder(
             animation: _animationController,
             builder: (context, child) {
-              final canvasSize = Size(
-                max(constraints.maxWidth, 6 * 260.0 + 200.0),
-                max(constraints.maxHeight, 600.0),
-              );
+              final canvasSize = Size(canvasWidth, canvasHeight);
               return CustomPaint(
                 size: canvasSize,
                 painter: GraphConnectionsPainter(
@@ -670,30 +701,59 @@ class GraphConnectionsPainter extends CustomPainter {
       final p2 = nodePositions[edge.$2];
 
       if (p1 != null && p2 != null) {
-        // Координаты краев карточек
-        final start = Offset(p1.dx + 180, p1.dy + 45);
-        final end = Offset(p2.dx, p2.dy + 45);
+        final Offset start;
+        final Offset end;
+        final bool isVertical = (p1.dy - p2.dy).abs() > 10.0;
+
+        if (isVertical) {
+          if (p1.dy > p2.dy) {
+            // Рисуем снизу вверх (указывает вверх)
+            start = Offset(p1.dx + 90, p1.dy);
+            end = Offset(p2.dx + 90, p2.dy + 90);
+          } else {
+            // Рисуем сверху вниз (указывает вниз)
+            start = Offset(p1.dx + 90, p1.dy + 90);
+            end = Offset(p2.dx + 90, p2.dy);
+          }
+        } else {
+          // Горизонтально
+          if (p1.dx < p2.dx) {
+            start = Offset(p1.dx + 180, p1.dy + 45);
+            end = Offset(p2.dx, p2.dy + 45);
+          } else {
+            start = Offset(p1.dx, p1.dy + 45);
+            end = Offset(p2.dx + 180, p2.dy + 45);
+          }
+        }
 
         final isActive = edge.$2 == activeAgent;
 
         if (isActive) {
-          // Рисуем активную линию с движущимися стрелками
-          _drawActiveConnection(canvas, start, end, activeLinePaint);
+          _drawActiveConnection(canvas, start, end, activeLinePaint, isVertical: isVertical, pointingUp: p1.dy > p2.dy, pointingRight: p2.dx > p1.dx);
         } else {
-          // Рисуем обычную линию
-          _drawStandardConnection(canvas, start, end, linePaint);
+          _drawStandardConnection(canvas, start, end, linePaint, isVertical: isVertical, pointingUp: p1.dy > p2.dy, pointingRight: p2.dx > p1.dx);
         }
       }
     }
   }
 
-  void _drawStandardConnection(Canvas canvas, Offset p1, Offset p2, Paint paint) {
+  void _drawStandardConnection(Canvas canvas, Offset p1, Offset p2, Paint paint, {required bool isVertical, required bool pointingUp, required bool pointingRight}) {
     final path = Path();
     path.moveTo(p1.dx, p1.dy);
 
-    // Рисуем плавную кривую Безье
-    final controlPoint1 = Offset(p1.dx + 60, p1.dy);
-    final controlPoint2 = Offset(p2.dx - 60, p2.dy);
+    final Offset controlPoint1;
+    final Offset controlPoint2;
+
+    if (isVertical) {
+      final double cpOffset = pointingUp ? -40.0 : 40.0;
+      controlPoint1 = Offset(p1.dx, p1.dy + cpOffset);
+      controlPoint2 = Offset(p2.dx, p2.dy - cpOffset);
+    } else {
+      final double cpOffset = pointingRight ? 60.0 : -60.0;
+      controlPoint1 = Offset(p1.dx + cpOffset, p1.dy);
+      controlPoint2 = Offset(p2.dx - cpOffset, p2.dy);
+    }
+
     path.cubicTo(
       controlPoint1.dx,
       controlPoint1.dy,
@@ -704,15 +764,26 @@ class GraphConnectionsPainter extends CustomPainter {
     );
 
     canvas.drawPath(path, paint);
-    _drawArrowHead(canvas, p2, paint.color);
+    _drawArrowHead(canvas, p2, paint.color, isVertical: isVertical, pointingUp: pointingUp, pointingRight: pointingRight);
   }
 
-  void _drawActiveConnection(Canvas canvas, Offset p1, Offset p2, Paint paint) {
+  void _drawActiveConnection(Canvas canvas, Offset p1, Offset p2, Paint paint, {required bool isVertical, required bool pointingUp, required bool pointingRight}) {
     final path = Path();
     path.moveTo(p1.dx, p1.dy);
 
-    final controlPoint1 = Offset(p1.dx + 60, p1.dy);
-    final controlPoint2 = Offset(p2.dx - 60, p2.dy);
+    final Offset controlPoint1;
+    final Offset controlPoint2;
+
+    if (isVertical) {
+      final double cpOffset = pointingUp ? -40.0 : 40.0;
+      controlPoint1 = Offset(p1.dx, p1.dy + cpOffset);
+      controlPoint2 = Offset(p2.dx, p2.dy - cpOffset);
+    } else {
+      final double cpOffset = pointingRight ? 60.0 : -60.0;
+      controlPoint1 = Offset(p1.dx + cpOffset, p1.dy);
+      controlPoint2 = Offset(p2.dx - cpOffset, p2.dy);
+    }
+
     path.cubicTo(
       controlPoint1.dx,
       controlPoint1.dy,
@@ -744,19 +815,28 @@ class GraphConnectionsPainter extends CustomPainter {
       }
     }
 
-    _drawArrowHead(canvas, p2, paint.color);
+    _drawArrowHead(canvas, p2, paint.color, isVertical: isVertical, pointingUp: pointingUp, pointingRight: pointingRight);
   }
 
-  void _drawArrowHead(Canvas canvas, Offset tip, Color color) {
+  void _drawArrowHead(Canvas canvas, Offset tip, Color color, {required bool isVertical, required bool pointingUp, required bool pointingRight}) {
     final arrowPaint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
 
-    final path = Path()
-      ..moveTo(tip.dx, tip.dy)
-      ..lineTo(tip.dx - 10, tip.dy - 6)
-      ..lineTo(tip.dx - 10, tip.dy + 6)
-      ..close();
+    final path = Path();
+    if (isVertical) {
+      final double dyOffset = pointingUp ? 10.0 : -10.0;
+      path.moveTo(tip.dx, tip.dy);
+      path.lineTo(tip.dx - 6, tip.dy + dyOffset);
+      path.lineTo(tip.dx + 6, tip.dy + dyOffset);
+      path.close();
+    } else {
+      final double dxOffset = pointingRight ? -10.0 : 10.0;
+      path.moveTo(tip.dx, tip.dy);
+      path.lineTo(tip.dx + dxOffset, tip.dy - 6);
+      path.lineTo(tip.dx + dxOffset, tip.dy + 6);
+      path.close();
+    }
 
     canvas.drawPath(path, arrowPaint);
   }
