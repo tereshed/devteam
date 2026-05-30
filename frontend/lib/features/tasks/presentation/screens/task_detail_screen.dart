@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
+import 'package:frontend/features/projects/domain/models/agent_model.dart';
 import 'package:frontend/features/tasks/data/task_exceptions.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
@@ -147,6 +148,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   int _initialScrollAttachRetries = 0;
 
   String? _selectedAgentName;
+  String? _selectedAgentNodeId;
   bool _showInspector = true;
 
   @override
@@ -163,6 +165,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       _didInitialScrollToBottom = false;
       _initialScrollAttachRetries = 0;
       _selectedAgentName = null;
+      _selectedAgentNodeId = null;
     }
   }
 
@@ -372,64 +375,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   Future<void> _onResumePressed() =>
       _applyLifecycleMutation((n) => n.resumeTask());
 
-  AgentNodeData? _getAgentNodeData(
-    String agentName,
-    dynamic team,
-    List<RouterDecision> decisions,
-    List<Artifact> artifacts,
-    String taskState,
-  ) {
-    dynamic teamAgent;
-    for (final a in team.agents) {
-      if (a.name == agentName) {
-        teamAgent = a;
-        break;
-      }
-    }
-    final role = teamAgent?.role ?? agentName;
 
-    NodeStatus status = NodeStatus.pending;
-    for (final d in decisions) {
-      final isLast = d == decisions.last;
-      final isStepRunning = !d.done && taskState == 'active';
-      if (d.chosenAgents.contains(agentName)) {
-        if (isStepRunning && isLast) {
-          status = NodeStatus.running;
-        } else {
-          final outcome = d.outcome;
-          if (outcome == 'failed' || outcome == 'needs_human') {
-            status = NodeStatus.failed;
-          } else {
-            if (status != NodeStatus.failed) {
-              status = NodeStatus.success;
-            }
-          }
-        }
-      }
-    }
-
-    final subtasks = <String>[];
-    final agentArts = <Artifact>[];
-    for (final art in artifacts) {
-      if (art.producerAgent == agentName) {
-        agentArts.add(art);
-        if (art.kind == 'subtask_description') {
-          final title = art.subtaskTitle ?? art.summary;
-          if (title.isNotEmpty && !subtasks.contains(title)) {
-            subtasks.add(title);
-          }
-        }
-      }
-    }
-
-    return AgentNodeData(
-      name: agentName,
-      role: role,
-      status: status,
-      subtasks: subtasks,
-      artifacts: agentArts,
-    );
-  }
 
   Widget _buildInspectorContent(
     BuildContext context,
@@ -446,13 +392,26 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         data: (team) => decisionsAsync.maybeWhen(
           data: (decisions) => artifactsAsync.maybeWhen(
             data: (artifacts) {
-              final agentNode = _getAgentNodeData(
-                _selectedAgentName!,
-                team,
-                decisions,
-                artifacts,
-                data.task!.status,
+              final nodes = buildAgentNodes(
+                decisions: decisions,
+                artifacts: artifacts,
+                taskState: data.task!.status,
+                assignedAgentName: data.task!.assignedAgent?.name,
+                assignedAgentRole: data.task!.assignedAgent?.role,
+                teamAgents: team.agents,
               );
+              AgentNodeData? agentNode;
+              try {
+                agentNode = nodes.firstWhere((n) => n.id == _selectedAgentNodeId);
+              } catch (_) {
+                try {
+                  agentNode = nodes.firstWhere((n) => n.name == _selectedAgentName);
+                } catch (_) {
+                  if (nodes.isNotEmpty) {
+                    agentNode = nodes.first;
+                  }
+                }
+              }
               if (agentNode == null) {
                 return const Center(child: CircularProgressIndicator());
               }
@@ -794,9 +753,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       assignedAgentName: data.task!.assignedAgent?.name,
       assignedAgentRole: data.task!.assignedAgent?.role,
       selectedAgentName: _selectedAgentName,
+      selectedAgentNodeId: _selectedAgentNodeId,
       onAgentSelected: (agent) {
         setState(() {
           _selectedAgentName = agent.name;
+          _selectedAgentNodeId = agent.id;
           _showInspector = true;
         });
       },

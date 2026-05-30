@@ -27,6 +27,8 @@
 
 set -euo pipefail
 
+export GOMAXPROCS=1
+
 # shellcheck disable=SC2034
 AGY_PID=""
 CANCELLED=0
@@ -405,6 +407,8 @@ else
   fi
 fi
 
+INITIAL_COMMIT_HASH="$(git rev-parse HEAD)"
+
 git config --global user.name "DevTeam Agent"
 git config --global user.email "agent@devteam.local"
 
@@ -528,7 +532,7 @@ COMMIT_HASH="$(git rev-parse HEAD)"
 PHASE="push"
 PUSHED=0
 PUSH_URL=""
-if [[ "$COMMITTED" -eq 1 ]]; then
+if [[ "$COMMIT_HASH" != "$INITIAL_COMMIT_HASH" ]]; then
   if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
     PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
   elif [[ "${REPO_URL}" =~ ^file:// || "${REPO_URL}" =~ ^ssh:// || "${REPO_URL}" =~ ^git@ ]]; then
@@ -540,6 +544,48 @@ if [[ -n "$PUSH_URL" ]]; then
   set +e
   git push "$PUSH_URL" "$BRANCH_NAME" >"$PUSH_LOG" 2>&1
   PUSH_EXIT=$?
+  
+  if [[ "$PUSH_EXIT" -ne 0 ]] && grep -q -E "rejected|fetch first" "$PUSH_LOG"; then
+    echo "entrypoint: git push rejected, attempting git pull --rebase..." >>"$AGENT_LOG"
+    set +e
+    git pull --rebase "$PUSH_URL" "$BRANCH_NAME" >>"$AGENT_LOG" 2>&1
+    local pull_exit=$?
+    set -e
+    
+    if [[ "$pull_exit" -ne 0 ]]; then
+      echo "entrypoint: git pull --rebase failed, checking for conflicts..." >>"$AGENT_LOG"
+      if git status | grep -q -E "rebase|Rebase"; then
+        conflicts=$(git diff --name-only --diff-filter=U)
+        echo "entrypoint: conflicted files: $conflicts" >>"$AGENT_LOG"
+        
+        only_gomod_conflicts=true
+        for file in $conflicts; do
+          if [[ "$file" != "go.mod" && "$file" != "go.sum" ]]; then
+            only_gomod_conflicts=false
+          fi
+        done
+        
+        if [ "$only_gomod_conflicts" = true ] && [ -n "$conflicts" ]; then
+          echo "entrypoint: resolving go.mod/go.sum conflicts automatically..." >>"$AGENT_LOG"
+          git checkout --ours go.mod go.sum >>"$AGENT_LOG" 2>&1 || true
+          git add go.mod go.sum >>"$AGENT_LOG" 2>&1
+          GIT_EDITOR=true git rebase --continue >>"$AGENT_LOG" 2>&1 || true
+          
+          echo "entrypoint: regenerating go.mod/go.sum via go mod tidy..." >>"$AGENT_LOG"
+          go mod tidy >>"$AGENT_LOG" 2>&1 || true
+          git add go.mod go.sum >>"$AGENT_LOG" 2>&1
+          git commit --amend --no-edit >>"$AGENT_LOG" 2>&1 || true
+        else
+          echo "entrypoint: conflicts cannot be auto-resolved, aborting rebase" >>"$AGENT_LOG"
+          git rebase --abort >>"$AGENT_LOG" 2>&1 || true
+        fi
+      fi
+    fi
+    
+    git push "$PUSH_URL" "$BRANCH_NAME" >"$PUSH_LOG" 2>&1
+    PUSH_EXIT=$?
+  fi
+  
   set -e
   sed -E "s|x-access-token:[^@]+@|x-access-token:***@|g" "$PUSH_LOG" >>"$AGENT_LOG"
   rm -f "$PUSH_LOG"

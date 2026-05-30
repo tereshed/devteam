@@ -37,7 +37,7 @@ class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel>
   @override
   void didUpdateWidget(covariant AgentInspectorPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.agent.name != widget.agent.name) {
+    if (oldWidget.agent.id != widget.agent.id) {
       _selectedSubtaskIndex = 0;
     }
   }

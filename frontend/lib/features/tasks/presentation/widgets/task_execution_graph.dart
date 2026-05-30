@@ -12,19 +12,155 @@ import 'package:intl/intl.dart';
 enum NodeStatus { pending, running, success, failed }
 
 class AgentNodeData {
+  final String id;
   final String name;
   final String role;
   final NodeStatus status;
   final List<String> subtasks;
   final List<Artifact> artifacts;
+  final int stepNo;
 
   const AgentNodeData({
+    required this.id,
     required this.name,
     required this.role,
     required this.status,
     required this.subtasks,
     required this.artifacts,
+    required this.stepNo,
   });
+}
+
+List<AgentNodeData> buildAgentNodes({
+  required List<RouterDecision> decisions,
+  required List<Artifact> artifacts,
+  required String taskState,
+  required String? assignedAgentName,
+  required String? assignedAgentRole,
+  required List<AgentModel> teamAgents,
+}) {
+  final nodes = <AgentNodeData>[];
+
+  final sortedDecisions = List<RouterDecision>.from(decisions)
+    ..sort((a, b) => a.stepNo.compareTo(b.stepNo));
+
+  if (sortedDecisions.isEmpty) {
+    if (assignedAgentName != null) {
+      final role = teamAgents.firstWhere(
+        (a) => a.name == assignedAgentName,
+        orElse: () => AgentModel(id: assignedAgentName, name: assignedAgentName, role: assignedAgentRole ?? assignedAgentName, isActive: true),
+      ).role;
+      nodes.add(AgentNodeData(
+        id: "0_${assignedAgentName}_0",
+        name: assignedAgentName,
+        role: role,
+        status: taskState == 'active' ? NodeStatus.running : NodeStatus.pending,
+        subtasks: const [],
+        artifacts: const [],
+        stepNo: 0,
+      ));
+    } else {
+      for (int i = 0; i < teamAgents.length; i++) {
+        final a = teamAgents[i];
+        nodes.add(AgentNodeData(
+          id: "0_${a.name}_0",
+          name: a.name,
+          role: a.role,
+          status: NodeStatus.pending,
+          subtasks: const [],
+          artifacts: const [],
+          stepNo: 0,
+        ));
+      }
+    }
+    return nodes;
+  }
+
+  for (int i = 0; i < sortedDecisions.length; i++) {
+    final d = sortedDecisions[i];
+    final isLast = i == sortedDecisions.length - 1;
+    final isStepRunning = !d.done && taskState == 'active';
+
+    final start = d.createdAt;
+    final end = !isLast ? sortedDecisions[i + 1].createdAt : DateTime.now().add(const Duration(days: 1));
+
+    for (int aIdx = 0; aIdx < d.chosenAgents.length; aIdx++) {
+      final agentName = d.chosenAgents[aIdx];
+      final teamAgent = teamAgents.firstWhere(
+        (a) => a.name == agentName,
+        orElse: () => AgentModel(
+          id: agentName,
+          name: agentName,
+          role: assignedAgentName == agentName ? (assignedAgentRole ?? agentName) : agentName,
+          isActive: true,
+        ),
+      );
+      final role = teamAgent.role;
+
+      NodeStatus status;
+      if (isStepRunning && isLast) {
+        status = NodeStatus.running;
+      } else if (d.outcome == 'failed' || d.outcome == 'needs_human') {
+        status = NodeStatus.failed;
+      } else if (d.done) {
+        status = NodeStatus.success;
+      } else {
+        status = NodeStatus.pending;
+      }
+
+      final nodeArtifacts = <Artifact>[];
+      final nodeSubtasks = <String>[];
+
+      for (final art in artifacts) {
+        if (art.producerAgent.toLowerCase() == agentName.toLowerCase()) {
+          final isAfterOrEqual = art.createdAt.isAfter(start) || art.createdAt.isAtSameMomentAs(start);
+          final isBefore = art.createdAt.isBefore(end);
+          if (isAfterOrEqual && isBefore) {
+            nodeArtifacts.add(art);
+            if (art.kind == 'subtask_description') {
+              final title = art.subtaskTitle ?? art.summary;
+              if (title.isNotEmpty && !nodeSubtasks.contains(title)) {
+                nodeSubtasks.add(title);
+              }
+            }
+          }
+        }
+      }
+
+      nodes.add(AgentNodeData(
+        id: "${d.stepNo}_${agentName}_$aIdx",
+        name: agentName,
+        role: role,
+        status: status,
+        subtasks: nodeSubtasks,
+        artifacts: nodeArtifacts,
+        stepNo: d.stepNo,
+      ));
+    }
+  }
+
+  if (taskState == 'active' && assignedAgentName != null) {
+    final latestDecision = sortedDecisions.last;
+    final containsAssigned = latestDecision.chosenAgents.contains(assignedAgentName);
+    if (!containsAssigned && latestDecision.done) {
+      final nextStepNo = latestDecision.stepNo + 1;
+      final role = teamAgents.firstWhere(
+        (a) => a.name == assignedAgentName,
+        orElse: () => AgentModel(id: assignedAgentName, name: assignedAgentName, role: assignedAgentRole ?? assignedAgentName, isActive: true),
+      ).role;
+      nodes.add(AgentNodeData(
+        id: "${nextStepNo}_${assignedAgentName}_0",
+        name: assignedAgentName,
+        role: role,
+        status: NodeStatus.running,
+        subtasks: const [],
+        artifacts: const [],
+        stepNo: nextStepNo,
+      ));
+    }
+  }
+
+  return nodes;
 }
 
 class TaskExecutionGraph extends ConsumerStatefulWidget {
@@ -35,6 +171,7 @@ class TaskExecutionGraph extends ConsumerStatefulWidget {
     required this.taskState,
     required this.onAgentSelected,
     this.selectedAgentName,
+    this.selectedAgentNodeId,
     this.assignedAgentName,
     this.assignedAgentRole,
   });
@@ -44,6 +181,7 @@ class TaskExecutionGraph extends ConsumerStatefulWidget {
   final String taskState;
   final void Function(AgentNodeData node) onAgentSelected;
   final String? selectedAgentName;
+  final String? selectedAgentNodeId;
   final String? assignedAgentName;
   final String? assignedAgentRole;
 
@@ -124,151 +262,51 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                 ),
               ),
               data: (artifacts) {
-                // 1. Сбор участников и построение уровней вертикального графа
-                final teamAgents = team.agents;
-                final participatingAgentNames = <String>{};
-                for (final d in decisions) {
-                  participatingAgentNames.addAll(d.chosenAgents);
-                }
-                if (widget.assignedAgentName != null) {
-                  participatingAgentNames.add(widget.assignedAgentName!);
-                }
+                // 1. Построение списка нод последовательных шагов
+                final nodesList = buildAgentNodes(
+                  decisions: decisions,
+                  artifacts: artifacts,
+                  taskState: widget.taskState,
+                  assignedAgentName: widget.assignedAgentName,
+                  assignedAgentRole: widget.assignedAgentRole,
+                  teamAgents: team.agents,
+                );
 
-                // Вспомогательный набор активных агентов
-                final activeAgents = <String>{};
-                if (decisions.isNotEmpty && !decisions.last.done && widget.taskState == 'active') {
-                  activeAgents.addAll(decisions.last.chosenAgents);
-                } else if (widget.taskState == 'active' && widget.assignedAgentName != null) {
-                  activeAgents.add(widget.assignedAgentName!);
+                // 2. Группировка по stepNo и построение уровней (самый свежий наверху)
+                final stepGroups = <int, List<AgentNodeData>>{};
+                for (final node in nodesList) {
+                  stepGroups.putIfAbsent(node.stepNo, () => []).add(node);
                 }
 
-                // 2. Определение статусов агентов
-                final agentStatuses = <String, NodeStatus>{};
-                for (final name in participatingAgentNames) {
-                  if (activeAgents.contains(name)) {
-                    agentStatuses[name] = NodeStatus.running;
-                  } else {
-                    final agentDecisions = decisions.where((d) => d.chosenAgents.contains(name));
-                    final RouterDecision? lastDecisionForAgent = agentDecisions.isNotEmpty ? agentDecisions.last : null;
-                    if (lastDecisionForAgent == null) {
-                      agentStatuses[name] = NodeStatus.pending;
-                    } else if (lastDecisionForAgent.outcome == 'failed' || lastDecisionForAgent.outcome == 'needs_human') {
-                      agentStatuses[name] = NodeStatus.failed;
-                    } else if (lastDecisionForAgent.done) {
-                      agentStatuses[name] = NodeStatus.success;
-                    } else {
-                      agentStatuses[name] = NodeStatus.pending;
-                    }
-                  }
-                }
+                final sortedStepNos = stepGroups.keys.toList()..sort((a, b) => b.compareTo(a));
 
-                // Строим уровни (Level 0 - активные, далее вглубь истории)
-                final placedAgents = <String>{};
-                final levels = <List<String>>[];
-
-                if (activeAgents.isNotEmpty) {
-                  levels.add(activeAgents.toList());
-                  placedAgents.addAll(activeAgents);
-                }
-
-                for (int i = decisions.length - 1; i >= 0; i--) {
-                  final d = decisions[i];
-                  final newAgentsInStep = d.chosenAgents
-                      .where((name) => !placedAgents.contains(name))
-                      .toList();
-                  if (newAgentsInStep.isNotEmpty) {
-                    levels.add(newAgentsInStep);
-                    placedAgents.addAll(newAgentsInStep);
-                  }
-                }
-
-                if (widget.assignedAgentName != null && !placedAgents.contains(widget.assignedAgentName)) {
-                  levels.add([widget.assignedAgentName!]);
-                  placedAgents.add(widget.assignedAgentName!);
-                }
-
-                // Если все еще пусто (например, новая задача без назначенного агента), покажем всех агентов команды
-                if (placedAgents.isEmpty && teamAgents.isNotEmpty) {
-                  for (final a in teamAgents) {
-                    levels.add([a.name]);
-                    placedAgents.add(a.name);
-                    participatingAgentNames.add(a.name);
-                    agentStatuses[a.name] = NodeStatus.pending;
-                  }
-                }
-
-                // 3. Группировка подзадач и артефактов по агентам
-                final agentSubtasks = <String, List<String>>{};
-                final agentArtifacts = <String, List<Artifact>>{};
-
-                for (final name in participatingAgentNames) {
-                  agentSubtasks[name] = [];
-                  agentArtifacts[name] = [];
-                }
-
-                // Подзадачи из артефактов
-                for (final art in artifacts) {
-                  if (art.kind == 'subtask_description') {
-                    final agent = art.producerAgent;
-                    if (participatingAgentNames.contains(agent)) {
-                      final title = art.subtaskTitle ?? art.summary;
-                      if (title.isNotEmpty && !agentSubtasks[agent]!.contains(title)) {
-                        agentSubtasks[agent]!.add(title);
-                      }
-                    }
-                  }
-                  final agent = art.producerAgent;
-                  if (participatingAgentNames.contains(agent)) {
-                    agentArtifacts[agent]!.add(art);
-                  }
-                }
-
-                // 4. Построение списка нод для графа
-                final nodesList = participatingAgentNames.map((name) {
-                  final teamAgent = teamAgents.firstWhere(
-                    (a) => a.name == name,
-                    orElse: () => AgentModel(
-                      id: name,
-                      name: name,
-                      role: widget.assignedAgentName == name ? (widget.assignedAgentRole ?? name) : name,
-                      isActive: true,
-                    ),
-                  );
-                  return AgentNodeData(
-                    name: name,
-                    role: teamAgent.role,
-                    status: agentStatuses[name] ?? NodeStatus.pending,
-                    subtasks: agentSubtasks[name] ?? [],
-                    artifacts: agentArtifacts[name] ?? [],
-                  );
+                final levels = sortedStepNos.map((step) {
+                  return stepGroups[step]!.map((node) => node.id).toList();
                 }).toList();
 
-                // Выделение переходов (Edges)
+                // 3. Выделение переходов (Edges) от шага S к шагу S + 1
+                final sortedStepNosAsc = stepGroups.keys.toList()..sort();
                 final edges = <(String, String)>[];
-                for (int i = 0; i < decisions.length - 1; i++) {
-                  final fromAgents = decisions[i].chosenAgents;
-                  final toAgents = decisions[i + 1].chosenAgents;
-                  for (final from in fromAgents) {
-                    for (final to in toAgents) {
-                      if (from != to && !edges.contains((from, to))) {
-                        edges.add((from, to));
-                      }
+                for (int i = 0; i < sortedStepNosAsc.length - 1; i++) {
+                  final fromStep = sortedStepNosAsc[i];
+                  final toStep = sortedStepNosAsc[i + 1];
+                  final fromNodes = stepGroups[fromStep]!;
+                  final toNodes = stepGroups[toStep]!;
+                  for (final fromNode in fromNodes) {
+                    for (final toNode in toNodes) {
+                      edges.add((fromNode.id, toNode.id));
                     }
                   }
                 }
 
-                // Переход от последнего шага к текущему назначенному агенту
-                if (widget.assignedAgentName != null && decisions.isNotEmpty) {
-                  final lastAgents = decisions.last.chosenAgents;
-                  for (final from in lastAgents) {
-                    if (from != widget.assignedAgentName && !edges.contains((from, widget.assignedAgentName!))) {
-                      edges.add((from, widget.assignedAgentName!));
-                    }
-                  }
+                // Активный агент/нода для отрисовки подсветки связей (первый из запущенных)
+                AgentNodeData? activeNode;
+                try {
+                  activeNode = nodesList.firstWhere((n) => n.status == NodeStatus.running);
+                } catch (_) {
+                  activeNode = null;
                 }
-
-                // Активный агент для отрисовки подсветки связей (первый из списка активных)
-                final String? activeAgent = activeAgents.isNotEmpty ? activeAgents.first : null;
+                final String? activeAgent = activeNode?.id;
 
                 if (isMobile) {
                   return DefaultTabController(
@@ -373,7 +411,10 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                       onTap: () {
                         if (d.chosenAgents.isNotEmpty) {
                           final name = d.chosenAgents.first;
-                          final node = nodes.firstWhere((n) => n.name == name);
+                          final node = nodes.firstWhere(
+                            (n) => n.stepNo == d.stepNo && n.name == name,
+                            orElse: () => nodes.firstWhere((n) => n.name == name),
+                          );
                           widget.onAgentSelected(node);
                         }
                       },
@@ -463,9 +504,9 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
           final double y = lvlIdx * verticalSpacing + 50.0;
 
           for (int i = 0; i < numInLvl; i++) {
-            final name = lvlAgents[i];
+            final nodeId = lvlAgents[i];
             final double x = (canvasWidth / 2) - (totalWidth / 2) + i * (cardWidth + horizontalSpacing);
-            nodePositions[name] = Offset(x, y);
+            nodePositions[nodeId] = Offset(x, y);
           }
         }
 
@@ -520,7 +561,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                   height: canvasSize.height,
                   child: Stack(
                     children: nodes.map((node) {
-                      final pos = nodePositions[node.name] ?? Offset.zero;
+                      final pos = nodePositions[node.id] ?? Offset.zero;
                       return Positioned(
                         left: pos.dx,
                         top: pos.dy,
@@ -539,7 +580,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
 
   Widget _buildAgentCard(AgentNodeData node) {
     final l10n = requireAppLocalizations(context, where: 'task_execution_graph');
-    final isSelected = widget.selectedAgentName == node.name;
+    final isSelected = widget.selectedAgentNodeId == node.id || (widget.selectedAgentNodeId == null && widget.selectedAgentName == node.name);
 
     Color color;
     IconData icon;

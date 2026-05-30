@@ -330,7 +330,13 @@ func main() {
 		"devteam/sandbox-aider:local",
 		"devteam/sandbox-hermes:local",
 		"devteam/sandbox-antigravity:local",
-	}, sandbox.WithLogPublisher(sandboxLogAdapter))
+	},
+		sandbox.WithLogPublisher(sandboxLogAdapter),
+		sandbox.WithResourceLimitPolicy(sandbox.ResourceLimitPolicy{
+			MemoryFloorBytes: cfg.Sandbox.MemoryFloorBytes,
+			MemoryCeilBytes:  cfg.Sandbox.MemoryCeilBytes,
+		}),
+	)
 	// Sprint 16: per-backend образа. claude-code/aider/custom уходят в default
 	// (sandbox-claude), hermes — в свой образ. Если в будущем у aider будет
 	// отдельный образ — добавляем в map здесь же без правок executor'а.
