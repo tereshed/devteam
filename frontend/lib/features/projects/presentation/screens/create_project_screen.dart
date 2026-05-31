@@ -689,7 +689,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                         controller: descCtrl,
                         decoration: const InputDecoration(
                           labelText: 'Описание (опционально)',
-                          hintText: 'Проект команды DevTeam',
+                          hintText: 'Проект команды PolyMaths',
                         ),
                         enabled: !isCreating,
                         maxLines: 2,

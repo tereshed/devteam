@@ -2,7 +2,7 @@
   "@@locale": "en",
   "appTitle": "Wibe Flutter Gin Template",
 
-  "appShellBrand": "DevTeam",
+  "appShellBrand": "PolyMaths",
   "@appShellBrand": { "description": "ui_refactoring stage 1: brand label in AppBar of AppShell" },
   "navDashboard": "Overview",
   "@navDashboard": { "description": "ui_refactoring stage 1: sidebar item /dashboard" },
@@ -149,7 +149,7 @@
   "@integrationsGitlabHostInstructionsStep1": { "description": "ui_refactoring stage 3b: BYO step (oauth-setup-guide §5)" },
   "integrationsGitlabHostInstructionsStep2": "Click ‘Add new application’.",
   "@integrationsGitlabHostInstructionsStep2": { "description": "ui_refactoring stage 3b: BYO step" },
-  "integrationsGitlabHostInstructionsStep3": "Name: DevTeam. Redirect URI: {redirectUri}.",
+  "integrationsGitlabHostInstructionsStep3": "Name: PolyMaths. Redirect URI: {redirectUri}.",
   "@integrationsGitlabHostInstructionsStep3": {
     "description": "ui_refactoring stage 3b: BYO step with this app's callback URL",
     "placeholders": { "redirectUri": { "type": "String" } }
@@ -491,7 +491,7 @@
   "@globalSettingsStubIntro": { "description": "13.5 mode B intro" },
   "globalSettingsBlockedByLabel": "Backend task in repo:",
   "@globalSettingsBlockedByLabel": { "description": "13.5 mode B label before path" },
-  "globalSettingsStubApiKeysNote": "Below: DevTeam application API keys (MCP). These are not LLM provider keys.",
+  "globalSettingsStubApiKeysNote": "Below: PolyMaths application API keys (MCP). These are not LLM provider keys.",
   "@globalSettingsStubApiKeysNote": { "description": "13.5 distinction from LLM keys" },
   "globalSettingsOpenDevTeamApiKeys": "Application API keys",
   "@globalSettingsOpenDevTeamApiKeys": { "description": "13.5 navigate to /profile/api-keys" },
@@ -937,7 +937,7 @@
 
   "globalSettingsTabLLMProviders": "LLM providers",
   "globalSettingsTabClaudeCode": "Claude Code",
-  "globalSettingsTabDevTeam": "DevTeam",
+  "globalSettingsTabDevTeam": "PolyMaths",
 
   "llmProvidersSectionTitle": "LLM providers",
   "llmProvidersAdd": "Add",
@@ -980,7 +980,7 @@
   "claudeCodeAuthDisconnectedHint": "Sign in with your Claude Code subscription to let agents authenticate via OAuth instead of a long-lived API key.",
   "claudeCodeAuthLogin": "Sign in with subscription",
   "claudeCodeAuthDeviceFlowTitle": "Authorize on Anthropic",
-  "claudeCodeAuthEnterCodeHint": "Open the link below in any browser and enter this code to authorize DevTeam:",
+  "claudeCodeAuthEnterCodeHint": "Open the link below in any browser and enter this code to authorize PolyMaths:",
   "claudeCodeAuthWaiting": "Waiting for authorization…",
 
   "agentSandboxSettingsTitle": "Agent advanced settings",
@@ -1328,9 +1328,9 @@
   "@agentConfigTemperatureLabel": { "description": "Phase 5: temperature slider label" },
   "agentConfigTemperatureDefault": "default",
   "@agentConfigTemperatureDefault": { "description": "Phase 5: temperature not set label" },
-  "agentConfigDevTeamMCP": "DevTeam MCP",
+  "agentConfigDevTeamMCP": "PolyMaths MCP",
   "@agentConfigDevTeamMCP": { "description": "Phase 5: internal MCP toggle label" },
-  "agentConfigDevTeamMCPDesc": "Built-in DevTeam tools (task management, code search, etc.)",
+  "agentConfigDevTeamMCPDesc": "Built-in PolyMaths tools (task management, code search, etc.)",
   "@agentConfigDevTeamMCPDesc": { "description": "Phase 5: internal MCP toggle subtitle" },
   "agentConfigExternalMCPTitle": "External MCP servers",
   "@agentConfigExternalMCPTitle": { "description": "Phase 5: external MCP sub-section header" },

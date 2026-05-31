@@ -12,7 +12,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'Wibe Flutter Gin Template';
 
   @override
-  String get appShellBrand => 'DevTeam';
+  String get appShellBrand => 'PolyMaths';
 
   @override
   String get navDashboard => 'Overview';
@@ -240,7 +240,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String integrationsGitlabHostInstructionsStep3(String redirectUri) {
-    return 'Name: DevTeam. Redirect URI: $redirectUri.';
+    return 'Name: PolyMaths. Redirect URI: $redirectUri.';
   }
 
   @override
@@ -924,7 +924,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get globalSettingsStubApiKeysNote =>
-      'Below: DevTeam application API keys (MCP). These are not LLM provider keys.';
+      'Below: PolyMaths application API keys (MCP). These are not LLM provider keys.';
 
   @override
   String get globalSettingsOpenDevTeamApiKeys => 'Application API keys';
@@ -1704,7 +1704,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get globalSettingsTabClaudeCode => 'Claude Code';
 
   @override
-  String get globalSettingsTabDevTeam => 'DevTeam';
+  String get globalSettingsTabDevTeam => 'PolyMaths';
 
   @override
   String get llmProvidersSectionTitle => 'LLM providers';
@@ -1826,7 +1826,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get claudeCodeAuthEnterCodeHint =>
-      'Open the link below in any browser and enter this code to authorize DevTeam:';
+      'Open the link below in any browser and enter this code to authorize PolyMaths:';
 
   @override
   String get claudeCodeAuthWaiting => 'Waiting for authorization…';
@@ -2453,11 +2453,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentConfigTemperatureDefault => 'default';
 
   @override
-  String get agentConfigDevTeamMCP => 'DevTeam MCP';
+  String get agentConfigDevTeamMCP => 'PolyMaths MCP';
 
   @override
   String get agentConfigDevTeamMCPDesc =>
-      'Built-in DevTeam tools (task management, code search, etc.)';
+      'Built-in PolyMaths tools (task management, code search, etc.)';
 
   @override
   String get agentConfigExternalMCPTitle => 'External MCP servers';

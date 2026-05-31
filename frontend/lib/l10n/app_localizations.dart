@@ -107,7 +107,7 @@ abstract class AppLocalizations {
   /// ui_refactoring stage 1: brand label in AppBar of AppShell
   ///
   /// In ru, this message translates to:
-  /// **'DevTeam'**
+  /// **'PolyMaths'**
   String get appShellBrand;
 
   /// ui_refactoring stage 1: sidebar item /dashboard
@@ -497,7 +497,7 @@ abstract class AppLocalizations {
   /// ui_refactoring stage 3b: BYO step with this app's callback URL
   ///
   /// In ru, this message translates to:
-  /// **'Name: DevTeam. Redirect URI: {redirectUri}.'**
+  /// **'Name: PolyMaths. Redirect URI: {redirectUri}.'**
   String integrationsGitlabHostInstructionsStep3(String redirectUri);
 
   /// ui_refactoring stage 3b: BYO step
@@ -1673,7 +1673,7 @@ abstract class AppLocalizations {
   /// 13.5: отличие от ApiKeysScreen
   ///
   /// In ru, this message translates to:
-  /// **'Ниже — ключи доступа к приложению DevTeam (MCP). Это не ключи LLM-провайдеров.'**
+  /// **'Ниже — ключи доступа к приложению PolyMaths (MCP). Это не ключи LLM-провайдеров.'**
   String get globalSettingsStubApiKeysNote;
 
   /// 13.5: кнопка на /profile/api-keys
@@ -3143,7 +3143,7 @@ abstract class AppLocalizations {
   /// No description provided for @globalSettingsTabDevTeam.
   ///
   /// In ru, this message translates to:
-  /// **'DevTeam'**
+  /// **'PolyMaths'**
   String get globalSettingsTabDevTeam;
 
   /// No description provided for @llmProvidersSectionTitle.
@@ -3371,7 +3371,7 @@ abstract class AppLocalizations {
   /// No description provided for @claudeCodeAuthEnterCodeHint.
   ///
   /// In ru, this message translates to:
-  /// **'Откройте ссылку ниже в любом браузере и введите этот код, чтобы авторизовать DevTeam:'**
+  /// **'Откройте ссылку ниже в любом браузере и введите этот код, чтобы авторизовать PolyMaths:'**
   String get claudeCodeAuthEnterCodeHint;
 
   /// No description provided for @claudeCodeAuthWaiting.
@@ -4523,13 +4523,13 @@ abstract class AppLocalizations {
   /// No description provided for @agentConfigDevTeamMCP.
   ///
   /// In ru, this message translates to:
-  /// **'DevTeam MCP'**
+  /// **'PolyMaths MCP'**
   String get agentConfigDevTeamMCP;
 
   /// No description provided for @agentConfigDevTeamMCPDesc.
   ///
   /// In ru, this message translates to:
-  /// **'Встроенные инструменты DevTeam (управление задачами, поиск по коду и т.д.)'**
+  /// **'Встроенные инструменты PolyMaths (управление задачами, поиск по коду и т.д.)'**
   String get agentConfigDevTeamMCPDesc;
 
   /// No description provided for @agentConfigExternalMCPTitle.

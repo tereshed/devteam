@@ -1,4 +1,4 @@
-# DevTeam — AI Agent Orchestrator
+# PolyMaths — AI Agent Orchestrator
 
 Платформа-оркестратор AI-агентов для автоматизации полного цикла разработки ПО. Пользователь описывает идею в чате — команда AI-агентов реализует: планирует, пишет код, ревьюит, тестирует.
 
@@ -620,7 +620,7 @@ make help                            # Все команды
 ## Правила разработки
 
 Детальные правила в `.cursor/rules/`:
-- `main.mdc` — концепция DevTeam, domain model, архитектура агентов
+- `main.mdc` — концепция PolyMaths, domain model, архитектура агентов
 - `backend.mdc` — Go/Gin, Clean Architecture, миграции, JWT, тесты
 - `frontend.mdc` — Flutter, Riverpod, адаптивность, i18n, тесты
 - `deploy.mdc` — Docker, Makefile, окружение

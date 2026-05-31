@@ -945,20 +945,20 @@ func (s *projectService) initializeEmptyRepo(
 		return fmt.Errorf("git init: %w", err)
 	}
 
-	cmd = exec.CommandContext(ctx, "git", "config", "user.name", "DevTeam AI")
+	cmd = exec.CommandContext(ctx, "git", "config", "user.name", "PolyMaths AI")
 	cmd.Dir = tempDir
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git config user.name: %w", err)
 	}
 
-	cmd = exec.CommandContext(ctx, "git", "config", "user.email", "ai@devteam.local")
+	cmd = exec.CommandContext(ctx, "git", "config", "user.email", "ai@polymaths.local")
 	cmd.Dir = tempDir
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git config user.email: %w", err)
 	}
 
 	readmePath := filepath.Join(tempDir, "README.md")
-	readmeContent := fmt.Sprintf("# Project %s\n\nInitial repository created automatically by DevTeam AI.\n", projectID)
+	readmeContent := fmt.Sprintf("# Project %s\n\nInitial repository created automatically by PolyMaths AI.\n", projectID)
 	if err := os.WriteFile(readmePath, []byte(readmeContent), 0644); err != nil {
 		return fmt.Errorf("write README.md: %w", err)
 	}
@@ -966,8 +966,8 @@ func (s *projectService) initializeEmptyRepo(
 	_, _, err = provider.Commit(ctx, tempDir, gitprovider.CommitOptions{
 		Message: "Initial commit",
 		Author: gitprovider.Author{
-			Name:  "DevTeam AI",
-			Email: "ai@devteam.local",
+			Name:  "PolyMaths AI",
+			Email: "ai@polymaths.local",
 		},
 	})
 	if err != nil {

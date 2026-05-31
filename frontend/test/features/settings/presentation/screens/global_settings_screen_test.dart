@@ -12,7 +12,7 @@ import 'package:frontend/features/settings/presentation/screens/global_settings_
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
-/// Sprint 15 — global settings теперь TabBar(3); тесты пушат «DevTeam» вкладку,
+/// Sprint 15 — global settings теперь TabBar(3); тесты пушат «PolyMaths» вкладку,
 /// прежде чем проверять старые ожидания (blocker path, api keys button).
 List<Override> _defaultSpringtimeOverrides() => [
       llmProvidersListProvider.overrideWith((ref) async => <LLMProviderModel>[]),
@@ -56,7 +56,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> _openDevTeamTab(WidgetTester tester) async {
+  Future<void> _openPolyMathsTab(WidgetTester tester) async {
     final l10n = AppLocalizations.of(
       tester.element(find.byType(GlobalSettingsScreen)),
     )!;
@@ -64,11 +64,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('B1: DevTeam-вкладка содержит blocker path и нет редакторов ключей', (
+  testWidgets('B1: PolyMaths-вкладка содержит blocker path и нет редакторов ключей', (
     WidgetTester tester,
   ) async {
     await pumpStub(tester);
-    await _openDevTeamTab(tester);
+    await _openPolyMathsTab(tester);
     expect(find.byType(GlobalSettingsScreen), findsOneWidget);
     expect(find.text(globalSettingsBackendBlockerDocsPath), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
@@ -85,7 +85,7 @@ void main() {
     expect(find.text(l10n.globalSettingsScreenTitle), findsOneWidget);
     expect(find.text(l10n.globalSettingsTabLLMProviders), findsOneWidget);
     expect(find.text(l10n.globalSettingsTabClaudeCode), findsOneWidget);
-    await _openDevTeamTab(tester);
+    await _openPolyMathsTab(tester);
     expect(find.text(l10n.globalSettingsStubIntro), findsOneWidget);
     expect(find.text(l10n.globalSettingsBlockedByLabel), findsOneWidget);
   });
@@ -109,7 +109,7 @@ void main() {
       ],
     );
     await pumpStub(tester, router: router);
-    await _openDevTeamTab(tester);
+    await _openPolyMathsTab(tester);
 
     final l10n = AppLocalizations.of(
       tester.element(find.byType(GlobalSettingsScreen)),

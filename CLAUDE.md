@@ -1,4 +1,4 @@
-# DevTeam — AI Agent Orchestrator
+# PolyMaths — AI Agent Orchestrator
 
 Стек: **Go (Gin)**, **Flutter**, **YugabyteDB**, **Weaviate**, **Claude Code CLI / Aider**.
 

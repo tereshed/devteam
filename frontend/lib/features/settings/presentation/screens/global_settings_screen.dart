@@ -12,7 +12,7 @@ import 'package:go_router/go_router.dart';
 /// Sprint 15.30/15.31 — глобальные настройки получили вкладки:
 ///   - LLM-провайдеры
 ///   - Claude Code (OAuth-подписка)
-///   - DevTeam (legacy 13.5 — заглушка про user API keys).
+///   - PolyMaths (legacy 13.5 — заглушка про user API keys).
 class GlobalSettingsScreen extends StatelessWidget {
   const GlobalSettingsScreen({super.key});
 
@@ -42,7 +42,7 @@ class GlobalSettingsScreen extends StatelessWidget {
               children: [
                 _LLMProvidersTab(),
                 _ClaudeCodeTab(),
-                _DevTeamLegacyTab(),
+                _PolyMathsLegacyTab(),
               ],
             ),
           ),
@@ -76,8 +76,8 @@ class _ClaudeCodeTab extends StatelessWidget {
   }
 }
 
-class _DevTeamLegacyTab extends StatelessWidget {
-  const _DevTeamLegacyTab();
+class _PolyMathsLegacyTab extends StatelessWidget {
+  const _PolyMathsLegacyTab();
 
   @override
   Widget build(BuildContext context) {

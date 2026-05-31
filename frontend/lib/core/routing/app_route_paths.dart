@@ -7,7 +7,7 @@ abstract final class AppRoutePaths {
   /// Глобальные настройки LLM-провайдеров (не путать с `/projects/:id/settings`).
   static const String settings = '/settings';
 
-  /// Ключи API продукта DevTeam (MCP), не LLM-провайдеры.
+  /// Ключи API продукта PolyMaths (MCP), не LLM-провайдеры.
   static const String profileApiKeys = '/profile/api-keys';
 }
 

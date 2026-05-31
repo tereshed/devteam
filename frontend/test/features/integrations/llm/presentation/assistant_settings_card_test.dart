@@ -454,10 +454,10 @@ void main() {
       final providerDropdownState = tester.state<FormFieldState<LlmIntegrationProvider>>(providerDropdownFinder);
       expect(providerDropdownState.value, LlmIntegrationProvider.openrouter);
 
-      // Verify that model search controller text changed to one of the default suggestions for openrouter (e.g. 'deepseek/deepseek-r1')
+      // Verify that model search controller text changed to one of the default suggestions for openrouter (e.g. 'deepseek/deepseek-v4-pro')
       final modelFieldFinder = find.byType(TextFormField).first;
       final modelFieldWidget = tester.widget<TextFormField>(modelFieldFinder);
-      expect(modelFieldWidget.controller?.text, 'deepseek/deepseek-r1');
+      expect(modelFieldWidget.controller?.text, 'deepseek/deepseek-v4-pro');
 
       // Save settings
       final saveBtnFinder = find.text('Сохранить настройки');
@@ -467,7 +467,7 @@ void main() {
       // Verify myAgentsRepo update was called with openrouter details
       expect(myAgentsRepo.updateCalled, isTrue);
       expect(myAgentsRepo.lastProviderKind, 'openrouter');
-      expect(myAgentsRepo.lastModel, 'deepseek/deepseek-r1');
+      expect(myAgentsRepo.lastModel, 'deepseek/deepseek-v4-pro');
     });
   });
 }

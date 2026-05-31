@@ -238,7 +238,7 @@ void main() {
       expect(find.text(l10n.agentConfigModelLabel), findsOneWidget);
     });
 
-    testWidgets('MCP section shows DevTeam MCP toggle', (tester) async {
+    testWidgets('MCP section shows PolyMaths MCP toggle', (tester) async {
       await _pump(tester);
       final l10n = requireAppLocalizations(
         tester.element(find.byType(AgentConfigScreen)),

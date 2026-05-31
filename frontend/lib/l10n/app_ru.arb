@@ -5,7 +5,7 @@
     "description": "Название приложения"
   },
 
-  "appShellBrand": "DevTeam",
+  "appShellBrand": "PolyMaths",
   "@appShellBrand": { "description": "ui_refactoring stage 1: brand label in AppBar of AppShell" },
   "navDashboard": "Обзор",
   "@navDashboard": { "description": "ui_refactoring stage 1: sidebar item /dashboard" },
@@ -152,7 +152,7 @@
   "@integrationsGitlabHostInstructionsStep1": { "description": "ui_refactoring stage 3b: BYO step (oauth-setup-guide §5)" },
   "integrationsGitlabHostInstructionsStep2": "Жмите «Add new application».",
   "@integrationsGitlabHostInstructionsStep2": { "description": "ui_refactoring stage 3b: BYO step" },
-  "integrationsGitlabHostInstructionsStep3": "Name: DevTeam. Redirect URI: {redirectUri}.",
+  "integrationsGitlabHostInstructionsStep3": "Name: PolyMaths. Redirect URI: {redirectUri}.",
   "@integrationsGitlabHostInstructionsStep3": {
     "description": "ui_refactoring stage 3b: BYO step with this app's callback URL",
     "placeholders": { "redirectUri": { "type": "String" } }
@@ -709,7 +709,7 @@
   "@globalSettingsStubIntro": { "description": "13.5 режим B: пояснение" },
   "globalSettingsBlockedByLabel": "Задача backend в репозитории:",
   "@globalSettingsBlockedByLabel": { "description": "13.5 режим B: подпись к пути" },
-  "globalSettingsStubApiKeysNote": "Ниже — ключи доступа к приложению DevTeam (MCP). Это не ключи LLM-провайдеров.",
+  "globalSettingsStubApiKeysNote": "Ниже — ключи доступа к приложению PolyMaths (MCP). Это не ключи LLM-провайдеров.",
   "@globalSettingsStubApiKeysNote": { "description": "13.5: отличие от ApiKeysScreen" },
   "globalSettingsOpenDevTeamApiKeys": "Ключи API приложения",
   "@globalSettingsOpenDevTeamApiKeys": { "description": "13.5: кнопка на /profile/api-keys" },
@@ -1256,7 +1256,7 @@
 
   "globalSettingsTabLLMProviders": "LLM-провайдеры",
   "globalSettingsTabClaudeCode": "Claude Code",
-  "globalSettingsTabDevTeam": "DevTeam",
+  "globalSettingsTabDevTeam": "PolyMaths",
 
   "llmProvidersSectionTitle": "LLM-провайдеры",
   "llmProvidersAdd": "Добавить",
@@ -1299,7 +1299,7 @@
   "claudeCodeAuthDisconnectedHint": "Войдите по подписке Claude Code, чтобы агенты использовали OAuth-токен вместо долгоживущего API-ключа.",
   "claudeCodeAuthLogin": "Войти по подписке",
   "claudeCodeAuthDeviceFlowTitle": "Подтверждение на стороне Anthropic",
-  "claudeCodeAuthEnterCodeHint": "Откройте ссылку ниже в любом браузере и введите этот код, чтобы авторизовать DevTeam:",
+  "claudeCodeAuthEnterCodeHint": "Откройте ссылку ниже в любом браузере и введите этот код, чтобы авторизовать PolyMaths:",
   "claudeCodeAuthWaiting": "Ожидание подтверждения…",
 
   "agentSandboxSettingsTitle": "Дополнительные настройки агента",
@@ -1572,8 +1572,8 @@
   "agentConfigModelHint": "напр. claude-sonnet-4-20250514",
   "agentConfigTemperatureLabel": "Temperature",
   "agentConfigTemperatureDefault": "по умолчанию",
-  "agentConfigDevTeamMCP": "DevTeam MCP",
-  "agentConfigDevTeamMCPDesc": "Встроенные инструменты DevTeam (управление задачами, поиск по коду и т.д.)",
+  "agentConfigDevTeamMCP": "PolyMaths MCP",
+  "agentConfigDevTeamMCPDesc": "Встроенные инструменты PolyMaths (управление задачами, поиск по коду и т.д.)",
   "agentConfigExternalMCPTitle": "Внешние MCP-серверы",
   "agentConfigNoExternalMCP": "Внешние MCP-серверы не настроены",
   "agentConfigAddMCPServer": "Добавить MCP-сервер",
