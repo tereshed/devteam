@@ -2757,6 +2757,15 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskTraceLegendDependency => 'зависимость';
 
   @override
+  String get taskTraceChanges => 'Нужны правки';
+
+  @override
+  String get appShellNavCollapse => 'Свернуть меню';
+
+  @override
+  String get appShellNavExpand => 'Развернуть меню';
+
+  @override
   String get agentMatrixInspectorTitle => 'Инспекция агента';
 
   @override

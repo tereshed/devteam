@@ -151,7 +151,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   String? _selectedAgentName;
   String? _selectedAgentNodeId;
   bool _showInspector = true;
-  _TaskVizMode _vizMode = _TaskVizMode.trace;
 
   @override
   void dispose() {
@@ -756,41 +755,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       });
     }
 
-    final Widget viz;
-    switch (_vizMode) {
-      case _TaskVizMode.trace:
-        viz = TaskSwimlaneTrace(
-          projectId: widget.projectId,
-          taskId: widget.taskId,
-          taskState: data.task!.status,
-          assignedAgentName: data.task!.assignedAgent?.name,
-          assignedAgentRole: data.task!.assignedAgent?.role,
-          selectedAgentName: _selectedAgentName,
-          selectedAgentNodeId: _selectedAgentNodeId,
-          onAgentSelected: onAgentSelected,
-        );
-      case _TaskVizMode.flow:
-        viz = TaskExecutionGraph(
-          projectId: widget.projectId,
-          taskId: widget.taskId,
-          taskState: data.task!.status,
-          assignedAgentName: data.task!.assignedAgent?.name,
-          assignedAgentRole: data.task!.assignedAgent?.role,
-          selectedAgentName: _selectedAgentName,
-          selectedAgentNodeId: _selectedAgentNodeId,
-          onAgentSelected: onAgentSelected,
-        );
-    }
-
-    final graph = Column(
-      children: [
-        _TaskVizToggle(
-          mode: _vizMode,
-          onChanged: (m) => setState(() => _vizMode = m),
-          l10n: l10n,
-        ),
-        Expanded(child: viz),
-      ],
+    final graph = TaskSwimlaneTrace(
+      projectId: widget.projectId,
+      taskId: widget.taskId,
+      taskState: data.task!.status,
+      assignedAgentName: data.task!.assignedAgent?.name,
+      assignedAgentRole: data.task!.assignedAgent?.role,
+      selectedAgentName: _selectedAgentName,
+      selectedAgentNodeId: _selectedAgentNodeId,
+      onAgentSelected: onAgentSelected,
     );
 
     final banners = _realtimeBanners(context, l10n, data);
@@ -807,7 +780,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           if (_showInspector) ...[
             const VerticalDivider(width: 1),
             SizedBox(
-              width: width * 0.35,
+              // Компактный инспектор: фиксированный потолок, чтобы не съедать
+              // место у трейса (контент плотный, 600px ему не нужны).
+              width: (width * 0.28).clamp(300.0, 380.0),
               child: _buildInspectorContent(context, l10n, data),
             ),
           ],
@@ -1727,55 +1702,5 @@ class _GeneralInfoInspectorPanelState
   }
 
 
-}
-
-/// Режим визуализации выполнения задачи: swimlane-трейс или граф решений.
-enum _TaskVizMode { trace, flow }
-
-/// Переключатель Trace / Flow над визуализацией (общий для wide и mobile).
-class _TaskVizToggle extends StatelessWidget {
-  const _TaskVizToggle({
-    required this.mode,
-    required this.onChanged,
-    required this.l10n,
-  });
-
-  final _TaskVizMode mode;
-  final ValueChanged<_TaskVizMode> onChanged;
-  final AppLocalizations l10n;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: SegmentedButton<_TaskVizMode>(
-          style: const ButtonStyle(visualDensity: VisualDensity.compact),
-          showSelectedIcon: false,
-          segments: [
-            ButtonSegment(
-              value: _TaskVizMode.trace,
-              icon: const Icon(Icons.view_timeline_outlined, size: 16),
-              label: Text(l10n.taskVizTabTrace),
-            ),
-            ButtonSegment(
-              value: _TaskVizMode.flow,
-              icon: const Icon(Icons.account_tree_outlined, size: 16),
-              label: Text(l10n.taskVizTabFlow),
-            ),
-          ],
-          selected: {mode},
-          onSelectionChanged: (s) => onChanged(s.first),
-        ),
-      ),
-    );
-  }
 }
 

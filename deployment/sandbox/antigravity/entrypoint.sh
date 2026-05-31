@@ -549,7 +549,7 @@ if [[ -n "$PUSH_URL" ]]; then
     echo "entrypoint: git push rejected, attempting git pull --rebase..." >>"$AGENT_LOG"
     set +e
     git pull --rebase "$PUSH_URL" "$BRANCH_NAME" >>"$AGENT_LOG" 2>&1
-    local pull_exit=$?
+    pull_exit=$?
     set -e
     
     if [[ "$pull_exit" -ne 0 ]]; then

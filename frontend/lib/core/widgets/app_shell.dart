@@ -144,7 +144,9 @@ class AppShell extends ConsumerWidget {
       );
     }
 
-    final extended = device == DeviceType.desktop;
+    // Desktop: меню можно свернуть до иконок (tablet всегда компактный).
+    final railExpanded = ref.watch(navRailExpandedProvider);
+    final extended = device == DeviceType.desktop && railExpanded;
     final railWidth = extended ? 240.0 : 80.0;
     const assistantWidth = 360.0;
     final showInlineAssistant = extended && sidebarOpen;
@@ -165,6 +167,10 @@ class AppShell extends ConsumerWidget {
                   selectedIndex: selectedIndex,
                   location: location,
                   expanded: extended,
+                  onToggleCollapse: device == DeviceType.desktop
+                      ? () =>
+                          ref.read(navRailExpandedProvider.notifier).toggle()
+                      : null,
                   onTap: (route) => context.go(route),
                 ),
               ),
@@ -222,12 +228,16 @@ class _DestinationsList extends StatelessWidget {
   final bool expanded;
   final ValueChanged<String> onTap;
 
+  /// Тогл сворачивания меню (только desktop). null — кнопка не показывается.
+  final VoidCallback? onToggleCollapse;
+
   const _DestinationsList({
     required this.destinations,
     required this.selectedIndex,
     required this.location,
     required this.expanded,
     required this.onTap,
+    this.onToggleCollapse,
   });
 
   @override
@@ -239,6 +249,26 @@ class _DestinationsList extends StatelessWidget {
     final theme = Theme.of(context);
 
     final items = <Widget>[];
+
+    // Кнопка сворачивания меню до иконок (desktop).
+    if (onToggleCollapse != null) {
+      items.add(
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: expanded ? 12 : 8),
+          child: Align(
+            alignment: expanded ? Alignment.centerRight : Alignment.center,
+            child: IconButton(
+              onPressed: onToggleCollapse,
+              icon: Icon(expanded ? Icons.menu_open : Icons.menu),
+              iconSize: 20,
+              tooltip:
+                  expanded ? l10n.appShellNavCollapse : l10n.appShellNavExpand,
+            ),
+          ),
+        ),
+      );
+    }
+
     AppShellDestinationGroup? lastGroup;
     for (var i = 0; i < destinations.length; i++) {
       final d = destinations[i];
@@ -353,3 +383,18 @@ class _DestinationTile extends StatelessWidget {
     return Tooltip(message: label, child: content);
   }
 }
+
+/// Раскрыто ли основное меню (NavigationRail) на desktop. По умолчанию — да;
+/// пользователь может свернуть его до иконок. Состояние живёт в корне
+/// ProviderScope, поэтому сохраняется при навигации между маршрутами.
+class NavRailExpandedNotifier extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void toggle() => state = !state;
+}
+
+final navRailExpandedProvider =
+    NotifierProvider<NavRailExpandedNotifier, bool>(
+  NavRailExpandedNotifier.new,
+);

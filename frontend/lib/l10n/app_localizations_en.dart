@@ -2734,6 +2734,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskTraceLegendDependency => 'dependency';
 
   @override
+  String get taskTraceChanges => 'Changes requested';
+
+  @override
+  String get appShellNavCollapse => 'Collapse menu';
+
+  @override
+  String get appShellNavExpand => 'Expand menu';
+
+  @override
   String get agentMatrixInspectorTitle => 'Agent Inspection';
 
   @override

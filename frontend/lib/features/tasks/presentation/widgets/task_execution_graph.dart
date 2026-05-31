@@ -440,7 +440,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
           indicatorColor = Colors.red;
           icon = Icons.error_outline;
         } else if (d.done) {
-          indicatorColor = Colors.green;
+          indicatorColor = Colors.grey.shade500;
           icon = Icons.check_circle_outline;
         }
 
@@ -664,7 +664,8 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
         icon = Icons.sync;
         statusText = l10n.agentMatrixStatusRunning;
       case NodeStatus.success:
-        color = Colors.green;
+        // Завершённые ноды — нейтрально-серые (без «зелёного успеха»).
+        color = Colors.grey.shade500;
         icon = Icons.check_circle_outline;
         statusText = l10n.agentMatrixStatusSuccess;
       case NodeStatus.failed:

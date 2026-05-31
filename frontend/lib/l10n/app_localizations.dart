@@ -5060,6 +5060,24 @@ abstract class AppLocalizations {
   /// **'зависимость'**
   String get taskTraceLegendDependency;
 
+  /// No description provided for @taskTraceChanges.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нужны правки'**
+  String get taskTraceChanges;
+
+  /// No description provided for @appShellNavCollapse.
+  ///
+  /// In ru, this message translates to:
+  /// **'Свернуть меню'**
+  String get appShellNavCollapse;
+
+  /// No description provided for @appShellNavExpand.
+  ///
+  /// In ru, this message translates to:
+  /// **'Развернуть меню'**
+  String get appShellNavExpand;
+
   /// No description provided for @agentMatrixInspectorTitle.
   ///
   /// In ru, this message translates to:

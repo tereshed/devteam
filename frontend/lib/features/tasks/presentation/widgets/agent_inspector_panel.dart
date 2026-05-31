@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/l10n/require.dart';
-import 'package:frontend/features/tasks/presentation/widgets/task_execution_graph.dart';
-import 'package:frontend/features/tasks/presentation/widgets/sandbox_logs_viewer.dart';
 import 'package:frontend/features/tasks/presentation/widgets/artifact_viewer_dialog.dart';
+import 'package:frontend/features/tasks/presentation/widgets/sandbox_logs_viewer.dart';
+import 'package:frontend/features/tasks/presentation/widgets/task_execution_graph.dart';
+import 'package:frontend/l10n/app_localizations.dart';
 
+/// Компактный инспектор выбранного агента.
+///
+/// Вместо трёх вкладок во всю высоту (где пустая вкладка занимала всю панель) —
+/// плотный единый скролл: шапка + мета-строка + секции, которые показываются
+/// только если в них есть данные (артефакты, подзадачи), плюс сворачиваемые логи.
 class AgentInspectorPanel extends ConsumerStatefulWidget {
   const AgentInspectorPanel({
     super.key,
@@ -20,19 +26,12 @@ class AgentInspectorPanel extends ConsumerStatefulWidget {
   final VoidCallback onClose;
 
   @override
-  ConsumerState<AgentInspectorPanel> createState() => _AgentInspectorPanelState();
+  ConsumerState<AgentInspectorPanel> createState() =>
+      _AgentInspectorPanelState();
 }
 
-class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel> {
   int _selectedSubtaskIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
 
   @override
   void didUpdateWidget(covariant AgentInspectorPanel oldWidget) {
@@ -42,106 +41,75 @@ class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel>
     }
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+  // Завершённые ноды — серые (без зелёного), живые — синие, ошибки — красные.
+  Color get _statusColor => switch (widget.agent.status) {
+    NodeStatus.pending => Colors.grey.shade600,
+    NodeStatus.running => Colors.blue,
+    NodeStatus.success => Colors.grey.shade400,
+    NodeStatus.failed => Colors.red,
+  };
+
+  String _statusLabel(AppLocalizations l10n) => switch (widget.agent.status) {
+    NodeStatus.pending => l10n.agentMatrixStatusPending,
+    NodeStatus.running => l10n.agentMatrixStatusRunning,
+    NodeStatus.success => l10n.agentMatrixStatusSuccess,
+    NodeStatus.failed => l10n.agentMatrixStatusFailed,
+  };
 
   @override
   Widget build(BuildContext context) {
-    final l10n = requireAppLocalizations(context, where: 'agent_inspector_panel');
+    final l10n = requireAppLocalizations(
+      context,
+      where: 'agent_inspector_panel',
+    );
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-
-    Color statusColor;
-    switch (widget.agent.status) {
-      case NodeStatus.pending:
-        statusColor = Colors.grey;
-      case NodeStatus.running:
-        statusColor = Colors.blue;
-      case NodeStatus.success:
-        statusColor = Colors.green;
-      case NodeStatus.failed:
-        statusColor = Colors.red;
-    }
+    final agent = widget.agent;
+    final hasSubtasks = agent.subtasks.isNotEmpty;
+    final hasArtifacts = agent.artifacts.isNotEmpty;
+    final isRunning = agent.status == NodeStatus.running;
 
     return Container(
       decoration: BoxDecoration(
         color: theme.scaffoldBackgroundColor,
-        border: Border(
-          left: BorderSide(color: scheme.outlineVariant, width: 1),
-        ),
+        border: Border(left: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: scheme.surfaceContainerLow,
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: statusColor.withValues(alpha: 0.1),
-                  radius: 18,
-                  child: Icon(
-                    _getRoleIcon(widget.agent.role),
-                    color: statusColor,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.agent.name,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        widget.agent.role.toUpperCase(),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.outline,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: widget.onClose,
-                  icon: const Icon(Icons.close),
-                  tooltip: l10n.commonCancel,
-                ),
-              ],
-            ),
-          ),
-          // Tabs Header
-          TabBar(
-            controller: _tabController,
-            tabs: [
-              Tab(text: l10n.agentMatrixInspectorSubtasks),
-              Tab(text: l10n.agentMatrixInspectorLogs),
-              Tab(text: l10n.agentMatrixInspectorArtifacts),
-            ],
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            unselectedLabelStyle: const TextStyle(fontSize: 13),
-          ),
-          // Tabs Content
+          _header(theme, scheme, l10n),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 16),
               children: [
-                _buildSubtasksTab(context, l10n),
-                _buildLogsTab(context, l10n),
-                _buildArtifactsTab(context, l10n),
+                _metaRow(theme, scheme, l10n),
+                if (hasArtifacts) ...[
+                  _sectionHeader(
+                    theme,
+                    scheme,
+                    l10n.agentMatrixInspectorArtifacts,
+                  ),
+                  ...agent.artifacts.map((a) => _artifactRow(theme, scheme, a)),
+                ],
+                if (hasSubtasks) ...[
+                  _sectionHeader(
+                    theme,
+                    scheme,
+                    l10n.agentMatrixInspectorSubtasks,
+                  ),
+                  _subtasks(theme),
+                ],
+                if (!hasArtifacts && !hasSubtasks && !isRunning)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                    child: Text(
+                      l10n.agentMatrixInspectorNoArtifacts,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                _logsSection(theme, scheme, l10n, initiallyExpanded: isRunning),
               ],
             ),
           ),
@@ -150,164 +118,287 @@ class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel>
     );
   }
 
-  Widget _buildSubtasksTab(BuildContext context, dynamic l10n) {
-    final subtasks = widget.agent.subtasks;
-    if (subtasks.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Text(
-            l10n.agentMatrixInspectorNoSubtasks,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
-                ),
-            textAlign: TextAlign.center,
+  Widget _header(ThemeData theme, ColorScheme scheme, AppLocalizations l10n) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: scheme.surfaceContainerLow,
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: _statusColor.withValues(alpha: 0.12),
+            radius: 14,
+            child: Icon(
+              _getRoleIcon(widget.agent.role),
+              color: _statusColor,
+              size: 16,
+            ),
           ),
-        ),
-      );
-    }
-
-    final theme = Theme.of(context);
-    final selectedSubtaskTitle = subtasks[_selectedSubtaskIndex];
-
-    // Ищем описание подзадачи в артефактах
-    String description = '';
-    for (final art in widget.agent.artifacts) {
-      if (art.kind == 'subtask_description' &&
-          (art.subtaskTitle == selectedSubtaskTitle || art.summary == selectedSubtaskTitle)) {
-        description = art.content?['description'] as String? ?? art.summary;
-        break;
-      }
-    }
-
-    if (description.isEmpty) {
-      description = selectedSubtaskTitle;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Горизонтальный скролл чипсов подзадач
-        Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: subtasks.length,
-            itemBuilder: (context, index) {
-              final title = subtasks[index];
-              final isSelected = index == _selectedSubtaskIndex;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: ChoiceChip(
-                  label: Text(
-                    title.length > 20 ? '${title.substring(0, 18)}…' : title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  selected: isSelected,
-                  onSelected: (val) {
-                    if (val) {
-                      setState(() {
-                        _selectedSubtaskIndex = index;
-                      });
-                    }
-                  },
-                ),
-              );
-            },
-          ),
-        ),
-        const Divider(height: 1),
-        // Описание подзадачи
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+          const SizedBox(width: 10),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  selectedSubtaskTitle,
-                  style: theme.textTheme.titleMedium?.copyWith(
+                  widget.agent.name,
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 12),
                 Text(
-                  description,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    height: 1.4,
+                  widget.agent.role.toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.outline,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
                   ),
                 ),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: widget.onClose,
+            icon: const Icon(Icons.close, size: 18),
+            visualDensity: VisualDensity.compact,
+            tooltip: l10n.commonCancel,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metaRow(ThemeData theme, ColorScheme scheme, AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _statusChip(),
+          _miniChip(scheme, 'step ${widget.agent.stepNo}'),
+          if (widget.agent.artifacts.isNotEmpty)
+            _countChip(
+              scheme,
+              Icons.description_outlined,
+              widget.agent.artifacts.length,
+            ),
+          if (widget.agent.subtasks.isNotEmpty)
+            _countChip(
+              scheme,
+              Icons.checklist_rtl_outlined,
+              widget.agent.subtasks.length,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip() {
+    final c = _statusColor;
+    final l10n = requireAppLocalizations(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: c.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        _statusLabel(l10n),
+        style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _miniChip(ColorScheme scheme, String text) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+    ),
+  );
+
+  Widget _countChip(ColorScheme scheme, IconData icon, int n) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(
+          '$n',
+          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+        ),
+      ],
+    ),
+  );
+
+  Widget _sectionHeader(ThemeData theme, ColorScheme scheme, String text) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+        child: Text(
+          text.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+
+  Widget _artifactRow(ThemeData theme, ColorScheme scheme, dynamic art) {
+    return InkWell(
+      onTap: () => showArtifactViewerDialog(
+        context,
+        taskId: widget.taskId,
+        artifactId: art.id as String,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                art.kind as String,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                (art.subtaskTitle as String?) ?? (art.summary as String),
+                style: theme.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if ((art.iteration as int) > 0) ...[
+              const SizedBox(width: 6),
+              Text(
+                '#${art.iteration}',
+                style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+              ),
+            ],
+            const SizedBox(width: 4),
+            Icon(Icons.open_in_new, size: 15, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _subtasks(ThemeData theme) {
+    final subtasks = widget.agent.subtasks;
+    final selected = subtasks[_selectedSubtaskIndex];
+
+    var description = '';
+    for (final art in widget.agent.artifacts) {
+      if (art.kind == 'subtask_description' &&
+          (art.subtaskTitle == selected || art.summary == selected)) {
+        description = art.content?['description'] as String? ?? art.summary;
+        break;
+      }
+    }
+    if (description.isEmpty) {
+      description = selected;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 36,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: subtasks.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
+            itemBuilder: (context, index) {
+              final title = subtasks[index];
+              final isSel = index == _selectedSubtaskIndex;
+              return ChoiceChip(
+                visualDensity: VisualDensity.compact,
+                label: Text(
+                  title.length > 20 ? '${title.substring(0, 18)}…' : title,
+                  style: const TextStyle(fontSize: 11),
+                ),
+                selected: isSel,
+                onSelected: (v) {
+                  if (v) {
+                    setState(() => _selectedSubtaskIndex = index);
+                  }
+                },
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Text(
+            description,
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildLogsTab(BuildContext context, dynamic l10n) {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: SandboxLogsViewer(
-        projectId: widget.projectId,
-        taskId: widget.taskId,
-        fillParent: true,
-      ),
-    );
-  }
-
-  Widget _buildArtifactsTab(BuildContext context, dynamic l10n) {
-    final artifacts = widget.agent.artifacts;
-    if (artifacts.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Text(
-            l10n.agentMatrixInspectorNoArtifacts,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
-                ),
-            textAlign: TextAlign.center,
+  Widget _logsSection(
+    ThemeData theme,
+    ColorScheme scheme,
+    AppLocalizations l10n, {
+    required bool initiallyExpanded,
+  }) {
+    return Material(
+      // ExpansionTile рисует ListTile-заголовок; даём ему собственный Material,
+      // чтобы фон корневого Container (DecoratedBox) не глушил ink/splash.
+      type: MaterialType.transparency,
+      child: Theme(
+        // Убираем дефолтные разделители ExpansionTile, чтобы вписать в плотный стек.
+        data: theme.copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          title: Text(
+            l10n.agentMatrixInspectorLogs.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w700,
+            ),
           ),
+          children: [
+            SizedBox(
+              height: 240,
+              child: SandboxLogsViewer(
+                projectId: widget.projectId,
+                taskId: widget.taskId,
+                fillParent: true,
+              ),
+            ),
+          ],
         ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: artifacts.length,
-      itemBuilder: (context, index) {
-        final art = artifacts[index];
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          child: ListTile(
-            title: Text(
-              art.subtaskTitle ?? art.summary,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              '${art.kind} · Iteration #${art.iteration}',
-              style: const TextStyle(fontSize: 11),
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.open_in_new, size: 18),
-              onPressed: () {
-                showArtifactViewerDialog(
-                  context,
-                  taskId: widget.taskId,
-                  artifactId: art.id,
-                );
-              },
-            ),
-          ),
-        );
-      },
+      ),
     );
   }
 
@@ -323,6 +414,8 @@ class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel>
         return Icons.rate_review;
       case 'tester':
         return Icons.bug_report;
+      case 'merger':
+        return Icons.merge_type;
       case 'orchestrator':
         return Icons.hub;
       case 'worker':

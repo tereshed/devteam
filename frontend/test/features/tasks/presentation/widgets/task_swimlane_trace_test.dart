@@ -107,6 +107,36 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('ревью changes_requested рендерится без исключений (янтарь)',
+      (tester) async {
+    final t0 = DateTime.utc(2026, 5, 30, 10, 0, 0);
+    await tester.pumpWidget(harness(
+      agents: [agent('reviewer', 'reviewer'), agent('merger', 'merger')],
+      decisions: [
+        dec(0, ['planner'], t0),
+        dec(1, ['reviewer'], t0.add(const Duration(minutes: 1))),
+        dec(2, ['merger'], t0.add(const Duration(minutes: 3))),
+      ],
+      artifacts: [
+        Artifact(
+          id: 'rev1',
+          taskId: taskId,
+          producerAgent: 'reviewer',
+          kind: 'review',
+          summary: 'changes_requested: missing CSRF state check',
+          status: 'ready',
+          iteration: 0,
+          createdAt: t0.add(const Duration(minutes: 1, seconds: 20)),
+        ),
+      ],
+    ));
+    await tester.pump();
+
+    // Легенда содержит пункт «нужны правки», рендер без падений.
+    expect(find.text('Changes requested'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('показывает пустое состояние без решений роутера',
       (tester) async {
     await tester.pumpWidget(harness(

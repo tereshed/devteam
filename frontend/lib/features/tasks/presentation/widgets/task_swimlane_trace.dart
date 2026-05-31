@@ -261,18 +261,25 @@ class _TraceColors {
         router: s.primary,
       );
 
-  static Color status(NodeStatus s) => switch (s) {
-        NodeStatus.pending => Colors.grey,
-        NodeStatus.running => Colors.blue,
-        NodeStatus.success => Colors.green,
-        NodeStatus.failed => Colors.red,
+  // Завершённые ноды — нейтрально-серые (без «зелёного успеха»). Живые — синие,
+  // ошибки — красные, «нужны правки» — янтарные. Различие читается ещё и глифом.
+  static const amber = Color(0xFFD29922);
+
+  static Color result(_SpanResult r) => switch (r) {
+        _SpanResult.running => Colors.blue,
+        _SpanResult.pending => Colors.grey.shade600,
+        _SpanResult.ok => Colors.grey.shade400,
+        _SpanResult.changes => amber,
+        _SpanResult.failed => Colors.red,
       };
 
-  static String statusLabel(AppLocalizations l10n, NodeStatus s) => switch (s) {
-        NodeStatus.pending => l10n.agentMatrixStatusPending,
-        NodeStatus.running => l10n.agentMatrixStatusRunning,
-        NodeStatus.success => l10n.agentMatrixStatusSuccess,
-        NodeStatus.failed => l10n.agentMatrixStatusFailed,
+  static String resultLabel(AppLocalizations l10n, _SpanResult r) =>
+      switch (r) {
+        _SpanResult.running => l10n.agentMatrixStatusRunning,
+        _SpanResult.pending => l10n.agentMatrixStatusPending,
+        _SpanResult.ok => l10n.agentMatrixStatusSuccess,
+        _SpanResult.changes => l10n.taskTraceChanges,
+        _SpanResult.failed => l10n.agentMatrixStatusFailed,
       };
 }
 
@@ -286,13 +293,61 @@ class _Lane {
   const _Lane(this.key, this.label, this.sub);
 }
 
+/// Результат завершения спана — богаче, чем NodeStatus роутера.
+///
+/// NodeStatus говорит лишь «шаг роутера done/failed», поэтому ВСЕ выполненные
+/// агенты были «success» (серые). Здесь мы дополнительно различаем, КАК
+/// завершилась работа: ok / запрошены правки (review changes_requested или
+/// escalate_to_planner) / ошибка.
+enum _SpanResult { running, pending, ok, changes, failed }
+
+/// Ревью с вердиктом «нужны правки» / «эскалация». Контракт reviewer-агента:
+/// `summary = "<decision>: <desc>"`, decision ∈ approved|changes_requested|
+/// escalate_to_planner (см. промпт ревьюера). summary приходит в metadata
+/// (list-эндпоинт), поэтому надёжно доступен без догрузки content.
+bool _isChangesReview(Artifact a) {
+  if (a.kind != 'review') {
+    return false;
+  }
+  final s = a.summary.toLowerCase().trimLeft();
+  if (s.startsWith('changes_requested') || s.startsWith('escalate')) {
+    return true;
+  }
+  final d = a.content?['decision'];
+  return d is String &&
+      (d.toLowerCase() == 'changes_requested' ||
+          d.toLowerCase() == 'escalate_to_planner');
+}
+
+/// Как завершился спан. Судим по АРТЕФАКТАМ (что агент реально выдал), а не по
+/// bookkeeping роутера: NodeStatus.success роутер ставит лишь терминальному шагу,
+/// поэтому привязка к нему сделала бы «правки/готово» почти невидимыми.
+///   running / failed (по статусу роутера) → как есть;
+///   есть review с changes_requested|escalate → changes (янтарь);
+///   есть любой артефакт или шаг done → ok (серый);
+///   ничего не выдано → pending (полый).
+_SpanResult _resultOf(AgentNodeData n) {
+  if (n.status == NodeStatus.running) {
+    return _SpanResult.running;
+  }
+  if (n.status == NodeStatus.failed) {
+    return _SpanResult.failed;
+  }
+  if (n.artifacts.any(_isChangesReview)) {
+    return _SpanResult.changes;
+  }
+  if (n.artifacts.isNotEmpty || n.status == NodeStatus.success) {
+    return _SpanResult.ok;
+  }
+  return _SpanResult.pending;
+}
+
 class _Span {
   final AgentNodeData node;
   final String laneKey;
   final double startSec;
   final double endSec;
-  final bool running;
-  final NodeStatus status;
+  final _SpanResult result;
   final String label; // короткая подпись на баре
   final String tooltip;
   const _Span({
@@ -300,11 +355,12 @@ class _Span {
     required this.laneKey,
     required this.startSec,
     required this.endSec,
-    required this.running,
-    required this.status,
+    required this.result,
     required this.label,
     required this.tooltip,
   });
+
+  bool get running => result == _SpanResult.running;
 }
 
 class _Gate {
@@ -420,10 +476,11 @@ class _SwimlaneModel {
       for (final a in n.artifacts) {
         artifactToNode[a.id] = n.id;
       }
+      final result = _resultOf(n);
       final kind = n.artifacts.isNotEmpty ? n.artifacts.last.kind : null;
-      final label = kind ?? _TraceColors.statusLabel(l10n, n.status);
+      final label = kind ?? _TraceColors.resultLabel(l10n, result);
       final tip = StringBuffer(
-          '${n.name} · step ${n.stepNo} · ${_TraceColors.statusLabel(l10n, n.status)}');
+          '${n.name} · step ${n.stepNo} · ${_TraceColors.resultLabel(l10n, result)}');
       if (n.artifacts.isNotEmpty) {
         tip.write('\n${n.artifacts.last.kind}: ${n.artifacts.last.summary}');
       }
@@ -432,8 +489,7 @@ class _SwimlaneModel {
         laneKey: n.name,
         startSec: start,
         endSec: end,
-        running: running,
-        status: n.status,
+        result: result,
         label: label,
         tooltip: tip.toString(),
       ));
@@ -498,7 +554,8 @@ class _TraceLayout {
   _TraceLayout({required this.size, required this.model, required this.gutter}) {
     contentH = rulerH + model.lanes.length * laneH;
     pxPerSec = (size.width - gutter - rightPad) / model.maxSec;
-    topOffset = math.max(8, (size.height - contentH) / 2);
+    // Лента прижата к верху (а не центрируется по высоте).
+    topOffset = 12;
   }
 
   double get bandTop => topOffset + rulerH;
@@ -640,7 +697,7 @@ class _TracePainter extends CustomPainter {
   void _spans(Canvas canvas) {
     for (final s in m.spans) {
       final r = layout.spanRect(s);
-      final c = _TraceColors.status(s.status);
+      final c = _TraceColors.result(s.result);
       final rr = RRect.fromRectAndRadius(r, const Radius.circular(7));
       final selected = _isSelected(s);
 
@@ -652,7 +709,12 @@ class _TracePainter extends CustomPainter {
               ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
       }
 
-      canvas.drawRRect(rr, Paint()..color = c.withValues(alpha: 0.20));
+      final isPending = s.result == _SpanResult.pending;
+
+      // Заливка: завершённые/живые — сплошные; pending — «полый» (без заливки).
+      if (!isPending) {
+        canvas.drawRRect(rr, Paint()..color = c.withValues(alpha: 0.20));
+      }
 
       if (s.running) {
         canvas.save();
@@ -667,12 +729,18 @@ class _TracePainter extends CustomPainter {
         canvas.restore();
       }
 
-      canvas.drawRRect(
-          rr,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = selected ? 2.4 : 1.3
-            ..color = selected ? colors.router : c.withValues(alpha: 0.75));
+      // Рамка: pending — пунктир и бледнее, чтобы «ожидание» читалось иначе, чем done.
+      final borderPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = selected ? 2.4 : (isPending ? 1.0 : 1.3)
+        ..color = selected
+            ? colors.router
+            : c.withValues(alpha: isPending ? 0.5 : 0.75);
+      if (isPending && !selected) {
+        _strokeDashedRRect(canvas, rr, borderPaint);
+      } else {
+        canvas.drawRRect(rr, borderPaint);
+      }
 
       if (selected) {
         canvas.drawRRect(
@@ -683,13 +751,14 @@ class _TracePainter extends CustomPainter {
               ..color = colors.router.withValues(alpha: 0.5));
       }
 
-      final glyph = switch (s.status) {
-        NodeStatus.success => '✓ ',
-        NodeStatus.failed => '✕ ',
+      final glyph = switch (s.result) {
+        _SpanResult.ok => '✓ ',
+        _SpanResult.changes => '⚠ ',
+        _SpanResult.failed => '✕ ',
         _ => '',
       };
       _text(canvas, '$glyph${s.label}', Offset(r.left + 8, r.center.dy - 7),
-          color: colors.onSurface,
+          color: isPending ? colors.onSurfaceMuted : colors.onSurface,
           size: 11.5,
           weight: FontWeight.w600,
           maxWidth: r.width - 14);
@@ -772,6 +841,19 @@ class _TracePainter extends CustomPainter {
     tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
   }
 
+  void _strokeDashedRRect(Canvas canvas, RRect rr, Paint paint,
+      {double dash = 4, double gap = 3}) {
+    final path = Path()..addRRect(rr);
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        canvas.drawPath(
+            metric.extractPath(d, math.min(d + dash, metric.length)), paint);
+        d += dash + gap;
+      }
+    }
+  }
+
   void _dashedV(Canvas canvas, double x, double y0, double y1, Color color) {
     final paint = Paint()
       ..color = color
@@ -843,7 +925,8 @@ class _TraceLegend extends StatelessWidget {
             l10n.taskTraceLegendRouter,
           ),
           item(swatch(Colors.blue), l10n.agentMatrixStatusRunning),
-          item(swatch(Colors.green), l10n.agentMatrixStatusSuccess),
+          item(swatch(Colors.grey.shade400), l10n.agentMatrixStatusSuccess),
+          item(swatch(_TraceColors.amber), l10n.taskTraceChanges),
           item(swatch(Colors.red), l10n.agentMatrixStatusFailed),
           item(
             Container(width: 16, height: 1, color: colors.onSurfaceMuted),

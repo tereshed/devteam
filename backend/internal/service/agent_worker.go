@@ -539,8 +539,11 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	// Помечаем event как failed: сработает retry/backoff, а при исчерпании попыток job
 	// «умирает» и Router увидит его в разделе Failed jobs (см. enqueueFollowupStep ниже).
 	if agentResultUnusable(result) {
+		// НЕ утверждаем «OOM» — причиной может быть OOM, timeout, краш CLI или ошибка
+		// entrypoint'а (exit!=0 без вывода). Точную причину смотреть в логах контейнера
+		// (SANDBOX_KEEP_ON_FAILURE=1 сохраняет упавший sandbox: docker logs <id>).
 		w.failEvent(parentCtx, ev, fmt.Errorf(
-			"agent produced no usable result (success=%v, output_len=%d, artifacts_len=%d): likely sandbox OOM/timeout/crash",
+			"agent produced no usable result (success=%v, output_len=%d, artifacts_len=%d): sandbox exited without usable output (check sandbox logs)",
 			result.Success, len(result.Output), len(result.ArtifactsJSON)))
 		return
 	}
