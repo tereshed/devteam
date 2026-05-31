@@ -28,7 +28,7 @@ type BridgeMetrics interface {
 
 type noopBridgeMetrics struct{}
 
-func (m noopBridgeMetrics) IncDispatched(msgType string)    {}
+func (m noopBridgeMetrics) IncDispatched(msgType string) {}
 func (m noopBridgeMetrics) IncDispatchError(kind string) {}
 
 // NewHubBridge создает новый экземпляр HubBridge.
@@ -128,6 +128,34 @@ func (b *HubBridge) dispatch(ev events.DomainEvent) {
 			Metadata:    metadata,
 		}
 		payload, err = MarshalTaskMessage(projectID, data)
+
+	case events.RouterDecisionCreated:
+		msgType = MessageTypeRouterDecision
+		data := RouterDecisionData{
+			TaskID:       e.TaskID,
+			StepNo:       e.StepNo,
+			ChosenAgents: e.ChosenAgents,
+			Done:         e.Done,
+			Outcome:      e.Outcome,
+			Reason:       b.scrub.Scrub(e.Reason),
+		}
+		payload, err = MarshalRouterDecision(projectID, data)
+
+	case events.ArtifactCreated:
+		msgType = MessageTypeArtifact
+		data := ArtifactData{
+			TaskID:        e.TaskID,
+			ProducerAgent: e.ProducerAgent,
+			Kind:          e.Kind,
+			Status:        e.Status,
+			Summary:       b.scrub.Scrub(e.Summary),
+			ParentID:      e.ParentID,
+		}
+		if e.ArtifactID != (uuid.UUID{}) {
+			id := e.ArtifactID
+			data.ArtifactID = &id
+		}
+		payload, err = MarshalArtifact(projectID, data)
 
 	case events.SandboxLogEmitted:
 		msgType = MessageTypeAgentLog

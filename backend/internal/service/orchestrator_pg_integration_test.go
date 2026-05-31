@@ -185,6 +185,7 @@ func reuseHarness(t *testing.T, dsn string, scriptedRouterOutputs []string, opts
 		nil, // worktreeMgr — для текущих интеграционных тестов без sandbox-агентов не нужен
 		h.router,
 		nil, // notifier
+		nil, // bus — события UI в этих тестах не проверяем
 		logger,
 		cfg,
 	)
@@ -314,10 +315,10 @@ func (h *pgHarness) createMinimalActiveTask(t *testing.T) uuid.UUID {
 	type idRow struct{ ID string }
 	var u, p, ta idRow
 
-		if err := h.gormDB.WithContext(ctx).Raw(
-			`INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
+	if err := h.gormDB.WithContext(ctx).Raw(
+		`INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
 			 VALUES (gen_random_uuid(), gen_random_uuid() || '@test', 'x', 'user', NOW(), NOW()) RETURNING id`,
-		).Scan(&u).Error; err != nil {
+	).Scan(&u).Error; err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
 	if err := h.gormDB.WithContext(ctx).Raw(
@@ -766,6 +767,125 @@ func TestPGIntegration_MaxStepsPerTask_NeedsHuman(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TestPGIntegration_FollowupStepReqCoalesces
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Проверяет коалесцирование step_req: N завершений параллельных job'ов не плодят N
+// step_req'ов (Router'у хватит одного прогона). Залоченный step_req не подавляет новый.
+func TestPGIntegration_FollowupStepReqCoalesces(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	h := startPgHarness(t, nil)
+	defer h.Close()
+
+	ctx := context.Background()
+	taskID := h.createMinimalActiveTask(t)
+
+	countPendingUnlocked := func() int {
+		var n int64
+		if err := h.gormDB.Raw(
+			`SELECT count(*) FROM task_events WHERE task_id=? AND kind='step_req' AND completed_at IS NULL AND locked_by IS NULL AND attempts<max_attempts`,
+			taskID,
+		).Scan(&n).Error; err != nil {
+			t.Fatalf("count pending: %v", err)
+		}
+		return int(n)
+	}
+
+	// Три «завершения» подряд → должен остаться ровно один queued step_req.
+	for i := 0; i < 3; i++ {
+		if err := h.eventRepo.EnqueueFollowupStepReq(ctx, taskID); err != nil {
+			t.Fatalf("enqueue %d: %v", i, err)
+		}
+	}
+	if got := countPendingUnlocked(); got != 1 {
+		t.Fatalf("expected 1 coalesced step_req, got %d", got)
+	}
+
+	// Забираем (лочим) единственный step_req — теперь он «в обработке».
+	ev, err := h.eventRepo.ClaimNext(ctx, models.TaskEventKindStepReq, "worker-X")
+	if err != nil || ev == nil {
+		t.Fatalf("claim next step_req: ev=%v err=%v", ev, err)
+	}
+	if got := countPendingUnlocked(); got != 0 {
+		t.Fatalf("after claim expected 0 unlocked, got %d", got)
+	}
+
+	// Новое завершение, пока первый залочен → должен добавиться второй (не зависаем).
+	if err := h.eventRepo.EnqueueFollowupStepReq(ctx, taskID); err != nil {
+		t.Fatalf("enqueue after lock: %v", err)
+	}
+	if got := countPendingUnlocked(); got != 1 {
+		t.Fatalf("locked step_req must not suppress a new one; expected 1, got %d", got)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TestPGIntegration_DeadJobsBackstop_NeedsHuman
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Проверяет детерминированный dead-jobs backstop: если >= MaxDeadJobsPerTask
+// agent_job'ов исчерпали retry (OOM/timeout/crash), Step эскалирует задачу в
+// needs_human БЕЗ вызова Router'а (защита от петли переназначений из разбора задачи 1.1).
+func TestPGIntegration_DeadJobsBackstop_NeedsHuman(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	// Router ответил бы "продолжай", но backstop сработает раньше и Router НЕ вызовется.
+	loopResp := `{"done": false, "agents": [{"agent": "planner"}], "reason": "keep going"}`
+	cfg := service.DefaultOrchestratorConfig()
+	cfg.MaxDeadJobsPerTask = 3
+	h := startPgHarnessWithOpts(t, []string{loopResp, loopResp}, pgHarnessOpts{
+		orchestratorCfg: &cfg,
+	})
+	defer h.Close()
+
+	ctx := context.Background()
+	taskID := h.createMinimalActiveTask(t)
+
+	// Вставляем 3 «мёртвых» agent_job (attempts >= max_attempts, не завершены).
+	for i := 0; i < 3; i++ {
+		if err := h.gormDB.WithContext(ctx).Exec(
+			`INSERT INTO task_events (task_id, kind, payload, attempts, max_attempts, last_error)
+			 VALUES (?, 'agent_job', '{"agent":"developer"}', 3, 3, 'likely sandbox OOM')`,
+			taskID,
+		).Error; err != nil {
+			t.Fatalf("insert dead event %d: %v", i, err)
+		}
+	}
+
+	if err := h.orchestrator.Step(ctx, taskID); err != nil {
+		t.Fatalf("Step: %v", err)
+	}
+
+	var got struct {
+		State        string
+		ErrorMessage *string `gorm:"column:error_message"`
+	}
+	if err := h.gormDB.Raw(
+		`SELECT state, error_message FROM tasks WHERE id = ?`, taskID,
+	).Scan(&got).Error; err != nil {
+		t.Fatalf("read task: %v", err)
+	}
+	if got.State != "needs_human" {
+		t.Errorf("expected state=needs_human, got %q", got.State)
+	}
+	if got.ErrorMessage == nil || !strings.Contains(*got.ErrorMessage, "exhausted retries") {
+		t.Errorf("expected error_message to mention exhausted retries, got %v", got.ErrorMessage)
+	}
+
+	// Router НЕ должен был вызываться → ноль router_decisions.
+	decisions, err := h.decisionRepo.ListByTaskID(ctx, taskID, false)
+	if err != nil {
+		t.Fatalf("ListByTaskID: %v", err)
+	}
+	if len(decisions) != 0 {
+		t.Errorf("expected 0 router_decisions (backstop fires before Router), got %d", len(decisions))
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TestPGIntegration_CancelAfterDone_Returns409
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1012,7 +1132,7 @@ func TestPGIntegration_OrchestratorStep_LoopDetector(t *testing.T) {
 			Content:       []byte(diffContent),
 			Status:        models.ArtifactStatusReady,
 			Iteration:     i,
-			CreatedAt:     time.Now().Add(time.Duration(i) * time.Minute + 30*time.Second),
+			CreatedAt:     time.Now().Add(time.Duration(i)*time.Minute + 30*time.Second),
 		}
 		if err := h.gormDB.Create(cd).Error; err != nil {
 			t.Fatalf("create code_diff artifact: %v", err)
@@ -1042,4 +1162,3 @@ func TestPGIntegration_OrchestratorStep_LoopDetector(t *testing.T) {
 		t.Errorf("expected error_message to mention loop detected, got %v", got.ErrorMessage)
 	}
 }
-

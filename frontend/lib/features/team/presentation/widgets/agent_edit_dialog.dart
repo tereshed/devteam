@@ -7,6 +7,7 @@ import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/domain/prompt_exceptions.dart';
 import 'package:frontend/features/admin/prompts/domain/prompt_model.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
+import 'package:frontend/features/integrations/llm/domain/agent_model_suggestions.dart';
 import 'package:frontend/features/projects/domain/models/agent_model.dart'
     show AgentModel, codeBackends;
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
@@ -259,49 +260,8 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     }
   }
 
-  List<String> _suggestionsFor(String providerKind) {
-    switch (providerKind) {
-      case 'openrouter':
-        return const [
-          'deepseek/deepseek-r1',
-          'anthropic/claude-3.5-sonnet',
-          'google/gemini-2.5-flash',
-          'openai/gpt-4o',
-          'openai/gpt-4o-mini',
-          'meta-llama/llama-3.3-70b-instruct',
-          'deepseek/deepseek-v4-flash',
-          'anthropic/claude-3.5-haiku',
-        ];
-      case 'anthropic':
-        return const [
-          'claude-3-5-sonnet-latest',
-          'claude-3-5-haiku-latest',
-          'claude-haiku-4-5-20251001',
-        ];
-      case 'anthropic_oauth':
-        return const [
-          'claude-3-5-sonnet-latest',
-          'claude-haiku-4-5-20251001',
-        ];
-      case 'deepseek':
-        return const [
-          'deepseek-chat',
-          'deepseek-reasoner',
-        ];
-      case 'zhipu':
-        return const [
-          'glm-4',
-          'glm-4-flash',
-        ];
-      case 'antigravity':
-      case 'antigravity_oauth':
-        return const [
-          'antigravity-default',
-        ];
-      default:
-        return const [];
-    }
-  }
+  // Общий источник подсказок моделей (тот же, что у ассистента) — единообразие списков.
+  List<String> _suggestionsFor(String providerKind) => agentModelSuggestions(providerKind);
 
   String _formatToolName(String name) {
     final regex = RegExp(

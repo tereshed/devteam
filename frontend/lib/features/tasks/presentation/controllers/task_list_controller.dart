@@ -227,6 +227,10 @@ class TaskListController extends _$TaskListController {
           },
           integrationStatus: (_) {},
           conversationMessage: (_) {},
+          // Orchestration v2 — детальные апдейты (таймлайн/граф) важны только в
+          // task-detail; список задач на них не реагирует.
+          routerDecision: (_) {},
+          artifact: (_) {},
           // Sprint 21 §7 — assistant.* идут в AssistantTasksController /
           // AssistantChatController, не в задачи проекта. No-op чтобы
           // exhaustive .when остался валидным.

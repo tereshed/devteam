@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "swimlane",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8099",
+        "--directory",
+        "/tmp/swimlane_proto/build/web"
+      ],
+      "port": 8099
+    }
+  ]
+}

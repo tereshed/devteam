@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -43,8 +44,17 @@ type OrchestratorConfig struct {
 	WorkerID string
 
 	// MaxStepsPerTask — hard safety limit; при превышении задача → needs_human.
-	// Из docs/orchestration-v2-plan.md §5: default 100.
+	// Снижен со 100 до 40: на практике 100 шагов недостижимо для здоровой задачи, а как
+	// предохранитель 100 слишком высок — задача 1.1 крутилась 37 шагов без сходимости и
+	// уперлась бы в лимит только через час+. 40 покрывает декомпозицию на ~7-10 подзадач
+	// с ревью и парой итераций, но ловит зацикливание заметно раньше.
 	MaxStepsPerTask int
+
+	// MaxDeadJobsPerTask — сколько agent_job'ов задачи могут окончательно «умереть»
+	// (исчерпать retry) до того, как Orchestrator детерминированно эскалирует задачу в
+	// needs_human, не вызывая Router. Защищает от петли «sandbox падает по OOM → Router
+	// переназначает того же агента → снова OOM». 0/отрицательное — выключено.
+	MaxDeadJobsPerTask int
 
 	// DefaultBaseBranch — fallback если Project.GitDefaultBranch пуст.
 	// Обычно "main".
@@ -54,9 +64,10 @@ type OrchestratorConfig struct {
 // DefaultOrchestratorConfig возвращает разумные дефолты MVP.
 func DefaultOrchestratorConfig() OrchestratorConfig {
 	return OrchestratorConfig{
-		WorkerID:          "orchestrator-default",
-		MaxStepsPerTask:   100,
-		DefaultBaseBranch: "main",
+		WorkerID:           "orchestrator-default",
+		MaxStepsPerTask:    40,
+		MaxDeadJobsPerTask: 3,
+		DefaultBaseBranch:  "main",
 	}
 }
 
@@ -68,7 +79,8 @@ type Orchestrator struct {
 	decisionRepo repository.RouterDecisionRepository
 	worktreeMgr  *WorktreeManager
 	routerSvc    *RouterService
-	notifier     *RedisNotifier // опционально — может быть nil в minimal-setup
+	notifier     *RedisNotifier  // опционально — может быть nil в minimal-setup
+	bus          events.EventBus // опционально (nil в тестах) — live-апдейты UI через HubBridge
 	logger       *slog.Logger
 	cfg          OrchestratorConfig
 }
@@ -82,6 +94,7 @@ func NewOrchestrator(
 	worktreeMgr *WorktreeManager,
 	routerSvc *RouterService,
 	notifier *RedisNotifier,
+	bus events.EventBus,
 	logger *slog.Logger,
 	cfg OrchestratorConfig,
 ) *Orchestrator {
@@ -89,7 +102,10 @@ func NewOrchestrator(
 		logger = logging.NopLogger()
 	}
 	if cfg.MaxStepsPerTask <= 0 {
-		cfg.MaxStepsPerTask = 100
+		cfg.MaxStepsPerTask = 40
+	}
+	if cfg.MaxDeadJobsPerTask < 0 {
+		cfg.MaxDeadJobsPerTask = 0
 	}
 	if cfg.DefaultBaseBranch == "" {
 		cfg.DefaultBaseBranch = "main"
@@ -97,7 +113,7 @@ func NewOrchestrator(
 	return &Orchestrator{
 		db: db, artifactRepo: artifactRepo, eventRepo: eventRepo,
 		decisionRepo: decisionRepo, worktreeMgr: worktreeMgr, routerSvc: routerSvc,
-		notifier: notifier, logger: logger, cfg: cfg,
+		notifier: notifier, bus: bus, logger: logger, cfg: cfg,
 	}
 }
 
@@ -204,6 +220,19 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 			return fmt.Errorf("load router state: %w", err)
 		}
 
+		// 6.6. Dead-jobs backstop. Детерминированный предохранитель: если слишком много
+		// agent_job'ов окончательно умерло (OOM/timeout/crash), нет смысла тратить Router-LLM
+		// вызов — почти наверняка он либо переназначит того же агента (снова падение), либо
+		// сам эскалирует. Эскалируем в needs_human напрямую. Защищает от петли, которая в
+		// задаче 1.1 раздула прогон до 37 шагов.
+		if o.cfg.MaxDeadJobsPerTask > 0 && len(state.DeadJobs) >= o.cfg.MaxDeadJobsPerTask {
+			o.logger.WarnContext(ctx, "too many dead agent_jobs, escalating to needs_human",
+				"task_id", task.ID, "dead_jobs", len(state.DeadJobs), "max", o.cfg.MaxDeadJobsPerTask)
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID))
+			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
+				fmt.Sprintf("%d agent jobs exhausted retries (likely sandbox OOM/timeout); human inspection required", len(state.DeadJobs)))
+		}
+
 		// 7. Router.Decide — может вернуть Done или массив агентов.
 		// Внутри уже есть retry-пайплайн при галлюцинациях; ошибка отсюда — инфра.
 		decision, err := o.routerSvc.Decide(ctx, state)
@@ -215,6 +244,15 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 		if err := o.saveRouterDecision(ctx, tx, taskID, task.CurrentStepNo, &decision); err != nil {
 			return fmt.Errorf("save router decision: %w", err)
 		}
+
+		// 8.5. Live-апдейт UI: публикуем RouterDecisionCreated ПОСЛЕ commit'а (в postCommit),
+		// чтобы не пушить решение, которое откатится при rollback. Без этого Router-таймлайн
+		// и execution-граф не обновляются до ручного рефреша. Захватываем значения в копии —
+		// task мутируется ниже (step_no++).
+		eventProjectID, eventStepNo, eventDecision := task.ProjectID, task.CurrentStepNo, decision
+		postCommit = append(postCommit, func(ctx context.Context) {
+			o.publishRouterDecision(ctx, eventProjectID, taskID, eventStepNo, &eventDecision)
+		})
 
 		// 9. Если Router сказал Done — финализируем задачу. Worktree-release —
 		//    post-commit, чтобы git-операции не сидели в транзакции.
@@ -234,7 +272,14 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 			return err
 		}
 
-		// 11. Инкремент step_no.
+		// 11. Инкремент step_no — ВСЕГДА (по одному на каждый вызов Router'а, включая
+		//    «ожидание» с пустым fan-out). step_no обязан быть уникальным и монотонным по
+		//    времени: и router_decisions.step_no — ключ ноды в execution-графе фронта, и
+		//    окна привязки артефактов строятся по порядку step_no. Если не инкрементить на
+		//    ожиданиях, появляются строки с одинаковым step_no, порядок по времени ломается,
+		//    окна перекрываются и один артефакт рендерится на двух нодах (баг UI). Цена —
+		//    ожидания тоже тратят бюджет MaxStepsPerTask, но это некритично: реальную защиту
+		//    от петель дают dead-job backstop и фикс пустого вывода, а не счётчик шагов.
 		if err := tx.Model(&models.Task{}).Where("id = ?", taskID).
 			Update("current_step_no", task.CurrentStepNo+1).Error; err != nil {
 			return fmt.Errorf("increment step_no: %w", err)
@@ -244,6 +289,7 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 			"task_id", taskID,
 			"step_no", task.CurrentStepNo,
 			"fan_out", len(decision.Agents),
+			"waiting", len(decision.Agents) == 0,
 		)
 		return nil
 	})
@@ -350,12 +396,20 @@ func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *m
 		}
 	}
 
+	// Dead jobs: agent_job'ы, исчерпавшие retry (OOM/timeout/crash). Router должен их
+	// видеть, чтобы эскалировать вместо вечного переназначения (см. router prompt).
+	deadJobs, err := o.eventRepo.ListDeadByTaskID(ctx, task.ID)
+	if err != nil {
+		return RouterState{}, fmt.Errorf("load dead jobs: %w", err)
+	}
+
 	return RouterState{
 		Task:      task,
 		TeamID:    teamID,
 		Agents:    agents,
 		Artifacts: artifacts,
 		InFlight:  inflight,
+		DeadJobs:  deadJobs,
 		StepNo:    task.CurrentStepNo,
 		MaxSteps:  o.cfg.MaxStepsPerTask,
 	}, nil
@@ -391,6 +445,29 @@ func (o *Orchestrator) saveRouterDecision(ctx context.Context, tx *gorm.DB, task
 		return fmt.Errorf("create router_decision: %w", err)
 	}
 	return nil
+}
+
+// publishRouterDecision шлёт RouterDecisionCreated в EventBus (для live-апдейта UI через
+// HubBridge). No-op если bus не сконфигурирован (тесты/minimal-setup). Ошибки публикации
+// не критичны — UI всегда может сделать ручной рефреш.
+func (o *Orchestrator) publishRouterDecision(ctx context.Context, projectID, taskID uuid.UUID, stepNo int, d *Decision) {
+	if o.bus == nil || projectID == uuid.Nil {
+		return
+	}
+	chosen := make([]string, 0, len(d.Agents))
+	for _, a := range d.Agents {
+		chosen = append(chosen, a.Name)
+	}
+	o.bus.Publish(ctx, events.RouterDecisionCreated{
+		ProjectID:    projectID,
+		TaskID:       taskID,
+		StepNo:       stepNo,
+		ChosenAgents: chosen,
+		Done:         d.Done,
+		Outcome:      string(d.Outcome),
+		Reason:       d.Reason,
+		OccurredAt:   time.Now(),
+	})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

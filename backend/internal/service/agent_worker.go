@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/devteam/backend/internal/agent"
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -116,9 +117,9 @@ func (e *AgentResponseEnvelope) UnmarshalJSON(data []byte) error {
 
 // AgentWorkerConfig — настройки одного воркера.
 type AgentWorkerConfig struct {
-	WorkerID         string
-	PollInterval     time.Duration
-	AgentJobTimeout  time.Duration // hard cap на один agent_job (default 1h)
+	WorkerID        string
+	PollInterval    time.Duration
+	AgentJobTimeout time.Duration // hard cap на один agent_job (default 1h)
 }
 
 // DefaultAgentWorkerConfig — дефолты для llm-агентов. Для sandbox-агентов
@@ -138,7 +139,8 @@ type AgentWorker struct {
 	artifactRepo   repository.ArtifactRepository
 	dispatcher     AgentDispatcher
 	worktreeMgr    *WorktreeManager
-	notifier       *RedisNotifier // может быть nil
+	notifier       *RedisNotifier  // может быть nil
+	bus            events.EventBus // может быть nil — live-апдейты UI через HubBridge
 	logger         *slog.Logger
 	cfg            AgentWorkerConfig
 	contextBuilder ContextBuilder
@@ -152,6 +154,7 @@ func NewAgentWorker(
 	dispatcher AgentDispatcher,
 	worktreeMgr *WorktreeManager,
 	notifier *RedisNotifier,
+	bus events.EventBus,
 	logger *slog.Logger,
 	cfg AgentWorkerConfig,
 	contextBuilder ContextBuilder,
@@ -171,7 +174,7 @@ func NewAgentWorker(
 	return &AgentWorker{
 		db: db, eventRepo: eventRepo, artifactRepo: artifactRepo,
 		dispatcher: dispatcher, worktreeMgr: worktreeMgr,
-		notifier: notifier, logger: logger, cfg: cfg,
+		notifier: notifier, bus: bus, logger: logger, cfg: cfg,
 		contextBuilder: contextBuilder,
 	}
 }
@@ -388,6 +391,16 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 					} else {
 						targetArtifact = art
 					}
+				} else {
+					// Страховка: Router мог прислать обрезанный id (например 8-символьный
+					// "dd271455" вместо полного UUID). Валидация Router'а это отвергает с retry,
+					// но если такой id всё же дошёл — резолвим по уникальному префиксу среди
+					// артефактов задачи, чтобы не потерять связь (иначе review → parent_id=NULL).
+					if art := w.resolveArtifactByPrefix(execCtx, ev.TaskID, idStr); art != nil {
+						w.logger.WarnContext(execCtx, "resolved truncated target_artifact_id by prefix",
+							"raw", idStr, "resolved_id", art.ID, "task_id", ev.TaskID)
+						targetArtifact = art
+					}
 				}
 			}
 		}
@@ -398,84 +411,37 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	// индивидуальные артефакты subtask_description. Это предотвращает бесконечные циклы
 	// и экономит ресурсы.
 	if agentRec.Name == "decomposer" && targetArtifact != nil && targetArtifact.Kind == models.ArtifactKindDecomposition {
-		w.logger.InfoContext(execCtx, "bypassing decomposer execution: splitting decomposition artifact directly", "artifact_id", targetArtifact.ID)
-		
-		var contentMap map[string]any
-		if err := json.Unmarshal(targetArtifact.Content, &contentMap); err == nil {
-			var subtasks []any
-			if subtasksVal, ok := contentMap["subtasks"]; ok {
-				if stSlice, ok := subtasksVal.([]any); ok {
-					subtasks = stSlice
-				}
-			} else if contentVal, ok := contentMap["content"]; ok {
-				if contentMapInner, ok := contentVal.(map[string]any); ok {
-					if stSlice, ok := contentMapInner["subtasks"]; ok {
-						if sts, ok := stSlice.([]any); ok {
-							subtasks = sts
-						}
-					}
+		// Повторный dispatch decomposer'а на уже готовую декомпозицию: не гоняем LLM/sandbox,
+		// а разбиваем её на subtask_description напрямую (идемпотентно). Только если в
+		// декомпозиции реально есть subtasks — иначе проваливаемся в обычное исполнение.
+		if len(extractSubtasks(targetArtifact.Content)) > 0 {
+			w.logger.InfoContext(execCtx, "bypassing decomposer execution: splitting decomposition artifact directly", "artifact_id", targetArtifact.ID)
+			if _, err := w.splitDecomposition(parentCtx, ev.TaskID, targetArtifact.ID, targetArtifact.Content); err != nil {
+				w.failEvent(parentCtx, ev, fmt.Errorf("split decomposition: %w", err))
+				return
+			}
+
+			// Releasing worktree if allocated (decomposer might have had one)
+			if payload.WorktreeID != nil && w.worktreeMgr != nil {
+				if err := w.worktreeMgr.Release(parentCtx, *payload.WorktreeID); err != nil {
+					w.logger.WarnContext(parentCtx, "release worktree after split success failed",
+						"worktree_id", *payload.WorktreeID, "error", err.Error())
 				}
 			}
-			
-			if len(subtasks) > 0 {
-				var arts []*models.Artifact
-				for _, stVal := range subtasks {
-					if stMap, ok := stVal.(map[string]any); ok {
-						title := "Subtask"
-						if t, ok := stMap["title"].(string); ok && t != "" {
-							title = t
-						}
-						
-						subtaskBytes, _ := json.Marshal(stMap)
-						parentID := targetArtifact.ID
-						
-						art := &models.Artifact{
-							TaskID:        ev.TaskID,
-							ParentID:      &parentID,
-							ProducerAgent: "decomposer",
-							Kind:          models.ArtifactKindSubtaskDescription,
-							Summary:       title,
-							Content:       datatypes.JSON(subtaskBytes),
-							Status:        models.ArtifactStatusReady,
-						}
-						if !models.ValidateArtifactSummary(art.Summary) {
-							art.Summary = truncateRunesForArtifact(art.Summary, 500)
-						}
-						arts = append(arts, art)
-					}
-				}
-				
-				if len(arts) > 0 {
-					for _, art := range arts {
-						err := retryOnConflict(parentCtx, w.logger, func() error {
-							return w.artifactRepo.Create(parentCtx, art)
-						})
-						if err != nil {
-							w.failEvent(parentCtx, ev, fmt.Errorf("failed to create split subtask: %w", err))
-							return
-						}
-					}
-					
-					// Releasing worktree if allocated (decomposer might have had one)
-					if payload.WorktreeID != nil && w.worktreeMgr != nil {
-						if err := w.worktreeMgr.Release(parentCtx, *payload.WorktreeID); err != nil {
-							w.logger.WarnContext(parentCtx, "release worktree after split success failed",
-								"worktree_id", *payload.WorktreeID, "error", err.Error())
-						}
-					}
-					
-					// Mark event complete
-					if err := retryOnConflict(parentCtx, w.logger, func() error {
-						return w.eventRepo.Complete(parentCtx, ev.ID)
-					}); err != nil {
-						w.logger.ErrorContext(parentCtx, "mark event complete failed",
-							"task_event_id", ev.ID, "error", err.Error())
-					}
-					
-					w.enqueueFollowupStep(parentCtx, ev.TaskID)
-					return
-				}
+
+			// Mark event complete
+			if err := retryOnConflict(parentCtx, w.logger, func() error {
+				return w.eventRepo.Complete(parentCtx, ev.ID)
+			}); err != nil {
+				w.logger.ErrorContext(parentCtx, "mark event complete failed",
+					"task_event_id", ev.ID, "error", err.Error())
 			}
+
+			// Live-апдейт UI: созданы subtask_description артефакты.
+			w.publishArtifactCreated(parentCtx, task.ProjectID, ev.TaskID, "decomposer")
+
+			w.enqueueFollowupStep(parentCtx, ev.TaskID)
+			return
 		}
 	}
 
@@ -565,10 +531,36 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		return
 	}
 
+	// Sandbox OOM/timeout/crash или агент, вернувший пустой вывод — это инфраструктурный
+	// сбой, а НЕ валидный результат. Раньше такой исход молча сохранялся как ready-артефакт
+	// (например code_diff с content {"raw_output":""}), и Router принимал его за «работа
+	// сделана», после чего бесконечно переназначал того же агента (разбор задачи 1.1:
+	// ~10 из 22 code_diff были пустыми «failed», что и раздуло прогон до 37 шагов).
+	// Помечаем event как failed: сработает retry/backoff, а при исчерпании попыток job
+	// «умирает» и Router увидит его в разделе Failed jobs (см. enqueueFollowupStep ниже).
+	if agentResultUnusable(result) {
+		w.failEvent(parentCtx, ev, fmt.Errorf(
+			"agent produced no usable result (success=%v, output_len=%d, artifacts_len=%d): likely sandbox OOM/timeout/crash",
+			result.Success, len(result.Output), len(result.ArtifactsJSON)))
+		return
+	}
+
 	// Сохраняем артефакт.
 	if err := w.saveArtifact(parentCtx, ev.TaskID, &agentRec, result, wtRec, targetArtifact); err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("save artifact: %w", err))
 		return
+	}
+
+	// Live-апдейт UI: артефакт(ы) сохранены — пушим событие, чтобы фронт обновил
+	// список артефактов и execution-граф без ручного рефреша.
+	w.publishArtifactCreated(parentCtx, task.ProjectID, ev.TaskID, agentRec.Name)
+
+	// Детерминированный split: если decomposer в первом прогоне выдал decomposition с
+	// subtasks — сразу раскладываем её на subtask_description, не дожидаясь повторного
+	// dispatch'а Router'ом. Иначе «умный» Router может уйти к developer'ам мимо подзадач,
+	// и code_diff'ы окажутся orphaned (без parent), а поток — сплющенным.
+	if agentRec.Name == "decomposer" {
+		w.splitLatestDecomposition(parentCtx, task.ProjectID, ev.TaskID)
 	}
 
 	// Releasing worktree после успешного завершения (содержимое уже закоммичено агентом).
@@ -636,6 +628,18 @@ func (w *AgentWorker) failEvent(ctx context.Context, ev *models.TaskEvent, err e
 	if ferr != nil {
 		w.logger.ErrorContext(ctx, "mark agent_job as failed",
 			"task_event_id", ev.ID, "error", ferr.Error())
+	}
+
+	// Если это была последняя попытка — job окончательно «умер» (attempts >= max_attempts,
+	// idx_task_events_pollable его больше не вернёт). Сам по себе мёртвый job ничем не
+	// разбудит Orchestrator.Step, и задача зависнет. Пингуем step_req, чтобы Router
+	// переоценил ситуацию: он увидит job в Failed jobs и сможет эскалировать в needs_human
+	// вместо вечного переназначения того же агента на тот же артефакт.
+	if ev.Attempts+1 >= ev.MaxAttempts {
+		w.logger.WarnContext(ctx, "agent_job exhausted retries (dead), pinging orchestrator",
+			"worker_id", w.cfg.WorkerID, "task_event_id", ev.ID,
+			"task_id", ev.TaskID, "attempts", ev.Attempts+1, "max_attempts", ev.MaxAttempts)
+		w.enqueueFollowupStep(ctx, ev.TaskID)
 	}
 }
 
@@ -1043,6 +1047,21 @@ func fallbackSummary(result *agent.ExecutionResult, targetArtifact *models.Artif
 	return truncateRunesForArtifact(fmt.Sprintf("%s execution (%s)", agentName, statusSuffix), 500)
 }
 
+// agentResultUnusable — true, если результат агента нельзя превращать в ready-артефакт:
+// либо исполнение неуспешно (sandbox OOM/timeout/crash → Success=false), либо вывод
+// пустой и нет ArtifactsJSON. Такой исход должен идти в failEvent (retry/backoff →
+// смерть job'а), а НЕ сохраняться как code_diff{"raw_output":""}: иначе Router примет
+// пустышку за выполненную работу и зациклится на переназначениях (разбор задачи 1.1).
+func agentResultUnusable(result *agent.ExecutionResult) bool {
+	if result == nil {
+		return true
+	}
+	if !result.Success {
+		return true
+	}
+	return strings.TrimSpace(result.Output) == "" && len(result.ArtifactsJSON) == 0
+}
+
 func rawOutputContent(result *agent.ExecutionResult) json.RawMessage {
 	wrapper := map[string]string{"raw_output": result.Output}
 	b, _ := json.Marshal(wrapper)
@@ -1061,13 +1080,164 @@ func truncateRunesForArtifact(s string, max int) string {
 // Step-followup enqueue
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (w *AgentWorker) enqueueFollowupStep(ctx context.Context, taskID uuid.UUID) {
-	ev := &models.TaskEvent{
-		TaskID: taskID,
-		Kind:   models.TaskEventKindStepReq,
+// resolveArtifactByPrefix ищет артефакт задачи по префиксу его UUID (страховка от
+// обрезанных id из Router'а). Возвращает полный артефакт ТОЛЬКО при ровно одном
+// совпадении; при 0 или неоднозначности — nil (лучше остаться без target, чем привязать
+// к чужому артефакту). Требует префикс ≥ 4 символов, чтобы не матчить наугад.
+func (w *AgentWorker) resolveArtifactByPrefix(ctx context.Context, taskID uuid.UUID, prefix string) *models.Artifact {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if len(prefix) < 4 {
+		return nil
 	}
+	arts, err := w.artifactRepo.ListMetadataByTaskID(ctx, taskID, false)
+	if err != nil {
+		w.logger.WarnContext(ctx, "prefix resolve: list artifacts failed", "task_id", taskID, "error", err.Error())
+		return nil
+	}
+	var matchID uuid.UUID
+	matches := 0
+	for _, a := range arts {
+		if strings.HasPrefix(strings.ToLower(a.ID.String()), prefix) {
+			matchID = a.ID
+			matches++
+		}
+	}
+	if matches != 1 {
+		return nil
+	}
+	full, err := w.artifactRepo.GetByID(ctx, matchID)
+	if err != nil {
+		return nil
+	}
+	return full
+}
+
+// extractSubtasks достаёт список подзадач из content декомпозиции. Поддерживает обе формы,
+// которые встречаются в выводе decomposer'а: {"subtasks":[...]} и {"content":{"subtasks":[...]}}.
+func extractSubtasks(content datatypes.JSON) []any {
+	var m map[string]any
+	if err := json.Unmarshal(content, &m); err != nil {
+		return nil
+	}
+	if v, ok := m["subtasks"].([]any); ok {
+		return v
+	}
+	if inner, ok := m["content"].(map[string]any); ok {
+		if v, ok := inner["subtasks"].([]any); ok {
+			return v
+		}
+	}
+	return nil
+}
+
+// splitDecomposition разбивает артефакт decomposition на индивидуальные subtask_description
+// (по одному на каждый элемент content.subtasks), привязывая их parent_id к декомпозиции.
+// ИДЕМПОТЕНТНО: если для этой декомпозиции subtask_description уже созданы — ничего не делает
+// (bypass при повторном dispatch и first-pass auto-split не должны плодить дубли). Возвращает
+// число созданных артефактов.
+func (w *AgentWorker) splitDecomposition(ctx context.Context, taskID, decompositionID uuid.UUID, content datatypes.JSON) (int, error) {
+	// Идемпотентность: пропускаем, если уже разбивали.
+	if existing, err := w.artifactRepo.ListMetadataByTaskID(ctx, taskID, false); err == nil {
+		for _, a := range existing {
+			if a.Kind == models.ArtifactKindSubtaskDescription && a.ParentID != nil && *a.ParentID == decompositionID {
+				return 0, nil
+			}
+		}
+	}
+
+	subtasks := extractSubtasks(content)
+	if len(subtasks) == 0 {
+		return 0, nil
+	}
+
+	created := 0
+	for _, stVal := range subtasks {
+		stMap, ok := stVal.(map[string]any)
+		if !ok {
+			continue
+		}
+		title := "Subtask"
+		if t, ok := stMap["title"].(string); ok && t != "" {
+			title = t
+		}
+		subtaskBytes, _ := json.Marshal(stMap)
+		parentID := decompositionID
+		art := &models.Artifact{
+			TaskID:        taskID,
+			ParentID:      &parentID,
+			ProducerAgent: "decomposer",
+			Kind:          models.ArtifactKindSubtaskDescription,
+			Summary:       title,
+			Content:       datatypes.JSON(subtaskBytes),
+			Status:        models.ArtifactStatusReady,
+		}
+		if !models.ValidateArtifactSummary(art.Summary) {
+			art.Summary = truncateRunesForArtifact(art.Summary, 500)
+		}
+		if err := retryOnConflict(ctx, w.logger, func() error {
+			return w.artifactRepo.Create(ctx, art)
+		}); err != nil {
+			return created, fmt.Errorf("create subtask_description: %w", err)
+		}
+		created++
+	}
+	return created, nil
+}
+
+// splitLatestDecomposition находит самую свежую decomposition задачи и разбивает её на подзадачи
+// (детерминированно, сразу после первого прогона decomposer'а — не дожидаясь повторного dispatch
+// Router'ом). Без этого «умный» Router может уйти к developer'ам мимо подзадач, и code_diff'ы
+// окажутся без parent (orphaned), а поток — «сплющенным». No-op если декомпозиции нет или она
+// уже разбита.
+func (w *AgentWorker) splitLatestDecomposition(ctx context.Context, projectID, taskID uuid.UUID) {
+	arts, err := w.artifactRepo.ListByTaskID(ctx, taskID, true)
+	if err != nil {
+		w.logger.WarnContext(ctx, "auto-split: list artifacts failed", "task_id", taskID, "error", err.Error())
+		return
+	}
+	var latest *models.Artifact
+	for i := range arts {
+		if arts[i].Kind == models.ArtifactKindDecomposition {
+			latest = &arts[i] // ListByTaskID отсортирован по created_at — последнее совпадение самое свежее
+		}
+	}
+	if latest == nil {
+		return
+	}
+	n, err := w.splitDecomposition(ctx, taskID, latest.ID, latest.Content)
+	if err != nil {
+		w.logger.WarnContext(ctx, "auto-split decomposition failed", "task_id", taskID, "error", err.Error())
+		return
+	}
+	if n > 0 {
+		w.logger.InfoContext(ctx, "auto-split decomposition into subtasks",
+			"task_id", taskID, "decomposition_id", latest.ID, "subtasks", n)
+		w.publishArtifactCreated(ctx, projectID, taskID, "decomposer")
+	}
+}
+
+// publishArtifactCreated шлёт ArtifactCreated в EventBus для live-апдейта UI (HubBridge →
+// фронт рефетчит список артефактов задачи). No-op если bus не сконфигурирован. Гранулярность —
+// на уровне задачи+продюсера: id/kind конкретного артефакта не отслеживаем здесь (один
+// agent_job может создать несколько артефактов), фронт всё равно перезапрашивает весь список.
+func (w *AgentWorker) publishArtifactCreated(ctx context.Context, projectID, taskID uuid.UUID, producer string) {
+	if w.bus == nil || projectID == uuid.Nil {
+		return
+	}
+	w.bus.Publish(ctx, events.ArtifactCreated{
+		ProjectID:     projectID,
+		TaskID:        taskID,
+		ProducerAgent: producer,
+		OccurredAt:    time.Now(),
+	})
+}
+
+func (w *AgentWorker) enqueueFollowupStep(ctx context.Context, taskID uuid.UUID) {
+	// Дедуп-enqueue: при завершении N параллельных job'ов не плодим N step_req'ов —
+	// Router'у достаточно одного прогона на актуальном состоянии. Коалесцирование убирает
+	// бесполезные «ожидающие» вызовы дорогой LLM-модели без потери решений (см. репозиторий).
 	err := retryOnConflict(ctx, w.logger, func() error {
-		return w.eventRepo.Enqueue(ctx, ev)
+		return w.eventRepo.EnqueueFollowupStepReq(ctx, taskID)
 	})
 	if err != nil {
 		w.logger.ErrorContext(ctx, "enqueue follow-up step_req failed",
@@ -1370,4 +1540,3 @@ func extractMultipleArtifacts(result *agent.ExecutionResult, agentName string, t
 
 	return arts, true
 }
-

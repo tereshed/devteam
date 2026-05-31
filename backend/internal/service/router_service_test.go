@@ -560,7 +560,7 @@ func TestParseAndValidate_RejectsUnknownArtifact(t *testing.T) {
 	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
 	artID := uuid.New()
 	raw := []byte(fmt.Sprintf(`{"done": false, "agents": [{"agent": "planner", "input": {"target_artifact_id": "%s"}}], "reason": "x"}`, artID))
-	
+
 	// Test rejection when no artifacts are provided
 	_, correction := parseAndValidateDecision(raw, enabled, nil, false)
 	if correction == nil {
@@ -685,7 +685,7 @@ func TestDecide_DoesNotLeakErrErrorToLogs(t *testing.T) {
 func TestParseAndValidate_AllowsEmptyAgentsWhenInFlight(t *testing.T) {
 	enabled := []*models.Agent{makeAgent("planner", models.AgentExecutionKindLLM)}
 	raw := []byte(`{"done": false, "agents": [], "reason": "waiting for code review to finish"}`)
-	
+
 	// If hasInFlight is false, empty agents list must be rejected
 	_, correction := parseAndValidateDecision(raw, enabled, nil, false)
 	if correction == nil {
@@ -699,5 +699,96 @@ func TestParseAndValidate_AllowsEmptyAgentsWhenInFlight(t *testing.T) {
 	_, correction = parseAndValidateDecision(raw, enabled, nil, true)
 	if correction != nil {
 		t.Fatalf("unexpected validation error: %v", correction)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildUserPrompt — guidelines и Failed jobs (Sprint: оптимизация после задачи 1.1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestBuildUserPrompt_IncludesGuidelines — промпт всегда содержит поведенческие
+// рекомендации (right-sizing, merge-gate, scoped-review, не-биться-в-OOM).
+func TestBuildUserPrompt_IncludesGuidelines(t *testing.T) {
+	svc := NewRouterService(&mockLoader{agent: makeRouterAgent()}, &mockDispatcher{}, nil, DefaultRouterConfig())
+	state := makeState([]*models.Agent{makeAgent("developer", models.AgentExecutionKindSandbox)}, nil)
+
+	prompt := svc.buildUserPrompt(state, "")
+
+	for _, want := range []string{"# Guidelines", "Gate the merger", "Review of a fix is scoped", "Right-size"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt missing guideline marker %q", want)
+		}
+	}
+}
+
+// TestBuildUserPrompt_SurfacesDeadJobs — если есть мёртвые job'ы, промпт их показывает
+// (включая last_error) и советует needs_human вместо повторного назначения.
+func TestBuildUserPrompt_SurfacesDeadJobs(t *testing.T) {
+	svc := NewRouterService(&mockLoader{agent: makeRouterAgent()}, &mockDispatcher{}, nil, DefaultRouterConfig())
+	state := makeState([]*models.Agent{makeAgent("developer", models.AgentExecutionKindSandbox)}, nil)
+
+	lastErr := "agent produced no usable result (success=false): likely sandbox OOM"
+	state.DeadJobs = []models.TaskEvent{{
+		ID:          4242,
+		TaskID:      state.Task.ID,
+		Kind:        models.TaskEventKindAgentJob,
+		Attempts:    3,
+		MaxAttempts: 3,
+		LastError:   &lastErr,
+	}}
+
+	prompt := svc.buildUserPrompt(state, "")
+
+	for _, want := range []string{"# Failed jobs", "#4242", "likely sandbox OOM", "needs_human"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt missing dead-job marker %q; prompt:\n%s", want, prompt)
+		}
+	}
+}
+
+// TestBuildUserPrompt_NoDeadJobsSectionWhenEmpty — без мёртвых job'ов раздела нет.
+func TestBuildUserPrompt_NoDeadJobsSectionWhenEmpty(t *testing.T) {
+	svc := NewRouterService(&mockLoader{agent: makeRouterAgent()}, &mockDispatcher{}, nil, DefaultRouterConfig())
+	state := makeState([]*models.Agent{makeAgent("developer", models.AgentExecutionKindSandbox)}, nil)
+
+	prompt := svc.buildUserPrompt(state, "")
+	if strings.Contains(prompt, "# Failed jobs") {
+		t.Errorf("did not expect Failed jobs section when DeadJobs is empty")
+	}
+}
+
+// TestParseAndValidate_RejectsTruncatedArtifactID — обрезанный 8-символьный
+// target_artifact_id (галлюцинация Router'а) должен отвергаться с корректирующим retry,
+// а не молча пропускаться (иначе review сохраняется с parent_id=NULL — orphaned).
+func TestParseAndValidate_RejectsTruncatedArtifactID(t *testing.T) {
+	enabled := []*models.Agent{makeAgent("reviewer", models.AgentExecutionKindSandbox)}
+	art := models.Artifact{ID: uuid.New(), Kind: models.ArtifactKindCodeDiff}
+	short := art.ID.String()[:8] // "dd271455" — обрезок
+	raw := []byte(fmt.Sprintf(
+		`{"done": false, "agents": [{"agent": "reviewer", "input": {"target_artifact_id": %q}}], "reason": "review the diff"}`,
+		short,
+	))
+
+	_, correction := parseAndValidateDecision(raw, enabled, []models.Artifact{art}, false)
+	if correction == nil {
+		t.Fatal("expected correction for truncated target_artifact_id, got nil")
+	}
+	if correction.LogCode != correctionCodeInvalidArtifactID {
+		t.Errorf("expected LogCode=%q, got %q", correctionCodeInvalidArtifactID, correction.LogCode)
+	}
+}
+
+// TestParseAndValidate_AcceptsFullArtifactID — полный валидный target_artifact_id проходит.
+func TestParseAndValidate_AcceptsFullArtifactID(t *testing.T) {
+	enabled := []*models.Agent{makeAgent("reviewer", models.AgentExecutionKindSandbox)}
+	art := models.Artifact{ID: uuid.New(), Kind: models.ArtifactKindCodeDiff}
+	raw := []byte(fmt.Sprintf(
+		`{"done": false, "agents": [{"agent": "reviewer", "input": {"target_artifact_id": %q}}], "reason": "review"}`,
+		art.ID.String(),
+	))
+
+	_, correction := parseAndValidateDecision(raw, enabled, []models.Artifact{art}, false)
+	if correction != nil {
+		t.Fatalf("unexpected correction for valid full UUID: %+v", correction)
 	}
 }

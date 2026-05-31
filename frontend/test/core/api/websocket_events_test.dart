@@ -113,6 +113,44 @@ void main() {
       expect(got.metadata, {'some_key': 'some_val'});
       expect(got.createdAt.isUtc, isTrue);
     });
+
+    test('router_decision parses successfully (Orchestration v2)', () {
+      const json =
+          '{"type":"router_decision","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"project_id":"550e8400-e29b-41d4-a716-446655440000",'
+          '"data":{"task_id":"660e8400-e29b-41d4-a716-446655440001",'
+          '"step_no":3,"chosen_agents":["developer","reviewer"],'
+          '"done":false,"reason":"fan out"}}';
+      final ev = parseWsServerEnvelope(json);
+      final got = ev.maybeMap(
+        routerDecision: (e) => e.value,
+        orElse: () => null,
+      );
+      expect(got, isNotNull);
+      expect(got!.projectId, '550e8400-e29b-41d4-a716-446655440000');
+      expect(got.taskId, '660e8400-e29b-41d4-a716-446655440001');
+      expect(got.stepNo, 3);
+      expect(got.chosenAgents, ['developer', 'reviewer']);
+      expect(got.done, isFalse);
+    });
+
+    test('artifact parses successfully (Orchestration v2)', () {
+      const json =
+          '{"type":"artifact","v":1,"ts":"2026-05-16T10:00:00.000Z",'
+          '"project_id":"550e8400-e29b-41d4-a716-446655440000",'
+          '"data":{"task_id":"660e8400-e29b-41d4-a716-446655440001",'
+          '"producer_agent":"planner","kind":"plan","status":"ready"}}';
+      final ev = parseWsServerEnvelope(json);
+      final got = ev.maybeMap(
+        artifact: (e) => e.value,
+        orElse: () => null,
+      );
+      expect(got, isNotNull);
+      expect(got!.taskId, '660e8400-e29b-41d4-a716-446655440001');
+      expect(got.producerAgent, 'planner');
+      expect(got.kind, 'plan');
+      expect(got.status, 'ready');
+    });
   });
 
   group('parseWsServerEnvelope (integration_status)', () {

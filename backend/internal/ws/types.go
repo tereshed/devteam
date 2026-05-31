@@ -23,12 +23,17 @@ var ErrNilUserID = errors.New("ws: userID cannot be uuid.Nil")
 type MessageType string
 
 const (
-	MessageTypeTaskStatus        MessageType = "task_status"
-	MessageTypeTaskMessage       MessageType = "task_message"
-	MessageTypeAgentLog          MessageType = "agent_log"
-	MessageTypeError             MessageType = "error"
-	MessageTypeIntegrationStatus MessageType = "integration_status"
+	MessageTypeTaskStatus          MessageType = "task_status"
+	MessageTypeTaskMessage         MessageType = "task_message"
+	MessageTypeAgentLog            MessageType = "agent_log"
+	MessageTypeError               MessageType = "error"
+	MessageTypeIntegrationStatus   MessageType = "integration_status"
 	MessageTypeConversationMessage MessageType = "conversation_message"
+
+	// Orchestration v2 — project-scoped live-апдейты для Router-таймлайна и
+	// execution-графа задачи. Без них UI не видит шагов/артефактов до ручного рефреша.
+	MessageTypeRouterDecision MessageType = "router_decision"
+	MessageTypeArtifact       MessageType = "artifact"
 
 	// Assistant-events (Sprint 21 §7). Все — user-scoped, маршрутизируются
 	// через Hub.SendToUser и обязаны сериализоваться через MarshalUserEnvelope —
@@ -50,11 +55,11 @@ const (
 type ErrorCode string
 
 const (
-	ErrorCodeStreamOverflow  ErrorCode = "stream_overflow"
-	ErrorCodeTaskNotFound    ErrorCode = "task_not_found"
-	ErrorCodeInternalError   ErrorCode = "internal_error"
-	ErrorCodeForbidden       ErrorCode = "forbidden"
-	ErrorCodeServerShutdown  ErrorCode = "server_shutdown"
+	ErrorCodeStreamOverflow ErrorCode = "stream_overflow"
+	ErrorCodeTaskNotFound   ErrorCode = "task_not_found"
+	ErrorCodeInternalError  ErrorCode = "internal_error"
+	ErrorCodeForbidden      ErrorCode = "forbidden"
+	ErrorCodeServerShutdown ErrorCode = "server_shutdown"
 )
 
 // Envelope — единый формат всех project-scoped исходящих сообщений.
@@ -206,6 +211,27 @@ type AgentLogData struct {
 	Truncated bool      `json:"truncated,omitempty"`
 }
 
+// RouterDecisionData — payload для type=router_decision (Orchestration v2).
+type RouterDecisionData struct {
+	TaskID       uuid.UUID `json:"task_id"`
+	StepNo       int       `json:"step_no"`
+	ChosenAgents []string  `json:"chosen_agents"`
+	Done         bool      `json:"done"`
+	Outcome      string    `json:"outcome,omitempty"`
+	Reason       string    `json:"reason,omitempty"` // scrubbed продюсером
+}
+
+// ArtifactData — payload для type=artifact (Orchestration v2).
+type ArtifactData struct {
+	TaskID        uuid.UUID  `json:"task_id"`
+	ArtifactID    *uuid.UUID `json:"artifact_id,omitempty"`
+	ProducerAgent string     `json:"producer_agent"`
+	Kind          string     `json:"kind,omitempty"`
+	Status        string     `json:"status,omitempty"`
+	Summary       string     `json:"summary,omitempty"` // scrubbed продюсером
+	ParentID      *uuid.UUID `json:"parent_id,omitempty"`
+}
+
 // ErrorData — payload для type=error.
 type ErrorData struct {
 	Code    ErrorCode      `json:"code"`
@@ -335,6 +361,12 @@ func MarshalError(projectID uuid.UUID, d ErrorData) ([]byte, error) {
 }
 func MarshalConversationMessage(projectID uuid.UUID, d ConversationMessageData) ([]byte, error) {
 	return MarshalEnvelope(MessageTypeConversationMessage, projectID, d)
+}
+func MarshalRouterDecision(projectID uuid.UUID, d RouterDecisionData) ([]byte, error) {
+	return MarshalEnvelope(MessageTypeRouterDecision, projectID, d)
+}
+func MarshalArtifact(projectID uuid.UUID, d ArtifactData) ([]byte, error) {
+	return MarshalEnvelope(MessageTypeArtifact, projectID, d)
 }
 
 // MarshalUserEnvelope — ЕДИНСТВЕННЫЙ способ сериализации user-scoped WS-сообщения.

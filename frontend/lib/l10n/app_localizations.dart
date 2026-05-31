@@ -5024,6 +5024,42 @@ abstract class AppLocalizations {
   /// **'Ошибка'**
   String get agentMatrixStatusFailed;
 
+  /// No description provided for @taskVizTabTrace.
+  ///
+  /// In ru, this message translates to:
+  /// **'Трейс'**
+  String get taskVizTabTrace;
+
+  /// No description provided for @taskVizTabFlow.
+  ///
+  /// In ru, this message translates to:
+  /// **'Граф'**
+  String get taskVizTabFlow;
+
+  /// No description provided for @taskTraceWaiting.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ожидание первого решения роутера…'**
+  String get taskTraceWaiting;
+
+  /// No description provided for @taskTraceRouterLane.
+  ///
+  /// In ru, this message translates to:
+  /// **'роутер'**
+  String get taskTraceRouterLane;
+
+  /// No description provided for @taskTraceLegendRouter.
+  ///
+  /// In ru, this message translates to:
+  /// **'решение роутера'**
+  String get taskTraceLegendRouter;
+
+  /// No description provided for @taskTraceLegendDependency.
+  ///
+  /// In ru, this message translates to:
+  /// **'зависимость'**
+  String get taskTraceLegendDependency;
+
   /// No description provided for @agentMatrixInspectorTitle.
   ///
   /// In ru, this message translates to:

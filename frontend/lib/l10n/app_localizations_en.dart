@@ -2716,6 +2716,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentMatrixStatusFailed => 'Failed';
 
   @override
+  String get taskVizTabTrace => 'Trace';
+
+  @override
+  String get taskVizTabFlow => 'Flow';
+
+  @override
+  String get taskTraceWaiting => 'Waiting for the first router decision…';
+
+  @override
+  String get taskTraceRouterLane => 'router';
+
+  @override
+  String get taskTraceLegendRouter => 'router decision';
+
+  @override
+  String get taskTraceLegendDependency => 'dependency';
+
+  @override
   String get agentMatrixInspectorTitle => 'Agent Inspection';
 
   @override

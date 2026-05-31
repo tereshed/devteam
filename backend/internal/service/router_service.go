@@ -43,10 +43,10 @@ import (
 //     (>1 = параллельный fan-out).
 //   - Done=false + Agents пустой — НЕВАЛИДНО, парсер вернёт ошибку.
 type Decision struct {
-	Done    bool                          `json:"done"`
-	Outcome models.RouterDecisionOutcome  `json:"outcome,omitempty"`
-	Agents  []AgentRequest                `json:"agents,omitempty"`
-	Reason  string                        `json:"reason"`
+	Done    bool                         `json:"done"`
+	Outcome models.RouterDecisionOutcome `json:"outcome,omitempty"`
+	Agents  []AgentRequest               `json:"agents,omitempty"`
+	Reason  string                       `json:"reason"`
 }
 
 // AgentRequest — один элемент Decision.Agents: какого агента и с каким input вызвать.
@@ -76,17 +76,38 @@ func (a AgentRequest) TargetArtifactID() (uuid.UUID, bool) {
 	return id, true
 }
 
+// RawTargetArtifactID возвращает сырое строковое значение input.target_artifact_id и
+// признак его НАЛИЧИЯ (непустая строка), БЕЗ парсинга в UUID. Нужно чтобы отличать
+// «target отсутствует» от «target присутствует, но невалиден» — Router иногда выдаёт
+// обрезанный 8-символьный id вместо полного UUID, и такой случай надо отвергать с
+// корректирующим retry, а не молча пропускать.
+func (a AgentRequest) RawTargetArtifactID() (string, bool) {
+	if a.Input == nil {
+		return "", false
+	}
+	raw, ok := a.Input["target_artifact_id"]
+	if !ok {
+		return "", false
+	}
+	s, ok := raw.(string)
+	if !ok || s == "" {
+		return "", false
+	}
+	return s, true
+}
+
 // RouterState — снимок состояния задачи для одного вызова Router'а.
 // Заполняется Orchestrator.Step'ом перед Decide. Все артефакты — БЕЗ content
 // (поле Content в Artifact оставляется пустым/обрезанным; Router его не видит).
 type RouterState struct {
 	Task      *models.Task
 	TeamID    uuid.UUID
-	Agents    []*models.Agent     // только enabled (is_active=true)
-	Artifacts []models.Artifact   // только metadata (без content); только status=ready
-	InFlight  []models.TaskEvent  // незавершённые agent_job для этой задачи
-	StepNo    int                 // текущий step number (для max-steps трекинга в промпте)
-	MaxSteps  int                 // конфиг max_steps_per_task
+	Agents    []*models.Agent    // только enabled (is_active=true)
+	Artifacts []models.Artifact  // только metadata (без content); только status=ready
+	InFlight  []models.TaskEvent // незавершённые agent_job для этой задачи
+	DeadJobs  []models.TaskEvent // agent_job, исчерпавшие retry (OOM/timeout/crash) — НЕ переназначать вслепую
+	StepNo    int                // текущий step number (для max-steps трекинга в промпте)
+	MaxSteps  int                // конфиг max_steps_per_task
 }
 
 // RouterConfig — настройки сервиса.
@@ -280,16 +301,17 @@ type correctionHint struct {
 
 // Коды коррекции — список фиксирован, безопасно логировать в открытом виде.
 const (
-	correctionCodeEmptyResponse      = "empty_response"
-	correctionCodeJSONParseError     = "json_parse_error"
-	correctionCodeMissingReason      = "missing_reason"
-	correctionCodeInvalidOutcome     = "invalid_outcome"
-	correctionCodeDoneWithAgents     = "done_with_agents"
-	correctionCodeEmptyAgents        = "empty_agents"
-	correctionCodeAgentNameEmpty     = "agent_name_empty"
-	correctionCodeUnknownAgent       = "unknown_agent"
-	correctionCodeDuplicateArtifact  = "duplicate_artifact_id"
-	correctionCodeUnknownArtifact    = "unknown_artifact"
+	correctionCodeEmptyResponse     = "empty_response"
+	correctionCodeJSONParseError    = "json_parse_error"
+	correctionCodeMissingReason     = "missing_reason"
+	correctionCodeInvalidOutcome    = "invalid_outcome"
+	correctionCodeDoneWithAgents    = "done_with_agents"
+	correctionCodeEmptyAgents       = "empty_agents"
+	correctionCodeAgentNameEmpty    = "agent_name_empty"
+	correctionCodeUnknownAgent      = "unknown_agent"
+	correctionCodeDuplicateArtifact = "duplicate_artifact_id"
+	correctionCodeUnknownArtifact   = "unknown_artifact"
+	correctionCodeInvalidArtifactID = "invalid_artifact_id"
 )
 
 // parseAndValidateDecision выполняет: strip fences → unmarshal → validate.
@@ -379,9 +401,29 @@ func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent, existin
 	}
 
 	for i, req := range d.Agents {
-		id, ok := req.TargetArtifactID()
-		if !ok {
+		raw, hasTarget := req.RawTargetArtifactID()
+		if !hasTarget {
 			continue
+		}
+		// target присутствует — он ОБЯЗАН быть полным валидным UUID. Router иногда
+		// галлюцинирует обрезанный 8-символьный id ("dd271455"); раньше такой id молча
+		// пропускался (TargetArtifactID → ok=false → continue), из-за чего воркер не мог
+		// загрузить targetArtifact, а review сохранялся с parent_id=NULL (orphaned).
+		// Теперь отвергаем с корректирующим retry, чтобы Router прислал полный id.
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			var validIDs []string
+			for _, art := range existingArtifacts {
+				validIDs = append(validIDs, fmt.Sprintf("%s (%s)", art.ID, art.Kind))
+			}
+			validList := strings.Join(validIDs, ", ")
+			if validList == "" {
+				validList = "(no artifacts exist)"
+			}
+			return Decision{}, &correctionHint{
+				LogCode:    correctionCodeInvalidArtifactID,
+				PromptText: fmt.Sprintf(`agents[%d] target_artifact_id=%q is not a valid full UUID. Copy the EXACT full id from the Artifacts list (e.g. "550e8400-e29b-41d4-a716-446655440000"), do not abbreviate. Available: %s.`, i, raw, validList),
+			}
 		}
 		if _, exists := artifactsMap[id]; !exists {
 			var validIDs []string
@@ -479,11 +521,33 @@ func (r *RouterService) buildUserPrompt(state RouterState, correction string) st
 		b.WriteString("\n")
 	}
 
+	if len(state.DeadJobs) > 0 {
+		b.WriteString("# Failed jobs (exhausted all retries — DO NOT blindly re-dispatch)\n")
+		b.WriteString("These agent jobs failed repeatedly (likely sandbox OOM / timeout / crash, not a logic problem you can fix by retrying the same agent on the same target):\n")
+		for _, ev := range state.DeadJobs {
+			fmt.Fprintf(&b, "- task_event #%d attempts=%d/%d payload: %s\n",
+				ev.ID, ev.Attempts, ev.MaxAttempts, string(ev.Payload))
+			if ev.LastError != nil && *ev.LastError != "" {
+				fmt.Fprintf(&b, "   last_error: %s\n", *ev.LastError)
+			}
+		}
+		b.WriteString("If the same subtask keeps failing this way, prefer DONE with outcome=needs_human (a human must inspect the sandbox/environment) over re-dispatching the same agent.\n\n")
+	}
+
 	if state.MaxSteps > 0 {
 		fmt.Fprintf(&b, "# Progress\nStep %d of %d (hard cap). If you've been looping without progress, consider DONE outcome=failed.\n\n",
 			state.StepNo, state.MaxSteps,
 		)
 	}
+
+	b.WriteString(`# Guidelines
+- Right-size the process. For a small, single-layer task (a skeleton, one file, one fix) go straight to a developer, then a reviewer. Only run planner/decomposer when the task genuinely spans several independent sub-deliverables.
+- Decomposition auto-expands: once a 'decomposition' artifact is approved it is split into 'subtask_description' artifacts automatically — you do NOT need to re-run the decomposer for that.
+- Gate the merger: do NOT dispatch the merger while ANY in-flight job is running or while ANY subtask still lacks an approved code_diff. Merge only once every subtask is approved.
+- Review of a fix is scoped: when a reviewer (or developer) targets an artifact that already has a parent review with changes_requested, judge ONLY whether the previous review's points are resolved. Do not expand the scope and invent new unrelated requirements round after round.
+- Don't fight the environment. If a job is in "Failed jobs" above, retrying the identical agent on the identical target will fail the same way — escalate to needs_human instead.
+
+`)
 
 	b.WriteString(`# Response Format
 Respond with ONE valid JSON object, no markdown fences, no prose around it:
@@ -542,4 +606,3 @@ func agentNamesList(agents []*models.Agent) string {
 	}
 	return "[" + strings.Join(names, ", ") + "]"
 }
-

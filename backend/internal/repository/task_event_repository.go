@@ -50,6 +50,20 @@ type TaskEventRepository interface {
 	// ListPendingByTaskID — события задачи, не завершённые и не мёртвые.
 	// Используется Router'у для построения in-flight списка.
 	ListPendingByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.TaskEvent, error)
+
+	// EnqueueFollowupStepReq атомарно ставит step_req для задачи, КОАЛЕСЦИРУЯ с уже стоящим
+	// в очереди step_req'ом. Если для задачи уже есть pending + НЕ залоченный step_req —
+	// новый не добавляется (Router'у хватит одного прогона на актуальном state). Залоченный
+	// (уже обрабатывающийся) step_req НЕ подавляет новый — он мог прочитать state до текущего
+	// завершения, поэтому свежее событие обязано получить свой прогон (исключает зависание).
+	EnqueueFollowupStepReq(ctx context.Context, taskID uuid.UUID) error
+
+	// ListDeadByTaskID — события задачи, исчерпавшие попытки (attempts >= max_attempts)
+	// и не завершённые. Это «мёртвые» job'ы: они уже не будут обработаны очередью.
+	// Router'у важно их видеть, чтобы не переназначать бесконечно упавшего агента, а
+	// эскалировать задачу в needs_human. Возвращаются только agent_job (step_req-смерти
+	// не несут полезной для Router'а информации).
+	ListDeadByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.TaskEvent, error)
 }
 
 type taskEventRepository struct {
@@ -179,6 +193,40 @@ func (r *taskEventRepository) ListPendingByTaskID(ctx context.Context, taskID uu
 		Find(&events).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pending task events for task %s: %w", taskID, err)
+	}
+	return events, nil
+}
+
+func (r *taskEventRepository) EnqueueFollowupStepReq(ctx context.Context, taskID uuid.UUID) error {
+	// INSERT ... SELECT ... WHERE NOT EXISTS — атомарная вставка-если-нет-очереди.
+	// Колонки с дефолтами (id, payload, scheduled_at, attempts, max_attempts, created_at)
+	// заполняются автоматически. Подавляем только НЕ залоченный pending step_req.
+	const q = `
+INSERT INTO task_events (task_id, kind)
+SELECT ?, 'step_req'
+ WHERE NOT EXISTS (
+     SELECT 1 FROM task_events
+      WHERE task_id = ?
+        AND kind = 'step_req'
+        AND completed_at IS NULL
+        AND locked_by IS NULL
+        AND attempts < max_attempts
+ )`
+	if err := r.db.WithContext(ctx).Exec(q, taskID, taskID).Error; err != nil {
+		return fmt.Errorf("enqueue followup step_req (dedup) for task %s: %w", taskID, err)
+	}
+	return nil
+}
+
+func (r *taskEventRepository) ListDeadByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.TaskEvent, error) {
+	var events []models.TaskEvent
+	err := r.db.WithContext(ctx).
+		Where("task_id = ? AND completed_at IS NULL AND attempts >= max_attempts AND kind = ?",
+			taskID, models.TaskEventKindAgentJob).
+		Order("scheduled_at ASC").
+		Find(&events).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list dead task events for task %s: %w", taskID, err)
 	}
 	return events, nil
 }

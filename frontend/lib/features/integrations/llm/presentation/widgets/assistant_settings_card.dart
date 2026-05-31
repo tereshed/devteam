@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/agents_v2/domain/agent_v2_model.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
+import 'package:frontend/features/integrations/llm/domain/agent_model_suggestions.dart';
 import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 import 'package:frontend/features/onboarding/data/my_agents_providers.dart';
 
@@ -132,48 +133,10 @@ class _AssistantSettingsCardState extends ConsumerState<AssistantSettingsCard> {
     }
   }
 
+  // Статические подсказки моделей — из общего источника (тот же, что у командных агентов),
+  // чтобы списки не расходились. Динамический каталог (availableModelsProvider) имеет приоритет.
   List<String> _suggestionsFor(LlmIntegrationProvider provider) {
-    switch (provider) {
-      case LlmIntegrationProvider.openrouter:
-        return [
-          'deepseek/deepseek-r1',
-          'anthropic/claude-3.5-sonnet',
-          'google/gemini-2.5-flash',
-          'openai/gpt-4o',
-          'openai/gpt-4o-mini',
-          'meta-llama/llama-3.3-70b-instruct',
-          'deepseek/deepseek-v4-flash',
-          'anthropic/claude-3.5-haiku',
-        ];
-      case LlmIntegrationProvider.anthropic:
-        return [
-          'claude-3-5-sonnet-latest',
-          'claude-3-5-haiku-latest',
-          'claude-haiku-4-5-20251001',
-        ];
-      case LlmIntegrationProvider.claudeCodeOAuth:
-        return [
-          'claude-3-5-sonnet-latest',
-          'claude-haiku-4-5-20251001',
-        ];
-      case LlmIntegrationProvider.deepseek:
-        return [
-          'deepseek-chat',
-          'deepseek-reasoner',
-        ];
-      case LlmIntegrationProvider.zhipu:
-        return [
-          'glm-4',
-          'glm-4-flash',
-        ];
-      case LlmIntegrationProvider.antigravity:
-      case LlmIntegrationProvider.antigravityOAuth:
-        return [
-          'antigravity-default',
-        ];
-      default:
-        return const [];
-    }
+    return agentModelSuggestions(_providerToKind(provider));
   }
 
   Future<void> _save(String agentId) async {

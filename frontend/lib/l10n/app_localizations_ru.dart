@@ -2739,6 +2739,24 @@ class AppLocalizationsRu extends AppLocalizations {
   String get agentMatrixStatusFailed => 'Ошибка';
 
   @override
+  String get taskVizTabTrace => 'Трейс';
+
+  @override
+  String get taskVizTabFlow => 'Граф';
+
+  @override
+  String get taskTraceWaiting => 'Ожидание первого решения роутера…';
+
+  @override
+  String get taskTraceRouterLane => 'роутер';
+
+  @override
+  String get taskTraceLegendRouter => 'решение роутера';
+
+  @override
+  String get taskTraceLegendDependency => 'зависимость';
+
+  @override
   String get agentMatrixInspectorTitle => 'Инспекция агента';
 
   @override

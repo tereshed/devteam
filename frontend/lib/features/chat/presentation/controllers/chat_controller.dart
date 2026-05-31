@@ -339,6 +339,9 @@ class ChatController extends _$ChatController {
           },
           integrationStatus: (_) {},
           conversationMessage: _onWsConversationMessage,
+          // Orchestration v2 — таймлайн/артефакты задачи, к чату не относятся.
+          routerDecision: (_) {},
+          artifact: (_) {},
           // Assistant-события (Sprint 21 §7) — user-scoped, маршрутизируются
           // в AssistantChatController / AssistantTasksController. Здесь —
           // явный no-op, чтобы Freezed-sealed when остался exhaustive.

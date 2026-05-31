@@ -310,6 +310,8 @@ class GitIntegrationsController extends Notifier<GitIntegrationsState> {
           error: (_) {},
           integrationStatus: _applyIntegrationStatus,
           conversationMessage: (_) {},
+          routerDecision: (_) {},
+          artifact: (_) {},
           // Sprint 21 §7 — assistant.* идут в правую панель.
           assistantSessionUpdated: (_) {},
           assistantMessage: (_) {},

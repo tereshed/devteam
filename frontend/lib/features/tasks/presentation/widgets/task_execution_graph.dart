@@ -11,6 +11,11 @@ import 'package:intl/intl.dart';
 
 enum NodeStatus { pending, running, success, failed }
 
+/// Тип ноды графа: исполнитель (agent), решение Router'а (router) или корень-оркестратор
+/// (orchestrator). Router и orchestrator делают видимым сам процесс принятия решений,
+/// раньше «спрятанный» в рёбрах между шагами.
+enum NodeKind { agent, router, orchestrator }
+
 class AgentNodeData {
   final String id;
   final String name;
@@ -19,6 +24,8 @@ class AgentNodeData {
   final List<String> subtasks;
   final List<Artifact> artifacts;
   final int stepNo;
+  final NodeKind kind;
+  final String? reason; // для router-ноды — reason решения
 
   const AgentNodeData({
     required this.id,
@@ -28,6 +35,8 @@ class AgentNodeData {
     required this.subtasks,
     required this.artifacts,
     required this.stepNo,
+    this.kind = NodeKind.agent,
+    this.reason,
   });
 }
 
@@ -41,8 +50,15 @@ List<AgentNodeData> buildAgentNodes({
 }) {
   final nodes = <AgentNodeData>[];
 
+  // Сортировка по stepNo, с тай-брейком по createdAt: step_no обычно уникален, но если
+  // в данных встретятся дубликаты (исторические задачи до фикса инкремента), тай-брейк
+  // по времени держит окна привязки артефактов монотонными и не даёт одному артефакту
+  // попасть на две ноды (перекрытие окон).
   final sortedDecisions = List<RouterDecision>.from(decisions)
-    ..sort((a, b) => a.stepNo.compareTo(b.stepNo));
+    ..sort((a, b) {
+      final byStep = a.stepNo.compareTo(b.stepNo);
+      return byStep != 0 ? byStep : a.createdAt.compareTo(b.createdAt);
+    });
 
   if (sortedDecisions.isEmpty) {
     if (assignedAgentName != null) {
@@ -83,6 +99,27 @@ List<AgentNodeData> buildAgentNodes({
 
     final start = d.createdAt;
     final end = !isLast ? sortedDecisions[i + 1].createdAt : DateTime.now().add(const Duration(days: 1));
+
+    // Router-нода шага: делает видимым само решение (reason/outcome) и ветвление в агентов.
+    NodeStatus routerStatus;
+    if (d.outcome == 'failed' || d.outcome == 'needs_human') {
+      routerStatus = NodeStatus.failed;
+    } else if (isStepRunning && isLast) {
+      routerStatus = NodeStatus.running;
+    } else {
+      routerStatus = NodeStatus.success; // решение принято
+    }
+    nodes.add(AgentNodeData(
+      id: "router_${d.stepNo}_$i",
+      name: "router",
+      role: "router",
+      status: routerStatus,
+      subtasks: const [],
+      artifacts: const [],
+      stepNo: d.stepNo,
+      kind: NodeKind.router,
+      reason: d.reason,
+    ));
 
     for (int aIdx = 0; aIdx < d.chosenAgents.length; aIdx++) {
       final agentName = d.chosenAgents[aIdx];
@@ -159,6 +196,18 @@ List<AgentNodeData> buildAgentNodes({
       ));
     }
   }
+
+  // Orchestrator root — единая точка входа цикла оркестрации; ветвится в Router первого шага.
+  nodes.add(AgentNodeData(
+    id: "orchestrator",
+    name: "orchestrator",
+    role: "orchestrator",
+    status: NodeStatus.success,
+    subtasks: const [],
+    artifacts: const [],
+    stepNo: sortedDecisions.first.stepNo,
+    kind: NodeKind.orchestrator,
+  ));
 
   return nodes;
 }
@@ -272,10 +321,29 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                   teamAgents: team.agents,
                 );
 
-                // 2. Группировка по stepNo и построение уровней (самый свежий наверху)
+                // 2. Группировка по «уровню» и построение уровней (самый свежий наверху).
+                //    Уровень кодирует порядок Orchestrator → Router(step) → агенты(step) →
+                //    Router(step+1) → ...: orchestrator = minStep*2-1, router = step*2,
+                //    агенты = step*2+1. Так существующая логика «рёбра между соседними
+                //    уровнями» автоматически даёт нужную цепочку, и Router/Orchestrator
+                //    встают отдельными рядами между шагами.
+                final int minStep = decisions.isEmpty
+                    ? 0
+                    : decisions.map((d) => d.stepNo).reduce(min);
+                int levelOf(AgentNodeData n) {
+                  switch (n.kind) {
+                    case NodeKind.orchestrator:
+                      return minStep * 2 - 1;
+                    case NodeKind.router:
+                      return n.stepNo * 2;
+                    case NodeKind.agent:
+                      return n.stepNo * 2 + 1;
+                  }
+                }
+
                 final stepGroups = <int, List<AgentNodeData>>{};
                 for (final node in nodesList) {
-                  stepGroups.putIfAbsent(node.stepNo, () => []).add(node);
+                  stepGroups.putIfAbsent(levelOf(node), () => []).add(node);
                 }
 
                 final sortedStepNos = stepGroups.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -284,7 +352,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                   return stepGroups[step]!.map((node) => node.id).toList();
                 }).toList();
 
-                // 3. Выделение переходов (Edges) от шага S к шагу S + 1
+                // 3. Рёбра между соседними уровнями (полное двудольное соединение).
                 final sortedStepNosAsc = stepGroups.keys.toList()..sort();
                 final edges = <(String, String)>[];
                 for (int i = 0; i < sortedStepNosAsc.length - 1; i++) {
@@ -605,6 +673,14 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
         statusText = l10n.agentMatrixStatusFailed;
     }
 
+    // Router/Orchestrator — отдельные иконки, чтобы визуально отличать «мозг» от исполнителей.
+    if (node.kind == NodeKind.router) {
+      icon = Icons.call_split;
+    } else if (node.kind == NodeKind.orchestrator) {
+      icon = Icons.hub_outlined;
+    }
+    final isControlNode = node.kind != NodeKind.agent;
+
     final isRunning = node.status == NodeStatus.running;
     final pulseValue = isRunning
         ? 1.0 + 0.05 * sin(_animationController.value * 2 * pi)
@@ -640,7 +716,9 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
           color: Colors.white.withValues(alpha: 0.9),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () => widget.onAgentSelected(node),
+            // Кликабельны только агенты (инспектор показывает агента). Router/Orchestrator
+            // несут reason прямо на карточке — открывать по ним нечего.
+            onTap: isControlNode ? null : () => widget.onAgentSelected(node),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Column(
@@ -679,6 +757,16 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                       color: Colors.grey.shade600,
                     ),
                   ),
+                  // Для router-ноды показываем краткий reason решения (полный — в timeline).
+                  if (node.reason != null && node.reason!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      node.reason!,
+                      style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                   const SizedBox(height: 2),
                   Row(
                     children: [

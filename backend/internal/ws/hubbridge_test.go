@@ -297,10 +297,10 @@ func TestHubBridge_Dispatch(t *testing.T) {
 			var env Envelope[TaskMessageData]
 			err := json.Unmarshal(msg.Payload, &env)
 			require.NoError(t, err)
-			
+
 			assert.Contains(t, env.Data.Content, secrets.Redacted)
 			assert.NotContains(t, env.Data.Content, "sk-1234567890")
-			
+
 			assert.Equal(t, "gpt-4", env.Data.Metadata["model"])
 			assert.NotContains(t, env.Data.Metadata, "secret")
 		case <-time.After(time.Second):
@@ -412,6 +412,75 @@ func TestHubBridge_Dispatch(t *testing.T) {
 			assert.Equal(t, createdAt, env.Data.CreatedAt.UTC())
 		case <-time.After(time.Second):
 			t.Fatal("timed out waiting for ConversationMessageUpdated")
+		}
+	})
+}
+
+// TestHubBridge_OrchestrationV2Events — мост транслирует RouterDecisionCreated и
+// ArtifactCreated в project-scoped WS-сообщения (Orchestration v2 live-апдейты).
+func TestHubBridge_OrchestrationV2Events(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	bus := events.NewInMemoryBus(nil, nil)
+	defer bus.Close()
+
+	hub := &Hub{
+		broadcast:     make(chan *Message, 10),
+		userBroadcast: make(chan *UserMessage, 10),
+	}
+	scrub := secrets.NewScrubber()
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	bridge := NewHubBridge(bus, hub, scrub, log, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go bridge.Run(ctx)
+	time.Sleep(10 * time.Millisecond)
+
+	projectID := uuid.New()
+	taskID := uuid.New()
+
+	t.Run("RouterDecisionCreated", func(t *testing.T) {
+		bus.Publish(ctx, events.RouterDecisionCreated{
+			ProjectID:    projectID,
+			TaskID:       taskID,
+			StepNo:       3,
+			ChosenAgents: []string{"developer", "reviewer"},
+			Reason:       "fan out",
+		})
+		select {
+		case msg := <-hub.broadcast:
+			assert.Equal(t, projectID.String(), msg.ProjectID)
+			assert.Equal(t, string(MessageTypeRouterDecision), msg.Type)
+			var env Envelope[RouterDecisionData]
+			require.NoError(t, json.Unmarshal(msg.Payload, &env))
+			assert.Equal(t, 3, env.Data.StepNo)
+			assert.Equal(t, []string{"developer", "reviewer"}, env.Data.ChosenAgents)
+			assert.Equal(t, taskID, env.Data.TaskID)
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for router_decision")
+		}
+	})
+
+	t.Run("ArtifactCreated", func(t *testing.T) {
+		bus.Publish(ctx, events.ArtifactCreated{
+			ProjectID:     projectID,
+			TaskID:        taskID,
+			ProducerAgent: "planner",
+			Kind:          "plan",
+			Status:        "ready",
+		})
+		select {
+		case msg := <-hub.broadcast:
+			assert.Equal(t, projectID.String(), msg.ProjectID)
+			assert.Equal(t, string(MessageTypeArtifact), msg.Type)
+			var env Envelope[ArtifactData]
+			require.NoError(t, json.Unmarshal(msg.Payload, &env))
+			assert.Equal(t, "planner", env.Data.ProducerAgent)
+			assert.Equal(t, "plan", env.Data.Kind)
+			assert.Equal(t, taskID, env.Data.TaskID)
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for artifact")
 		}
 	})
 }

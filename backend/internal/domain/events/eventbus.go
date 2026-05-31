@@ -37,7 +37,7 @@ type TaskStatusChanged struct {
 	TraceID         string
 }
 
-func (e TaskStatusChanged) domainEvent()          {}
+func (e TaskStatusChanged) domainEvent()            {}
 func (e TaskStatusChanged) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e TaskStatusChanged) GetTraceID() string      { return e.TraceID }
 
@@ -56,9 +56,48 @@ type TaskMessageCreated struct {
 	TraceID     string
 }
 
-func (e TaskMessageCreated) domainEvent()          {}
+func (e TaskMessageCreated) domainEvent()            {}
 func (e TaskMessageCreated) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e TaskMessageCreated) GetTraceID() string      { return e.TraceID }
+
+// RouterDecisionCreated — Router принял решение на одном шаге Orchestrator.Step
+// (Orchestration v2). Публикуется ПОСЛЕ commit'а Step-транзакции. Нужно для live-апдейта
+// Router-таймлайна и execution-графа в UI без ручного рефреша.
+type RouterDecisionCreated struct {
+	ProjectID    uuid.UUID
+	TaskID       uuid.UUID
+	StepNo       int
+	ChosenAgents []string
+	Done         bool
+	Outcome      string // непусто только при Done
+	Reason       string // короткое объяснение; scrub в подписчике
+	OccurredAt   time.Time
+	TraceID      string
+}
+
+func (e RouterDecisionCreated) domainEvent()            {}
+func (e RouterDecisionCreated) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e RouterDecisionCreated) GetTraceID() string      { return e.TraceID }
+
+// ArtifactCreated — агент создал артефакт (plan/code_diff/review/test_result/...) в рамках
+// задачи (Orchestration v2). Публикуется AgentWorker'ом после успешного сохранения.
+// Гранулярность — на уровне задачи+продюсера: подписчик (UI) рефетчит список артефактов.
+type ArtifactCreated struct {
+	ProjectID     uuid.UUID
+	TaskID        uuid.UUID
+	ArtifactID    uuid.UUID // uuid.Nil если конкретный id не отслеживается
+	ProducerAgent string
+	Kind          string
+	Status        string
+	Summary       string // scrub в подписчике
+	ParentID      *uuid.UUID
+	OccurredAt    time.Time
+	TraceID       string
+}
+
+func (e ArtifactCreated) domainEvent()            {}
+func (e ArtifactCreated) GetProjectID() uuid.UUID { return e.ProjectID }
+func (e ArtifactCreated) GetTraceID() string      { return e.TraceID }
 
 // SandboxLogEmitted — одна строка лога из контейнера (см. 5.x).
 type SandboxLogEmitted struct {
@@ -73,7 +112,7 @@ type SandboxLogEmitted struct {
 	TraceID    string
 }
 
-func (e SandboxLogEmitted) domainEvent()          {}
+func (e SandboxLogEmitted) domainEvent()            {}
 func (e SandboxLogEmitted) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e SandboxLogEmitted) GetTraceID() string      { return e.TraceID }
 
@@ -87,7 +126,7 @@ type PipelineErrored struct {
 	TraceID    string
 }
 
-func (e PipelineErrored) domainEvent()          {}
+func (e PipelineErrored) domainEvent()            {}
 func (e PipelineErrored) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e PipelineErrored) GetTraceID() string      { return e.TraceID }
 
@@ -98,7 +137,7 @@ type ProjectDeleted struct {
 	TraceID    string
 }
 
-func (e ProjectDeleted) domainEvent()          {}
+func (e ProjectDeleted) domainEvent()            {}
 func (e ProjectDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e ProjectDeleted) GetTraceID() string      { return e.TraceID }
 
@@ -109,7 +148,7 @@ type UserDeleted struct {
 	TraceID    string
 }
 
-func (e UserDeleted) domainEvent()          {}
+func (e UserDeleted) domainEvent()            {}
 func (e UserDeleted) GetProjectID() uuid.UUID { return uuid.Nil }
 func (e UserDeleted) GetTraceID() string      { return e.TraceID }
 
@@ -123,7 +162,7 @@ type ConversationDeleted struct {
 	TraceID        string
 }
 
-func (e ConversationDeleted) domainEvent()          {}
+func (e ConversationDeleted) domainEvent()            {}
 func (e ConversationDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e ConversationDeleted) GetTraceID() string      { return e.TraceID }
 
@@ -142,7 +181,7 @@ type ConversationMessageCreated struct {
 	TraceID        string
 }
 
-func (e ConversationMessageCreated) domainEvent()          {}
+func (e ConversationMessageCreated) domainEvent()            {}
 func (e ConversationMessageCreated) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e ConversationMessageCreated) GetTraceID() string      { return e.TraceID }
 
@@ -161,7 +200,7 @@ type ConversationMessageUpdated struct {
 	TraceID        string
 }
 
-func (e ConversationMessageUpdated) domainEvent()          {}
+func (e ConversationMessageUpdated) domainEvent()            {}
 func (e ConversationMessageUpdated) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e ConversationMessageUpdated) GetTraceID() string      { return e.TraceID }
 
@@ -174,7 +213,7 @@ type ConversationMessageDeleted struct {
 	TraceID        string
 }
 
-func (e ConversationMessageDeleted) domainEvent()          {}
+func (e ConversationMessageDeleted) domainEvent()            {}
 func (e ConversationMessageDeleted) GetProjectID() uuid.UUID { return e.ProjectID }
 func (e ConversationMessageDeleted) GetTraceID() string      { return e.TraceID }
 
@@ -212,7 +251,7 @@ type IntegrationConnectionChanged struct {
 	TraceID     string
 }
 
-func (e IntegrationConnectionChanged) domainEvent()          {}
+func (e IntegrationConnectionChanged) domainEvent()            {}
 func (e IntegrationConnectionChanged) GetProjectID() uuid.UUID { return uuid.Nil }
 func (e IntegrationConnectionChanged) GetTraceID() string      { return e.TraceID }
 
@@ -251,9 +290,9 @@ type Metrics interface {
 
 type noopMetrics struct{}
 
-func (m noopMetrics) IncPublished(eventType string)             {}
+func (m noopMetrics) IncPublished(eventType string)                  {}
 func (m noopMetrics) IncDropped(subscriber string, eventType string) {}
-func (m noopMetrics) SetSubscribers(count int)                  {}
+func (m noopMetrics) SetSubscribers(count int)                       {}
 
 // NewInMemoryBus создает реализацию EventBus для одного инстанса.
 func NewInMemoryBus(metrics Metrics, log *slog.Logger) EventBus {
@@ -269,10 +308,10 @@ func NewInMemoryBus(metrics Metrics, log *slog.Logger) EventBus {
 	}
 	empty := make([]*subscription, 0)
 	bus.subs.Store(&empty)
-	
+
 	now := time.Now().Add(-time.Hour)
 	bus.lastDropLog.Store(&now)
-	
+
 	return bus
 }
 
@@ -281,7 +320,7 @@ func (b *inMemoryBus) Publish(ctx context.Context, ev DomainEvent) {
 		b.log.Warn("eventbus: attempt to publish nil event")
 		return
 	}
-	
+
 	// Check if event is global (e.g. UserDeleted)
 	isGlobal := false
 	if g, ok := ev.(interface{ isGlobal() bool }); ok {
@@ -322,7 +361,7 @@ func (b *inMemoryBus) logRateLimitedDrop(subscriber, eventType string) {
 	const logInterval = 5 * time.Second
 	now := time.Now()
 	last := b.lastDropLog.Load()
-	
+
 	if now.Sub(*last) > logInterval {
 		if b.lastDropLog.CompareAndSwap(last, &now) {
 			b.log.Warn("eventbus: event dropped due to slow subscriber",
@@ -410,6 +449,10 @@ func getEventTypeName(ev DomainEvent) string {
 		return "task_status_changed"
 	case TaskMessageCreated:
 		return "task_message_created"
+	case RouterDecisionCreated:
+		return "router_decision_created"
+	case ArtifactCreated:
+		return "artifact_created"
 	case SandboxLogEmitted:
 		return "sandbox_log_emitted"
 	case PipelineErrored:

@@ -31,7 +31,7 @@ func TestLoad_SandboxDefaults_EmptyEnv(t *testing.T) {
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, int64(1<<30), cfg.Sandbox.MemoryFloorBytes)
+	assert.Equal(t, int64(2<<30), cfg.Sandbox.MemoryFloorBytes)
 	assert.Equal(t, int64(16<<30), cfg.Sandbox.MemoryCeilBytes)
 	assert.Equal(t, int64(100), cfg.Sandbox.PidsFloor)
 	assert.Equal(t, int64(8192), cfg.Sandbox.PidsCeil)
@@ -189,7 +189,7 @@ func TestLoad_SandboxZeroMeansDefaultForMemory(t *testing.T) {
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, int64(1<<30), cfg.Sandbox.MemoryFloorBytes)
+	assert.Equal(t, int64(2<<30), cfg.Sandbox.MemoryFloorBytes)
 	assert.Equal(t, int64(16<<30), cfg.Sandbox.MemoryCeilBytes)
 }
 

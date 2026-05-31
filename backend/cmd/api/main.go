@@ -509,15 +509,16 @@ func main() {
 		v2WorktreeMgr,
 		v2RouterSvc,
 		v2Notifier,
+		eventBus,
 		v2Logger,
 		service.DefaultOrchestratorConfig(),
 	)
 
 	// TaskLifecycleService — POST /tasks/:id/cancel handler использует.
 	v2TaskLifecycle := service.NewTaskLifecycleService(db, v2Notifier, v2Logger)
-	_ = v2TaskLifecycle // подключается в task_handler через wiring ниже (Stage 5g.6)
+	_ = v2TaskLifecycle  // подключается в task_handler через wiring ниже (Stage 5g.6)
 	_ = llmAgentExecutor // ссылка остаётся для обратной совместимости conversation/handler инициализации
-	
+
 	conversationService := service.NewConversationService(
 		conversationRepo,
 		conversationMsgRepo,
@@ -637,56 +638,57 @@ func main() {
 	if !v2WorkersEnabled {
 		log.Println("Orchestrator v2 workers DISABLED via ORCHESTRATOR_V2_WORKERS_ENABLED=false (smoke-test isolation)")
 	} else {
-	const (
-		stepWorkersCount         = 5
-		agentWorkersCount        = 22 // 20 llm + 2 sandbox; пул общий, ClaimNext sequencing уже разводит
-	)
-	for i := 0; i < stepWorkersCount; i++ {
-		w := service.NewStepWorker(
-			taskEventRepoV2,
-			orchestratorService,
-			v2Notifier,
-			v2Logger,
-			service.StepWorkerConfig{WorkerID: fmt.Sprintf("step-worker-%d", i), PollInterval: 500 * time.Millisecond},
+		const (
+			stepWorkersCount  = 5
+			agentWorkersCount = 22 // 20 llm + 2 sandbox; пул общий, ClaimNext sequencing уже разводит
 		)
-		go func() {
-			if err := w.Run(ctxWorker); err != nil {
-				log.Printf("step worker exited with error: %v", err)
-			}
-		}()
-	}
-	for i := 0; i < agentWorkersCount; i++ {
-		w := service.NewAgentWorker(
-			db,
-			taskEventRepoV2,
-			artifactRepoV2,
-			v2Dispatcher,
-			v2WorktreeMgr,
-			v2Notifier,
-			v2Logger,
-			service.AgentWorkerConfig{
-				WorkerID:        fmt.Sprintf("agent-worker-%d", i),
-				PollInterval:    500 * time.Millisecond,
-				AgentJobTimeout: time.Hour,
-			},
-			orchestratorContextBuilder,
-		)
-		go func() {
-			if err := w.Run(ctxWorker); err != nil {
-				log.Printf("agent worker exited with error: %v", err)
-			}
-		}()
-	}
-	log.Printf("Orchestrator v2 workers started: %d step + %d agent", stepWorkersCount, agentWorkersCount)
-
-	// Retention: 30 дней router_decisions + 1 сутки released worktrees. Раз в час.
-	v2Retention := service.NewRetentionService(routerDecisionRepoV2, taskEventRepoV2, v2WorktreeMgr, v2Logger, service.DefaultRetentionConfig())
-	go func() {
-		if err := v2Retention.Run(ctxWorker); err != nil {
-			log.Printf("retention service exited with error: %v", err)
+		for i := 0; i < stepWorkersCount; i++ {
+			w := service.NewStepWorker(
+				taskEventRepoV2,
+				orchestratorService,
+				v2Notifier,
+				v2Logger,
+				service.StepWorkerConfig{WorkerID: fmt.Sprintf("step-worker-%d", i), PollInterval: 500 * time.Millisecond},
+			)
+			go func() {
+				if err := w.Run(ctxWorker); err != nil {
+					log.Printf("step worker exited with error: %v", err)
+				}
+			}()
 		}
-	}()
-	log.Println("Orchestrator v2 retention service started")
+		for i := 0; i < agentWorkersCount; i++ {
+			w := service.NewAgentWorker(
+				db,
+				taskEventRepoV2,
+				artifactRepoV2,
+				v2Dispatcher,
+				v2WorktreeMgr,
+				v2Notifier,
+				eventBus,
+				v2Logger,
+				service.AgentWorkerConfig{
+					WorkerID:        fmt.Sprintf("agent-worker-%d", i),
+					PollInterval:    500 * time.Millisecond,
+					AgentJobTimeout: time.Hour,
+				},
+				orchestratorContextBuilder,
+			)
+			go func() {
+				if err := w.Run(ctxWorker); err != nil {
+					log.Printf("agent worker exited with error: %v", err)
+				}
+			}()
+		}
+		log.Printf("Orchestrator v2 workers started: %d step + %d agent", stepWorkersCount, agentWorkersCount)
+
+		// Retention: 30 дней router_decisions + 1 сутки released worktrees. Раз в час.
+		v2Retention := service.NewRetentionService(routerDecisionRepoV2, taskEventRepoV2, v2WorktreeMgr, v2Logger, service.DefaultRetentionConfig())
+		go func() {
+			if err := v2Retention.Run(ctxWorker); err != nil {
+				log.Printf("retention service exited with error: %v", err)
+			}
+		}()
+		log.Println("Orchestrator v2 retention service started")
 	} // конец if v2WorkersEnabled
 
 	// Sprint 21 — Global Assistant (правая боковая панель).
@@ -713,7 +715,7 @@ func main() {
 			routerDecisionRepoV2,
 			worktreeRepoV2,
 		),
-		OrchestratorService:   orchestratorService,
+		OrchestratorService: orchestratorService,
 	})
 	assistantSessionRepo := repository.NewAssistantSessionRepository(db)
 	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{
@@ -773,13 +775,13 @@ func main() {
 		UserLlmCredentialHandler: llmCredHandler,
 		LlmCredentialsPatchRL:    llmCredRL,
 
-		ClaudeCodeAuthHandler: claudeCodeAuthHandler,
+		ClaudeCodeAuthHandler:  claudeCodeAuthHandler,
 		AntigravityAuthHandler: antigravityAuthHandler,
-		GitIntegrationHandler: gitIntegrationHandler,
-		AssistantHandler:      assistantHandler,
-		AgentSettingsHandler:  handler.NewAgentSettingsHandler(teamService),
-		LLMProviderHandler:    llmProviderHandler,
-		HermesHandler:         handler.NewHermesHandler(),
+		GitIntegrationHandler:  gitIntegrationHandler,
+		AssistantHandler:       assistantHandler,
+		AgentSettingsHandler:   handler.NewAgentSettingsHandler(teamService),
+		LLMProviderHandler:     llmProviderHandler,
+		HermesHandler:          handler.NewHermesHandler(),
 
 		// Sprint 17 / Sprint 5F.3 — HTTP API для v2 admin (Frontend Agents Management).
 		AgentV2Handler: handler.NewAgentV2Handler(agentSvcV2),
@@ -818,21 +820,21 @@ func main() {
 
 	if cfg.MCP.Enabled {
 		mcpSrv := mcpserver.NewMCPServer(mcpserver.Dependencies{
-			Config:                cfg.MCP,
-			LLMService:            llmService,
-			WorkflowEngine:        workflowEngine,
-			PromptService:         promptService,
-			ProjectService:        projectService,
-			TeamService:           teamService,
-			TaskService:           taskService,
-			ToolDefinitionService: toolDefinitionService,
-			OrchestratorSvc:       orchestratorService,
-			ApiKeyService:         apiKeyService,
-			ClaudeCodeAuthService: claudeCodeAuthSvc,
+			Config:                 cfg.MCP,
+			LLMService:             llmService,
+			WorkflowEngine:         workflowEngine,
+			PromptService:          promptService,
+			ProjectService:         projectService,
+			TeamService:            teamService,
+			TaskService:            taskService,
+			ToolDefinitionService:  toolDefinitionService,
+			OrchestratorSvc:        orchestratorService,
+			ApiKeyService:          apiKeyService,
+			ClaudeCodeAuthService:  claudeCodeAuthSvc,
 			AntigravityAuthService: antigravityAuthSvc,
-			GitIntegrationService: gitIntegrationSvc,
-			MCPServerRegistryRepo: repository.NewMCPServerRegistryRepository(db),
-			AgentSkillRepo:        repository.NewAgentSkillRepository(db),
+			GitIntegrationService:  gitIntegrationSvc,
+			MCPServerRegistryRepo:  repository.NewMCPServerRegistryRepository(db),
+			AgentSkillRepo:         repository.NewAgentSkillRepository(db),
 
 			// Sprint 17 / Sprint 5 — v2 orchestration MCP tools через SERVICE-слой.
 			AgentSvcV2: agentSvcV2,

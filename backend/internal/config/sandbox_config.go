@@ -10,7 +10,12 @@ import (
 // Дефолты секции sandbox совпадают с internal/sandbox.DefaultResourceLimitPolicy,
 // DefaultSandboxNanoCPUs и DefaultSandboxTimeout — не расходовать без причины.
 const (
-	defaultSandboxMemoryFloorBytes int64 = 1 << 30 // 1 GiB
+	// Пол памяти 2 GiB (а не 1): сборка Go-проекта с тяжёлым графом зависимостей
+	// (gin + транзитивные ugorji/codec, quic-go, mongo-driver) не помещается в 1 GiB
+	// и компилятор убивается OOM ("compile: signal: killed"). В задаче 1.1 это давало
+	// агентам пустой вывод и приводило к бесконечным переназначениям. ДОЛЖНО совпадать с
+	// internal/sandbox.DefaultResourceLimitPolicy().MemoryFloorBytes.
+	defaultSandboxMemoryFloorBytes int64 = 2 << 30 // 2 GiB
 	defaultSandboxMemoryCeilBytes  int64 = 16 << 30
 	defaultSandboxPidsFloor        int64 = 100
 	defaultSandboxPidsCeil         int64 = 8192

@@ -194,6 +194,39 @@ abstract class WsAgentLogEvent with _$WsAgentLogEvent {
   }) = _WsAgentLogEvent;
 }
 
+/// Orchestration v2 — Router принял решение на одном шаге (live-апдейт таймлайна/графа).
+@freezed
+abstract class WsRouterDecisionEvent with _$WsRouterDecisionEvent {
+  const factory WsRouterDecisionEvent({
+    required DateTime ts,
+    required int v,
+    required String projectId,
+    required String taskId,
+    required int stepNo,
+    @Default(<String>[]) List<String> chosenAgents,
+    @Default(false) bool done,
+    String? outcome,
+    String? reason,
+  }) = _WsRouterDecisionEvent;
+}
+
+/// Orchestration v2 — агент создал артефакт (live-апдейт списка артефактов/графа).
+@freezed
+abstract class WsArtifactEvent with _$WsArtifactEvent {
+  const factory WsArtifactEvent({
+    required DateTime ts,
+    required int v,
+    required String projectId,
+    required String taskId,
+    String? artifactId,
+    required String producerAgent,
+    String? kind,
+    String? status,
+    String? summary,
+    String? parentId,
+  }) = _WsArtifactEvent;
+}
+
 @freezed
 abstract class WsErrorEvent with _$WsErrorEvent {
   const factory WsErrorEvent({
@@ -419,6 +452,12 @@ abstract class WsServerEvent with _$WsServerEvent {
   const factory WsServerEvent.conversationMessage(
     WsConversationMessageEvent value,
   ) = WsServerEventConversationMessage;
+  const factory WsServerEvent.routerDecision(
+    WsRouterDecisionEvent value,
+  ) = WsServerEventRouterDecision;
+  const factory WsServerEvent.artifact(
+    WsArtifactEvent value,
+  ) = WsServerEventArtifact;
   const factory WsServerEvent.unknown(WsUnknownEvent value) =
       WsServerEventUnknown;
 }
@@ -845,6 +884,41 @@ WsServerEvent parseWsServerEnvelope(String text) {
               ? d['seq'] as int
               : int.tryParse('${d['seq']}') ?? 0,
           truncated: d['truncated'] as bool? ?? false,
+        ),
+      );
+    case 'router_decision':
+      return WsServerEvent.routerDecision(
+        WsRouterDecisionEvent(
+          ts: ts,
+          v: v,
+          projectId: pid,
+          taskId: d['task_id'] as String? ?? '',
+          stepNo: (d['step_no'] is int)
+              ? d['step_no'] as int
+              : int.tryParse('${d['step_no']}') ?? 0,
+          chosenAgents: (d['chosen_agents'] is List)
+              ? (d['chosen_agents'] as List)
+                  .whereType<String>()
+                  .toList(growable: false)
+              : const <String>[],
+          done: d['done'] as bool? ?? false,
+          outcome: d['outcome'] as String?,
+          reason: d['reason'] as String?,
+        ),
+      );
+    case 'artifact':
+      return WsServerEvent.artifact(
+        WsArtifactEvent(
+          ts: ts,
+          v: v,
+          projectId: pid,
+          taskId: d['task_id'] as String? ?? '',
+          artifactId: d['artifact_id'] as String?,
+          producerAgent: d['producer_agent'] as String? ?? '',
+          kind: d['kind'] as String?,
+          status: d['status'] as String?,
+          summary: d['summary'] as String?,
+          parentId: d['parent_id'] as String?,
         ),
       );
     case 'error':

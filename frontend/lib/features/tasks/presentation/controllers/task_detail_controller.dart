@@ -294,6 +294,8 @@ class TaskDetailController extends _$TaskDetailController {
           },
           integrationStatus: (_) {},
           conversationMessage: (_) {},
+          routerDecision: applyWsRouterDecision,
+          artifact: applyWsArtifact,
           // Sprint 21 §7 — assistant.* идут в правую панель, не в task-detail.
           assistantSessionUpdated: (_) {},
           assistantMessage: (_) {},
@@ -1021,5 +1023,23 @@ class TaskDetailController extends _$TaskDetailController {
   void _invalidateOrchestrationV2Providers() {
     ref.invalidate(taskRouterDecisionsProvider(_taskId));
     ref.invalidate(taskArtifactsProvider(_taskId));
+  }
+
+  /// Orchestration v2 — новое решение Router'а пришло по WS. Рефетчим таймлайн и граф
+  /// (они строятся из router_decisions + artifacts), чтобы UI обновлялся без ручного
+  /// рефреша. Фильтруем по project/task, чтобы не реагировать на чужие задачи.
+  void applyWsRouterDecision(WsRouterDecisionEvent e) {
+    if (e.projectId != _projectId || e.taskId != _taskId) {
+      return;
+    }
+    _invalidateOrchestrationV2Providers();
+  }
+
+  /// Orchestration v2 — создан артефакт по WS. Рефетчим список артефактов и граф.
+  void applyWsArtifact(WsArtifactEvent e) {
+    if (e.projectId != _projectId || e.taskId != _taskId) {
+      return;
+    }
+    _invalidateOrchestrationV2Providers();
   }
 }

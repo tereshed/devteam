@@ -8,7 +8,9 @@ const DefaultSandboxNanoCPUs int64 = 1_000_000_000
 // Числовые дефолты должны совпадать с backend/internal/config/sandbox_config.go (SANDBOX_* при пустом env).
 func DefaultResourceLimitPolicy() ResourceLimitPolicy {
 	return ResourceLimitPolicy{
-		MemoryFloorBytes: 1 << 30, // 1 GiB
+		// 2 GiB пол: 1 GiB не хватает на компиляцию Go-проектов с графом gin (OOM при
+		// `go build ./...`). ДОЛЖНО совпадать с config.defaultSandboxMemoryFloorBytes.
+		MemoryFloorBytes: 2 << 30, // 2 GiB
 		MemoryCeilBytes:  16 << 30,
 		PidsFloor:        100,
 		PidsCeil:         8192,

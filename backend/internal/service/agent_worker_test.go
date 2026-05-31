@@ -165,9 +165,9 @@ func TestParseAgentEnvelope_FallbackOnEmptyKind(t *testing.T) {
 // TestParseAgentEnvelope_DirectReview — парсинг прямого JSON ревью с оборачиванием в envelope.
 func TestParseAgentEnvelope_DirectReview(t *testing.T) {
 	target := &models.Artifact{
-		ID:             uuid.New(),
-		ProducerAgent:  "planner",
-		Kind:           models.ArtifactKindPlan,
+		ID:            uuid.New(),
+		ProducerAgent: "planner",
+		Kind:          models.ArtifactKindPlan,
 	}
 
 	result := &agent.ExecutionResult{
@@ -200,9 +200,9 @@ More logs`,
 // TestParseAgentEnvelope_DirectTestResult — парсинг прямого JSON тестов с оборачиванием в envelope.
 func TestParseAgentEnvelope_DirectTestResult(t *testing.T) {
 	target := &models.Artifact{
-		ID:             uuid.New(),
-		ProducerAgent:  "developer",
-		Kind:           models.ArtifactKindCodeDiff,
+		ID:            uuid.New(),
+		ProducerAgent: "developer",
+		Kind:          models.ArtifactKindCodeDiff,
 	}
 
 	result := &agent.ExecutionResult{
@@ -305,7 +305,6 @@ func TestParseAgentEnvelope_WithShortParentArtifactID(t *testing.T) {
 		t.Errorf("ParentArtifactID mismatch: got %v, want %s", env.ParentArtifactID, target.ID)
 	}
 }
-
 
 // TestSaveArtifact_HappyPath — заваливаем валидный envelope, ожидаем созданный артефакт
 // в repo с теми же kind/summary, status=ready.
@@ -620,3 +619,80 @@ var _ = io.Discard
 var _ error
 var _ = errors.New
 
+// TestAgentResultUnusable — пустой/неуспешный вывод агента считается непригодным и
+// должен уходить в failEvent, а не сохраняться как ready-артефакт (фикс задачи 1.1).
+func TestAgentResultUnusable(t *testing.T) {
+	cases := []struct {
+		name   string
+		result *agent.ExecutionResult
+		want   bool
+	}{
+		{"nil result", nil, true},
+		{"success false (OOM/crash)", &agent.ExecutionResult{Success: false, Output: "boom"}, true},
+		{"success but empty output, no artifacts", &agent.ExecutionResult{Success: true, Output: "   "}, true},
+		{"success with output", &agent.ExecutionResult{Success: true, Output: `{"kind":"code_diff"}`}, false},
+		{"success empty output but has artifacts json", &agent.ExecutionResult{Success: true, Output: "", ArtifactsJSON: []byte(`{"diff":"x"}`)}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := agentResultUnusable(tc.result); got != tc.want {
+				t.Errorf("agentResultUnusable() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestExtractSubtasks — обе формы content декомпозиции + пустая.
+func TestExtractSubtasks(t *testing.T) {
+	flat := datatypes.JSON(`{"subtasks":[{"title":"a"},{"title":"b"}]}`)
+	if got := extractSubtasks(flat); len(got) != 2 {
+		t.Errorf("flat: expected 2 subtasks, got %d", len(got))
+	}
+	nested := datatypes.JSON(`{"content":{"subtasks":[{"title":"a"}]}}`)
+	if got := extractSubtasks(nested); len(got) != 1 {
+		t.Errorf("nested: expected 1 subtask, got %d", len(got))
+	}
+	if got := extractSubtasks(datatypes.JSON(`{"foo":"bar"}`)); got != nil {
+		t.Errorf("no subtasks: expected nil, got %v", got)
+	}
+}
+
+// TestSplitDecomposition_CreatesAndIdempotent — split создаёт subtask_description с parent=
+// декомпозиция, повторный вызов ничего не создаёт (защита от дублей bypass + first-pass).
+func TestSplitDecomposition_CreatesAndIdempotent(t *testing.T) {
+	repo := newMemArtifactRepo()
+	w := &AgentWorker{artifactRepo: repo, logger: discardLogger()}
+	taskID := uuid.New()
+	decompID := uuid.New()
+	content := datatypes.JSON(`{"subtasks":[{"title":"Domain layer"},{"title":"Repository"},{"title":"HTTP handlers"}]}`)
+
+	n, err := w.splitDecomposition(context.Background(), taskID, decompID, content)
+	if err != nil {
+		t.Fatalf("split: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("expected 3 subtasks created, got %d", n)
+	}
+	// все привязаны к декомпозиции и имеют правильный kind
+	subs := 0
+	for _, a := range repo.created {
+		if a.Kind == models.ArtifactKindSubtaskDescription {
+			subs++
+			if a.ParentID == nil || *a.ParentID != decompID {
+				t.Errorf("subtask %q parent != decomposition", a.Summary)
+			}
+		}
+	}
+	if subs != 3 {
+		t.Errorf("expected 3 subtask_description artifacts, got %d", subs)
+	}
+
+	// Идемпотентность: второй вызов не создаёт дублей.
+	n2, err := w.splitDecomposition(context.Background(), taskID, decompID, content)
+	if err != nil {
+		t.Fatalf("split #2: %v", err)
+	}
+	if n2 != 0 {
+		t.Errorf("expected 0 on idempotent re-split, got %d", n2)
+	}
+}
