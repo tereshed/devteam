@@ -285,6 +285,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get llmProviderZhipu => 'Zhipu';
 
   @override
+  String get llmProviderHermes => 'Hermes';
+
+  @override
   String get llmProviderClaudeCodeSubtitle =>
       'Anthropic subscription via OAuth';
 
@@ -309,6 +312,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get llmProviderZhipuSubtitle => 'GLM models';
+
+  @override
+  String get llmProviderHermesSubtitle =>
+      'Direct Nous Portal / Hermes API connection';
 
   @override
   String get integrationsLlmStage2Subtitle =>
@@ -1553,6 +1560,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentRoleDevops => 'DevOps';
 
   @override
+  String get agentRoleDecomposer => 'Decomposer';
+
+  @override
+  String get agentRoleMerger => 'Merger';
+
+  @override
+  String get agentRoleRouter => 'Router';
+
+  @override
+  String get agentRoleAssistant => 'Assistant';
+
+  @override
   String get teamEmptyAgents => 'No agents in this team yet.';
 
   @override
@@ -2774,6 +2793,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tasksColUpdated => 'Updated';
+
+  @override
+  String get teamAgentProviderNotConnected =>
+      'Provider not connected — set it up in Integrations';
+
+  @override
+  String get teamAgentNoConfiguredProviders =>
+      'No connected providers — set them up in Integrations';
+
+  @override
+  String get teamAgentBackendRequired => 'Choose a backend';
+
+  @override
+  String get teamAgentBackendNeedsProvider =>
+      'Hermes requires a selected provider';
+
+  @override
+  String get teamAgentProviderBackendMismatch =>
+      'Provider is not compatible with the selected backend';
+
+  @override
+  String get teamAgentBackendLlmDisabled => 'LLM role does not use a backend';
+
+  @override
+  String get teamAgentProviderNotConnectedShort => 'not connected';
 
   @override
   String get appShellNavCollapse => 'Collapse menu';

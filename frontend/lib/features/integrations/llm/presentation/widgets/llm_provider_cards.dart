@@ -91,6 +91,12 @@ _ProviderBrand _brandFor(
         subtitle: l10n.llmProviderOpenAiSubtitle,
         icon: Icons.bubble_chart_outlined,
       );
+    case LlmIntegrationProvider.hermes:
+      return _ProviderBrand(
+        title: l10n.llmProviderHermes,
+        subtitle: l10n.llmProviderHermesSubtitle,
+        icon: Icons.psychology_alt_outlined,
+      );
   }
 }
 

@@ -11,10 +11,12 @@ import 'package:frontend/features/integrations/llm/domain/agent_model_suggestion
 import 'package:frontend/features/projects/domain/models/agent_model.dart'
     show AgentModel, codeBackends;
 import 'package:frontend/features/projects/presentation/utils/agent_role_display.dart';
+import 'package:frontend/features/tasks/data/task_exceptions.dart';
+import 'package:frontend/features/tasks/data/task_providers.dart';
+import 'package:frontend/features/tasks/domain/requests.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/team/data/tools_providers.dart';
-import 'package:frontend/features/team/domain/models/agent_settings_model.dart'
-    show kSupportedAgentProviderKinds;
+import 'package:frontend/features/team/domain/agent_provider_rules.dart';
 import 'package:frontend/features/team/domain/models/tool_definition_model.dart';
 import 'package:frontend/features/team/domain/team_exceptions.dart';
 import 'package:frontend/features/team/domain/tool_binding_patch_item.dart';
@@ -23,9 +25,6 @@ import 'package:frontend/features/team/domain/update_agent_patch.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_sandbox_settings_dialog.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
-import 'package:frontend/features/tasks/data/task_providers.dart';
-import 'package:frontend/features/tasks/domain/requests.dart';
-import 'package:frontend/features/tasks/data/task_exceptions.dart';
 
 /// Только для `test/` — в продакшене используйте [showAgentEditDialog].
 @visibleForTesting
@@ -160,6 +159,10 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
         .toSet();
     _selectedToolDefIds.addAll(_initialToolBindingIds);
     _loadToolDefinitions();
+    // Подтягиваем статус LLM-провайдеров: контроллер сам не рефрешит при создании
+    // (обычно это делает экран Интеграций). Без этого форма видит пустой стейт и
+    // ошибочно считает всех провайдеров «не подключён».
+    ref.read(llmIntegrationsControllerProvider).refresh().ignore();
   }
 
   // Ревью: _loadPrompts и _loadToolDefinitions структурно похожи (DRY) — выносить общий шаблон
@@ -365,6 +368,35 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     if (mounted) {
       Navigator.of(context).pop();
     }
+  }
+
+  /// Ошибка каскада provider/backend (или null). Блокирует Save, чтобы нельзя
+  /// было сохранить заведомо нерабочую конфигурацию (см. agent_provider_rules).
+  String? _validationError(
+    AppLocalizations l10n,
+    List<String> configuredKinds,
+    bool integrationsLoaded,
+  ) {
+    final pk = _providerKind;
+    if (integrationsLoaded &&
+        pk != null &&
+        pk.isNotEmpty &&
+        !configuredKinds.contains(pk)) {
+      return l10n.teamAgentProviderNotConnected;
+    }
+    // Бекенд опционален; если задан — проверяем совместимость с провайдером.
+    final cb = _codeBackend;
+    if (cb != null && cb.isNotEmpty) {
+      if (backendRequiresProvider(cb) && (pk == null || pk.isEmpty)) {
+        return l10n.teamAgentBackendNeedsProvider;
+      }
+      if (pk != null &&
+          pk.isNotEmpty &&
+          !allowedProviderKindsForBackend(cb).contains(pk)) {
+        return l10n.teamAgentProviderBackendMismatch;
+      }
+    }
+    return null;
   }
 
   UpdateAgentPatch _buildPatch() {
@@ -657,6 +689,25 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
         ? ref.watch(availableModelsProvider(pk))
         : const AsyncValue<List<String>>.data([]);
 
+    // Каскад: подключённые провайдеры → допустимые для роли/бекенда → блокировки.
+    final integrationsAsync = ref.watch(llmIntegrationsStateProvider);
+    final integrationsState = integrationsAsync.asData?.value;
+    // Пока статус интеграций не загружен — НЕ помечаем провайдеров «не подключён»
+    // и не блокируем Save (иначе ложная ошибка до завершения refresh).
+    final integrationsLoaded =
+        integrationsState != null && !integrationsState.isLoading;
+    final configuredKinds = configuredAgentProviderKinds(
+      integrationsState?.connections.values ?? const [],
+    );
+    final usesBackend = widget.agent.codeBackend != null || agentRoleUsesBackend(widget.agent.role);
+    final providerOptions = usesBackend
+        ? configuredKinds
+            .where(allowedProviderKindsForBackend(_codeBackend).contains)
+            .toList()
+        : configuredKinds;
+    final validationError =
+        _validationError(l10n, configuredKinds, integrationsLoaded);
+
     return PopScope(
       canPop: !_saving && !_dirty,
       onPopInvokedWithResult: (didPop, result) async {
@@ -694,11 +745,15 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                 _ProviderKindField(
                   l10n: l10n,
                   value: _providerKind,
+                  options: providerOptions,
+                  loaded: integrationsLoaded,
                   onChanged: _saving
                       ? null
                       : (v) {
                           setState(() {
                             _providerKind = v;
+                            // Подставляем модель по умолчанию для выбранного
+                            // провайдера (модель есть у всех ролей).
                             if (v != null) {
                               final suggestions = _suggestionsFor(v);
                               if (suggestions.isNotEmpty &&
@@ -850,8 +905,18 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                 _CodeBackendField(
                   l10n: l10n,
                   value: _codeBackend,
+                  enabled: usesBackend,
                   onChanged: (v) {
-                    setState(() => _codeBackend = v);
+                    setState(() {
+                      _codeBackend = v;
+                      // Сбрасываем провайдера, несовместимого с новым бекендом.
+                      final allowed = allowedProviderKindsForBackend(v);
+                      if (_providerKind != null &&
+                          _providerKind!.isNotEmpty &&
+                          !allowed.contains(_providerKind)) {
+                        _providerKind = null;
+                      }
+                    });
                     _recomputeDirty();
                   },
                 ),
@@ -867,6 +932,31 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                 const SizedBox(height: 16),
                 _buildToolsSection(l10n, theme),
                 const SizedBox(height: 24),
+                if (validationError != null) ...[
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline,
+                            size: 16, color: theme.colorScheme.onErrorContainer),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            validationError,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onErrorContainer),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 // Sprint 15.N6: переключаем фиксированный Row на Wrap — кнопки переносятся
                 // на 2 ряда при недостатке ширины (на портретном телефоне overflow=29px).
                 Wrap(
@@ -913,7 +1003,9 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         FilledButton(
-                          onPressed: _saving || _testing ? null : _save,
+                          onPressed: _saving || _testing || validationError != null
+                              ? null
+                              : _save,
                           child: Text(l10n.teamAgentEditSave),
                         ),
                       ],
@@ -1185,11 +1277,15 @@ class _CodeBackendField extends StatelessWidget {
     required this.l10n,
     required this.value,
     required this.onChanged,
+    this.enabled = true,
   });
 
   final AppLocalizations l10n;
   final String? value;
   final ValueChanged<String?> onChanged;
+
+  /// `false` для LLM-ролей — поле заблокировано (бекенд им не нужен).
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -1210,12 +1306,13 @@ class _CodeBackendField extends StatelessWidget {
     return DropdownButtonFormField<String?>(
       decoration: InputDecoration(
         labelText: l10n.teamAgentEditFieldCodeBackend,
+        helperText: enabled ? null : l10n.teamAgentBackendLlmDisabled,
         border: const OutlineInputBorder(),
       ),
       isExpanded: true,
       initialValue: value != null && codeBackends.contains(value) ? value : null,
       items: items,
-      onChanged: onChanged,
+      onChanged: enabled ? onChanged : null,
     );
   }
 }
@@ -1227,39 +1324,56 @@ class _ProviderKindField extends StatelessWidget {
   const _ProviderKindField({
     required this.l10n,
     required this.value,
+    required this.options,
+    required this.loaded,
     required this.onChanged,
   });
 
   final AppLocalizations l10n;
   final String? value;
+
+  /// Только подключённые провайдеры, допустимые для выбранного бекенда.
+  final List<String> options;
+
+  /// Загружен ли статус интеграций. Пока `false` — не помечаем «не подключён»
+  /// и не показываем «нет провайдеров» (refresh ещё летит).
+  final bool loaded;
   final ValueChanged<String?>? onChanged;
 
   @override
   Widget build(BuildContext context) {
+    // Текущее значение может не входить в список (старая конфигурация или ещё
+    // грузимся) — добавляем его пунктом, чтобы initialValue имел совпадение.
+    final hasExtra =
+        value != null && value!.isNotEmpty && !options.contains(value);
     final items = <DropdownMenuItem<String?>>[
       DropdownMenuItem<String?>(
         value: null,
         child: Text(l10n.teamAgentEditUnset),
       ),
-      ...kSupportedAgentProviderKinds.map(
-        (k) => DropdownMenuItem<String?>(
-          value: k,
-          child: Text(k),
-        ),
+      ...options.map(
+        (k) => DropdownMenuItem<String?>(value: k, child: Text(k)),
       ),
+      if (hasExtra)
+        DropdownMenuItem<String?>(
+          value: value,
+          // «не подключён» — только когда статус интеграций уже загружен.
+          child: Text(loaded
+              ? '$value · ${l10n.teamAgentProviderNotConnectedShort}'
+              : value!),
+        ),
     ];
     return DropdownButtonFormField<String?>(
       key: const Key('agentEditDialog_providerKindField'),
       decoration: InputDecoration(
         labelText: l10n.teamAgentEditFieldProviderKind,
-        helperText: l10n.teamAgentEditFieldProviderKindHelp,
+        helperText: loaded && options.isEmpty
+            ? l10n.teamAgentNoConfiguredProviders
+            : l10n.teamAgentEditFieldProviderKindHelp,
         border: const OutlineInputBorder(),
       ),
       isExpanded: true,
-      initialValue:
-          value != null && kSupportedAgentProviderKinds.contains(value)
-              ? value
-              : null,
+      initialValue: value == null || value!.isEmpty ? null : value,
       items: items,
       onChanged: onChanged,
     );

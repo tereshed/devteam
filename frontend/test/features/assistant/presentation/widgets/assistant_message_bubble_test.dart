@@ -20,22 +20,21 @@ AssistantMessageModel _msg({
 
 void main() {
   group('AssistantMessageBubble', () {
-    testWidgets('user role: shows "You" label and content, right-aligned',
-        (tester) async {
+    testWidgets('user role: контент справа, без ярлыка роли', (tester) async {
       await tester.pumpWidget(wrapAssistantWidget(
         AssistantMessageBubble(
           message: _msg(role: assistantMessageRoleUser, content: 'hello'),
         ),
       ));
 
-      expect(find.text('You'), findsOneWidget);
+      expect(find.text('You'), findsNothing); // ярлыки ролей убраны
       expect(find.text('hello'), findsOneWidget);
 
       final align = tester.widget<Align>(find.byType(Align));
       expect(align.alignment, Alignment.centerRight);
     });
 
-    testWidgets('assistant role: shows "Assistant" label, left-aligned',
+    testWidgets('assistant role: контент + аватар, на всю ширину',
         (tester) async {
       await tester.pumpWidget(wrapAssistantWidget(
         AssistantMessageBubble(
@@ -46,15 +45,13 @@ void main() {
         ),
       ));
 
-      expect(find.text('Assistant'), findsOneWidget);
+      expect(find.text('Assistant'), findsNothing);
       expect(find.text('Привет!'), findsOneWidget);
-
-      final align = tester.widget<Align>(find.byType(Align));
-      expect(align.alignment, Alignment.centerLeft);
+      // Аватар ассистента вместо ярлыка роли.
+      expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
     });
 
-    testWidgets('system role: shows "System" label and italic style',
-        (tester) async {
+    testWidgets('system role: italic + иконка, без ярлыка', (tester) async {
       await tester.pumpWidget(wrapAssistantWidget(
         AssistantMessageBubble(
           message: _msg(
@@ -64,7 +61,8 @@ void main() {
         ),
       ));
 
-      expect(find.text('System'), findsOneWidget);
+      expect(find.text('System'), findsNothing);
+      expect(find.byIcon(Icons.info_outline), findsOneWidget);
 
       final themeFinder = find.descendant(
         of: find.byType(AssistantMessageBubble),
@@ -88,7 +86,7 @@ void main() {
       expect(chatMsg.content, '');
     });
 
-    testWidgets('unknown role: falls back to raw role string label',
+    testWidgets('unknown role: рендерится как assistant, без ярлыка',
         (tester) async {
       await tester.pumpWidget(wrapAssistantWidget(
         AssistantMessageBubble(
@@ -96,9 +94,9 @@ void main() {
         ),
       ));
 
-      // 'tool' не входит в [user|assistant|system], поэтому label — само 'tool'.
-      expect(find.text('tool'), findsOneWidget);
+      expect(find.text('tool'), findsNothing); // ярлык-роль убран
       expect(find.text('tool-result'), findsOneWidget);
+      expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
     });
   });
 }

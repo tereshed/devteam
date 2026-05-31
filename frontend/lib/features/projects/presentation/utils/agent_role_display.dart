@@ -11,6 +11,10 @@ String agentRoleLabel(AppLocalizations l10n, String role) {
     'reviewer' => l10n.agentRoleReviewer,
     'tester' => l10n.agentRoleTester,
     'devops' => l10n.agentRoleDevops,
+    'decomposer' => l10n.agentRoleDecomposer,
+    'merger' => l10n.agentRoleMerger,
+    'router' => l10n.agentRoleRouter,
+    'assistant' => l10n.agentRoleAssistant,
     _ => l10n.agentRoleUnknown,
   };
 }

@@ -195,14 +195,14 @@ fi
 # обновляйте BOTH whitelist в Go-коде И этот список (одновременно с добавлением
 # AgentProviderKind* константы).
 HAS_AUTH=0
-for var in OPENROUTER_API_KEY ANTHROPIC_API_KEY; do
+for var in OPENROUTER_API_KEY ANTHROPIC_API_KEY HERMES_API_KEY; do
   if [[ -n "${!var:-}" ]]; then
     HAS_AUTH=1
     break
   fi
 done
 if [[ "$HAS_AUTH" -eq 0 ]]; then
-  echo "entrypoint: hermes requires OPENROUTER_API_KEY or ANTHROPIC_API_KEY in env" >&2
+  echo "entrypoint: hermes requires OPENROUTER_API_KEY, ANTHROPIC_API_KEY or HERMES_API_KEY in env" >&2
   LAST_EXIT_CODE=1
   MESSAGE="hermes authentication is required"
   exit 1

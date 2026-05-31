@@ -9,14 +9,6 @@ String _agentDisplayName(AppLocalizations l10n, String name) {
   return t.isEmpty ? l10n.teamAgentNameUnset : t;
 }
 
-String _agentModelLine(AppLocalizations l10n, String? model) {
-  final m = model?.trim();
-  if (m == null || m.isEmpty) {
-    return l10n.teamAgentModelUnset;
-  }
-  return m;
-}
-
 String? _optionalLine(String? value) {
   final v = value?.trim();
   if (v == null || v.isEmpty) {
@@ -25,7 +17,21 @@ String? _optionalLine(String? value) {
   return v;
 }
 
-/// Карточка строки агента команды: роль, модель, опционально промпт и code_backend, статус (13.2).
+IconData _roleIcon(String role) => switch (role) {
+      'planner' => Icons.architecture,
+      'decomposer' => Icons.account_tree_outlined,
+      'developer' => Icons.code,
+      'reviewer' => Icons.rate_review_outlined,
+      'tester' => Icons.bug_report_outlined,
+      'merger' => Icons.merge_type,
+      'router' => Icons.call_split,
+      'orchestrator' => Icons.hub_outlined,
+      'assistant' => Icons.smart_toy_outlined,
+      _ => Icons.android,
+    };
+
+/// Плотная строка агента команды: роль-иконка, имя, роль, модель/бекенд,
+/// провайдер и компактный статус (13.2, redesign).
 class AgentCard extends StatelessWidget {
   const AgentCard({
     super.key,
@@ -41,98 +47,88 @@ class AgentCard extends StatelessWidget {
     final l10n = requireAppLocalizations(context, where: 'agentCard');
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final roleText = agentRoleLabel(l10n, agent.role);
-    final prompt = _optionalLine(agent.promptName);
-    final backend = _optionalLine(agent.codeBackend);
 
-    final padding = Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    // У большинства ролей есть и модель, и бекенд — показываем всё, что задано.
+    final backend = _optionalLine(agent.codeBackend);
+    final model = _optionalLine(agent.model) ?? (backend == null ? l10n.teamAgentModelUnset : null);
+    final provider = _optionalLine(agent.providerKind);
+    final activeColor =
+        agent.isActive ? const Color(0xFF3FB950) : scheme.onSurfaceVariant;
+
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: scheme.surfaceContainerHighest,
+            child: Icon(_roleIcon(agent.role),
+                size: 17, color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text(
-                      _agentDisplayName(l10n, agent.name),
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      roleText,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
+                    Flexible(
+                      child: Text(
+                        _agentDisplayName(l10n, agent.name),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _agentModelLine(l10n, agent.model),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (prompt != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        prompt,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                    if (backend != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        backend,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                    const SizedBox(width: 8),
+                    _RolePill(label: agentRoleLabel(l10n, agent.role)),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Semantics(
-                label: agent.isActive
-                    ? l10n.teamAgentActive
-                    : l10n.teamAgentInactive,
-                child: Chip(
-                  avatar: Icon(
-                    agent.isActive ? Icons.check_circle : Icons.pause_circle,
-                    size: 18,
-                    color: agent.isActive
-                        ? scheme.primary
-                        : scheme.onSurfaceVariant,
-                  ),
-                  label: Text(
-                    agent.isActive
-                        ? l10n.teamAgentActive
-                        : l10n.teamAgentInactive,
-                  ),
-                  visualDensity: VisualDensity.compact,
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (model != null) _MonoChip(text: model),
+                    if (backend != null) _MonoChip(text: backend),
+                    if (provider != null) _MonoChip(text: provider),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Semantics(
+            label: agent.isActive ? l10n.teamAgentActive : l10n.teamAgentInactive,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration:
+                      BoxDecoration(color: activeColor, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  agent.isActive ? l10n.teamAgentActive : l10n.teamAgentInactive,
+                  style: theme.textTheme.labelSmall?.copyWith(color: activeColor),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
 
-    final cardChild = onTap != null
-        ? InkWell(
-            onTap: onTap,
-            child: padding,
-          )
-        : padding;
-
     final card = Card(
       margin: EdgeInsets.zero,
-      child: cardChild,
+      clipBehavior: Clip.antiAlias,
+      child: onTap != null
+          ? InkWell(onTap: onTap, child: content)
+          : content,
     );
 
     if (onTap != null) {
@@ -144,5 +140,53 @@ class AgentCard extends StatelessWidget {
       );
     }
     return card;
+  }
+}
+
+class _RolePill extends StatelessWidget {
+  const _RolePill({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSecondaryContainer,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+  }
+}
+
+class _MonoChip extends StatelessWidget {
+  const _MonoChip({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 11,
+        ).copyWith(color: scheme.onSurfaceVariant),
+      ),
+    );
   }
 }

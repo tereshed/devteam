@@ -578,6 +578,12 @@ abstract class AppLocalizations {
   /// **'Zhipu'**
   String get llmProviderZhipu;
 
+  /// LLM provider brand name
+  ///
+  /// In ru, this message translates to:
+  /// **'Hermes'**
+  String get llmProviderHermes;
+
   /// ui_refactoring stage 1: stub card subtitle
   ///
   /// In ru, this message translates to:
@@ -625,6 +631,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Модели GLM'**
   String get llmProviderZhipuSubtitle;
+
+  /// stub card subtitle
+  ///
+  /// In ru, this message translates to:
+  /// **'Прямое подключение Nous Portal / Hermes API'**
+  String get llmProviderHermesSubtitle;
 
   /// ui_refactoring stage 2: replaces ComingSoon copy
   ///
@@ -2857,6 +2869,30 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'DevOps'**
   String get agentRoleDevops;
+
+  /// Подпись роли агента «decomposer».
+  ///
+  /// In ru, this message translates to:
+  /// **'Декомпозер'**
+  String get agentRoleDecomposer;
+
+  /// Подпись роли агента «merger».
+  ///
+  /// In ru, this message translates to:
+  /// **'Мерджер'**
+  String get agentRoleMerger;
+
+  /// Подпись роли агента «router».
+  ///
+  /// In ru, this message translates to:
+  /// **'Роутер'**
+  String get agentRoleRouter;
+
+  /// Подпись роли агента «assistant».
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент'**
+  String get agentRoleAssistant;
 
   /// Вкладка команды: пустой список агентов (13.1)
   ///
@@ -5143,6 +5179,48 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Обновлено'**
   String get tasksColUpdated;
+
+  /// No description provided for @teamAgentProviderNotConnected.
+  ///
+  /// In ru, this message translates to:
+  /// **'Провайдер не подключён — настройте в Интеграциях'**
+  String get teamAgentProviderNotConnected;
+
+  /// No description provided for @teamAgentNoConfiguredProviders.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет подключённых провайдеров — настройте в Интеграциях'**
+  String get teamAgentNoConfiguredProviders;
+
+  /// No description provided for @teamAgentBackendRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите бекенд'**
+  String get teamAgentBackendRequired;
+
+  /// No description provided for @teamAgentBackendNeedsProvider.
+  ///
+  /// In ru, this message translates to:
+  /// **'Hermes требует выбранного провайдера'**
+  String get teamAgentBackendNeedsProvider;
+
+  /// No description provided for @teamAgentProviderBackendMismatch.
+  ///
+  /// In ru, this message translates to:
+  /// **'Провайдер несовместим с выбранным бекендом'**
+  String get teamAgentProviderBackendMismatch;
+
+  /// No description provided for @teamAgentBackendLlmDisabled.
+  ///
+  /// In ru, this message translates to:
+  /// **'LLM-роль не использует бекенд'**
+  String get teamAgentBackendLlmDisabled;
+
+  /// No description provided for @teamAgentProviderNotConnectedShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'не подключён'**
+  String get teamAgentProviderNotConnectedShort;
 
   /// No description provided for @appShellNavCollapse.
   ///

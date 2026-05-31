@@ -56,7 +56,7 @@ type AgentUpdateParams struct {
 	ClearPromptID   bool     `json:"clear_prompt_id,omitempty" jsonschema:"Сбросить prompt_id в NULL (не совмещать с prompt_id)"`
 	PromptID        *string  `json:"prompt_id,omitempty" jsonschema:"UUID промпта"`
 	Model           *string  `json:"model,omitempty" jsonschema:"Только для llm-агентов"`
-	ProviderKind    *string  `json:"provider_kind,omitempty" jsonschema:"anthropic/deepseek/zhipu/openrouter"`
+	ProviderKind    *string  `json:"provider_kind,omitempty" jsonschema:"anthropic/deepseek/zhipu/openrouter/antigravity/antigravity_oauth/hermes"`
 	// Sprint 5 review fix #4: CodeBackend для sandbox-агентов (например, перейти с claude-code на aider).
 	CodeBackend        *string  `json:"code_backend,omitempty" jsonschema:"Только для sandbox-агентов (claude-code/aider/hermes/custom)"`
 	Temperature        *float64 `json:"temperature,omitempty"`

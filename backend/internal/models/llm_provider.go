@@ -25,6 +25,7 @@ const (
 	LLMProviderKindZhipu          LLMProviderKind = "zhipu"
 	LLMProviderKindAntigravity    LLMProviderKind = "antigravity"
 	LLMProviderKindAntigravityOAuth LLMProviderKind = "antigravity_oauth"
+	LLMProviderKindHermes         LLMProviderKind = "hermes"
 )
 
 // IsValid проверяет, что kind является поддерживаемым.
@@ -34,7 +35,7 @@ func (k LLMProviderKind) IsValid() bool {
 		LLMProviderKindOpenAI, LLMProviderKindGemini, LLMProviderKindDeepSeek,
 		LLMProviderKindQwen, LLMProviderKindOpenRouter, LLMProviderKindMoonshot,
 		LLMProviderKindOllama, LLMProviderKindZhipu, LLMProviderKindAntigravity,
-		LLMProviderKindAntigravityOAuth:
+		LLMProviderKindAntigravityOAuth, LLMProviderKindHermes:
 		return true
 	default:
 		return false

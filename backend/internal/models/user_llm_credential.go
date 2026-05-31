@@ -19,6 +19,7 @@ const (
 	UserLLMProviderOpenRouter  UserLLMProvider = "openrouter"
 	UserLLMProviderZhipu       UserLLMProvider = "zhipu"
 	UserLLMProviderAntigravity UserLLMProvider = "antigravity"
+	UserLLMProviderHermes      UserLLMProvider = "hermes"
 )
 
 // UserLLMProvidersOrdered — фиксированный порядок для ответа GET/PATCH.
@@ -31,6 +32,7 @@ var UserLLMProvidersOrdered = []UserLLMProvider{
 	UserLLMProviderOpenRouter,
 	UserLLMProviderZhipu,
 	UserLLMProviderAntigravity,
+	UserLLMProviderHermes,
 }
 
 // IsValidUserLLMProvider проверяет значение provider.
@@ -38,7 +40,7 @@ func IsValidUserLLMProvider(p string) bool {
 	switch UserLLMProvider(p) {
 	case UserLLMProviderOpenAI, UserLLMProviderAnthropic, UserLLMProviderGemini,
 		UserLLMProviderDeepSeek, UserLLMProviderQwen, UserLLMProviderOpenRouter,
-		UserLLMProviderZhipu, UserLLMProviderAntigravity:
+		UserLLMProviderZhipu, UserLLMProviderAntigravity, UserLLMProviderHermes:
 		return true
 	default:
 		return false

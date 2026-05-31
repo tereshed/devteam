@@ -36,6 +36,7 @@ class _LlmIntegrationsScreenState extends ConsumerState<LlmIntegrationsScreen> {
     LlmIntegrationProvider.deepseek,
     LlmIntegrationProvider.zhipu,
     LlmIntegrationProvider.antigravity,
+    LlmIntegrationProvider.hermes,
   ];
 
   @override

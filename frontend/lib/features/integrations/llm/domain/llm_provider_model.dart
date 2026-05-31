@@ -19,7 +19,8 @@ enum LlmIntegrationProvider {
   openrouter('openrouter'),
   zhipu('zhipu'),
   gemini('gemini'),
-  qwen('qwen');
+  qwen('qwen'),
+  hermes('hermes');
 
   const LlmIntegrationProvider(this.jsonValue);
 

@@ -55,6 +55,7 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 	// Имя hermes-провайдера для флага `hermes chat --provider $X`.
 	"DEVTEAM_HERMES_PROVIDER": {},
 	"OPENROUTER_API_KEY":      {},
+	"HERMES_API_KEY":          {},
 
 	// Sprint 16.C — per-agent customization для Hermes.
 	// Заполняются HermesArtifactBuilder и читаются entrypoint.sh.

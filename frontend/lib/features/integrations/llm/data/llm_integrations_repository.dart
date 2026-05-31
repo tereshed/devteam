@@ -361,6 +361,7 @@ class LlmIntegrationsRepository {
       'openrouter': LlmIntegrationProvider.openrouter,
       'zhipu': LlmIntegrationProvider.zhipu,
       'antigravity': LlmIntegrationProvider.antigravity,
+      'hermes': LlmIntegrationProvider.hermes,
     };
     for (final entry in mapping.entries) {
       final raw = data[entry.key];
@@ -413,6 +414,8 @@ class LlmIntegrationsRepository {
         return 'zhipu_api_key';
       case LlmIntegrationProvider.antigravity:
         return 'antigravity_api_key';
+      case LlmIntegrationProvider.hermes:
+        return 'hermes_api_key';
       case LlmIntegrationProvider.claudeCodeOAuth:
         throw ArgumentError.value(
           p,
@@ -446,6 +449,8 @@ class LlmIntegrationsRepository {
         return 'clear_zhipu_key';
       case LlmIntegrationProvider.antigravity:
         return 'clear_antigravity_key';
+      case LlmIntegrationProvider.hermes:
+        return 'clear_hermes_key';
       case LlmIntegrationProvider.claudeCodeOAuth:
         throw ArgumentError.value(
           p,

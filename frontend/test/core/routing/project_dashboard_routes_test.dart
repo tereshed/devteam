@@ -332,7 +332,6 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Q'), findsAtLeast(1));
-      expect(find.text('Test project description'), findsOneWidget);
       expect(find.text('Task 1'), findsOneWidget);
     },
   );

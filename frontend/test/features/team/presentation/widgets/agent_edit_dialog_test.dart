@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_repository.dart';
+import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
+import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 import 'package:frontend/features/projects/domain/models/agent_model.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/team/data/team_repository.dart';
@@ -26,14 +28,51 @@ import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
-
 import '../../../projects/helpers/test_wrappers.dart';
 import 'agent_edit_dialog_test.mocks.dart';
+
+class FakeLlmIntegrationsController extends ChangeNotifier implements LlmIntegrationsController {
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  LlmIntegrationsState get state => const LlmIntegrationsState(connections: {});
+
+  @override
+  void applyLocal(LlmProviderConnection connection) {}
+
+  @override
+  bool get debugNeedsResyncOnNextServerEvent => false;
+
+  @override
+  VoidCallback? get onConnectionChanged => null;
+}
 
 @GenerateNiceMocks([MockSpec<Dio>()])
 void main() {
   const projectId = '550e8400-e29b-41d4-a716-446655440000';
   const agentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  // Подключённые LLM-провайдеры для каскада формы (см. agent_provider_rules).
+  final connectedLlm = LlmIntegrationsState(
+    connections: {
+      for (final p in const [
+        LlmIntegrationProvider.anthropic,
+        LlmIntegrationProvider.deepseek,
+        LlmIntegrationProvider.openrouter,
+        LlmIntegrationProvider.zhipu,
+        LlmIntegrationProvider.claudeCodeOAuth,
+      ])
+        p: LlmProviderConnection(
+          provider: p,
+          status: LlmProviderConnectionStatus.connected,
+        ),
+    },
+  );
+  final llmOverride = llmIntegrationsStateProvider
+      .overrideWith((ref) => Stream.value(connectedLlm));
+  final llmControllerOverride = llmIntegrationsControllerProvider
+      .overrideWithValue(FakeLlmIntegrationsController());
 
   Map<String, dynamic> teamJson() => <String, dynamic>{
         'id': 'team-1',
@@ -75,6 +114,8 @@ void main() {
             .overrideWithValue(PromptsRepository(dio: dio)),
         toolsRepositoryProvider.overrideWithValue(ToolsRepository(dio: dio)),
         taskRepositoryProvider.overrideWithValue(TaskRepository(dio: dio)),
+        llmOverride,
+        llmControllerOverride,
       ],
       child: MaterialApp.router(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -129,15 +170,17 @@ void main() {
     String? model = 'm1',
     List<ToolBindingResponseModel>? toolBindings,
     String? providerKind,
+    String role = 'planner', // llm-роль: модель+провайдер активны, бекенд скрыт
+    String? codeBackend,
   }) {
     return AgentModel(
       id: agentId,
       name: 'Agent',
-      role: 'developer',
+      role: role,
       model: model,
       promptName: promptName,
       promptId: promptId,
-      codeBackend: 'claude-code',
+      codeBackend: codeBackend,
       providerKind: providerKind,
       isActive: isActive,
       toolBindings: toolBindings ?? const [],
@@ -219,6 +262,8 @@ void main() {
         promptsRepositoryProvider
             .overrideWithValue(PromptsRepository(dio: dio)),
         toolsRepositoryProvider.overrideWithValue(ToolsRepository(dio: dio)),
+        llmOverride,
+        llmControllerOverride,
       ],
       child: wrapSimple(child, locale: locale, scrollableBody: scrollableBody),
     );

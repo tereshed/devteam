@@ -11,6 +11,8 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
+import 'package:frontend/features/integrations/llm/data/llm_integrations_providers.dart';
+import 'package:frontend/features/integrations/llm/domain/llm_provider_model.dart';
 import 'package:frontend/features/team/domain/models/team_type_model.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_providers.dart';
 import 'package:frontend/features/admin/prompts/data/prompts_repository.dart';
@@ -30,6 +32,22 @@ import '../widgets/agent_edit_dialog_test.mocks.dart';
 
 const _projectId = '550e8400-e29b-41d4-a716-446655440000';
 const _agentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+/// Диалог редактирования агента дёргает refresh() контроллера интеграций —
+/// в тестах подменяем его no-op фейком (без WS/REST).
+class _FakeLlmController extends ChangeNotifier
+    implements LlmIntegrationsController {
+  @override
+  Future<void> refresh() async {}
+  @override
+  LlmIntegrationsState get state => const LlmIntegrationsState(connections: {});
+  @override
+  void applyLocal(LlmProviderConnection connection) {}
+  @override
+  bool get debugNeedsResyncOnNextServerEvent => false;
+  @override
+  VoidCallback? get onConnectionChanged => null;
+}
 
 TeamModel _team({
   String name = 'Dev Team',
@@ -78,6 +96,7 @@ Widget _harness({
         TeamTypeModel(code: 'research', name: 'Research', isSystem: false),
         TeamTypeModel(code: 'analytics', name: 'Analytics', isSystem: false),
       ]),
+      llmIntegrationsControllerProvider.overrideWithValue(_FakeLlmController()),
       ...overrides,
     ],
     child: MaterialApp(

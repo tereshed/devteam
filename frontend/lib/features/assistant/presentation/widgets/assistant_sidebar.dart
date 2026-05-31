@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/presentation/controllers/assistant_sidebar_controller.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_chat_panel.dart';
-import 'package:frontend/features/assistant/presentation/widgets/assistant_tasks_panel.dart';
+import 'package:go_router/go_router.dart';
 
 /// Главный контейнер правой панели ассистента (Sprint 21 §1 frontend).
 ///
@@ -18,7 +17,6 @@ class AssistantSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = requireAppLocalizations(context, where: 'AssistantSidebar');
-    final sidebar = ref.watch(assistantSidebarControllerProvider);
     final notifier = ref.read(assistantSidebarControllerProvider.notifier);
     final statusAsync = ref.watch(assistantStatusProvider);
     final theme = Theme.of(context);
@@ -56,29 +54,10 @@ class AssistantSidebar extends ConsumerWidget {
                 if (!status.isConfigured) {
                   return _AssistantLockScreen(requiredProvider: status.requiredProvider);
                 }
-                return Column(
-                  children: [
-                    _AssistantTabBar(
-                      current: sidebar.tab,
-                      onChanged: notifier.setTab,
-                      chatLabel: l10n.assistantTabChat,
-                      tasksLabel: l10n.assistantTabTasks,
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 160),
-                        child: switch (sidebar.tab) {
-                          AssistantSidebarTab.chat => const AssistantChatPanel(
-                              key: ValueKey('assistant_chat_panel'),
-                            ),
-                          AssistantSidebarTab.tasks => const AssistantTasksPanel(
-                              key: ValueKey('assistant_tasks_panel'),
-                            ),
-                        },
-                      ),
-                    ),
-                  ],
+                // Переключатель Чат/Задачи убран — панель ассистента всегда чат
+                // (задачи доступны в основном меню «Задачи»).
+                return const AssistantChatPanel(
+                  key: ValueKey('assistant_chat_panel'),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -87,47 +66,6 @@ class AssistantSidebar extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AssistantTabBar extends StatelessWidget {
-  const _AssistantTabBar({
-    required this.current,
-    required this.onChanged,
-    required this.chatLabel,
-    required this.tasksLabel,
-  });
-
-  final AssistantSidebarTab current;
-  final ValueChanged<AssistantSidebarTab> onChanged;
-  final String chatLabel;
-  final String tasksLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return SegmentedButton<AssistantSidebarTab>(
-      segments: [
-        ButtonSegment(
-          value: AssistantSidebarTab.chat,
-          // ValueKey на label — единственное место в ButtonSegment, куда
-          // можно подвесить ключ. Тесты ищут вкладки по этим ключам, чтобы
-          // не зависеть от локализации (см. docs/rules/frontend.md i18n).
-          label: Text(chatLabel, key: const ValueKey('assistant_tab_chat')),
-          icon: const Icon(Icons.chat_bubble_outline, size: 16),
-        ),
-        ButtonSegment(
-          value: AssistantSidebarTab.tasks,
-          label: Text(tasksLabel, key: const ValueKey('assistant_tab_tasks')),
-          icon: const Icon(Icons.task_alt_outlined, size: 16),
-        ),
-      ],
-      selected: <AssistantSidebarTab>{current},
-      onSelectionChanged: (set) {
-        if (set.isEmpty) return;
-        onChanged(set.first);
-      },
-      showSelectedIcon: false,
     );
   }
 }

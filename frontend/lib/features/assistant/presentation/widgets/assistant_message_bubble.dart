@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
 
-/// Bubble user/assistant/system сообщения (Sprint 21 §8 frontend).
+/// Сообщение ассистента/пользователя/системы (Sprint 21 §8, redesign).
 ///
-/// Markdown рендерится через `ChatMessage` с поддержкой fenced code, списков и т.д.
+/// Современная раскладка (стиль ChatGPT/Claude):
+/// - пользователь — компактный bubble справа;
+/// - ассистент — на всю ширину с аватаром (markdown/таблицам есть место);
+/// - система — приглушённая строка с иконкой.
+/// Ярлыки ролей убраны: роль читается по выравниванию/аватару.
 class AssistantMessageBubble extends StatelessWidget {
   const AssistantMessageBubble({super.key, required this.message});
 
@@ -13,29 +16,10 @@ class AssistantMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = requireAppLocalizations(
-      context,
-      where: 'AssistantMessageBubble',
-    );
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-
     final isUser = message.isUser;
     final isSystem = message.isSystem;
-
-    final (Color bg, Color fg) = switch (message.role) {
-      assistantMessageRoleUser => (scheme.primaryContainer, scheme.onPrimaryContainer),
-      assistantMessageRoleAssistant => (scheme.surfaceContainerHigh, scheme.onSurface),
-      assistantMessageRoleSystem => (scheme.surfaceContainerLow, scheme.onSurfaceVariant),
-      _ => (scheme.surfaceContainerHigh, scheme.onSurface),
-    };
-
-    final roleLabel = switch (message.role) {
-      assistantMessageRoleUser => l10n.assistantMessageRoleUser,
-      assistantMessageRoleAssistant => l10n.assistantMessageRoleAssistant,
-      assistantMessageRoleSystem => l10n.assistantMessageRoleSystem,
-      _ => message.role,
-    };
 
     final chatRole = switch (message.role) {
       assistantMessageRoleUser => 'user',
@@ -44,56 +28,80 @@ class AssistantMessageBubble extends StatelessWidget {
       _ => 'assistant',
     };
 
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                roleLabel,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: fg.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w600,
+    if (isUser) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(40, 4, 12, 4),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: scheme.primary,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(4),
                 ),
               ),
-              const SizedBox(height: 4),
-              Theme(
-                data: theme.copyWith(
-                  textTheme: theme.textTheme.copyWith(
-                    bodyMedium: theme.textTheme.bodyMedium?.copyWith(
-                      color: fg,
-                      fontStyle: isSystem ? FontStyle.italic : FontStyle.normal,
-                    ),
-                    titleLarge: theme.textTheme.titleLarge?.copyWith(color: fg),
-                    titleMedium: theme.textTheme.titleMedium?.copyWith(color: fg),
-                    titleSmall: theme.textTheme.titleSmall?.copyWith(color: fg),
-                    bodyLarge: theme.textTheme.bodyLarge?.copyWith(color: fg),
-                    bodySmall: theme.textTheme.bodySmall?.copyWith(color: fg),
-                  ),
-                  colorScheme: theme.colorScheme.copyWith(
-                    primary: fg,
-                    onSurface: fg,
-                    onSurfaceVariant: fg.withValues(alpha: 0.8),
-                  ),
-                ),
-                child: ChatMessage(
-                  role: chatRole,
-                  content: message.content ?? '',
-                  messageId: message.id,
-                ),
-              ),
-            ],
+              child: _content(theme, scheme.onPrimary, chatRole, isSystem),
+            ),
           ),
         ),
+      );
+    }
+
+    // assistant / system — на всю ширину с аватаром.
+    final fg = isSystem ? scheme.onSurfaceVariant : scheme.onSurface;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 13,
+            backgroundColor: isSystem
+                ? scheme.surfaceContainerHighest
+                : scheme.primary.withValues(alpha: 0.15),
+            child: Icon(
+              isSystem ? Icons.info_outline : Icons.auto_awesome,
+              size: 15,
+              color: isSystem ? scheme.onSurfaceVariant : scheme.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: _content(theme, fg, chatRole, isSystem)),
+        ],
+      ),
+    );
+  }
+
+  Widget _content(ThemeData theme, Color fg, String chatRole, bool isSystem) {
+    return Theme(
+      data: theme.copyWith(
+        textTheme: theme.textTheme.copyWith(
+          bodyMedium: theme.textTheme.bodyMedium?.copyWith(
+            color: fg,
+            fontStyle: isSystem ? FontStyle.italic : FontStyle.normal,
+          ),
+          titleLarge: theme.textTheme.titleLarge?.copyWith(color: fg),
+          titleMedium: theme.textTheme.titleMedium?.copyWith(color: fg),
+          titleSmall: theme.textTheme.titleSmall?.copyWith(color: fg),
+          bodyLarge: theme.textTheme.bodyLarge?.copyWith(color: fg),
+          bodySmall: theme.textTheme.bodySmall?.copyWith(color: fg),
+        ),
+        colorScheme: theme.colorScheme.copyWith(
+          primary: fg,
+          onSurface: fg,
+          onSurfaceVariant: fg.withValues(alpha: 0.8),
+        ),
+      ),
+      child: ChatMessage(
+        role: chatRole,
+        content: message.content ?? '',
+        messageId: message.id,
       ),
     );
   }

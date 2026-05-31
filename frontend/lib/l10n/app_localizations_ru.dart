@@ -286,6 +286,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get llmProviderZhipu => 'Zhipu';
 
   @override
+  String get llmProviderHermes => 'Hermes';
+
+  @override
   String get llmProviderClaudeCodeSubtitle => 'Подписка Anthropic через OAuth';
 
   @override
@@ -309,6 +312,10 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get llmProviderZhipuSubtitle => 'Модели GLM';
+
+  @override
+  String get llmProviderHermesSubtitle =>
+      'Прямое подключение Nous Portal / Hermes API';
 
   @override
   String get integrationsLlmStage2Subtitle =>
@@ -1569,6 +1576,18 @@ class AppLocalizationsRu extends AppLocalizations {
   String get agentRoleDevops => 'DevOps';
 
   @override
+  String get agentRoleDecomposer => 'Декомпозер';
+
+  @override
+  String get agentRoleMerger => 'Мерджер';
+
+  @override
+  String get agentRoleRouter => 'Роутер';
+
+  @override
+  String get agentRoleAssistant => 'Ассистент';
+
+  @override
   String get teamEmptyAgents => 'В команде пока нет агентов.';
 
   @override
@@ -2797,6 +2816,31 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get tasksColUpdated => 'Обновлено';
+
+  @override
+  String get teamAgentProviderNotConnected =>
+      'Провайдер не подключён — настройте в Интеграциях';
+
+  @override
+  String get teamAgentNoConfiguredProviders =>
+      'Нет подключённых провайдеров — настройте в Интеграциях';
+
+  @override
+  String get teamAgentBackendRequired => 'Выберите бекенд';
+
+  @override
+  String get teamAgentBackendNeedsProvider =>
+      'Hermes требует выбранного провайдера';
+
+  @override
+  String get teamAgentProviderBackendMismatch =>
+      'Провайдер несовместим с выбранным бекендом';
+
+  @override
+  String get teamAgentBackendLlmDisabled => 'LLM-роль не использует бекенд';
+
+  @override
+  String get teamAgentProviderNotConnectedShort => 'не подключён';
 
   @override
   String get appShellNavCollapse => 'Свернуть меню';

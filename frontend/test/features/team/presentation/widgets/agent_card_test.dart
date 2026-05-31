@@ -20,7 +20,7 @@ Finder _agentCardSurfaceInkWell() {
       (w) =>
           w is InkWell &&
           w.child is Padding &&
-          (w.child! as Padding).padding == const EdgeInsets.all(16),
+          (w.child! as Padding).padding == const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     ),
   );
 }
@@ -41,6 +41,7 @@ AgentModel _baseAgent({
   String? model = 'claude-opus-4-7',
   String? promptName,
   String? codeBackend,
+  String? providerKind,
   bool isActive = true,
 }) {
   return AgentModel(
@@ -51,6 +52,7 @@ AgentModel _baseAgent({
     promptName: promptName,
     promptId: null,
     codeBackend: codeBackend,
+    providerKind: providerKind,
     isActive: isActive,
   );
 }
@@ -83,52 +85,52 @@ void main() {
   });
 
   testWidgets('model null shows teamAgentModelUnset', (tester) async {
-    final agent = _baseAgent(model: null);
+    final agent = _baseAgent(model: null, role: 'router');
     await tester.pumpWidget(_wrapAgentCard(AgentCard(agent: agent)));
     await tester.pumpAndSettle();
 
     expect(find.text(l10nRu.teamAgentModelUnset), findsOneWidget);
   });
 
-  testWidgets('shows promptName and codeBackend when set', (tester) async {
-    const prompt = 'System prompt X';
+  testWidgets('shows providerKind and codeBackend when set', (tester) async {
+    const provider = 'openrouter';
     const backend = 'claude-code';
-    final agent = _baseAgent(promptName: prompt, codeBackend: backend);
+    final agent = _baseAgent(providerKind: provider, codeBackend: backend);
     await tester.pumpWidget(_wrapAgentCard(AgentCard(agent: agent)));
     await tester.pumpAndSettle();
 
-    expect(find.text(prompt), findsOneWidget);
+    expect(find.text(provider), findsOneWidget);
     expect(find.text(backend), findsOneWidget);
   });
 
-  testWidgets('shows promptName only when codeBackend unset', (tester) async {
-    const prompt = 'PromptSoloOnly';
-    final agent = _baseAgent(promptName: prompt, codeBackend: null);
+  testWidgets('shows providerKind only when codeBackend unset (for LLM agent)', (tester) async {
+    const provider = 'openrouter';
+    final agent = _baseAgent(providerKind: provider, codeBackend: null, role: 'router');
     await tester.pumpWidget(_wrapAgentCard(AgentCard(agent: agent)));
     await tester.pumpAndSettle();
 
-    expect(find.text(prompt), findsOneWidget);
+    expect(find.text(provider), findsOneWidget);
     expect(find.text('BackendGhostNeverSet'), findsNothing);
   });
 
-  testWidgets('shows codeBackend only when promptName unset', (tester) async {
+  testWidgets('shows codeBackend only when providerKind unset', (tester) async {
     const backend = 'aider-custom-wire';
-    final agent = _baseAgent(promptName: null, codeBackend: backend);
+    final agent = _baseAgent(providerKind: null, codeBackend: backend);
     await tester.pumpWidget(_wrapAgentCard(AgentCard(agent: agent)));
     await tester.pumpAndSettle();
 
     expect(find.text(backend), findsOneWidget);
-    expect(find.text('PromptGhostNeverSet'), findsNothing);
+    expect(find.text('ProviderGhostNeverSet'), findsNothing);
   });
 
-  testWidgets('omits prompt and code_backend lines when unset', (tester) async {
-    const ghostPrompt = 'GhostPromptLineAbsent';
+  testWidgets('omits providerKind and codeBackend when unset', (tester) async {
+    const ghostProvider = 'GhostProviderLineAbsent';
     const ghostBackend = 'GhostBackendLineAbsent';
-    final agent = _baseAgent(promptName: null, codeBackend: null);
+    final agent = _baseAgent(providerKind: null, codeBackend: null, model: null, role: 'router');
     await tester.pumpWidget(_wrapAgentCard(AgentCard(agent: agent)));
     await tester.pumpAndSettle();
 
-    expect(find.text(ghostPrompt), findsNothing);
+    expect(find.text(ghostProvider), findsNothing);
     expect(find.text(ghostBackend), findsNothing);
     expect(find.text('claude-code'), findsNothing);
   });

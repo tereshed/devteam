@@ -90,6 +90,7 @@ const (
 	AgentProviderKindOpenRouter     AgentProviderKind = "openrouter"
 	AgentProviderKindAntigravity    AgentProviderKind = "antigravity"
 	AgentProviderKindAntigravityOAuth AgentProviderKind = "antigravity_oauth"
+	AgentProviderKindHermes         AgentProviderKind = "hermes"
 )
 
 // IsValid проверяет валидность kind.
@@ -97,7 +98,8 @@ func (k AgentProviderKind) IsValid() bool {
 	switch k {
 	case AgentProviderKindAnthropic, AgentProviderKindAnthropicOAuth,
 		AgentProviderKindDeepSeek, AgentProviderKindZhipu, AgentProviderKindOpenRouter,
-		AgentProviderKindAntigravity, AgentProviderKindAntigravityOAuth:
+		AgentProviderKindAntigravity, AgentProviderKindAntigravityOAuth,
+		AgentProviderKindHermes:
 		return true
 	default:
 		return false
@@ -160,6 +162,8 @@ func (k AgentProviderKind) UserLLMProvider() UserLLMProvider {
 		return UserLLMProviderOpenRouter
 	case AgentProviderKindAntigravity:
 		return UserLLMProviderAntigravity
+	case AgentProviderKindHermes:
+		return UserLLMProviderHermes
 	default:
 		return ""
 	}
@@ -181,6 +185,8 @@ func (k AgentProviderKind) HermesEnvVar() string {
 		return ""
 	case AgentProviderKindOpenRouter:
 		return "OPENROUTER_API_KEY"
+	case AgentProviderKindHermes:
+		return "HERMES_API_KEY"
 	default:
 		return ""
 	}
@@ -195,6 +201,8 @@ func (k AgentProviderKind) HermesProviderName() string {
 		return "openrouter"
 	case AgentProviderKindAnthropic:
 		return "anthropic"
+	case AgentProviderKindHermes:
+		return "hermes"
 	default:
 		return ""
 	}

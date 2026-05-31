@@ -176,6 +176,8 @@ class _ConnectApiKeyDialogState extends ConsumerState<_ConnectApiKeyDialog> {
         return l10n.llmProviderAntigravity;
       case LlmIntegrationProvider.antigravityOAuth:
         return l10n.llmProviderAntigravityOAuth;
+      case LlmIntegrationProvider.hermes:
+        return l10n.llmProviderHermes;
     }
   }
 }

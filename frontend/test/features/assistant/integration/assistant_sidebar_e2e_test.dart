@@ -43,7 +43,6 @@ import 'package:frontend/core/api/websocket_service.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/assistant/data/assistant_providers.dart';
 import 'package:frontend/features/assistant/data/assistant_repository.dart';
-import 'package:frontend/features/assistant/domain/assistant_active_task_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_status_model.dart';
@@ -182,11 +181,13 @@ void main() {
 
       final l10n = l10nOf(tester);
 
-      // Header + tabs отрисовались (вкладки — через ValueKey, заголовок —
-      // через l10n).
+      // Header + чат-панель отрисовались. Переключатель Чат/Задачи убран —
+      // панель сразу показывает чат.
       expect(find.text(l10n.assistantSidebarTitle), findsOneWidget);
-      expect(find.byKey(const ValueKey('assistant_tab_chat')), findsOneWidget);
-      expect(find.byKey(const ValueKey('assistant_tab_tasks')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('assistant_chat_panel')),
+        findsOneWidget,
+      );
 
       // Пустая чат-секция показала empty hint (история пуста).
       expect(find.text(l10n.assistantEmptyChat), findsOneWidget,
@@ -389,70 +390,8 @@ void main() {
       )).called(1);
     });
 
-    testWidgets('Tasks tab → REST list rendered, WS task_update appends',
-        (tester) async {
-      stubBootstrap();
-      when(mockRepo.getActiveTasks(cancelToken: anyNamed('cancelToken')))
-          .thenAnswer((_) async => AssistantActiveTasksResponse(
-                tasks: [
-                  AssistantActiveTaskModel(
-                    taskId: 'task-1',
-                    projectId: 'proj-1',
-                    projectName: 'Demo',
-                    title: 'First task',
-                    state: 'active',
-                    updatedAt: DateTime.utc(2026, 5, 17, 11, 0),
-                  ),
-                ],
-              ));
-
-      await tester.pumpWidget(appUnderTest());
-      await tester.pumpAndSettle();
-
-      // Переключаемся на вкладку Tasks через ValueKey — независимо от локали.
-      await tester.tap(find.byKey(const ValueKey('assistant_tab_tasks')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('First task'), findsOneWidget,
-          reason: 'REST-bootstrapped active task visible');
-
-      wsEvents.add(WsClientEvent.server(
-        WsServerEvent.assistantTaskUpdate(WsAssistantTaskUpdateEvent(
-          ts: DateTime.utc(2026, 5, 17, 12, 5),
-          v: 1,
-          userId: userId,
-          projectId: 'proj-1',
-          taskId: 'task-2',
-          state: 'active',
-          title: 'Second task',
-          updatedAt: DateTime.utc(2026, 5, 17, 12, 5),
-        )),
-      ));
-      await tester.pumpAndSettle();
-
-      expect(find.text('First task'), findsOneWidget);
-      expect(find.text('Second task'), findsOneWidget);
-
-      // Терминальное событие обновляет state, но карточка остаётся в списке
-      // (по контракту controller'а: terminal state'ы остаются видимыми, чтобы
-      // пользователь успел увидеть «только что done»).
-      wsEvents.add(WsClientEvent.server(
-        WsServerEvent.assistantTaskUpdate(WsAssistantTaskUpdateEvent(
-          ts: DateTime.utc(2026, 5, 17, 12, 6),
-          v: 1,
-          userId: userId,
-          projectId: 'proj-1',
-          taskId: 'task-1',
-          state: 'done',
-          title: 'First task',
-          updatedAt: DateTime.utc(2026, 5, 17, 12, 6),
-        )),
-      ));
-      await tester.pumpAndSettle();
-
-      expect(find.text('First task'), findsOneWidget);
-      expect(find.text('Second task'), findsOneWidget);
-    });
+    // Тест вкладки Tasks удалён: переключатель Чат/Задачи убран из сайдбара
+    // (список задач теперь в основном меню «Задачи»).
 
     testWidgets('session_updated → busy=true shows busy indicator',
         (tester) async {

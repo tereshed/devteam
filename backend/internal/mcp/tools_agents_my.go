@@ -20,7 +20,7 @@ type AgentUpdateMyParams struct {
 	RoleDescription    *string  `json:"role_description,omitempty"`
 	SystemPrompt       *string  `json:"system_prompt,omitempty"`
 	Model              *string  `json:"model,omitempty" jsonschema:"Только для llm-агентов"`
-	ProviderKind       *string  `json:"provider_kind,omitempty" jsonschema:"anthropic/deepseek/zhipu/openrouter"`
+	ProviderKind       *string  `json:"provider_kind,omitempty" jsonschema:"anthropic/deepseek/zhipu/openrouter/antigravity/antigravity_oauth/hermes"`
 	Temperature        *float64 `json:"temperature,omitempty"`
 	MaxTokens          *int     `json:"max_tokens,omitempty"`
 	IsActive           *bool    `json:"is_active,omitempty"`
