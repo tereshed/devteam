@@ -26,15 +26,23 @@ import (
 // StepWorkerConfig — настройки одного воркера. Несколько воркеров в пуле
 // разделяют один и тот же конфиг, но имеют уникальные WorkerID (для observability).
 type StepWorkerConfig struct {
-	WorkerID     string
+	WorkerID string
+	// PollInterval — минимальная пауза между опросами очереди (нижняя граница
+	// адаптивного backoff'а). Так часто воркер опрашивает БД сразу после активности.
 	PollInterval time.Duration // default 500ms
+	// MaxPollInterval — верхняя граница backoff'а: на простаивающей очереди пауза
+	// удваивается от PollInterval до этого значения. Без backoff'а N воркеров в
+	// полку долбят Yugabyte распределёнными SELECT ... FOR UPDATE SKIP LOCKED даже
+	// когда работы нет — это главный источник idle-CPU.
+	MaxPollInterval time.Duration // default 5s
 }
 
 // DefaultStepWorkerConfig — разумные дефолты.
 func DefaultStepWorkerConfig() StepWorkerConfig {
 	return StepWorkerConfig{
-		WorkerID:     "step-worker-default",
-		PollInterval: 500 * time.Millisecond,
+		WorkerID:        "step-worker-default",
+		PollInterval:    500 * time.Millisecond,
+		MaxPollInterval: 5 * time.Second,
 	}
 }
 
@@ -60,6 +68,12 @@ func NewStepWorker(
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 500 * time.Millisecond
+	}
+	if cfg.MaxPollInterval <= 0 {
+		cfg.MaxPollInterval = 5 * time.Second
+	}
+	if cfg.MaxPollInterval < cfg.PollInterval {
+		cfg.MaxPollInterval = cfg.PollInterval
 	}
 	if cfg.WorkerID == "" {
 		cfg.WorkerID = "step-worker-default"
@@ -102,44 +116,62 @@ func (w *StepWorker) Run(ctx context.Context) error {
 	}
 
 	w.logger.InfoContext(ctx, "step worker started",
-		"worker_id", w.cfg.WorkerID, "poll_interval", w.cfg.PollInterval)
+		"worker_id", w.cfg.WorkerID,
+		"poll_interval", w.cfg.PollInterval, "max_poll_interval", w.cfg.MaxPollInterval)
 
-	ticker := time.NewTicker(w.cfg.PollInterval)
-	defer ticker.Stop()
+	// Адаптивный backoff: delay стартует с PollInterval, удваивается на каждом
+	// пустом опросе до MaxPollInterval и сбрасывается к минимуму, как только
+	// появилась работа (или пришёл Redis-wakeup). Так под нагрузкой латентность
+	// низкая, а на простое пул почти не трогает БД.
+	delay := w.cfg.PollInterval
 
 	for {
 		// Пытаемся обработать всё что есть в очереди прямо сейчас.
-		w.drainQueue(ctx)
+		worked := w.drainQueue(ctx)
+		if worked {
+			delay = w.cfg.PollInterval
+		} else {
+			delay *= 2
+			if delay > w.cfg.MaxPollInterval {
+				delay = w.cfg.MaxPollInterval
+			}
+		}
 
-		// Ждём следующего сигнала.
+		// Ждём следующего сигнала. jitterDuration расфазирует пул, чтобы N
+		// воркеров не били Yugabyte синхронным залпом.
 		select {
 		case <-ctx.Done():
 			w.logger.InfoContext(ctx, "step worker stopping", "worker_id", w.cfg.WorkerID)
 			return nil
-		case <-ticker.C:
+		case <-time.After(jitterDuration(delay)):
 			// polling tick
 		case <-wakeupCh:
-			// redis-сигнал; tickers ничего не теряют.
+			// redis-сигнал: сбрасываем backoff чтобы мгновенно отреагировать.
+			delay = w.cfg.PollInterval
 		}
 	}
 }
 
-// drainQueue — забирает события пока есть; выходит при ErrNoTaskEventAvailable или ошибке ctx.
-func (w *StepWorker) drainQueue(ctx context.Context) {
+// drainQueue — забирает события пока есть; выходит при ErrNoTaskEventAvailable
+// или ошибке ctx. Возвращает true, если обработал хотя бы одно событие (сигнал
+// для сброса backoff'а в Run).
+func (w *StepWorker) drainQueue(ctx context.Context) bool {
+	worked := false
 	for {
 		if ctx.Err() != nil {
-			return
+			return worked
 		}
 		ev, err := w.eventRepo.ClaimNext(ctx, models.TaskEventKindStepReq, w.cfg.WorkerID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNoTaskEventAvailable) {
-				return
+				return worked
 			}
 			w.logger.ErrorContext(ctx, "claim next step_req failed",
 				"worker_id", w.cfg.WorkerID, "error", err.Error())
-			return
+			return worked
 		}
 		w.processOne(ctx, ev)
+		worked = true
 	}
 }
 

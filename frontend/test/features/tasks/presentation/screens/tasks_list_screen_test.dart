@@ -453,7 +453,7 @@ void main() {
     });
 
     testWidgets(
-      'wide Kanban: горизонтальный SingleChildScrollView для досок',
+      'wide: плотная таблица задач (без Kanban-досок)',
       (tester) async {
         useViewSize(tester, const Size(1200, 800));
         final seed = makeTaskListStateFixture(
@@ -480,17 +480,21 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        // Канбан-доски больше нет — горизонтального SingleChildScrollView быть не должно.
         final horizontalBoard = find.byWidgetPredicate(
           (w) =>
               w is SingleChildScrollView &&
               w.scrollDirection == Axis.horizontal,
         );
-        expect(horizontalBoard, findsWidgets);
+        expect(horizontalBoard, findsNothing);
         final l10n = AppLocalizations.of(
           tester.element(find.byType(TasksListScreen)),
         )!;
-        expect(find.text(l10n.taskStatusActive), findsAtLeastNWidgets(2));
-        expect(find.text(l10n.taskStatusDone), findsAtLeastNWidgets(2));
+        // Заголовок-колонка таблицы (рендерится в верхнем регистре).
+        expect(find.text(l10n.tasksColTask.toUpperCase()), findsOneWidget);
+        // Статусы строк отображаются.
+        expect(find.text(l10n.taskStatusActive), findsWidgets);
+        expect(find.text(l10n.taskStatusDone), findsWidgets);
       },
     );
 

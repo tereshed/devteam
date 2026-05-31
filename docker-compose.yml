@@ -86,6 +86,12 @@ services:
       WEAVIATE_HOST: weaviate:8080
       WEAVIATE_SCHEME: http
       SANDBOX_KEEP_ON_FAILURE: "1"
+      # Размер пулов оркестратора. Для локальной разработки держим маленькими:
+      # каждый воркер опрашивает Yugabyte через распределённый SELECT FOR UPDATE
+      # SKIP LOCKED, и большой пул в полку грузит CPU вхолостую. Прод-дефолты в
+      # коде (5 step + 22 agent) — здесь переопределяем под одну машину.
+      ORCHESTRATOR_STEP_WORKERS: ${ORCHESTRATOR_STEP_WORKERS:-2}
+      ORCHESTRATOR_AGENT_WORKERS: ${ORCHESTRATOR_AGENT_WORKERS:-4}
     ports:
       - "8080:8080"   # Основной API (Gin)
       - "8081:8081"   # MCP сервер (Model Context Protocol)

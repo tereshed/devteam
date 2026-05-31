@@ -28,6 +28,7 @@ class TaskSwimlaneTrace extends ConsumerStatefulWidget {
     this.selectedAgentNodeId,
     this.assignedAgentName,
     this.assignedAgentRole,
+    this.showLegend = true,
   });
 
   final String projectId;
@@ -38,6 +39,9 @@ class TaskSwimlaneTrace extends ConsumerStatefulWidget {
   final String? selectedAgentNodeId;
   final String? assignedAgentName;
   final String? assignedAgentRole;
+
+  /// Скрыть нижнюю легенду (для компактного мини-превью на дашборде).
+  final bool showLegend;
 
   @override
   ConsumerState<TaskSwimlaneTrace> createState() => _TaskSwimlaneTraceState();
@@ -182,7 +186,7 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
             },
           ),
         ),
-        _TraceLegend(colors: colors, l10n: l10n),
+        if (widget.showLegend) _TraceLegend(colors: colors, l10n: l10n),
       ],
     );
   }
@@ -261,14 +265,15 @@ class _TraceColors {
         router: s.primary,
       );
 
-  // Завершённые ноды — нейтрально-серые (без «зелёного успеха»). Живые — синие,
-  // ошибки — красные, «нужны правки» — янтарные. Различие читается ещё и глифом.
+  // Цвет по результату завершения: успешно — зелёный, «нужны правки» — янтарный,
+  // ошибка — красный, в работе — синий, не начато (pending) — серый полый.
   static const amber = Color(0xFFD29922);
+  static const success = Color(0xFF3FB950);
 
   static Color result(_SpanResult r) => switch (r) {
         _SpanResult.running => Colors.blue,
         _SpanResult.pending => Colors.grey.shade600,
-        _SpanResult.ok => Colors.grey.shade400,
+        _SpanResult.ok => success,
         _SpanResult.changes => amber,
         _SpanResult.failed => Colors.red,
       };
@@ -376,17 +381,45 @@ class _SwimlaneModel {
   final List<_Span> spans;
   final List<_Gate> gates;
   final List<(String fromNodeId, String toNodeId)> deps;
-  final double maxSec;
-  final List<double> stepTicksSec;
+
+  /// Реальное «сейчас» в секундах от t0 (правый край ленты).
+  final double tEndSec;
+
+  /// Точки-границы шагов: время каждого решения роутера + tEnd (отсортированы).
+  /// Каждый интервал между соседними точками = ОДИН шаг = равная колонка.
+  /// Так простои между шагами схлопываются, а частые шаги получают полную
+  /// ширину — линейность времени принесена в жертву читаемости работы агентов.
+  final List<double> stepBreaks;
 
   const _SwimlaneModel({
     required this.lanes,
     required this.spans,
     required this.gates,
     required this.deps,
-    required this.maxSec,
-    required this.stepTicksSec,
+    required this.tEndSec,
+    required this.stepBreaks,
   });
+
+  int get stepCount => math.max(1, stepBreaks.length - 1);
+
+  /// Время (сек) → координата в «шагах»: внутри интервала между решениями
+  /// интерполируем линейно, сами интервалы — равной ширины.
+  double stepCoordOf(double sec) {
+    final b = stepBreaks;
+    if (b.length < 2 || sec <= b.first) {
+      return 0;
+    }
+    if (sec >= b.last) {
+      return (b.length - 1).toDouble();
+    }
+    for (var i = 0; i < b.length - 1; i++) {
+      if (sec < b[i + 1]) {
+        final width = b[i + 1] - b[i];
+        return i + (width <= 0 ? 0 : (sec - b[i]) / width);
+      }
+    }
+    return (b.length - 1).toDouble();
+  }
 
   static const routerLaneKey = '__router__';
 
@@ -522,15 +555,19 @@ class _SwimlaneModel {
       }
     }
 
-    final stepTicks = sorted.map((d) => sec(d.createdAt)).toList();
+    // Границы шагов = время каждого решения + tEnd. Каждый интервал = колонка.
+    final stepBreaks = <double>[
+      for (final d in sorted) sec(d.createdAt),
+      tEndSec,
+    ];
 
     return _SwimlaneModel(
       lanes: lanes,
       spans: spans,
       gates: gates,
       deps: deps,
-      maxSec: tEndSec * 1.05,
-      stepTicksSec: stepTicks,
+      tEndSec: tEndSec,
+      stepBreaks: stepBreaks,
     );
   }
 }
@@ -547,13 +584,14 @@ class _TraceLayout {
   static const double barH = 28;
   static const double rightPad = 28;
 
-  late final double pxPerSec;
+  late final double unitW; // ширина одной «колонки-шага»
   late final double topOffset;
   late final double contentH;
 
   _TraceLayout({required this.size, required this.model, required this.gutter}) {
     contentH = rulerH + model.lanes.length * laneH;
-    pxPerSec = (size.width - gutter - rightPad) / model.maxSec;
+    // Ось — в координате шагов: равная ширина на каждый интервал решений роутера.
+    unitW = (size.width - gutter - rightPad) / model.stepCount;
     // Лента прижата к верху (а не центрируется по высоте).
     topOffset = 12;
   }
@@ -562,7 +600,7 @@ class _TraceLayout {
   double get bandBottom => topOffset + contentH;
   int laneIndex(String key) => model.lanes.indexWhere((l) => l.key == key);
   double laneCenter(int i) => topOffset + rulerH + i * laneH + laneH / 2;
-  double xOf(double sec) => gutter + sec * pxPerSec;
+  double xOf(double sec) => gutter + model.stepCoordOf(sec) * unitW;
 
   Rect spanRect(_Span s) {
     final cy = laneCenter(laneIndex(s.laneKey));
@@ -623,18 +661,12 @@ class _TracePainter extends CustomPainter {
   }
 
   void _ruler(Canvas canvas, Size size) {
+    // Ось размечена по шагам (равные колонки), а не по минутам: метки s0..sN.
     for (final g in m.gates) {
       final x = layout.xOf(g.atSec);
       _dashedV(canvas, x, layout.bandTop, layout.bandBottom, colors.lineSoft);
-      _text(canvas, 's${g.stepNo}', Offset(x + 5, layout.topOffset + 6),
+      _text(canvas, 's${g.stepNo}', Offset(x + 5, layout.topOffset + 14),
           color: colors.onSurfaceMuted, size: 11, weight: FontWeight.w700);
-    }
-    // Тики времени каждую минуту.
-    for (double s = 0; s <= m.maxSec; s += 60) {
-      final x = layout.xOf(s);
-      final mm = (s ~/ 60).toString();
-      _text(canvas, '$mm:00', Offset(x + 5, layout.topOffset + 24),
-          color: colors.onSurfaceMuted.withValues(alpha: 0.7), size: 9);
     }
     canvas.drawLine(Offset(layout.gutter, layout.bandTop),
         Offset(size.width, layout.bandTop), Paint()..color = colors.line);
@@ -797,7 +829,7 @@ class _TracePainter extends CustomPainter {
     if (!m.spans.any((s) => s.running)) {
       return;
     }
-    final x = layout.xOf(m.maxSec / 1.05); // tEnd без 5% паддинга
+    final x = layout.xOf(m.tEndSec); // правый край ленты
     canvas.drawLine(
         Offset(x, layout.bandTop),
         Offset(x, layout.bandBottom),
@@ -925,7 +957,7 @@ class _TraceLegend extends StatelessWidget {
             l10n.taskTraceLegendRouter,
           ),
           item(swatch(Colors.blue), l10n.agentMatrixStatusRunning),
-          item(swatch(Colors.grey.shade400), l10n.agentMatrixStatusSuccess),
+          item(swatch(_TraceColors.success), l10n.agentMatrixStatusSuccess),
           item(swatch(_TraceColors.amber), l10n.taskTraceChanges),
           item(swatch(Colors.red), l10n.agentMatrixStatusFailed),
           item(

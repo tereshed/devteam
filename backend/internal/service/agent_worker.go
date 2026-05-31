@@ -27,6 +27,17 @@ import (
 
 var jsonArtifactsRegex = regexp.MustCompile("(?s)```json\n?(.*?)\n?```")
 
+// jitterDuration возвращает d с случайным разбросом ±25%. Расфазирует пул
+// воркеров: без джиттера N goroutine'ов, стартовавших в одном цикле, опрашивают
+// очередь синхронно и бьют Yugabyte залпами. Общий хелпер для step/agent воркеров.
+func jitterDuration(d time.Duration) time.Duration {
+	if d <= 0 {
+		return d
+	}
+	delta := int64(d) / 4 // ±25%
+	return d - time.Duration(delta) + time.Duration(rand.Int63n(2*delta+1))
+}
+
 func retryOnConflict(ctx context.Context, logger *slog.Logger, fn func() error) error {
 	var lastErr error
 	backoff := 100 * time.Millisecond
@@ -117,8 +128,12 @@ func (e *AgentResponseEnvelope) UnmarshalJSON(data []byte) error {
 
 // AgentWorkerConfig — настройки одного воркера.
 type AgentWorkerConfig struct {
-	WorkerID        string
-	PollInterval    time.Duration
+	WorkerID string
+	// PollInterval — минимальная пауза между опросами (нижняя граница backoff'а).
+	PollInterval time.Duration
+	// MaxPollInterval — верхняя граница адаптивного backoff'а на пустой очереди.
+	// См. StepWorkerConfig.MaxPollInterval.
+	MaxPollInterval time.Duration
 	AgentJobTimeout time.Duration // hard cap на один agent_job (default 1h)
 }
 
@@ -128,6 +143,7 @@ func DefaultAgentWorkerConfig() AgentWorkerConfig {
 	return AgentWorkerConfig{
 		WorkerID:        "agent-worker-default",
 		PollInterval:    500 * time.Millisecond,
+		MaxPollInterval: 5 * time.Second,
 		AgentJobTimeout: time.Hour,
 	}
 }
@@ -164,6 +180,12 @@ func NewAgentWorker(
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 500 * time.Millisecond
+	}
+	if cfg.MaxPollInterval <= 0 {
+		cfg.MaxPollInterval = 5 * time.Second
+	}
+	if cfg.MaxPollInterval < cfg.PollInterval {
+		cfg.MaxPollInterval = cfg.PollInterval
 	}
 	if cfg.AgentJobTimeout <= 0 {
 		cfg.AgentJobTimeout = time.Hour
@@ -202,38 +224,51 @@ func (w *AgentWorker) Run(ctx context.Context) error {
 	}
 
 	w.logger.InfoContext(ctx, "agent worker started",
-		"worker_id", w.cfg.WorkerID, "poll_interval", w.cfg.PollInterval, "job_timeout", w.cfg.AgentJobTimeout)
+		"worker_id", w.cfg.WorkerID, "poll_interval", w.cfg.PollInterval,
+		"max_poll_interval", w.cfg.MaxPollInterval, "job_timeout", w.cfg.AgentJobTimeout)
 
-	ticker := time.NewTicker(w.cfg.PollInterval)
-	defer ticker.Stop()
+	// Адаптивный backoff — см. StepWorker.Run.
+	delay := w.cfg.PollInterval
 
 	for {
-		w.drainQueue(ctx)
+		worked := w.drainQueue(ctx)
+		if worked {
+			delay = w.cfg.PollInterval
+		} else {
+			delay *= 2
+			if delay > w.cfg.MaxPollInterval {
+				delay = w.cfg.MaxPollInterval
+			}
+		}
+
 		select {
 		case <-ctx.Done():
 			w.logger.InfoContext(ctx, "agent worker stopping", "worker_id", w.cfg.WorkerID)
 			return nil
-		case <-ticker.C:
+		case <-time.After(jitterDuration(delay)):
 		case <-wakeupCh:
+			delay = w.cfg.PollInterval
 		}
 	}
 }
 
-func (w *AgentWorker) drainQueue(ctx context.Context) {
+func (w *AgentWorker) drainQueue(ctx context.Context) bool {
+	worked := false
 	for {
 		if ctx.Err() != nil {
-			return
+			return worked
 		}
 		ev, err := w.eventRepo.ClaimNext(ctx, models.TaskEventKindAgentJob, w.cfg.WorkerID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNoTaskEventAvailable) {
-				return
+				return worked
 			}
 			w.logger.ErrorContext(ctx, "claim next agent_job failed",
 				"worker_id", w.cfg.WorkerID, "error", err.Error())
-			return
+			return worked
 		}
 		w.processOne(ctx, ev)
+		worked = true
 	}
 }
 

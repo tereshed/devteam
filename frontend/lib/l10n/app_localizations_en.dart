@@ -2737,6 +2737,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskTraceChanges => 'Changes requested';
 
   @override
+  String get projectKpiTotal => 'Total';
+
+  @override
+  String get projectKpiActive => 'In progress';
+
+  @override
+  String get projectKpiDone => 'Done';
+
+  @override
+  String get projectKpiAttention => 'Attention';
+
+  @override
+  String get projectKpiFailed => 'Failed';
+
+  @override
+  String get projectTaskFilterAll => 'All';
+
+  @override
+  String get projectTaskFilterIssues => 'Issues';
+
+  @override
+  String get projectOpenTask => 'Open task';
+
+  @override
+  String get tasksColStatus => 'Status';
+
+  @override
+  String get tasksColTask => 'Task';
+
+  @override
+  String get tasksColPriority => 'Priority';
+
+  @override
+  String get tasksColAgent => 'Agent';
+
+  @override
+  String get tasksColUpdated => 'Updated';
+
+  @override
   String get appShellNavCollapse => 'Collapse menu';
 
   @override

@@ -41,11 +41,11 @@ class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel> {
     }
   }
 
-  // Завершённые ноды — серые (без зелёного), живые — синие, ошибки — красные.
+  // Успех — зелёный, живые — синие, ошибки — красные, не начато — серое.
   Color get _statusColor => switch (widget.agent.status) {
     NodeStatus.pending => Colors.grey.shade600,
     NodeStatus.running => Colors.blue,
-    NodeStatus.success => Colors.grey.shade400,
+    NodeStatus.success => const Color(0xFF3FB950),
     NodeStatus.failed => Colors.red,
   };
 

@@ -2760,6 +2760,45 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskTraceChanges => 'Нужны правки';
 
   @override
+  String get projectKpiTotal => 'Всего';
+
+  @override
+  String get projectKpiActive => 'В работе';
+
+  @override
+  String get projectKpiDone => 'Готово';
+
+  @override
+  String get projectKpiAttention => 'Внимание';
+
+  @override
+  String get projectKpiFailed => 'Ошибки';
+
+  @override
+  String get projectTaskFilterAll => 'Все';
+
+  @override
+  String get projectTaskFilterIssues => 'Проблемы';
+
+  @override
+  String get projectOpenTask => 'Открыть задачу';
+
+  @override
+  String get tasksColStatus => 'Статус';
+
+  @override
+  String get tasksColTask => 'Задача';
+
+  @override
+  String get tasksColPriority => 'Приоритет';
+
+  @override
+  String get tasksColAgent => 'Агент';
+
+  @override
+  String get tasksColUpdated => 'Обновлено';
+
+  @override
   String get appShellNavCollapse => 'Свернуть меню';
 
   @override

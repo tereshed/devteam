@@ -5066,6 +5066,84 @@ abstract class AppLocalizations {
   /// **'Нужны правки'**
   String get taskTraceChanges;
 
+  /// No description provided for @projectKpiTotal.
+  ///
+  /// In ru, this message translates to:
+  /// **'Всего'**
+  String get projectKpiTotal;
+
+  /// No description provided for @projectKpiActive.
+  ///
+  /// In ru, this message translates to:
+  /// **'В работе'**
+  String get projectKpiActive;
+
+  /// No description provided for @projectKpiDone.
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get projectKpiDone;
+
+  /// No description provided for @projectKpiAttention.
+  ///
+  /// In ru, this message translates to:
+  /// **'Внимание'**
+  String get projectKpiAttention;
+
+  /// No description provided for @projectKpiFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибки'**
+  String get projectKpiFailed;
+
+  /// No description provided for @projectTaskFilterAll.
+  ///
+  /// In ru, this message translates to:
+  /// **'Все'**
+  String get projectTaskFilterAll;
+
+  /// No description provided for @projectTaskFilterIssues.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проблемы'**
+  String get projectTaskFilterIssues;
+
+  /// No description provided for @projectOpenTask.
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть задачу'**
+  String get projectOpenTask;
+
+  /// No description provided for @tasksColStatus.
+  ///
+  /// In ru, this message translates to:
+  /// **'Статус'**
+  String get tasksColStatus;
+
+  /// No description provided for @tasksColTask.
+  ///
+  /// In ru, this message translates to:
+  /// **'Задача'**
+  String get tasksColTask;
+
+  /// No description provided for @tasksColPriority.
+  ///
+  /// In ru, this message translates to:
+  /// **'Приоритет'**
+  String get tasksColPriority;
+
+  /// No description provided for @tasksColAgent.
+  ///
+  /// In ru, this message translates to:
+  /// **'Агент'**
+  String get tasksColAgent;
+
+  /// No description provided for @tasksColUpdated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновлено'**
+  String get tasksColUpdated;
+
   /// No description provided for @appShellNavCollapse.
   ///
   /// In ru, this message translates to:

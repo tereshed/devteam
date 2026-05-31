@@ -12,6 +12,7 @@ import 'package:frontend/features/tasks/presentation/utils/task_status_display.d
 import 'package:frontend/features/tasks/presentation/widgets/task_card.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 TaskListState? _unwrapTaskListState(AsyncValue<TaskListState>? async) {
   if (async == null || !async.hasValue) {
@@ -33,18 +34,6 @@ const double kTasksListLoadMoreExtentAfterPx = 600;
 const ValueKey<String> kTasksListLoadMoreErrorBannerKey =
     ValueKey<String>('tasks_list_load_more_error_banner');
 
-/// Группировка строк списка по колонкам Kanban за один проход (см. FAQ п. 9 в 12.4).
-Map<String, List<TaskListItemModel>> _groupTaskItemsForKanban(
-  List<TaskListItemModel> items,
-) {
-  final grouped = <String, List<TaskListItemModel>>{
-    for (final s in taskStatuses) s: <TaskListItemModel>[],
-  };
-  for (final t in items) {
-    grouped[t.status]?.add(t);
-  }
-  return grouped;
-}
 
 /// Список задач проекта: фильтры, список или Kanban — без собственного [Scaffold]/[AppBar].
 class TasksListScreen extends ConsumerStatefulWidget {
@@ -444,12 +433,8 @@ class _TasksListBody extends StatelessWidget {
     }
 
     if (isWide) {
-      // Kanban: вертикальный ScrollNotification приходит только из «достаточно длинной»
-      // колонки; в коротких колонках ListView не скроллится — см. FAQ 12.4 §частые ошибки №11.
-      // Дополнительно слушаем горизонтальный SingleChildScrollView доски (extentAfter вправо).
-      // Если доска и колонки полностью помещаются без скролла, loadMore по уведомлениям не
-      // сработает (редкий desktop-кейс); отложено: auto-prefetch при hasMore (задача 12.3).
-      final grouped = _groupTaskItemsForKanban(state.items);
+      // Плотная сортируемая таблица вместо Kanban: статусы задаёт оркестратор
+      // (drag-метафора доски здесь не нужна), а пустые колонки съедали экран.
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -463,45 +448,18 @@ class _TasksListBody extends StatelessWidget {
               ),
             ),
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return NotificationListener<ScrollNotification>(
-                  onNotification: (ScrollNotification n) {
-                    if (n.metrics.axis != Axis.horizontal) {
-                      return false;
-                    }
-                    return onScrollLoadMore(state, n);
-                  },
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      height: constraints.maxHeight,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final status in taskStatuses)
-                            _KanbanColumn(
-                              statusWire: status,
-                              height: constraints.maxHeight,
-                              tasks: grouped[status]!,
-                              l10n: l10n,
-                              onTaskTap: onTaskTap,
-                              onScrollNotification: (n) =>
-                                  onScrollLoadMore(state, n),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) => n.metrics.axis == Axis.vertical
+                  ? onScrollLoadMore(state, n)
+                  : false,
+              child: _TasksTable(
+                items: state.items,
+                isLoadingMore: state.isLoadingMore,
+                l10n: l10n,
+                onTaskTap: onTaskTap,
+              ),
             ),
           ),
-          if (state.isLoadingMore)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: Center(child: CircularProgressIndicator()),
-            ),
         ],
       );
     }
@@ -554,87 +512,294 @@ class _TasksListBody extends StatelessWidget {
   }
 }
 
-class _KanbanColumn extends StatelessWidget {
-  const _KanbanColumn({
-    required this.statusWire,
-    required this.height,
-    required this.tasks,
+// ─────────────────────────────────────────────────────────────────────────────
+// Плотная сортируемая таблица задач (десктоп).
+// ─────────────────────────────────────────────────────────────────────────────
+const double _kColStatus = 150;
+const double _kColPriority = 130;
+const double _kColAgent = 140;
+const double _kColUpdated = 120;
+const double _kColChevron = 40;
+
+enum _SortKey { status, title, priority, updated }
+
+int _statusRank(String s) => switch (s) {
+      'active' ||
+      'in_progress' ||
+      'review' ||
+      'testing' ||
+      'planning' ||
+      'pending' =>
+        0,
+      'needs_human' || 'changes_requested' || 'paused' => 1,
+      'done' || 'completed' => 2,
+      'failed' => 3,
+      'cancelled' => 4,
+      _ => 5,
+    };
+
+int _priorityRank(String p) => switch (p) {
+      'critical' => 0,
+      'high' => 1,
+      'medium' => 2,
+      'low' => 3,
+      _ => 4,
+    };
+
+String _fmtUpdated(String localeTag, DateTime dt) {
+  final local = dt.toLocal();
+  final now = DateTime.now();
+  final sameDay =
+      local.year == now.year && local.month == now.month && local.day == now.day;
+  return sameDay
+      ? DateFormat.Hm(localeTag).format(local)
+      : DateFormat.MMMd(localeTag).add_Hm().format(local);
+}
+
+class _TasksTable extends StatefulWidget {
+  const _TasksTable({
+    required this.items,
+    required this.isLoadingMore,
     required this.l10n,
     required this.onTaskTap,
-    required this.onScrollNotification,
   });
 
-  final String statusWire;
-  final double height;
-  final List<TaskListItemModel> tasks;
+  final List<TaskListItemModel> items;
+  final bool isLoadingMore;
   final AppLocalizations l10n;
   final void Function(TaskListItemModel task) onTaskTap;
-  final bool Function(ScrollNotification n) onScrollNotification;
 
-  static const double _kColumnWidth = 280;
+  @override
+  State<_TasksTable> createState() => _TasksTableState();
+}
+
+class _TasksTableState extends State<_TasksTable> {
+  _SortKey _sort = _SortKey.updated;
+  bool _asc = false; // по умолчанию: обновлённые сверху
+
+  void _toggle(_SortKey k) => setState(() {
+        if (_sort == k) {
+          _asc = !_asc;
+        } else {
+          _sort = k;
+          // По умолчанию: текст — A→Я, остальное — «важное/свежее сверху».
+          _asc = k == _SortKey.title;
+        }
+      });
+
+  List<TaskListItemModel> get _sorted {
+    final list = [...widget.items];
+    list.sort((a, b) {
+      final r = switch (_sort) {
+        _SortKey.updated => a.updatedAt.compareTo(b.updatedAt),
+        _SortKey.title =>
+          a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        _SortKey.priority =>
+          _priorityRank(a.priority).compareTo(_priorityRank(b.priority)),
+        _SortKey.status => _statusRank(a.status).compareTo(_statusRank(b.status)),
+      };
+      return _asc ? r : -r;
+    });
+    return list;
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final tone = taskStatusTone(statusWire);
-    final headerBg = taskStatusChipBackground(scheme, tone);
-    final headerFg = taskStatusChipForeground(scheme, tone);
-
-    return SizedBox(
-      width: _kColumnWidth,
-      height: height,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: scheme.outlineVariant),
-            borderRadius: BorderRadius.circular(12),
+    final sorted = _sorted;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(context, scheme),
+        Divider(height: 1, color: scheme.outlineVariant),
+        Expanded(
+          child: ListView.builder(
+            padding: EdgeInsets.zero,
+            itemCount: sorted.length + (widget.isLoadingMore ? 1 : 0),
+            itemBuilder: (context, i) {
+              if (i >= sorted.length) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final task = sorted[i];
+              return _TaskTableRow(
+                task: task,
+                l10n: widget.l10n,
+                zebra: i.isOdd,
+                onTap: () => widget.onTaskTap(task),
+              );
+            },
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        ),
+      ],
+    );
+  }
+
+  Widget _header(BuildContext context, ColorScheme scheme) {
+    final l10n = widget.l10n;
+    Widget cell(_SortKey? key, String label, {double? width, bool expand = false}) {
+      final active = key != null && _sort == key;
+      final inner = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: active ? scheme.primary : scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+            ),
+          ),
+          if (active)
+            Icon(_asc ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                size: 16, color: scheme.primary),
+        ],
+      );
+      final tappable = key == null
+          ? Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: inner)
+          : InkWell(
+              onTap: () => _toggle(key),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                child: inner,
+              ),
+            );
+      if (expand) {
+        return Expanded(child: tappable);
+      }
+      return SizedBox(width: width, child: tappable);
+    }
+
+    return Container(
+      color: scheme.surfaceContainerLow,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          cell(_SortKey.status, l10n.tasksColStatus, width: _kColStatus),
+          cell(_SortKey.title, l10n.tasksColTask, expand: true),
+          cell(_SortKey.priority, l10n.tasksColPriority, width: _kColPriority),
+          cell(null, l10n.tasksColAgent, width: _kColAgent),
+          cell(_SortKey.updated, l10n.tasksColUpdated, width: _kColUpdated),
+          const SizedBox(width: _kColChevron),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaskTableRow extends StatelessWidget {
+  const _TaskTableRow({
+    required this.task,
+    required this.l10n,
+    required this.zebra,
+    required this.onTap,
+  });
+
+  final TaskListItemModel task;
+  final AppLocalizations l10n;
+  final bool zebra;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final accent = taskStatusAccentColor(task.status);
+    final prTone = taskPriorityTone(task.priority);
+    final localeTag = Localizations.localeOf(context).toLanguageTag();
+    final agent = task.assignedAgent?.name ?? '—';
+
+    return Material(
+      color: zebra
+          ? scheme.surfaceContainerLow.withValues(alpha: 0.4)
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: headerBg,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(taskStatusIcon(tone), size: 18, color: headerFg),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        taskStatusLabel(l10n, statusWire),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(color: headerFg),
-                      ),
+              SizedBox(
+                width: _kColStatus,
+                child: Row(children: [
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration:
+                        BoxDecoration(color: accent, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      taskStatusLabel(l10n, task.status),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: accent),
                     ),
-                    Text(
-                      '${tasks.length}',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(color: headerFg),
-                    ),
-                  ],
-                ),
+                  ),
+                ]),
               ),
               Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: onScrollNotification,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(8),
-                    itemCount: tasks.length,
-                    itemBuilder: (context, i) {
-                      final task = tasks[i];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: TaskCard(
-                          task: task,
-                          dense: true,
-                          onTap: () => onTaskTap(task),
-                        ),
-                      );
-                    },
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Text(
+                    task.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium,
                   ),
                 ),
+              ),
+              SizedBox(
+                width: _kColPriority,
+                child: Row(children: [
+                  Icon(taskPriorityIcon(prTone),
+                      size: 14, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      taskPriorityLabel(l10n, task.priority),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                ]),
+              ),
+              SizedBox(
+                width: _kColAgent,
+                child: Text(
+                  agent,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ),
+              SizedBox(
+                width: _kColUpdated,
+                child: Text(
+                  _fmtUpdated(localeTag, task.updatedAt),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: _kColChevron,
+                child: Icon(Icons.chevron_right,
+                    size: 18, color: scheme.onSurfaceVariant),
               ),
             ],
           ),

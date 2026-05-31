@@ -80,6 +80,24 @@ String taskStatusLabel(AppLocalizations l10n, String status) {
   };
 }
 
+/// Акцентный цвет статуса для точек/полос (единый язык трейса и дашборда):
+/// done — зелёный, active — синий, внимание (needs_human/changes/paused) —
+/// янтарный, ошибка — красный, отмена/неизвестно — серый.
+Color taskStatusAccentColor(String status) => switch (status) {
+      'done' || 'completed' => const Color(0xFF3FB950),
+      'failed' => const Color(0xFFE5484D),
+      'cancelled' => const Color(0xFF8B949E),
+      'needs_human' || 'changes_requested' || 'paused' => const Color(0xFFD29922),
+      'active' ||
+      'in_progress' ||
+      'review' ||
+      'testing' ||
+      'planning' ||
+      'pending' =>
+        const Color(0xFF388BFD),
+      _ => const Color(0xFF8B949E),
+    };
+
 /// Тон приоритета задачи.
 enum TaskPriorityTone {
   critical,

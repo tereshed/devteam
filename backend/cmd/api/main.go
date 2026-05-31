@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -638,10 +639,13 @@ func main() {
 	if !v2WorkersEnabled {
 		log.Println("Orchestrator v2 workers DISABLED via ORCHESTRATOR_V2_WORKERS_ENABLED=false (smoke-test isolation)")
 	} else {
-		const (
-			stepWorkersCount  = 5
-			agentWorkersCount = 22 // 20 llm + 2 sandbox; пул общий, ClaimNext sequencing уже разводит
-		)
+		// Размер пулов конфигурируется через env — для дев-окружения разумно
+		// держать их маленькими (каждый воркер опрашивает Yugabyte распределённым
+		// SELECT ... FOR UPDATE SKIP LOCKED, и пул в полку — главный idle-CPU).
+		// Дефолты ориентированы на прод (5 step + 22 agent = 20 llm + 2 sandbox;
+		// пул общий, ClaimNext sequencing уже разводит).
+		stepWorkersCount := orchestratorWorkerCount("ORCHESTRATOR_STEP_WORKERS", 5)
+		agentWorkersCount := orchestratorWorkerCount("ORCHESTRATOR_AGENT_WORKERS", 22)
 		for i := 0; i < stepWorkersCount; i++ {
 			w := service.NewStepWorker(
 				taskEventRepoV2,
@@ -1027,6 +1031,22 @@ func gormLogLevelFromEnv() logger.LogLevel {
 // gormSlowThresholdFromEnv читает GORM_SLOW_THRESHOLD (например, "1s", "500ms").
 // По умолчанию 2s — на Yugabyte распределённые запросы (FOR UPDATE SKIP LOCKED
 // в task_events поллинге) регулярно тратят 200-500ms и засоряют логи.
+// orchestratorWorkerCount читает размер пула воркеров из env. Невалидное или
+// отрицательное значение → дефолт; 0 допустим (полностью отключает пул данного
+// типа — например, нода только под step-роутинг без исполнителей).
+func orchestratorWorkerCount(key string, def int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		log.Printf("%s=%q invalid, falling back to default %d", key, raw, def)
+		return def
+	}
+	return n
+}
+
 func gormSlowThresholdFromEnv() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("GORM_SLOW_THRESHOLD"))
 	if raw == "" {
