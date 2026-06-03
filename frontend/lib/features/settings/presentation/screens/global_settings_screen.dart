@@ -7,12 +7,15 @@ import 'package:frontend/features/auth/presentation/widgets/logout_button.dart';
 import 'package:frontend/features/settings/domain/global_settings_backend_gate.dart';
 import 'package:frontend/features/settings/presentation/widgets/claude_code_auth_section.dart';
 import 'package:frontend/features/settings/presentation/widgets/llm_providers_section.dart';
+import 'package:frontend/features/webhooks/presentation/widgets/webhooks_list_section.dart';
+import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 /// Sprint 15.30/15.31 — глобальные настройки получили вкладки:
 ///   - LLM-провайдеры
 ///   - Claude Code (OAuth-подписка)
 ///   - PolyMaths (legacy 13.5 — заглушка про user API keys).
+///   - Webhooks
 class GlobalSettingsScreen extends StatelessWidget {
   const GlobalSettingsScreen({super.key});
 
@@ -22,8 +25,9 @@ class GlobalSettingsScreen extends StatelessWidget {
       context,
       where: 'globalSettingsScreen',
     );
+    final appL10n = AppLocalizations.of(context)!;
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text(l10n.globalSettingsScreenTitle),
@@ -33,6 +37,7 @@ class GlobalSettingsScreen extends StatelessWidget {
               Tab(text: l10n.globalSettingsTabLLMProviders),
               Tab(text: l10n.globalSettingsTabClaudeCode),
               Tab(text: l10n.globalSettingsTabDevTeam),
+              Tab(text: appL10n.webhooksTitle),
             ],
           ),
         ),
@@ -43,11 +48,25 @@ class GlobalSettingsScreen extends StatelessWidget {
                 _LLMProvidersTab(),
                 _ClaudeCodeTab(),
                 _PolyMathsLegacyTab(),
+                _WebhooksTab(),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+
+class _WebhooksTab extends StatelessWidget {
+  const _WebhooksTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: Spacing.cardPadding(context),
+      child: const WebhooksListSection(),
     );
   }
 }

@@ -1185,6 +1185,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectSettingsSaved => 'Settings saved';
 
   @override
+  String get projectSettingsTabGeneral => 'General';
+
+  @override
   String get projectSettingsNoChanges => 'No changes to save';
 
   @override
@@ -2853,4 +2856,107 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentMatrixInspectorGeneralDiscussion => 'Discussion & Actions';
+
+  @override
+  String get webhooksTitle => 'Webhooks';
+
+  @override
+  String get webhooksEmpty => 'No webhooks configured';
+
+  @override
+  String get webhookCreate => 'Create webhook';
+
+  @override
+  String get webhookEdit => 'Edit webhook';
+
+  @override
+  String get webhookName => 'Name';
+
+  @override
+  String get webhookNameHint => 'my-service-webhook';
+
+  @override
+  String get webhookRouteTo => 'Route to';
+
+  @override
+  String get webhookRouteProject => 'Project Chat';
+
+  @override
+  String get webhookRouteTeam => 'Team Task';
+
+  @override
+  String get webhookSelectTeam => 'Select Team';
+
+  @override
+  String get webhookInstructions => 'Instructions (introductory message)';
+
+  @override
+  String get webhookInstructionsHint =>
+      'Instructions for the agent on how to handle this webhook payload';
+
+  @override
+  String get webhookDescription => 'Description';
+
+  @override
+  String get webhookDescriptionHint => 'What is this webhook used for?';
+
+  @override
+  String get webhookUrl => 'Webhook URL';
+
+  @override
+  String get webhookSecret => 'Secret';
+
+  @override
+  String get webhookRegenerateSecret => 'Regenerate secret';
+
+  @override
+  String get webhookRequireSecret => 'Require signature (HMAC SHA-256)';
+
+  @override
+  String get webhookAllowedIps => 'Allowed IPs (comma separated)';
+
+  @override
+  String get webhookIsActive => 'Is active';
+
+  @override
+  String get webhookDeleteConfirm =>
+      'Are you sure you want to delete this webhook?';
+
+  @override
+  String get webhookDelete => 'Delete';
+
+  @override
+  String get webhookSave => 'Save';
+
+  @override
+  String get webhookSaved => 'Webhook saved';
+
+  @override
+  String get webhookCreated => 'Webhook created';
+
+  @override
+  String get webhookRequiredName => 'Name is required';
+
+  @override
+  String get webhookTaskMappingTitle => 'Task Mapping';
+
+  @override
+  String get webhookTaskTitleTemplate => 'Title template';
+
+  @override
+  String get webhookTaskTitleTemplateHint => 'e.g. [Bug] <issue.title>';
+
+  @override
+  String get webhookTaskDescTemplate => 'Description template';
+
+  @override
+  String get webhookTaskDescTemplateHint =>
+      'e.g. Reported by <user.name>\\n\\n<issue.body>';
+
+  @override
+  String get webhookTaskPriorityTemplate => 'Priority template';
+
+  @override
+  String get webhookTaskPriorityTemplateHint =>
+      'e.g. <issue.priority> (Expected: low, medium, high, critical)';
 }

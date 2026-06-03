@@ -1199,6 +1199,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get projectSettingsSaved => 'Настройки сохранены';
 
   @override
+  String get projectSettingsTabGeneral => 'Основные';
+
+  @override
   String get projectSettingsNoChanges => 'Нет изменений для сохранения';
 
   @override
@@ -2876,4 +2879,107 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentMatrixInspectorGeneralDiscussion => 'Обсуждение и действия';
+
+  @override
+  String get webhooksTitle => 'Вебхуки';
+
+  @override
+  String get webhooksEmpty => 'Вебхуки не настроены';
+
+  @override
+  String get webhookCreate => 'Создать вебхук';
+
+  @override
+  String get webhookEdit => 'Редактировать вебхук';
+
+  @override
+  String get webhookName => 'Название';
+
+  @override
+  String get webhookNameHint => 'мой-сервис-вебхук';
+
+  @override
+  String get webhookRouteTo => 'Направить в';
+
+  @override
+  String get webhookRouteProject => 'Чат Проекта';
+
+  @override
+  String get webhookRouteTeam => 'Задачу для Команды';
+
+  @override
+  String get webhookSelectTeam => 'Выберите Команду';
+
+  @override
+  String get webhookInstructions => 'Вводное сообщение (инструкции)';
+
+  @override
+  String get webhookInstructionsHint =>
+      'Инструкции для агента о том, как обработать этот вебхук';
+
+  @override
+  String get webhookDescription => 'Описание';
+
+  @override
+  String get webhookDescriptionHint => 'Для чего используется этот вебхук?';
+
+  @override
+  String get webhookUrl => 'URL вебхука';
+
+  @override
+  String get webhookSecret => 'Секрет';
+
+  @override
+  String get webhookRegenerateSecret => 'Сгенерировать новый секрет';
+
+  @override
+  String get webhookRequireSecret => 'Требовать подпись (HMAC SHA-256)';
+
+  @override
+  String get webhookAllowedIps => 'Разрешенные IP (через запятую)';
+
+  @override
+  String get webhookIsActive => 'Активен';
+
+  @override
+  String get webhookDeleteConfirm =>
+      'Вы уверены, что хотите удалить этот вебхук?';
+
+  @override
+  String get webhookDelete => 'Удалить';
+
+  @override
+  String get webhookSave => 'Сохранить';
+
+  @override
+  String get webhookSaved => 'Вебхук сохранен';
+
+  @override
+  String get webhookCreated => 'Вебхук создан';
+
+  @override
+  String get webhookRequiredName => 'Название обязательно';
+
+  @override
+  String get webhookTaskMappingTitle => 'Настройка задачи (Task Mapping)';
+
+  @override
+  String get webhookTaskTitleTemplate => 'Шаблон заголовка';
+
+  @override
+  String get webhookTaskTitleTemplateHint => 'Например: [Bug] <issue.title>';
+
+  @override
+  String get webhookTaskDescTemplate => 'Шаблон описания';
+
+  @override
+  String get webhookTaskDescTemplateHint =>
+      'Например: Завел <user.name>\\n\\n<issue.body>';
+
+  @override
+  String get webhookTaskPriorityTemplate => 'Шаблон приоритета';
+
+  @override
+  String get webhookTaskPriorityTemplateHint =>
+      'Например: <issue.priority> (Ожидается: low, medium, high, critical)';
 }

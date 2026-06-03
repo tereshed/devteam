@@ -50,6 +50,21 @@ Map<String, dynamic> requireResponseJsonMap(
   return raw as Map<String, dynamic>;
 }
 
+/// Требует JSON-массив в [Response.data]. Иначе вызывает [onInvalid] (репозиторий кидает своё исключение).
+List<dynamic> requireResponseJsonList(
+  Response<dynamic> response, {
+  required Never Function(String reason, int? statusCode) onInvalid,
+}) {
+  final raw = response.data;
+  if (raw == null) {
+    onInvalid('Empty response body', response.statusCode);
+  }
+  if (raw is! List<dynamic>) {
+    onInvalid('Expected JSON array in response body', response.statusCode);
+  }
+  return raw;
+}
+
 String? _firstNonEmptyApiString(Map<String, dynamic> data, String key) {
   final v = data[key];
   if (v is! String) {

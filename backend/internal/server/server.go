@@ -434,10 +434,9 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			executionsGroup.GET("/:id/steps", deps.WorkflowHandler.GetExecutionSteps)
 		}
 
-		// Webhook management routes (admin only)
+		// Webhook management routes
 		webhooksGroup := api.Group("/webhooks")
 		webhooksGroup.Use(authMW)
-		webhooksGroup.Use(middleware.AdminOnlyMiddleware())
 		{
 			webhooksGroup.POST("", deps.WebhookHandler.Create)
 			webhooksGroup.GET("", deps.WebhookHandler.List)

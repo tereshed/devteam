@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -23,22 +24,25 @@ import (
 
 type WebhookHandler struct {
 	repo     repository.WebhookRepository
-	wfRepo   repository.WorkflowRepository
-	engine   service.WorkflowEngine
+	projRepo repository.ProjectRepository
+	convSvc  service.ConversationService
+	taskSvc  service.TaskService
 	baseURL  string
 }
 
 func NewWebhookHandler(
 	repo repository.WebhookRepository,
-	wfRepo repository.WorkflowRepository,
-	engine service.WorkflowEngine,
+	projRepo repository.ProjectRepository,
+	convSvc service.ConversationService,
+	taskSvc service.TaskService,
 	baseURL string,
 ) *WebhookHandler {
 	return &WebhookHandler{
-		repo:    repo,
-		wfRepo:  wfRepo,
-		engine:  engine,
-		baseURL: baseURL,
+		repo:     repo,
+		projRepo: projRepo,
+		convSvc:  convSvc,
+		taskSvc:  taskSvc,
+		baseURL:  baseURL,
 	}
 }
 
@@ -63,10 +67,27 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Проверяем существование workflow
-	if _, err := h.wfRepo.GetWorkflowByName(c.Request.Context(), req.WorkflowName); err != nil {
-		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "workflow not found: "+req.WorkflowName)
+	if req.ProjectID == nil && req.TeamID == nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "either project_id or team_id must be provided")
 		return
+	}
+
+	var projectID, teamID *uuid.UUID
+	if req.ProjectID != nil && *req.ProjectID != "" {
+		id, err := uuid.Parse(*req.ProjectID)
+		if err != nil {
+			apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid project_id")
+			return
+		}
+		projectID = &id
+	}
+	if req.TeamID != nil && *req.TeamID != "" {
+		id, err := uuid.Parse(*req.TeamID)
+		if err != nil {
+			apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid team_id")
+			return
+		}
+		teamID = &id
 	}
 
 	// Генерируем секретный ключ
@@ -78,14 +99,17 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 
 	webhook := &models.WebhookTrigger{
 		Name:          req.Name,
-		WorkflowName:  req.WorkflowName,
+		ProjectID:     projectID,
+		TeamID:        teamID,
+		Instructions:  req.Instructions,
 		Secret:        secret,
-		Description:   req.Description,
-		InputJSONPath: req.InputJSONPath,
-		InputTemplate: req.InputTemplate,
-		AllowedIPs:    req.AllowedIPs,
-		RequireSecret: req.RequireSecret,
-		IsActive:      true,
+		Description:             req.Description,
+		TaskTitleTemplate:       req.TaskTitleTemplate,
+		TaskDescriptionTemplate: req.TaskDescriptionTemplate,
+		TaskPriorityTemplate:    req.TaskPriorityTemplate,
+		AllowedIPs:              req.AllowedIPs,
+		RequireSecret:           req.RequireSecret,
+		IsActive:                true,
 	}
 
 	if err := h.repo.Create(c.Request.Context(), webhook); err != nil {
@@ -114,7 +138,7 @@ func (h *WebhookHandler) List(c *gin.Context) {
 		return
 	}
 
-	var response []dto.WebhookResponse
+	response := make([]dto.WebhookResponse, 0)
 	for _, wh := range webhooks {
 		response = append(response, h.toResponse(&wh, false))
 	}
@@ -186,22 +210,44 @@ func (h *WebhookHandler) Update(c *gin.Context) {
 	}
 
 	// Обновляем поля
-	if req.WorkflowName != nil {
-		// Проверяем существование workflow
-		if _, err := h.wfRepo.GetWorkflowByName(c.Request.Context(), *req.WorkflowName); err != nil {
-			apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "workflow not found")
-			return
+	if req.ProjectID != nil {
+		if *req.ProjectID != "" {
+			id, err := uuid.Parse(*req.ProjectID)
+			if err != nil {
+				apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid project_id")
+				return
+			}
+			webhook.ProjectID = &id
+		} else {
+			webhook.ProjectID = nil
 		}
-		webhook.WorkflowName = *req.WorkflowName
+	}
+	if req.TeamID != nil {
+		if *req.TeamID != "" {
+			id, err := uuid.Parse(*req.TeamID)
+			if err != nil {
+				apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid team_id")
+				return
+			}
+			webhook.TeamID = &id
+		} else {
+			webhook.TeamID = nil
+		}
 	}
 	if req.Description != nil {
 		webhook.Description = *req.Description
 	}
-	if req.InputJSONPath != nil {
-		webhook.InputJSONPath = *req.InputJSONPath
+	if req.Instructions != nil {
+		webhook.Instructions = *req.Instructions
 	}
-	if req.InputTemplate != nil {
-		webhook.InputTemplate = *req.InputTemplate
+	if req.TaskTitleTemplate != nil {
+		webhook.TaskTitleTemplate = *req.TaskTitleTemplate
+	}
+	if req.TaskDescriptionTemplate != nil {
+		webhook.TaskDescriptionTemplate = *req.TaskDescriptionTemplate
+	}
+	if req.TaskPriorityTemplate != nil {
+		webhook.TaskPriorityTemplate = *req.TaskPriorityTemplate
 	}
 	if req.AllowedIPs != nil {
 		webhook.AllowedIPs = *req.AllowedIPs
@@ -285,7 +331,7 @@ func (h *WebhookHandler) Trigger(c *gin.Context) {
 	// Читаем тело запроса
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		h.logTrigger(c, webhook, nil, false, "failed to read body", http.StatusBadRequest)
+		h.logTrigger(c, webhook, nil, nil, false, "failed to read body", http.StatusBadRequest)
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "failed to read request body")
 		return
 	}
@@ -302,7 +348,7 @@ func (h *WebhookHandler) Trigger(c *gin.Context) {
 			}
 		}
 		if !allowed {
-			h.logTrigger(c, webhook, nil, false, "IP not allowed: "+clientIP, http.StatusForbidden)
+			h.logTrigger(c, webhook, nil, nil, false, "IP not allowed: "+clientIP, http.StatusForbidden)
 			apierror.JSON(c, http.StatusForbidden, apierror.ErrForbidden, "IP not allowed")
 			return
 		}
@@ -316,41 +362,109 @@ func (h *WebhookHandler) Trigger(c *gin.Context) {
 		}
 
 		if !h.verifySignature(body, signature, webhook.Secret) {
-			h.logTrigger(c, webhook, nil, false, "invalid signature", http.StatusUnauthorized)
+			h.logTrigger(c, webhook, nil, nil, false, "invalid signature", http.StatusUnauthorized)
 			apierror.JSON(c, http.StatusUnauthorized, apierror.ErrUnauthorized, "invalid signature")
 			return
 		}
 	}
 
-	// Извлекаем input
 	input := body
-	if webhook.InputJSONPath != "" {
-		result := gjson.Get(body, webhook.InputJSONPath)
-		if result.Exists() {
-			input = result.String()
+
+	// Запускаем создание Conversation ИЛИ создание Task
+	if webhook.TeamID != nil {
+		project, err := h.projRepo.GetByID(c.Request.Context(), *webhook.ProjectID)
+		if err != nil {
+			h.logTrigger(c, webhook, nil, nil, false, "failed to load project", http.StatusInternalServerError)
+			apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "failed to load project")
+			return
 		}
-	} else if webhook.InputTemplate != "" {
-		// Можно добавить шаблонизацию в будущем
-		input = webhook.InputTemplate
+
+		title := fmt.Sprintf("Webhook: %s", webhook.Name)
+		if webhook.TaskTitleTemplate != "" {
+			title = InterpolateWithGJSON(webhook.TaskTitleTemplate, input)
+		}
+
+		desc := input
+		if webhook.TaskDescriptionTemplate != "" {
+			desc = InterpolateWithGJSON(webhook.TaskDescriptionTemplate, input)
+		} else if webhook.Instructions != "" {
+			desc = fmt.Sprintf("System Instructions:\n%s\n\nWebhook Payload:\n%s", webhook.Instructions, input)
+		}
+
+		priority := "medium"
+		if webhook.TaskPriorityTemplate != "" {
+			p := InterpolateWithGJSON(webhook.TaskPriorityTemplate, input)
+			p = strings.ToLower(strings.TrimSpace(p))
+			if p == "low" || p == "medium" || p == "high" || p == "critical" {
+				priority = p
+			}
+		}
+
+		taskReq := dto.CreateTaskRequest{
+			Title:       title,
+			Description: desc,
+			Priority:    priority,
+			TeamID:      webhook.TeamID,
+		}
+
+		_, err = h.taskSvc.Create(c.Request.Context(), project.UserID, models.RoleAdmin, project.ID, taskReq)
+		if err != nil {
+			h.logTrigger(c, webhook, nil, nil, false, err.Error(), http.StatusInternalServerError)
+			apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
+			return
+		}
+
+		h.repo.IncrementTriggerCount(c.Request.Context(), webhook.ID)
+		h.logTrigger(c, webhook, nil, nil, true, "", http.StatusOK)
+
+		c.JSON(http.StatusOK, dto.WebhookTriggerResponse{
+			Success: true,
+			Message: "Task created successfully",
+		})
+	} else if webhook.ProjectID != nil {
+		// Создаем новый чат с проектным ассистентом
+		// Чтобы создать чат, нужен UserID. Возьмем владельца проекта.
+		project, err := h.projRepo.GetByID(c.Request.Context(), *webhook.ProjectID)
+		if err != nil {
+			h.logTrigger(c, webhook, nil, nil, false, "failed to load project", http.StatusInternalServerError)
+			apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "failed to load project")
+			return
+		}
+
+		// Создаем Conversation
+		convTitle := fmt.Sprintf("Webhook: %s", webhook.Name)
+		conv, err := h.convSvc.CreateConversation(c.Request.Context(), project.UserID, project.ID, convTitle)
+		if err != nil {
+			h.logTrigger(c, webhook, nil, nil, false, "failed to create conversation", http.StatusInternalServerError)
+			apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "failed to create conversation")
+			return
+		}
+
+		// Формируем payload
+		content := input
+		if webhook.Instructions != "" {
+			content = fmt.Sprintf("System Instructions:\n%s\n\nWebhook Payload:\n%s", webhook.Instructions, input)
+		}
+
+		_, err = h.convSvc.SendMessage(c.Request.Context(), project.UserID, conv.ID, content, uuid.Nil)
+		if err != nil {
+			h.logTrigger(c, webhook, nil, &conv.ID, false, "failed to send message", http.StatusInternalServerError)
+			apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "failed to send message")
+			return
+		}
+
+		h.repo.IncrementTriggerCount(c.Request.Context(), webhook.ID)
+		h.logTrigger(c, webhook, nil, &conv.ID, true, "", http.StatusOK)
+
+		c.JSON(http.StatusOK, dto.WebhookTriggerResponse{
+			Success:        true,
+			ConversationID: conv.ID.String(),
+			Message:        "Conversation created successfully",
+		})
+	} else {
+		h.logTrigger(c, webhook, nil, nil, false, "neither workflow nor project configured", http.StatusBadRequest)
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "neither workflow nor project configured")
 	}
-
-	// Запускаем workflow
-	execution, err := h.engine.StartWorkflow(c.Request.Context(), webhook.WorkflowName, input)
-	if err != nil {
-		h.logTrigger(c, webhook, nil, false, err.Error(), http.StatusInternalServerError)
-		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
-		return
-	}
-
-	// Обновляем статистику
-	h.repo.IncrementTriggerCount(c.Request.Context(), webhook.ID)
-	h.logTrigger(c, webhook, &execution.ID, true, "", http.StatusOK)
-
-	c.JSON(http.StatusOK, dto.WebhookTriggerResponse{
-		Success:     true,
-		ExecutionID: execution.ID.String(),
-		Message:     "Workflow started successfully",
-	})
 }
 
 // GetLogs возвращает логи webhook
@@ -390,10 +504,16 @@ func (h *WebhookHandler) GetLogs(c *gin.Context) {
 			s := log.ExecutionID.String()
 			execID = &s
 		}
+		var convID *string
+		if log.ConversationID != nil {
+			s := log.ConversationID.String()
+			convID = &s
+		}
 		response = append(response, dto.WebhookLogResponse{
-			ID:           log.ID.String(),
-			WebhookID:    log.WebhookID.String(),
-			ExecutionID:  execID,
+			ID:             log.ID.String(),
+			WebhookID:      log.WebhookID.String(),
+			ExecutionID:    execID,
+			ConversationID: convID,
 			SourceIP:     log.SourceIP,
 			Method:       log.Method,
 			Success:      log.Success,
@@ -408,21 +528,56 @@ func (h *WebhookHandler) GetLogs(c *gin.Context) {
 
 // Вспомогательные функции
 
-func (h *WebhookHandler) toResponse(wh *models.WebhookTrigger, showSecret bool) dto.WebhookResponse {
+// InterpolateWithGJSON находит плейсхолдеры вида {path.to.json} и заменяет их на значения из payload
+func InterpolateWithGJSON(template string, payload string) string {
+	if template == "" {
+		return ""
+	}
+
+	re := regexp.MustCompile(`\{([^}]+)\}`)
+	return re.ReplaceAllStringFunc(template, func(match string) string {
+		path := match[1 : len(match)-1] // убираем фигурные скобки
+		res := gjson.Get(payload, path)
+		if res.Exists() {
+			return res.String()
+		}
+		return match // если путь не найден, оставляем плейсхолдер
+	})
+}
+
+func (h *WebhookHandler) toResponse(wh *models.WebhookTrigger, includeSecret bool) dto.WebhookResponse {
+	showSecret := includeSecret
+	if !showSecret {
+		wh.Secret = ""
+	}
+
+	var projID, teamID *string
+	if wh.ProjectID != nil {
+		id := wh.ProjectID.String()
+		projID = &id
+	}
+	if wh.TeamID != nil {
+		id := wh.TeamID.String()
+		teamID = &id
+	}
+
 	resp := dto.WebhookResponse{
-		ID:            wh.ID.String(),
-		Name:          wh.Name,
-		WorkflowName:  wh.WorkflowName,
-		Description:   wh.Description,
-		WebhookURL:    fmt.Sprintf("%s/api/v1/hooks/%s", h.baseURL, wh.Name),
-		InputJSONPath: wh.InputJSONPath,
-		InputTemplate: wh.InputTemplate,
-		AllowedIPs:    wh.AllowedIPs,
-		RequireSecret: wh.RequireSecret,
-		TriggerCount:  wh.TriggerCount,
-		LastTriggered: wh.LastTriggered,
-		IsActive:      wh.IsActive,
-		CreatedAt:     wh.CreatedAt,
+		ID:                      wh.ID.String(),
+		Name:                    wh.Name,
+		ProjectID:               projID,
+		TeamID:                  teamID,
+		Instructions:            wh.Instructions,
+		Description:             wh.Description,
+		WebhookURL:              fmt.Sprintf("%s/api/v1/hooks/%s", h.baseURL, wh.Name),
+		AllowedIPs:              wh.AllowedIPs,
+		RequireSecret:           wh.RequireSecret,
+		TaskTitleTemplate:       wh.TaskTitleTemplate,
+		TaskDescriptionTemplate: wh.TaskDescriptionTemplate,
+		TaskPriorityTemplate:    wh.TaskPriorityTemplate,
+		TriggerCount:            wh.TriggerCount,
+		LastTriggered:           wh.LastTriggered,
+		IsActive:                wh.IsActive,
+		CreatedAt:               wh.CreatedAt,
 	}
 	if showSecret {
 		resp.Secret = wh.Secret
@@ -430,13 +585,14 @@ func (h *WebhookHandler) toResponse(wh *models.WebhookTrigger, showSecret bool) 
 	return resp
 }
 
-func (h *WebhookHandler) logTrigger(c *gin.Context, webhook *models.WebhookTrigger, execID *uuid.UUID, success bool, errMsg string, code int) {
+func (h *WebhookHandler) logTrigger(c *gin.Context, webhook *models.WebhookTrigger, execID *uuid.UUID, convID *uuid.UUID, success bool, errMsg string, code int) {
 	headersJSON, _ := json.Marshal(c.Request.Header)
 
 	log := &models.WebhookLog{
-		WebhookID:    webhook.ID,
-		ExecutionID:  execID,
-		SourceIP:     c.ClientIP(),
+		WebhookID:      webhook.ID,
+		ExecutionID:    execID,
+		ConversationID: convID,
+		SourceIP:       c.ClientIP(),
 		Method:       c.Request.Method,
 		Headers:      string(headersJSON),
 		Success:      success,

@@ -2168,6 +2168,12 @@ abstract class AppLocalizations {
   /// **'Настройки сохранены'**
   String get projectSettingsSaved;
 
+  /// Вкладка общих настроек проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Основные'**
+  String get projectSettingsTabGeneral;
+
   /// Пустой dirty-патч
   ///
   /// In ru, this message translates to:
@@ -5287,6 +5293,204 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Обсуждение и действия'**
   String get agentMatrixInspectorGeneralDiscussion;
+
+  /// No description provided for @webhooksTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вебхуки'**
+  String get webhooksTitle;
+
+  /// No description provided for @webhooksEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вебхуки не настроены'**
+  String get webhooksEmpty;
+
+  /// No description provided for @webhookCreate.
+  ///
+  /// In ru, this message translates to:
+  /// **'Создать вебхук'**
+  String get webhookCreate;
+
+  /// No description provided for @webhookEdit.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать вебхук'**
+  String get webhookEdit;
+
+  /// No description provided for @webhookName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Название'**
+  String get webhookName;
+
+  /// No description provided for @webhookNameHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'мой-сервис-вебхук'**
+  String get webhookNameHint;
+
+  /// No description provided for @webhookRouteTo.
+  ///
+  /// In ru, this message translates to:
+  /// **'Направить в'**
+  String get webhookRouteTo;
+
+  /// No description provided for @webhookRouteProject.
+  ///
+  /// In ru, this message translates to:
+  /// **'Чат Проекта'**
+  String get webhookRouteProject;
+
+  /// No description provided for @webhookRouteTeam.
+  ///
+  /// In ru, this message translates to:
+  /// **'Задачу для Команды'**
+  String get webhookRouteTeam;
+
+  /// No description provided for @webhookSelectTeam.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите Команду'**
+  String get webhookSelectTeam;
+
+  /// No description provided for @webhookInstructions.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вводное сообщение (инструкции)'**
+  String get webhookInstructions;
+
+  /// No description provided for @webhookInstructionsHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Инструкции для агента о том, как обработать этот вебхук'**
+  String get webhookInstructionsHint;
+
+  /// No description provided for @webhookDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание'**
+  String get webhookDescription;
+
+  /// No description provided for @webhookDescriptionHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Для чего используется этот вебхук?'**
+  String get webhookDescriptionHint;
+
+  /// No description provided for @webhookUrl.
+  ///
+  /// In ru, this message translates to:
+  /// **'URL вебхука'**
+  String get webhookUrl;
+
+  /// No description provided for @webhookSecret.
+  ///
+  /// In ru, this message translates to:
+  /// **'Секрет'**
+  String get webhookSecret;
+
+  /// No description provided for @webhookRegenerateSecret.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сгенерировать новый секрет'**
+  String get webhookRegenerateSecret;
+
+  /// No description provided for @webhookRequireSecret.
+  ///
+  /// In ru, this message translates to:
+  /// **'Требовать подпись (HMAC SHA-256)'**
+  String get webhookRequireSecret;
+
+  /// No description provided for @webhookAllowedIps.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разрешенные IP (через запятую)'**
+  String get webhookAllowedIps;
+
+  /// No description provided for @webhookIsActive.
+  ///
+  /// In ru, this message translates to:
+  /// **'Активен'**
+  String get webhookIsActive;
+
+  /// No description provided for @webhookDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы уверены, что хотите удалить этот вебхук?'**
+  String get webhookDeleteConfirm;
+
+  /// No description provided for @webhookDelete.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get webhookDelete;
+
+  /// No description provided for @webhookSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get webhookSave;
+
+  /// No description provided for @webhookSaved.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вебхук сохранен'**
+  String get webhookSaved;
+
+  /// No description provided for @webhookCreated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вебхук создан'**
+  String get webhookCreated;
+
+  /// No description provided for @webhookRequiredName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Название обязательно'**
+  String get webhookRequiredName;
+
+  /// No description provided for @webhookTaskMappingTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройка задачи (Task Mapping)'**
+  String get webhookTaskMappingTitle;
+
+  /// No description provided for @webhookTaskTitleTemplate.
+  ///
+  /// In ru, this message translates to:
+  /// **'Шаблон заголовка'**
+  String get webhookTaskTitleTemplate;
+
+  /// No description provided for @webhookTaskTitleTemplateHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Например: [Bug] <issue.title>'**
+  String get webhookTaskTitleTemplateHint;
+
+  /// No description provided for @webhookTaskDescTemplate.
+  ///
+  /// In ru, this message translates to:
+  /// **'Шаблон описания'**
+  String get webhookTaskDescTemplate;
+
+  /// No description provided for @webhookTaskDescTemplateHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Например: Завел <user.name>\\n\\n<issue.body>'**
+  String get webhookTaskDescTemplateHint;
+
+  /// No description provided for @webhookTaskPriorityTemplate.
+  ///
+  /// In ru, this message translates to:
+  /// **'Шаблон приоритета'**
+  String get webhookTaskPriorityTemplate;
+
+  /// No description provided for @webhookTaskPriorityTemplateHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Например: <issue.priority> (Ожидается: low, medium, high, critical)'**
+  String get webhookTaskPriorityTemplateHint;
 }
 
 class _AppLocalizationsDelegate

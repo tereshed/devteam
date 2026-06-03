@@ -11,6 +11,8 @@ import 'package:frontend/features/projects/presentation/widgets/project_settings
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_field_row.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_stack_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_vector_section.dart';
+import 'package:frontend/features/webhooks/presentation/widgets/webhooks_list_section.dart';
+import 'package:frontend/l10n/app_localizations.dart';
 
 TextStyle? _projectSettingsSnackBarDetailStyle(ThemeData theme) {
   return theme.textTheme.bodySmall?.copyWith(
@@ -390,61 +392,86 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
             ],
           ),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: onRefresh,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ProjectSettingsGitSection(
-                      gitProvider: _gitProvider,
-                      onGitProviderChanged: (v) {
-                        setState(() {
-                          _gitProvider = v;
-                          _dirty = true;
-                        });
-                      },
-                      urlController: _urlCtrl,
-                      branchController: _branchCtrl,
-                      project: project,
-                      pendingRemoveGitCredential: _pendingRemoveGitCredential,
-                      onToggleUnlinkCredential: () {
-                        setState(() {
-                          _pendingRemoveGitCredential =
-                              !_pendingRemoveGitCredential;
-                          _dirty = true;
-                        });
-                      },
-                      onFieldChanged: _markDirty,
-                    ),
-                    const SizedBox(height: 24),
-                    ProjectSettingsVectorSection(
-                      vectorController: _vectorCtrl,
-                      project: project,
-                      reindexDisabled: reindexDisabled,
-                      onVectorChanged: _markDirty,
-                      onReindex: _onReindex,
-                    ),
-                    const SizedBox(height: 24),
-                    ProjectSettingsTechStackSection(
-                      rows: _techRows,
-                      onAddRow: _addTechRow,
-                      onRemoveRow: _removeTechRow,
-                      onClearTechStack: _onClearTechStack,
-                      onRowChanged: _markDirty,
-                    ),
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      onPressed: _saveBusy ? null : () => _onSave(project),
-                      child: Text(l10n.projectSettingsSave),
-                    ),
+          child: DefaultTabController(
+            length: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TabBar(
+                  tabs: [
+                    Tab(text: l10n.projectSettingsTabGeneral),
+                    Tab(text: AppLocalizations.of(context)!.webhooksTitle),
                   ],
                 ),
-              ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      RefreshIndicator(
+                        onRefresh: onRefresh,
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                ProjectSettingsGitSection(
+                                  gitProvider: _gitProvider,
+                                  onGitProviderChanged: (v) {
+                                    setState(() {
+                                      _gitProvider = v;
+                                      _dirty = true;
+                                    });
+                                  },
+                                  urlController: _urlCtrl,
+                                  branchController: _branchCtrl,
+                                  project: project,
+                                  pendingRemoveGitCredential: _pendingRemoveGitCredential,
+                                  onToggleUnlinkCredential: () {
+                                    setState(() {
+                                      _pendingRemoveGitCredential =
+                                          !_pendingRemoveGitCredential;
+                                      _dirty = true;
+                                    });
+                                  },
+                                  onFieldChanged: _markDirty,
+                                ),
+                                const SizedBox(height: 24),
+                                ProjectSettingsVectorSection(
+                                  vectorController: _vectorCtrl,
+                                  project: project,
+                                  reindexDisabled: reindexDisabled,
+                                  onVectorChanged: _markDirty,
+                                  onReindex: _onReindex,
+                                ),
+                                const SizedBox(height: 24),
+                                ProjectSettingsTechStackSection(
+                                  rows: _techRows,
+                                  onAddRow: _addTechRow,
+                                  onRemoveRow: _removeTechRow,
+                                  onClearTechStack: _onClearTechStack,
+                                  onRowChanged: _markDirty,
+                                ),
+                                const SizedBox(height: 24),
+                                FilledButton(
+                                  onPressed: _saveBusy ? null : () => _onSave(project),
+                                  child: Text(l10n.projectSettingsSave),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        child: WebhooksListSection(projectId: widget.projectId),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
