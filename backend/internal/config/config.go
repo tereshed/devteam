@@ -42,6 +42,25 @@ type Config struct {
 
 	// Weaviate — конфигурация векторной базы данных Weaviate.
 	Weaviate WeaviateConfig
+
+	// Redis — low-latency wakeup воркеров (Pub/Sub) и кросс-нодовая доставка
+	// WebSocket-сообщений при горизонтальном масштабировании. Пустой URL → одноинстансный
+	// режим (in-memory шина, polling-only воркеры).
+	Redis RedisConfig
+
+	// AutoMigrate — применять ли goose-миграции на старте процесса (AUTO_MIGRATE, default true).
+	// В multi-instance деплое выставить false и накатывать миграции отдельным one-shot job
+	// (cmd/migrate), чтобы goose.Up не бежал на каждой реплике одновременно.
+	AutoMigrate bool
+}
+
+// RedisConfig — Redis для low-latency wakeup воркеров и кросс-нодовой доставки
+// WebSocket-сообщений (горизонтальное масштабирование, см. ws.ClusterBridge).
+// Пустой URL → одноинстансный режим. Required форсирует наличие Redis (по умолчанию
+// в production), чтобы multi-instance деплой не стартовал в режиме без fan-out'а.
+type RedisConfig struct {
+	URL      string
+	Required bool
 }
 
 // WeaviateConfig содержит конфигурацию для подключения к Weaviate
@@ -345,6 +364,15 @@ func Load() (*Config, error) {
 		// Для разработки разрешаем localhost
 		cfg.WebSocket.AllowedOrigins = []string{"http://localhost:8080", "http://localhost:5173"}
 	}
+
+	// Redis: по умолчанию обязателен в production (multi-instance деплой без него
+	// потеряет кросс-нодовый WebSocket fan-out и low-latency wakeup воркеров).
+	cfg.Redis = RedisConfig{
+		URL:      getEnv("REDIS_URL", ""),
+		Required: getBoolEnv("REDIS_REQUIRED", cfg.IsProd()),
+	}
+
+	cfg.AutoMigrate = getBoolEnv("AUTO_MIGRATE", true)
 
 	sandboxCfg, err := loadSandboxConfig()
 	if err != nil {

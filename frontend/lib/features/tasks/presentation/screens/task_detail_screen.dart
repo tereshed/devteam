@@ -1503,7 +1503,13 @@ class _GeneralInfoInspectorPanelState
 
     final d = task.description ?? '';
     final r = task.result ?? '';
-    final hasError = task.errorMessage != null && task.errorMessage!.trim().isNotEmpty;
+    // errorMessage на бэке хранит финальный reason оркестратора для ЛЮБОГО терминального
+    // состояния (done/needs_human/cancelled), а не только failed. Поэтому красную секцию
+    // «Ошибка задачи» показываем ТОЛЬКО при реальном провале (status=failed); для остальных
+    // тот же текст показываем нейтрально под «Итог».
+    final hasOutcomeText = task.errorMessage != null && task.errorMessage!.trim().isNotEmpty;
+    final hasError = hasOutcomeText && task.status == 'failed';
+    final hasOutcomeNote = hasOutcomeText && task.status != 'failed';
     final rawDiff = task.artifacts['diff'];
     final s = rawDiff is String ? rawDiff : null;
     final messages = widget.data.messages;
@@ -1592,6 +1598,16 @@ class _GeneralInfoInspectorPanelState
                     child: Text(
                       task.errorMessage!.trim(),
                       style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+                ],
+                if (hasOutcomeNote) ...[
+                  const SizedBox(height: 12),
+                  _SectionBlock(
+                    title: l10n.taskDetailSectionOutcome,
+                    child: SelectableText(
+                      task.errorMessage!.trim(),
+                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
                 ],

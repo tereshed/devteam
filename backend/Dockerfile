@@ -24,6 +24,14 @@ RUN swag init -g cmd/api/main.go
 # Собираем приложение
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/api
 
+# Собираем одноразовый бинарь миграций (для multi-instance: накат отдельным job, см. compose)
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o migrate ./cmd/migrate
+
+# Выделенные бинари ролей для горизонтального масштабирования с разделением concern'ов.
+# (Альтернатива: тот же ./main с APP_ROLE=worker|scheduler — оба способа работают.)
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o worker ./cmd/worker
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o scheduler ./cmd/scheduler
+
 # Устанавливаем goose для миграций
 RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 
@@ -33,8 +41,15 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata postgresql-client git
 WORKDIR /root/
 
-# Копируем бинарник приложения из builder stage
+# Копируем бинарники из builder stage:
+#   main      — основной (роль из APP_ROLE, по умолчанию all),
+#   migrate   — one-shot миграции,
+#   worker    — роль worker (пулы),
+#   scheduler — роль scheduler (leader-tasks).
 COPY --from=builder /app/main .
+COPY --from=builder /app/migrate .
+COPY --from=builder /app/worker .
+COPY --from=builder /app/scheduler .
 
 # Копируем goose из builder stage
 COPY --from=builder /go/bin/goose /usr/local/bin/goose

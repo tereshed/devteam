@@ -1073,6 +1073,8 @@
   "@taskDetailSectionMessages": { "description": "Секция ленты сообщений (12.5)" },
   "taskDetailSectionErrorMessage": "Ошибка задачи",
   "@taskDetailSectionErrorMessage": { "description": "Секция доменного error_message задачи (12.5)" },
+  "taskDetailSectionOutcome": "Итог",
+  "@taskDetailSectionOutcome": { "description": "Секция финального итога задачи для НЕ-ошибочных терминальных состояний (done/needs_human/cancelled)" },
   "taskDetailSectionSubtasks": "Подзадачи",
   "@taskDetailSectionSubtasks": { "description": "Секция подзадач (12.5)" },
   "taskDetailSectionSandboxLogs": "Логи песочницы (Realtime)",

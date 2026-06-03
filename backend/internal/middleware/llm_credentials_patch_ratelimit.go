@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 // RateLimiterOption — опция для LlmCredentialsPatchRateLimiter.
@@ -31,6 +33,17 @@ func WithPatchRateLimitGCInterval(d time.Duration) RateLimiterOption {
 	}
 }
 
+// WithPatchRateLimitRedis включает shared-лимит поверх Redis (для multi-instance деплоя).
+// Без него лимит считается per-instance, и пользователь может обойти его, разложив запросы
+// по репликам (30×N вместо 30). При nil-клиенте опция игнорируется (остаётся in-memory).
+func WithPatchRateLimitRedis(client *redis.Client) RateLimiterOption {
+	return func(l *LlmCredentialsPatchRateLimiter) {
+		if client != nil {
+			l.redis = client
+		}
+	}
+}
+
 // LlmCredentialsPatchRateLimiter — лимит PATCH /me/llm-credentials (30 запросов / минуту / user_id из JWT).
 type LlmCredentialsPatchRateLimiter struct {
 	mu         sync.Mutex
@@ -41,6 +54,8 @@ type LlmCredentialsPatchRateLimiter struct {
 	gcInterval time.Duration
 	stop       chan struct{}
 	closeOnce  sync.Once
+	// redis — если задан, лимит считается shared через INCR+EXPIRE (in-memory путь не используется).
+	redis *redis.Client
 }
 
 // NewLlmCredentialsPatchRateLimiter создаёт лимитер (max событий за window на пользователя).
@@ -62,7 +77,10 @@ func NewLlmCredentialsPatchRateLimiter(max int, window time.Duration, opts ...Ra
 	for _, o := range opts {
 		o(l)
 	}
-	go l.gcLoop()
+	// In-memory режим чистит карту фоном; в Redis-режиме истечение делает сам TTL ключа.
+	if l.redis == nil {
+		go l.gcLoop()
+	}
 	return l
 }
 
@@ -122,6 +140,24 @@ func filterHitsAfter(slice []time.Time, cutoff time.Time) []time.Time {
 	return out
 }
 
+// allowRedis — shared fixed-window счётчик: INCR ключа пользователя, на первом инкременте
+// вешаем EXPIRE на окно (ключ сам исчезнет → следующее окно). true, если в пределах лимита.
+// При ошибке Redis возвращаем true (fail-open).
+func (l *LlmCredentialsPatchRateLimiter) allowRedis(c *gin.Context, uid uuid.UUID) bool {
+	ctx := c.Request.Context()
+	key := fmt.Sprintf("devteam:ratelimit:llmcred:%s", uid.String())
+	n, err := l.redis.Incr(ctx, key).Result()
+	if err != nil {
+		return true
+	}
+	if n == 1 {
+		// Истечение привязано к первому запросу окна; ошибку EXPIRE игнорируем (TTL критичен,
+		// но даже без него следующее окно лишь сдвинется — не безопасностная регрессия).
+		_ = l.redis.Expire(ctx, key, l.window).Err()
+	}
+	return int(n) <= l.max
+}
+
 // Handler возвращает gin.HandlerFunc (вызывать после AuthMiddleware).
 func (l *LlmCredentialsPatchRateLimiter) Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -130,6 +166,19 @@ func (l *LlmCredentialsPatchRateLimiter) Handler() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+
+		// Shared-лимит через Redis (multi-instance). Fail-open: при сбое Redis не роняем
+		// легитимные запросы — лимитер здесь это hardening, а не критический путь.
+		if l.redis != nil {
+			if l.allowRedis(c, uid) {
+				c.Next()
+			} else {
+				c.Header("Retry-After", "60")
+				apierror.AbortJSON(c, http.StatusTooManyRequests, apierror.ErrTooManyRequests, "Too many requests, try again later")
+			}
+			return
+		}
+
 		now := l.now()
 		cutoff := now.Add(-l.window)
 

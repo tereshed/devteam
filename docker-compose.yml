@@ -17,7 +17,11 @@ services:
       - "15000:7000"  # YugabyteDB Admin UI
       - "9042:9042"   # YCQL (Cassandra-compatible, optional)
     volumes:
-      - yugabyte_data:/home/yugabyte/yb_data
+      # ВАЖНО: yugabyted (под root) хранит данные в /root/var (base_dir = $HOME/var), НЕ в
+      # /home/yugabyte/yb_data. Старый монтаж на /home/yugabyte/yb_data оставлял volume пустым,
+      # а данные жили в эфемерном слое контейнера и терялись при пересоздании. Монтируем в
+      # реальный data-dir, чтобы БД действительно персистилась.
+      - yugabyte_data:/root/var
     healthcheck:
       test: ["CMD-SHELL", "/home/yugabyte/bin/ysqlsh -h 127.0.0.1 -U yugabyte -c '\\l' || exit 1"]
       interval: 10s
@@ -60,11 +64,52 @@ services:
       timeout: 10s
       retries: 10
       start_period: 90s  # Модель загружается ~30-90 секунд
+
+  # Redis: low-latency wakeup воркеров (Pub/Sub) + кросс-нодовая доставка WebSocket-сообщений
+  # при горизонтальном масштабировании (несколько реплик app за балансировщиком).
+  # Только pub/sub + эфемерный wakeup — персистентность не нужна, RDB/AOF отключены.
+  redis:
+    image: redis:7-alpine
+    container_name: wibe_redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # Миграции — одноразовый job. Накатывает goose ДО старта app (и реплик при scale),
+  # чтобы goose.Up не бежал на каждой реплике одновременно (гонка goose_db_version).
+  # restart: "no" + depends_on(service_completed_successfully) у app.
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: devteam-backend:local
+    container_name: wibe_migrate
+    command: ["./migrate"]
+    restart: "no"
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_HOST: yugabytedb
+      DB_PORT: 5433
+      DB_USER: yugabyte
+      DB_PASSWORD: yugabyte
+      DB_NAME: yugabyte
+      DB_SSLMODE: disable
+    depends_on:
+      yugabytedb:
+        condition: service_healthy
+
   app:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: wibe_backend
+    image: devteam-backend:local
     env_file:
       - ./backend/.env
     environment:
@@ -85,6 +130,11 @@ services:
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
       WEAVIATE_HOST: weaviate:8080
       WEAVIATE_SCHEME: http
+      # Redis для wakeup воркеров и кросс-нодового WS fan-out. На одной машине с
+      # одной репликой не обязателен, но включён для low-latency и готовности к scale.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # Миграции накатывает сервис migrate (см. выше) — app их на старте не трогает.
+      AUTO_MIGRATE: "false"
       SANDBOX_KEEP_ON_FAILURE: "1"
       # Размер пулов оркестратора. Для локальной разработки держим маленькими:
       # каждый воркер опрашивает Yugabyte через распределённый SELECT FOR UPDATE
@@ -105,6 +155,10 @@ services:
     depends_on:
       yugabytedb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
       interval: 10s

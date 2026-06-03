@@ -18,7 +18,7 @@ import (
 
 // defaultHTTPTimeout — таймаут запроса по умолчанию (Sprint 15.M8). Не «бесконечность» —
 // иначе зависший провайдер удерживает goroutine оркестратора надолго.
-const defaultHTTPTimeout = 120 * time.Second
+const defaultHTTPTimeout = 10 * time.Minute
 
 // maxRetries — количество retry на 429/503/5xx-ошибки (Sprint 15.M8). Backoff экспоненциальный
 // от 500ms до 4s; общая длительность ≤ ~8s, что вписывается в healthTimeout сервиса (10s).

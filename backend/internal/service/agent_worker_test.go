@@ -83,7 +83,7 @@ func TestParseAgentEnvelope_ValidEnvelope(t *testing.T) {
 			"content": {"steps": [{"id": "1"}]}
 		}`,
 	}
-	env, ok := parseAgentEnvelope(result)
+	env, ok := parseAgentEnvelope(result, "planner")
 	if !ok {
 		t.Fatal("expected successful envelope parse")
 	}
@@ -103,7 +103,7 @@ func TestParseAgentEnvelope_FromArtifactsJSON(t *testing.T) {
 		ArtifactsJSON: json.RawMessage(`{"kind": "review", "summary": "approved"}`),
 		Output:        "Verbose human-readable analysis text that's NOT JSON",
 	}
-	env, ok := parseAgentEnvelope(result)
+	env, ok := parseAgentEnvelope(result, "reviewer")
 	if !ok {
 		t.Fatal("expected successful parse from ArtifactsJSON")
 	}
@@ -126,7 +126,7 @@ func TestParseAgentEnvelope_MarkdownFenced(t *testing.T) {
 ` + "```" + `
 Some verbose logs after`,
 	}
-	env, ok := parseAgentEnvelope(result)
+	env, ok := parseAgentEnvelope(result, "reviewer")
 	if !ok {
 		t.Fatal("expected successful parse from fenced markdown in Output")
 	}
@@ -144,7 +144,7 @@ func TestParseAgentEnvelope_FallbackOnNonJSON(t *testing.T) {
 		Success: true,
 		Output:  "Sorry, I couldn't format as JSON. Here's my answer: ...",
 	}
-	_, ok := parseAgentEnvelope(result)
+	_, ok := parseAgentEnvelope(result, "developer")
 	if ok {
 		t.Error("expected parse to FAIL for non-JSON, so caller uses fallback path")
 	}
@@ -156,7 +156,7 @@ func TestParseAgentEnvelope_FallbackOnEmptyKind(t *testing.T) {
 		Success: true,
 		Output:  `{"summary": "no kind here", "content": {}}`,
 	}
-	_, ok := parseAgentEnvelope(result)
+	_, ok := parseAgentEnvelope(result, "developer")
 	if ok {
 		t.Error("expected parse to FAIL when kind is empty")
 	}
@@ -182,7 +182,7 @@ func TestParseAgentEnvelope_DirectReview(t *testing.T) {
 More logs`,
 	}
 
-	env, ok := parseAgentEnvelope(result, target)
+	env, ok := parseAgentEnvelope(result, "reviewer", target)
 	if !ok {
 		t.Fatal("expected successful parse of direct review JSON")
 	}
@@ -210,7 +210,7 @@ func TestParseAgentEnvelope_DirectTestResult(t *testing.T) {
 		Output:  `{"decision": "passed", "test_result": "pass", "summary": "tests passed successfully"}`,
 	}
 
-	env, ok := parseAgentEnvelope(result, target)
+	env, ok := parseAgentEnvelope(result, "tester", target)
 	if !ok {
 		t.Fatal("expected successful parse of direct test result JSON")
 	}
@@ -256,7 +256,7 @@ session_id: 20260525_183715_59b273
 `,
 	}
 
-	env, ok := parseAgentEnvelope(result, target)
+	env, ok := parseAgentEnvelope(result, "reviewer", target)
 	if !ok {
 		t.Fatal("expected successful parse of review JSON even with preamble")
 	}
@@ -293,7 +293,7 @@ func TestParseAgentEnvelope_WithShortParentArtifactID(t *testing.T) {
 `,
 	}
 
-	env, ok := parseAgentEnvelope(result, target)
+	env, ok := parseAgentEnvelope(result, "reviewer", target)
 	if !ok {
 		t.Fatal("expected successful parse even with short parent_artifact_id")
 	}

@@ -764,6 +764,8 @@
   "@taskDetailSectionMessages": { "description": "Task message log section (12.5)" },
   "taskDetailSectionErrorMessage": "Task error",
   "@taskDetailSectionErrorMessage": { "description": "Domain error_message section (12.5)" },
+  "taskDetailSectionOutcome": "Outcome",
+  "@taskDetailSectionOutcome": { "description": "Final task outcome section for non-error terminal states (done/needs_human/cancelled)" },
   "taskDetailSectionSubtasks": "Subtasks",
   "@taskDetailSectionSubtasks": { "description": "Subtasks section (12.5)" },
   "taskDetailSectionSandboxLogs": "Sandbox Logs (Realtime)",

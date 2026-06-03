@@ -1,8 +1,19 @@
 COMPOSE_FILE := docker-compose.yml
+COMPOSE := docker compose -f $(COMPOSE_FILE)
 # Тестовый overlay — добавляется только в test-features* таргетах.
 # Gitea (порт 3001) + всё что нужно для PR-gate smoke-тестов.
 COMPOSE_TEST_FILE := docker-compose.test.yml
 COMPOSE_TEST := docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_TEST_FILE)
+
+# Overlay'и горизонтального масштабирования (см. docs / horizontal scaling).
+#   scale — N идентичных реплик за traefik (Swarm routing mesh);
+#   roles — разделение ролей api / worker / scheduler.
+COMPOSE_SCALE_FILE := docker-compose.scale.yml
+COMPOSE_ROLES_FILE := docker-compose.roles.yml
+COMPOSE_SCALE := docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_SCALE_FILE)
+COMPOSE_ROLES := docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_ROLES_FILE)
+# Число реплик роли worker для `make roles-up` (переопределяется: make roles-up WORKERS=4).
+WORKERS ?= 2
 
 # Поддерживаемые stem для sandbox-build-<stem> (deployment/sandbox/<stem>/).
 # Sprint 16: добавлен hermes — Hermes Agent (Nous Research, MIT).
@@ -13,7 +24,8 @@ SANDBOX_BUILD_TARGETS := $(addprefix sandbox-build-,$(SANDBOX_BUILDABLE_STEMS))
 .PHONY: help build up down logs test test-unit test-integration test-all validate-agent-prompts \
 	check-docker sandbox-build $(SANDBOX_BUILD_TARGETS) \
 	free-claude-proxy-build free-claude-proxy-check-ref \
-	migrate-create migrate-up migrate-down migrate-status \
+	migrate-create migrate-up migrate-down migrate-status migrate-run \
+	roles-up roles-down roles-logs stack-deploy stack-rm compose-validate \
 	frontend-test frontend-test-unit frontend-test-widget frontend-test-integration frontend-test-ws \
 	frontend-analyze frontend-codegen frontend-codegen-watch frontend-l10n-check \
 	frontend-run-web frontend-run-android frontend-run-ios \
@@ -34,6 +46,42 @@ down:
 
 logs:
 	docker-compose -f $(COMPOSE_FILE) logs -f app
+
+# === Горизонтальное масштабирование ===
+# Базовая работа делает N идентичных реплик `app` корректными (Redis WS fan-out, leader
+# election, distributed-сторы, миграции отдельным job). Ниже — два способа развернуть:
+#   roles-*       — разделение ролей api / worker / scheduler (docker compose, локально и прод);
+#   stack-deploy  — N идентичных реплик за traefik через Swarm routing mesh.
+# migrate-run     — одноразовый накат миграций бинарём cmd/migrate (для multi-instance:
+#                   реплики стартуют с AUTO_MIGRATE=false и ждут завершения этого job).
+
+migrate-run: check-docker
+	$(COMPOSE) run --rm migrate
+
+# Разделение ролей: app=api + worker (масштабируется, по умолчанию WORKERS=2) + scheduler.
+roles-up: check-docker
+	$(COMPOSE_ROLES) up -d --build --scale worker=$(WORKERS)
+
+roles-down:
+	$(COMPOSE_ROLES) down
+
+roles-logs:
+	$(COMPOSE_ROLES) logs -f app worker scheduler
+
+# N идентичных реплик за traefik (Swarm). Требует `docker swarm init`.
+# Изменить число реплик на лету: docker service scale devteam_app=<N>.
+stack-deploy: check-docker
+	docker stack deploy -c $(COMPOSE_FILE) -c $(COMPOSE_SCALE_FILE) devteam
+
+stack-rm:
+	docker stack rm devteam
+
+# Статическая валидация всех compose-комбинаций (base, +scale, +roles).
+compose-validate:
+	$(COMPOSE) config -q
+	$(COMPOSE_SCALE) config -q
+	$(COMPOSE_ROLES) config -q
+	@echo ">> all compose files valid (base, scale, roles)"
 
 # === Тестирование (Backend) ===
 # test: полный прогон всех пакетов; -tags=integration подключает файлы с //go:build integration
@@ -307,11 +355,20 @@ help:
 	@echo "  make sandbox-build    - Build default sandbox image (Claude, devteam/sandbox-claude:local)"
 	@echo "  make sandbox-build-<stem> - Build a specific sandbox image (e.g. sandbox-build-claude)"
 	@echo "  make migrate-create  - Create new migration"
-	@echo "  make migrate-up      - Apply migrations"
+	@echo "  make migrate-up      - Apply migrations (goose via app)"
 	@echo "  make migrate-down    - Rollback last migration"
 	@echo "  make migrate-status  - Show migration status"
+	@echo "  make migrate-run     - Apply migrations via one-shot cmd/migrate (multi-instance)"
 	@echo "  make swagger         - Generate Swagger documentation"
 	@echo "  make rules           - Sync AI rules across IDEs (Cursor, Windsurf, Copilot)"
+	@echo ""
+	@echo "=== Horizontal scaling ==="
+	@echo "  make roles-up        - Deploy split roles: app=api + worker (WORKERS=N) + scheduler"
+	@echo "  make roles-down      - Stop the split-roles deployment"
+	@echo "  make roles-logs      - Tail logs of api/worker/scheduler"
+	@echo "  make stack-deploy    - N identical replicas behind traefik (Swarm; needs swarm init)"
+	@echo "  make stack-rm        - Remove the Swarm stack"
+	@echo "  make compose-validate - Validate base + scale + roles compose files"
 	@echo ""
 	@echo "=== Frontend ==="
 	@echo "  make frontend-setup           - Setup frontend (pub get, gen-l10n, codegen)"

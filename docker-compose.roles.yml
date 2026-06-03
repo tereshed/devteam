@@ -1,0 +1,77 @@
+# docker-compose.roles.yml — overlay для деплоя с РАЗДЕЛЕНИЕМ РОЛЕЙ (api / worker / scheduler).
+#
+# Накладывается на базовый docker-compose.yml:
+#   - app       → роль api (HTTP/WS/MCP), без пулов воркеров и leader-tasks;
+#   - worker    → роль worker (пулы step/agent, claim-safe), масштабируется независимо;
+#   - scheduler → роль scheduler (cron/refreshers/retention/workflow/model-sync через leader election).
+#
+# Все роли строят Hub/HubBridge/ClusterBridge + EventBus + индексаторы, поэтому события воркеров
+# долетают до WS-клиентов api через Redis fan-out. Redis обязателен (REDIS_REQUIRED=true).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.roles.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.roles.yml up -d --scale worker=4
+#
+# Примечание: worker/scheduler не обслуживают HTTP — у них нет /health-эндпоинта, поэтому
+# healthcheck не задаём (контейнер считается живым, пока жив процесс).
+
+services:
+  app:
+    environment:
+      APP_ROLE: api
+      REDIS_REQUIRED: "true"
+
+  worker:
+    image: devteam-backend:local
+    command: ["./worker"]
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_HOST: yugabytedb
+      DB_PORT: 5433
+      DB_USER: yugabyte
+      DB_PASSWORD: yugabyte
+      DB_NAME: yugabyte
+      DB_SSLMODE: disable
+      WEAVIATE_HOST: weaviate:8080
+      WEAVIATE_SCHEME: http
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_REQUIRED: "true"
+      AUTO_MIGRATE: "false"
+      SANDBOX_KEEP_ON_FAILURE: "1"
+      ORCHESTRATOR_STEP_WORKERS: ${ORCHESTRATOR_STEP_WORKERS:-5}
+      ORCHESTRATOR_AGENT_WORKERS: ${ORCHESTRATOR_AGENT_WORKERS:-22}
+    volumes:
+      # Воркеры запускают sandbox-контейнеры → нужен доступ к Docker API хоста.
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-0}"
+    depends_on:
+      yugabytedb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    image: devteam-backend:local
+    command: ["./scheduler"]
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_HOST: yugabytedb
+      DB_PORT: 5433
+      DB_USER: yugabyte
+      DB_PASSWORD: yugabyte
+      DB_NAME: yugabyte
+      DB_SSLMODE: disable
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_REQUIRED: "true"
+      AUTO_MIGRATE: "false"
+    depends_on:
+      yugabytedb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully

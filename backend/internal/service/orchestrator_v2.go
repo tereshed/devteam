@@ -83,6 +83,18 @@ type Orchestrator struct {
 	bus          events.EventBus // опционально (nil в тестах) — live-апдейты UI через HubBridge
 	logger       *slog.Logger
 	cfg          OrchestratorConfig
+	// prPublisher — опционально. Если задан, на done открывается PR (ground-truth-гейт):
+	// PR открылся → done достоверен; не открылся → задача уходит в needs_human (см.
+	// schedulePullRequestPublish). nil → прежнее поведение (без PR, без гейта).
+	prPublisher PullRequestPublisher
+}
+
+// SetPullRequestPublisher включает ground-truth-гейт завершения: при done оркестратор
+// post-commit открывает PR с веткой задачи. Если PR открыть нельзя (нет git-credential у
+// проекта, ветка не на remote, ошибка провайдера) — задача переводится в needs_human, т.к.
+// "done" без приземлённого в репозиторий изменения недостоверен. Вызывать один раз при сборке.
+func (o *Orchestrator) SetPullRequestPublisher(p PullRequestPublisher) {
+	o.prPublisher = p
 }
 
 // NewOrchestrator — конструктор. logger ОБЯЗАН быть с redact-обёрткой.
@@ -262,6 +274,12 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 				return err
 			}
 			postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID))
+			// Ground-truth-гейт: для done открываем PR post-commit. Если PR открыть не удастся —
+			// schedulePullRequestPublish переведёт задачу в needs_human (изменения не приземлены).
+			// nil-publisher → хук no-op (прежнее поведение).
+			if newState == models.TaskStateDone {
+				postCommit = append(postCommit, o.schedulePullRequestPublish(taskID))
+			}
 			return o.finalizeTaskInTx(ctx, tx, &task, newState, decision.Reason)
 		}
 
@@ -315,6 +333,91 @@ func (o *Orchestrator) scheduleWorktreeRelease(taskID uuid.UUID) func(context.Co
 	return func(ctx context.Context) {
 		o.releaseAllWorktreesForTask(ctx, taskID)
 	}
+}
+
+// schedulePullRequestPublish — post-commit ground-truth-гейт завершения задачи.
+//
+// Зачем: пайплайн определяет done по самоотчётам LLM-агентов (developer/reviewer/tester
+// пишут «готово/approved/passed»). Без независимой проверки агент может отчитаться об успехе,
+// не запушив результат — задача станет done, а в репозитории ничего не приземлится.
+// Хук пытается открыть PR из ветки задачи: открылся → done достоверен, ссылку кладём в result;
+// не открылся (нет git-credential у проекта, ветка не на remote, ошибка провайдера) →
+// переводим задачу в needs_human с честной причиной. nil-publisher → no-op (прежнее поведение).
+func (o *Orchestrator) schedulePullRequestPublish(taskID uuid.UUID) func(context.Context) {
+	return func(ctx context.Context) {
+		if o.prPublisher == nil {
+			return
+		}
+		var task models.Task
+		if err := o.db.WithContext(ctx).First(&task, "id = ?", taskID).Error; err != nil {
+			o.logger.ErrorContext(ctx, "pr-gate: load task failed", "task_id", taskID, "error", err)
+			return
+		}
+		var project models.Project
+		if err := o.db.WithContext(ctx).Preload("GitCredential").
+			First(&project, "id = ?", task.ProjectID).Error; err != nil {
+			o.logger.ErrorContext(ctx, "pr-gate: load project failed", "task_id", taskID, "error", err)
+			return
+		}
+
+		// Гейт применяем ТОЛЬКО к задачам, реально менявшим код (есть code_diff). Review-/
+		// planning-only задачи кода не трогают → ветки с коммитами нет, PR-ить нечего, и
+		// done без PR для них корректен. Иначе CreatePullRequest падает («no commits between
+		// base and head») и задача ошибочно уходит в needs_human.
+		if !o.taskHasCodeChanges(ctx, taskID) {
+			o.logger.InfoContext(ctx, "pr-gate: no code_diff — task done without PR (review/planning-only)", "task_id", taskID)
+			return
+		}
+
+		pr, err := o.prPublisher.Publish(ctx, &task, &project)
+		if err != nil {
+			branch := ""
+			if task.BranchName != nil {
+				branch = *task.BranchName
+			}
+			reason := fmt.Sprintf(
+				"Задача не завершена: не удалось открыть PR — изменения не приземлены в репозиторий (%v). "+
+					"Привяжите git-credential к проекту и убедитесь, что ветка %q запушена в remote.",
+				err, branch,
+			)
+			o.logger.WarnContext(ctx, "pr-gate: PR not opened → downgrading done→needs_human",
+				"task_id", taskID, "error", err)
+			if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
+				Updates(map[string]any{
+					"state":         models.TaskStateNeedsHuman,
+					"error_message": reason,
+					"updated_at":    time.Now(),
+				}).Error; uerr != nil {
+				o.logger.ErrorContext(ctx, "pr-gate: downgrade update failed", "task_id", taskID, "error", uerr)
+			}
+			return
+		}
+
+		o.logger.InfoContext(ctx, "pr-gate: PR opened for completed task",
+			"task_id", taskID, "pr_number", pr.Number, "pr_url", pr.HTMLURL)
+		if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
+			Update("result", fmt.Sprintf("PR #%d: %s", pr.Number, pr.HTMLURL)).Error; uerr != nil {
+			o.logger.WarnContext(ctx, "pr-gate: store PR url failed", "task_id", taskID, "error", uerr)
+		}
+	}
+}
+
+// taskHasCodeChanges — были ли у задачи реальные изменения кода (артефакт code_diff).
+// Используется PR-гейтом: PR требуется только для задач, менявших код. При ошибке чтения
+// артефактов возвращаем true (консервативно: лучше потребовать PR, чем по-тихому
+// объявить done незалендженный код).
+func (o *Orchestrator) taskHasCodeChanges(ctx context.Context, taskID uuid.UUID) bool {
+	arts, err := o.artifactRepo.ListMetadataByTaskID(ctx, taskID, false)
+	if err != nil {
+		o.logger.WarnContext(ctx, "pr-gate: list artifacts failed, assuming code changes", "task_id", taskID, "error", err)
+		return true
+	}
+	for _, a := range arts {
+		if a.Kind == models.ArtifactKindCodeDiff {
+			return true
+		}
+	}
+	return false
 }
 
 // scheduleCancelNotify — post-commit callback для Redis-сигнала отмены. Будит in-flight

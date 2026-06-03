@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"sync/atomic"
 )
 
 // maxProjectsPerClient ограничивает число project_id на одного клиента (защита от OOM / зависания Run).
@@ -38,6 +39,17 @@ type Hub struct {
 	countReq chan *CountUserConnectionsMessage
 	// registerIfLimitReq is the channel for atomic register-with-limit check
 	registerIfLimitReq chan *RegisterIfLimitMessage
+	// cluster — опциональный мост кросс-нодовой доставки (горизонтальное масштабирование).
+	// nil → одноинстансный режим. atomic.Pointer: SetCluster вызывается из main-горутины,
+	// а SendTo* — из HubBridge-горутины (исключаем data race без mutex).
+	cluster atomic.Pointer[ClusterBridge]
+}
+
+// SetCluster включает кросс-нодовую доставку WS-сообщений через Redis Pub/Sub.
+// Вызывается один раз при старте, если сконфигурирован Redis. До вызова (или при nil)
+// Hub работает в одноинстансном режиме. Безопасно для конкурентного вызова.
+func (h *Hub) SetCluster(c *ClusterBridge) {
+	h.cluster.Store(c)
 }
 
 // RegisterIfLimitMessage is the message for atomic register-if-under-limit check.
@@ -222,11 +234,21 @@ func (h *Hub) SendToProject(projectID, msgType string, payload []byte) error {
 	if projectID == "" {
 		return ErrEmptyProjectID
 	}
+	h.enqueueProject(projectID, msgType, payload)
+	if c := h.cluster.Load(); c != nil {
+		c.publishProject(projectID, msgType, payload)
+	}
+	return nil
+}
+
+// enqueueProject ставит сообщение в очередь ЛОКАЛЬНОЙ доставки (без кросс-нодовой публикации).
+// Вызывается из SendToProject (локальный продюсер) и из ClusterBridge (ре-доставка с другого
+// инстанса) — поэтому сам в Redis НЕ публикует, иначе образовалась бы петля.
+// НЕБЛОКИРУЮЩАЯ: при переполнении broadcast сообщение дропается (slow client isolation).
+func (h *Hub) enqueueProject(projectID, msgType string, payload []byte) {
 	select {
 	case h.broadcast <- &Message{ProjectID: projectID, Type: msgType, Payload: payload}:
-		return nil
 	default:
-		return nil
 	}
 }
 
@@ -239,11 +261,18 @@ func (h *Hub) SendToUser(userID, msgType string, payload []byte) error {
 	if userID == "" {
 		return ErrEmptyUserID
 	}
+	h.enqueueUser(userID, msgType, payload)
+	if c := h.cluster.Load(); c != nil {
+		c.publishUser(userID, msgType, payload)
+	}
+	return nil
+}
+
+// enqueueUser — user-scoped аналог enqueueProject: только локальная доставка, без публикации.
+func (h *Hub) enqueueUser(userID, msgType string, payload []byte) {
 	select {
 	case h.userBroadcast <- &UserMessage{UserID: userID, Type: msgType, Payload: payload}:
-		return nil
 	default:
-		return nil
 	}
 }
 

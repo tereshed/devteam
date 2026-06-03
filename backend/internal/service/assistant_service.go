@@ -54,15 +54,15 @@ const (
 	// AssistantLoopTimeout — hard timeout на ВЕСЬ цикл petli (от старта
 	// горутины до возврата Executor.Run). Гарантирует, что зависшая
 	// горутина рано или поздно отпустит сессию.
-	AssistantLoopTimeout = 5 * time.Minute
+	AssistantLoopTimeout = 30 * time.Minute
 
 	// AssistantStaleThreshold — порог, после которого cron сбрасывает busy
 	// у НЕ-припаркованных сессий. > 2 × AssistantLoopTimeout с запасом.
-	AssistantStaleThreshold = 12 * time.Minute
+	AssistantStaleThreshold = 65 * time.Minute
 
 	// AssistantPerLLMCallTimeout — таймаут одного Client.Chat (slow-stream
 	// guard). Передаётся в agentloop.Config.PerLLMCallTimeout.
-	AssistantPerLLMCallTimeout = 90 * time.Second
+	AssistantPerLLMCallTimeout = 10 * time.Minute
 
 	// AssistantStaleRecoveryInterval — частота cron'а. Compromise между
 	// нагрузкой на БД и временем восстановления.

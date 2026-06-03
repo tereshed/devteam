@@ -1,0 +1,53 @@
+# docker-compose.scale.yml — overlay для горизонтального масштабирования (Swarm).
+#
+# Накладывается поверх базового docker-compose.yml. Базовая работа (Этапы 0-3) уже делает
+# N идентичных реплик `app` корректными: Redis даёт кросс-нодовый WS fan-out (ws.ClusterBridge),
+# leader election не даёт дублироваться cron/refresher/workflow-синглтонам, distributed-сторы
+# (locker/oauth-state/device-code/rate-limit) общие, миграции накатывает отдельный job.
+#
+# Деплой в Swarm (routing mesh балансирует :80 traefik по репликам; WS-соединение «прилипает»
+# к одной ноде, а события долетают через Redis):
+#
+#   docker swarm init                         # один раз
+#   docker stack deploy -c docker-compose.yml -c docker-compose.scale.yml devteam
+#   docker service scale devteam_app=5        # изменить число реплик на лету
+#
+# Примечание: deploy.* применяется только `docker stack deploy`. Для `docker compose up`
+# масштабируйте через `--scale app=N` (тогда LB обеспечивает traefik по меткам ниже).
+#
+# REDIS_REQUIRED=true здесь форсирует наличие Redis: multi-instance без него теряет fan-out.
+
+services:
+  # Reverse proxy / load balancer. Балансирует HTTP+WS между репликами app по меткам сервиса.
+  traefik:
+    image: traefik:v3.1
+    command:
+      - "--providers.swarm=true"
+      - "--providers.swarm.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  app:
+    environment:
+      # Multi-instance: без Redis fan-out не работает — делаем его обязательным.
+      REDIS_REQUIRED: "true"
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+      # Метки читает traefik swarm-провайдер из deploy.labels (НЕ из top-level labels).
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.app.rule=PathPrefix(`/`)"
+        - "traefik.http.routers.app.entrypoints=web"
+        - "traefik.http.services.app.loadbalancer.server.port=8080"
+        # Sticky cookie держит WS-сессию на одной реплике (события долетают через Redis,
+        # но залипание уменьшает реконнекты при переключении бэкенда).
+        - "traefik.http.services.app.loadbalancer.sticky.cookie=true"

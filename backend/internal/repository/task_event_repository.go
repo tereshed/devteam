@@ -19,6 +19,9 @@ var ErrTaskEventNotFound = errors.New("task event not found")
 // или Redis-NOTIFY.
 var ErrNoTaskEventAvailable = errors.New("no task event available")
 
+// Примечание: освобождение зависших локов выполняет RetentionService.ReleaseStuckLocks
+// (TaskEventsStuckAge=15мин), поэтому отдельный lease-реклейм в ClaimNext не нужен.
+
 // TaskEventRepository — durable очередь поверх таблицы task_events.
 //
 // Yugabyte НЕ поддерживает LISTEN/NOTIFY — wakeup через Redis (см. redis_notifier.go).

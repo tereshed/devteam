@@ -41,7 +41,10 @@ func jitterDuration(d time.Duration) time.Duration {
 func retryOnConflict(ctx context.Context, logger *slog.Logger, fn func() error) error {
 	var lastErr error
 	backoff := 100 * time.Millisecond
-	for attempt := 0; attempt < 25; attempt++ {
+	// Бюджет ретраев расширен (было 25): при широком fan-out (напр. decomposer → 7 reviewer'ов)
+	// конкурентные записи артефактов/SupersedePrevious дают штормы 40001, длящиеся минутами.
+	// Больше попыток + чуть выше потолок backoff = переживаем шторм, не роняя job в orphan/fail.
+	for attempt := 0; attempt < 40; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -69,8 +72,8 @@ func retryOnConflict(ctx context.Context, logger *slog.Logger, fn func() error) 
 		case <-time.After(sleep):
 		}
 		backoff *= 2
-		if backoff > 2*time.Second {
-			backoff = 2 * time.Second
+		if backoff > 3*time.Second {
+			backoff = 3 * time.Second
 		}
 	}
 	return lastErr
@@ -613,8 +616,15 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	if err := retryOnConflict(parentCtx, w.logger, func() error {
 		return w.eventRepo.Complete(parentCtx, ev.ID)
 	}); err != nil {
-		w.logger.ErrorContext(parentCtx, "mark event complete failed",
+		// Артефакт уже сохранён, но событие не удалось пометить done (исчерпан бюджет 40001).
+		// НЕ оставляем его залоченным: иначе осиротеет навсегда (ClaimNext берёт только
+		// не-locked; до lease-реклейма провисит ~90 мин). Делаем Fail → воркер переотработает
+		// (новый артефакт supersede'ит старый через SupersedePrevious), либо при исчерпании
+		// max_attempts job станет dead и Router увидит его в Failed. НЕ enqueue'им followup.
+		w.logger.ErrorContext(parentCtx, "mark event complete failed → failing event to avoid orphan lock",
 			"task_event_id", ev.ID, "error", err.Error())
+		w.failEvent(parentCtx, ev, fmt.Errorf("mark complete: %w", err))
+		return
 	}
 
 	// Пнём Orchestrator.Step — Router решит что дальше.
@@ -753,7 +763,7 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		return nil
 	}
 
-	envelope, ok := parseAgentEnvelope(result, targetArtifact)
+	envelope, ok := parseAgentEnvelope(result, agentRec.Name, targetArtifact)
 	if !ok {
 		// Fallback — агент не следовал формату. Сохраняем как raw_output.
 		w.logger.WarnContext(ctx, "agent did not return envelope, saving raw_output fallback",
@@ -948,7 +958,7 @@ func extractJSON(output string) (string, bool) {
 }
 
 // parseAgentEnvelope пытается распарсить ArtifactsJSON (если есть) или Output как envelope.
-func parseAgentEnvelope(result *agent.ExecutionResult, targetArtifacts ...*models.Artifact) (AgentResponseEnvelope, bool) {
+func parseAgentEnvelope(result *agent.ExecutionResult, agentName string, targetArtifacts ...*models.Artifact) (AgentResponseEnvelope, bool) {
 	var targetArtifact *models.Artifact
 	if len(targetArtifacts) > 0 {
 		targetArtifact = targetArtifacts[0]
@@ -985,7 +995,7 @@ func parseAgentEnvelope(result *agent.ExecutionResult, targetArtifacts ...*model
 		var rawMap map[string]interface{}
 		if err := json.Unmarshal([]byte(rawJSON), &rawMap); err == nil {
 			// Check if it's a direct review (has decision with review values)
-			if decVal, ok := rawMap["decision"]; ok {
+			if decVal, ok := rawMap["decision"]; ok && (agentName == "reviewer" || agentName == "planner") {
 				if decStr, ok := decVal.(string); ok {
 					decStr = strings.TrimSpace(strings.ToLower(decStr))
 					if decStr == "approve" || decStr == "approved" || decStr == "changes_requested" || decStr == "escalate_to_planner" {
@@ -1020,20 +1030,22 @@ func parseAgentEnvelope(result *agent.ExecutionResult, targetArtifacts ...*model
 
 			// Check if it's a direct test_result (has test_result or decision=passed/failed)
 			isTestResult := false
-			if trVal, ok := rawMap["test_result"]; ok {
-				if trStr, ok := trVal.(string); ok {
-					trStr = strings.TrimSpace(strings.ToLower(trStr))
-					if trStr == "pass" || trStr == "fail" || trStr == "passed" || trStr == "failed" {
-						isTestResult = true
+			if agentName == "tester" {
+				if trVal, ok := rawMap["test_result"]; ok {
+					if trStr, ok := trVal.(string); ok {
+						trStr = strings.TrimSpace(strings.ToLower(trStr))
+						if trStr == "pass" || trStr == "fail" || trStr == "passed" || trStr == "failed" {
+							isTestResult = true
+						}
 					}
 				}
-			}
-			if !isTestResult {
-				if decVal, ok := rawMap["decision"]; ok {
-					if decStr, ok := decVal.(string); ok {
-						decStr = strings.TrimSpace(strings.ToLower(decStr))
-						if decStr == "passed" || decStr == "failed" {
-							isTestResult = true
+				if !isTestResult {
+					if decVal, ok := rawMap["decision"]; ok {
+						if decStr, ok := decVal.(string); ok {
+							decStr = strings.TrimSpace(strings.ToLower(decStr))
+							if decStr == "passed" || decStr == "failed" {
+								isTestResult = true
+							}
 						}
 					}
 				}

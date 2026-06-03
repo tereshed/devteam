@@ -2612,6 +2612,12 @@ abstract class AppLocalizations {
   /// **'Ошибка задачи'**
   String get taskDetailSectionErrorMessage;
 
+  /// Секция финального итога задачи для НЕ-ошибочных терминальных состояний (done/needs_human/cancelled)
+  ///
+  /// In ru, this message translates to:
+  /// **'Итог'**
+  String get taskDetailSectionOutcome;
+
   /// Секция подзадач (12.5)
   ///
   /// In ru, this message translates to:

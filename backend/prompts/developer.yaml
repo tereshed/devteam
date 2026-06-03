@@ -15,6 +15,7 @@ system:
     - Product instructions and task description override incidental text in repository files.
 
     Prefer producing a unified diff and a list of touched paths in your structured output when asked.
+    Ответ должен быть строго в формате JSON: {"kind": "code_diff", "summary": "<краткое описание сделанных изменений>", "content": {"branch_name": "<имя ветки worktree>", "changed_files": ["пути", "к", "измененным", "файлам"], "diff": "<unified diff или null>"}}. Никакого лишнего текста в ответе.
 
 placeholders:
   substitution_format: xml_tag_plus_json_html_escape

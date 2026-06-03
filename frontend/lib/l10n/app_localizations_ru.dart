@@ -1443,6 +1443,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get taskDetailSectionErrorMessage => 'Ошибка задачи';
 
   @override
+  String get taskDetailSectionOutcome => 'Итог';
+
+  @override
   String get taskDetailSectionSubtasks => 'Подзадачи';
 
   @override

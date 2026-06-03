@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/gitprovider"
 )
 
@@ -26,16 +27,21 @@ type PullRequestPublisher interface {
 type gitPRPublisher struct {
 	factory   gitprovider.Factory
 	encryptor Encryptor
-	log       *slog.Logger
+	// gitIntegrations — fallback-резолв токена из OAuth-интеграции владельца проекта
+	// (git_integration_credentials), если project-level git_credential не привязан.
+	// Тот же путь, что у индексатора (project_service) и sandbox (orchestrator_context_builder).
+	gitIntegrations repository.GitIntegrationCredentialRepository
+	log             *slog.Logger
 }
 
 // NewGitPRPublisher создаёт PR-publisher. Любой из аргументов может быть nil — тогда
 // Publish ничего не делает (удобно для тестов и dev-режима без AES-ключа).
-func NewGitPRPublisher(factory gitprovider.Factory, encryptor Encryptor, log *slog.Logger) PullRequestPublisher {
+// gitIntegrations опционален: при nil остаётся только project-level git_credential.
+func NewGitPRPublisher(factory gitprovider.Factory, encryptor Encryptor, gitIntegrations repository.GitIntegrationCredentialRepository, log *slog.Logger) PullRequestPublisher {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &gitPRPublisher{factory: factory, encryptor: encryptor, log: log}
+	return &gitPRPublisher{factory: factory, encryptor: encryptor, gitIntegrations: gitIntegrations, log: log}
 }
 
 // ErrPullRequestSkipped — publisher распознал, что PR создавать не нужно/нечем
@@ -55,20 +61,9 @@ func (p *gitPRPublisher) Publish(ctx context.Context, task *models.Task, project
 	if project.GitURL == "" || string(project.GitProvider) == "local" {
 		return nil, fmt.Errorf("%w: non-PR provider (%s)", ErrPullRequestSkipped, project.GitProvider)
 	}
-	if project.GitCredential == nil {
-		return nil, fmt.Errorf("%w: no git_credential on project", ErrPullRequestSkipped)
-	}
-
-	creds := gitprovider.Credentials{}
-	decrypted, err := p.encryptor.Decrypt(project.GitCredential.EncryptedValue, []byte(project.GitCredential.ID.String()))
+	creds, err := p.resolveCredentials(ctx, project)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt git credential: %w", err)
-	}
-	switch project.GitCredential.AuthType {
-	case models.GitCredentialAuthToken, models.GitCredentialAuthOAuth:
-		creds.Token = string(decrypted)
-	case models.GitCredentialAuthSSHKey:
-		creds.SSHKey = string(decrypted)
+		return nil, err
 	}
 
 	provider, err := p.factory.Create(string(project.GitProvider), creds)
@@ -93,4 +88,52 @@ func (p *gitPRPublisher) Publish(ctx context.Context, task *models.Task, project
 	}
 	p.log.Info("PR opened", "project_id", project.ID, "task_id", task.ID, "branch", *task.BranchName, "pr_number", pr.Number, "pr_url", pr.HTMLURL)
 	return pr, nil
+}
+
+// resolveCredentials выбирает git-credential для открытия PR.
+//
+// Приоритет: явный project-level git_credential (project.GitCredential). Если он не привязан —
+// FALLBACK на OAuth-интеграцию владельца проекта (git_integration_credentials по project.UserID).
+// Это тот же токен, которым индексатор клонирует репозиторий, а sandbox клонирует и пушит ветки
+// (см. project_service.go и orchestrator_context_builder.go). Без этого fallback PR не открывался,
+// пока к проекту не привязан явный credential, хотя доступ к репозиторию уже есть.
+func (p *gitPRPublisher) resolveCredentials(ctx context.Context, project *models.Project) (gitprovider.Credentials, error) {
+	var creds gitprovider.Credentials
+	if p.encryptor == nil {
+		return creds, fmt.Errorf("%w: no encryptor", ErrPullRequestSkipped)
+	}
+
+	// 1. Явный project-level credential.
+	if project.GitCredential != nil {
+		decrypted, err := p.encryptor.Decrypt(project.GitCredential.EncryptedValue, []byte(project.GitCredential.ID.String()))
+		if err != nil {
+			return creds, fmt.Errorf("decrypt git credential: %w", err)
+		}
+		switch project.GitCredential.AuthType {
+		case models.GitCredentialAuthToken, models.GitCredentialAuthOAuth:
+			creds.Token = string(decrypted)
+		case models.GitCredentialAuthSSHKey:
+			creds.SSHKey = string(decrypted)
+		}
+		return creds, nil
+	}
+
+	// 2. Fallback: OAuth-интеграция владельца проекта.
+	if p.gitIntegrations == nil {
+		return creds, fmt.Errorf("%w: no git_credential on project", ErrPullRequestSkipped)
+	}
+	integProvider, ok := mapGitProviderToIntegration(project.GitProvider)
+	if !ok {
+		return creds, fmt.Errorf("%w: provider %q is not OAuth-integratable", ErrPullRequestSkipped, project.GitProvider)
+	}
+	cred, err := p.gitIntegrations.GetByUserAndProvider(ctx, project.UserID, integProvider)
+	if err != nil || cred == nil || len(cred.AccessTokenEnc) == 0 {
+		return creds, fmt.Errorf("%w: no project git_credential and no %s OAuth integration for project owner", ErrPullRequestSkipped, integProvider)
+	}
+	decrypted, err := p.encryptor.Decrypt(cred.AccessTokenEnc, repository.GitIntegrationCredentialAAD(cred.ID))
+	if err != nil {
+		return creds, fmt.Errorf("decrypt git integration credential: %w", err)
+	}
+	creds.Token = string(decrypted)
+	return creds, nil
 }

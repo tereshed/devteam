@@ -1427,6 +1427,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskDetailSectionErrorMessage => 'Task error';
 
   @override
+  String get taskDetailSectionOutcome => 'Outcome';
+
+  @override
   String get taskDetailSectionSubtasks => 'Subtasks';
 
   @override
