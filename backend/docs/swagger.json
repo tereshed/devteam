@@ -5354,6 +5354,54 @@
             }
         },
         "/projects/{id}/team/agents/{agentId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Удаляет агента, принадлежащего команде указанного проекта",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Удаление агента команды",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "agentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "patch": {
                 "security": [
                     {
@@ -5578,6 +5626,65 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/projects/{id}/teams/{teamId}/agents": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Создает агента и привязывает его к указанной команде",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Создание агента в команде",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Team ID",
+                        "name": "teamId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Параметры создания агента",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateTeamAgentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AgentResponse"
+                        }
                     }
                 }
             }
@@ -7581,6 +7688,9 @@
                 "role": {
                     "type": "string"
                 },
+                "role_description": {
+                    "type": "string"
+                },
                 "system_prompt": {
                     "type": "string"
                 },
@@ -8275,10 +8385,53 @@
                 "priority": {
                     "type": "string"
                 },
+                "team_id": {
+                    "type": "string"
+                },
                 "title": {
                     "type": "string",
                     "maxLength": 500,
                     "minLength": 1
+                }
+            }
+        },
+        "dto.CreateTeamAgentRequest": {
+            "type": "object",
+            "required": [
+                "execution_kind",
+                "name",
+                "role"
+            ],
+            "properties": {
+                "code_backend": {
+                    "type": "string"
+                },
+                "execution_kind": {
+                    "type": "string"
+                },
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "provider_kind": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "role_description": {
+                    "type": "string"
+                },
+                "system_prompt": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
                 }
             }
         },
@@ -8315,8 +8468,7 @@
         "dto.CreateWebhookRequest": {
             "type": "object",
             "required": [
-                "name",
-                "workflow_name"
+                "name"
             ],
             "properties": {
                 "allowed_ips": {
@@ -8325,19 +8477,28 @@
                 "description": {
                     "type": "string"
                 },
-                "input_json_path": {
-                    "type": "string"
-                },
-                "input_template": {
+                "instructions": {
                     "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
+                "project_id": {
+                    "type": "string"
+                },
                 "require_secret": {
                     "type": "boolean"
                 },
-                "workflow_name": {
+                "task_description_template": {
+                    "type": "string"
+                },
+                "task_priority_template": {
+                    "type": "string"
+                },
+                "task_title_template": {
+                    "type": "string"
+                },
+                "team_id": {
                     "type": "string"
                 }
             }
@@ -9037,6 +9198,9 @@
                 "status": {
                     "type": "string"
                 },
+                "team_id": {
+                    "type": "string"
+                },
                 "title": {
                     "type": "string"
                 },
@@ -9179,6 +9343,9 @@
                     "items": {
                         "$ref": "#/definitions/dto.TaskSummary"
                     }
+                },
+                "team_id": {
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"
@@ -9473,14 +9640,14 @@
                 "description": {
                     "type": "string"
                 },
-                "input_json_path": {
-                    "type": "string"
-                },
-                "input_template": {
+                "instructions": {
                     "type": "string"
                 },
                 "is_active": {
                     "type": "boolean"
+                },
+                "project_id": {
+                    "type": "string"
                 },
                 "regenerate_secret": {
                     "type": "boolean"
@@ -9488,7 +9655,16 @@
                 "require_secret": {
                     "type": "boolean"
                 },
-                "workflow_name": {
+                "task_description_template": {
+                    "type": "string"
+                },
+                "task_priority_template": {
+                    "type": "string"
+                },
+                "task_title_template": {
+                    "type": "string"
+                },
+                "team_id": {
                     "type": "string"
                 }
             }
@@ -9513,6 +9689,9 @@
         "dto.WebhookLogResponse": {
             "type": "object",
             "properties": {
+                "conversation_id": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -9557,10 +9736,7 @@
                 "id": {
                     "type": "string"
                 },
-                "input_json_path": {
-                    "type": "string"
-                },
-                "input_template": {
+                "instructions": {
                     "type": "string"
                 },
                 "is_active": {
@@ -9572,6 +9748,9 @@
                 "name": {
                     "type": "string"
                 },
+                "project_id": {
+                    "type": "string"
+                },
                 "require_secret": {
                     "type": "boolean"
                 },
@@ -9579,13 +9758,22 @@
                     "description": "Показывается только при создании",
                     "type": "string"
                 },
+                "task_description_template": {
+                    "type": "string"
+                },
+                "task_priority_template": {
+                    "type": "string"
+                },
+                "task_title_template": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "string"
+                },
                 "trigger_count": {
                     "type": "integer"
                 },
                 "webhook_url": {
-                    "type": "string"
-                },
-                "workflow_name": {
                     "type": "string"
                 }
             }
@@ -9593,6 +9781,9 @@
         "dto.WebhookTriggerResponse": {
             "type": "object",
             "properties": {
+                "conversation_id": {
+                    "type": "string"
+                },
                 "execution_id": {
                     "type": "string"
                 },
@@ -10293,7 +10484,8 @@
                 "zhipu",
                 "openrouter",
                 "antigravity",
-                "antigravity_oauth"
+                "antigravity_oauth",
+                "hermes"
             ],
             "x-enum-varnames": [
                 "AgentProviderKindAnthropic",
@@ -10302,7 +10494,8 @@
                 "AgentProviderKindZhipu",
                 "AgentProviderKindOpenRouter",
                 "AgentProviderKindAntigravity",
-                "AgentProviderKindAntigravityOAuth"
+                "AgentProviderKindAntigravityOAuth",
+                "AgentProviderKindHermes"
             ]
         },
         "models.AgentRole": {
@@ -10404,13 +10597,15 @@
                 "claude-code",
                 "aider",
                 "hermes",
-                "custom"
+                "custom",
+                "antigravity"
             ],
             "x-enum-varnames": [
                 "CodeBackendClaudeCode",
                 "CodeBackendAider",
                 "CodeBackendHermes",
-                "CodeBackendCustom"
+                "CodeBackendCustom",
+                "CodeBackendAntigravity"
             ]
         },
         "models.GitCredential": {
@@ -10562,6 +10757,10 @@
                     "type": "string"
                 },
                 "env_template": {
+                    "type": "object"
+                },
+                "headers_template": {
+                    "description": "HeadersTemplate — HTTP-заголовки для remote (sse/http) серверов. Значения могут\nсодержать ${secret:NAME}; резолвятся через env-индирекцию при сборке .mcp.json.",
                     "type": "object"
                 },
                 "id": {

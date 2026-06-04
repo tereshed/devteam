@@ -100,7 +100,6 @@ ProjectOnboardingState projectOnboardingState(
   }
 
   return ProjectOnboardingState(
-    orchestratorConfigured: isConfigured('orchestrator'),
     routerConfigured: isConfigured('router'),
     loading: false,
   );

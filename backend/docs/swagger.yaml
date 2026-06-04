@@ -29,6 +29,8 @@ definitions:
         type: string
       role:
         type: string
+      role_description:
+        type: string
       system_prompt:
         type: string
       tool_bindings:
@@ -493,12 +495,41 @@ definitions:
         type: string
       priority:
         type: string
+      team_id:
+        type: string
       title:
         maxLength: 500
         minLength: 1
         type: string
     required:
     - title
+    type: object
+  dto.CreateTeamAgentRequest:
+    properties:
+      code_backend:
+        type: string
+      execution_kind:
+        type: string
+      max_tokens:
+        type: integer
+      model:
+        type: string
+      name:
+        type: string
+      provider_kind:
+        type: string
+      role:
+        type: string
+      role_description:
+        type: string
+      system_prompt:
+        type: string
+      temperature:
+        type: number
+    required:
+    - execution_kind
+    - name
+    - role
     type: object
   dto.CreateTeamRequest:
     properties:
@@ -526,19 +557,24 @@ definitions:
         type: string
       description:
         type: string
-      input_json_path:
-        type: string
-      input_template:
+      instructions:
         type: string
       name:
         type: string
+      project_id:
+        type: string
       require_secret:
         type: boolean
-      workflow_name:
+      task_description_template:
+        type: string
+      task_priority_template:
+        type: string
+      task_title_template:
+        type: string
+      team_id:
         type: string
     required:
     - name
-    - workflow_name
     type: object
   dto.ExecutionListResponse:
     properties:
@@ -1006,6 +1042,8 @@ definitions:
         type: string
       status:
         type: string
+      team_id:
+        type: string
       title:
         type: string
       updated_at:
@@ -1100,6 +1138,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.TaskSummary'
         type: array
+      team_id:
+        type: string
       title:
         type: string
       updated_at:
@@ -1295,17 +1335,23 @@ definitions:
         type: string
       description:
         type: string
-      input_json_path:
-        type: string
-      input_template:
+      instructions:
         type: string
       is_active:
         type: boolean
+      project_id:
+        type: string
       regenerate_secret:
         type: boolean
       require_secret:
         type: boolean
-      workflow_name:
+      task_description_template:
+        type: string
+      task_priority_template:
+        type: string
+      task_title_template:
+        type: string
+      team_id:
         type: string
     type: object
   dto.UserResponse:
@@ -1321,6 +1367,8 @@ definitions:
     type: object
   dto.WebhookLogResponse:
     properties:
+      conversation_id:
+        type: string
       created_at:
         type: string
       error_message:
@@ -1350,9 +1398,7 @@ definitions:
         type: string
       id:
         type: string
-      input_json_path:
-        type: string
-      input_template:
+      instructions:
         type: string
       is_active:
         type: boolean
@@ -1360,20 +1406,30 @@ definitions:
         type: string
       name:
         type: string
+      project_id:
+        type: string
       require_secret:
         type: boolean
       secret:
         description: Показывается только при создании
         type: string
+      task_description_template:
+        type: string
+      task_priority_template:
+        type: string
+      task_title_template:
+        type: string
+      team_id:
+        type: string
       trigger_count:
         type: integer
       webhook_url:
         type: string
-      workflow_name:
-        type: string
     type: object
   dto.WebhookTriggerResponse:
     properties:
+      conversation_id:
+        type: string
       execution_id:
         type: string
       message:
@@ -1860,6 +1916,7 @@ definitions:
     - openrouter
     - antigravity
     - antigravity_oauth
+    - hermes
     type: string
     x-enum-varnames:
     - AgentProviderKindAnthropic
@@ -1869,6 +1926,7 @@ definitions:
     - AgentProviderKindOpenRouter
     - AgentProviderKindAntigravity
     - AgentProviderKindAntigravityOAuth
+    - AgentProviderKindHermes
   models.AgentRole:
     enum:
     - worker
@@ -1945,12 +2003,14 @@ definitions:
     - aider
     - hermes
     - custom
+    - antigravity
     type: string
     x-enum-varnames:
     - CodeBackendClaudeCode
     - CodeBackendAider
     - CodeBackendHermes
     - CodeBackendCustom
+    - CodeBackendAntigravity
   models.GitCredential:
     properties:
       auth_type:
@@ -2058,6 +2118,11 @@ definitions:
       description:
         type: string
       env_template:
+        type: object
+      headers_template:
+        description: |-
+          HeadersTemplate — HTTP-заголовки для remote (sse/http) серверов. Значения могут
+          содержать ${secret:NAME}; резолвятся через env-индирекцию при сборке .mcp.json.
         type: object
       id:
         type: string
@@ -5613,6 +5678,35 @@ paths:
       tags:
       - teams
   /projects/{id}/team/agents/{agentId}:
+    delete:
+      description: Удаляет агента, принадлежащего команде указанного проекта
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Agent ID
+        in: path
+        name: agentId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление агента команды
+      tags:
+      - teams
     patch:
       consumes:
       - application/json
@@ -5751,6 +5845,42 @@ paths:
       - ApiKeyAuth: []
       - OAuth2Password: []
       summary: Удаление команды проекта
+      tags:
+      - teams
+  /projects/{id}/teams/{teamId}/agents:
+    post:
+      consumes:
+      - application/json
+      description: Создает агента и привязывает его к указанной команде
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Team ID
+        in: path
+        name: teamId
+        required: true
+        type: string
+      - description: Параметры создания агента
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTeamAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AgentResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Создание агента в команде
       tags:
       - teams
   /projects/{id}/ws:

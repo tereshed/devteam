@@ -76,7 +76,23 @@ func (r *DatabaseSecretResolver) Resolve(ctx context.Context, project *models.Pr
 		// Запись не нашлась — падаем дальше в общий ErrSecretNotFound.
 	}
 
-	// 2) Sprint 17+: agent_secrets по project.ID — добавлять сюда же.
+	// 2) project_secrets по project.ID + key_name=name — это «Переменные проекта»
+	//    (таб «Переменные (тех. стек)»). Сюда кладут произвольные секреты (токены
+	//    MCP-серверов и т.п.). Шифрование — AAD = ID записи (см. SecretService).
+	var ps models.ProjectSecret
+	err := r.db.WithContext(ctx).
+		Where("project_id = ? AND key_name = ?", project.ID, name).
+		First(&ps).Error
+	if err == nil {
+		plain, derr := r.encryptor.Decrypt(ps.EncryptedValue, []byte(ps.ID.String()))
+		if derr != nil {
+			return "", fmt.Errorf("decrypt secret %q: %w", name, derr)
+		}
+		return string(plain), nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", fmt.Errorf("db error resolving secret %q: %w", name, err)
+	}
 
 	return "", ErrSecretNotFound
 }

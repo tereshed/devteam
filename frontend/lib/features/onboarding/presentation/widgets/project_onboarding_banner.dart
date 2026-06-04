@@ -44,7 +44,7 @@ class ProjectOnboardingBanner extends ConsumerWidget {
     final agents = asyncTeam.requireValue.agents;
 
     bool isUnconfigured(AgentModel a) =>
-        (a.role == 'orchestrator' || a.role == 'router') &&
+        a.role == 'router' &&
         (a.model == null ||
             a.model!.isEmpty ||
             a.providerKind == null ||

@@ -1202,6 +1202,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get projectSettingsTabGeneral => 'Основные';
 
   @override
+  String get projectSettingsTabVariables => 'Переменные (тех. стек)';
+
+  @override
   String get projectSettingsNoChanges => 'Нет изменений для сохранения';
 
   @override
@@ -1905,7 +1908,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentSandboxSettingsMCPHelper =>
-      'JSON-массив привязок MCP — см. документацию.';
+      'JSON-массив MCP-серверов. Поля инлайн-сервера: name, type (sse/http/stdio), url, headers. В значении заголовка можно сослаться на переменную проекта через префикс secret:NAME — она подставляется в рантайме и не пишется в файл.';
 
   @override
   String get agentSandboxSettingsSkillsHelper =>
@@ -2725,7 +2728,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get onboardingConfigureProjectAgents =>
-      'Настройте агентов orchestrator и router — выберите LLM-провайдера и модель для каждого, чтобы запустить оркестрацию задач.';
+      'Настройте агента router — выберите LLM-провайдера и модель, чтобы запустить оркестрацию задач.';
 
   @override
   String get onboardingGoToTeam => 'Настроить агентов';

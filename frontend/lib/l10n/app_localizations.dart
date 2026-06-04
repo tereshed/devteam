@@ -2174,6 +2174,12 @@ abstract class AppLocalizations {
   /// **'Основные'**
   String get projectSettingsTabGeneral;
 
+  /// Вкладка настроек проекта: техстек + переменные/секреты проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Переменные (тех. стек)'**
+  String get projectSettingsTabVariables;
+
   /// Пустой dirty-патч
   ///
   /// In ru, this message translates to:
@@ -3485,7 +3491,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentSandboxSettingsMCPHelper.
   ///
   /// In ru, this message translates to:
-  /// **'JSON-массив привязок MCP — см. документацию.'**
+  /// **'JSON-массив MCP-серверов. Поля инлайн-сервера: name, type (sse/http/stdio), url, headers. В значении заголовка можно сослаться на переменную проекта через префикс secret:NAME — она подставляется в рантайме и не пишется в файл.'**
   String get agentSandboxSettingsMCPHelper;
 
   /// No description provided for @agentSandboxSettingsSkillsHelper.
@@ -5003,7 +5009,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingConfigureProjectAgents.
   ///
   /// In ru, this message translates to:
-  /// **'Настройте агентов orchestrator и router — выберите LLM-провайдера и модель для каждого, чтобы запустить оркестрацию задач.'**
+  /// **'Настройте агента router — выберите LLM-провайдера и модель, чтобы запустить оркестрацию задач.'**
   String get onboardingConfigureProjectAgents;
 
   /// No description provided for @onboardingGoToTeam.

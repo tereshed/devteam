@@ -58,7 +58,10 @@ type MCPServerRegistry struct {
 	Args        datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"args" swaggertype:"object"`
 	URL         string         `gorm:"type:varchar(1024);not null;default:''" json:"url"`
 	EnvTemplate datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"env_template" swaggertype:"object"`
-	Scope       MCPScope       `gorm:"type:varchar(16);not null;default:'global'" json:"scope"`
+	// HeadersTemplate — HTTP-заголовки для remote (sse/http) серверов. Значения могут
+	// содержать ${secret:NAME}; резолвятся через env-индирекцию при сборке .mcp.json.
+	HeadersTemplate datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"headers_template" swaggertype:"object"`
+	Scope           MCPScope       `gorm:"type:varchar(16);not null;default:'global'" json:"scope"`
 	IsActive    bool           `gorm:"not null;default:true" json:"is_active"`
 	CreatedAt   time.Time      `gorm:"type:timestamp with time zone;not null;default:now()" json:"created_at"`
 	UpdatedAt   time.Time      `gorm:"type:timestamp with time zone;not null;default:now();autoUpdateTime" json:"updated_at"`

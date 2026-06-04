@@ -210,10 +210,24 @@ type HermesMCPServerSpec struct {
 	Env       map[string]string `json:"env,omitempty"`
 }
 
-// AgentMCPServerRef — ссылка на MCP-сервер (по имени из mcp_servers_registry).
+// AgentMCPServerRef — MCP-сервер агента. Два режима:
+//   - ссылка: задано только Name (+ опц. Env) → конфиг берётся из mcp_servers_registry;
+//   - инлайн: заданы Type/URL/Command → сервер описан прямо у агента команды,
+//     реестр не нужен. ${secret:NAME} в Env/Headers резолвится из секретов проекта.
 type AgentMCPServerRef struct {
-	Name     string            `json:"name"`
-	Env      map[string]string `json:"env,omitempty"`
+	Name string            `json:"name"`
+	Env  map[string]string `json:"env,omitempty"`
+	// Инлайн-определение (опционально; если задано — реестр не используется).
+	Type    string            `json:"type,omitempty"` // stdio | sse | http
+	URL     string            `json:"url,omitempty"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// isInline — у ссылки задан только name(+env); инлайн задаёт транспорт/эндпоинт.
+func (r AgentMCPServerRef) isInline() bool {
+	return r.Type != "" || r.URL != "" || r.Command != "" || len(r.Args) > 0 || len(r.Headers) > 0
 }
 
 // AgentSkillRef — ссылка на skill (имя + source + опциональный config).
@@ -358,6 +372,7 @@ func BackendArtifactsToSandboxBundle(a *BackendArtifacts) *sandbox.AgentSettings
 		return nil
 	}
 	if len(a.SettingsJSON) == 0 && len(a.MCPJSON) == 0 && a.PermissionMode == "" &&
+		len(a.MCPEnv) == 0 &&
 		len(a.HermesConfigYAML) == 0 && len(a.HermesMCPJSON) == 0 && len(a.HermesSkills) == 0 {
 		return nil
 	}
@@ -365,6 +380,7 @@ func BackendArtifactsToSandboxBundle(a *BackendArtifacts) *sandbox.AgentSettings
 		SettingsJSON:     a.SettingsJSON,
 		MCPJSON:          a.MCPJSON,
 		PermissionMode:   a.PermissionMode,
+		MCPEnv:           a.MCPEnv,
 		HermesConfigYAML: a.HermesConfigYAML,
 		HermesMCPJSON:    a.HermesMCPJSON,
 		HermesSkills:     a.HermesSkills,
@@ -405,6 +421,10 @@ type settingsFile struct {
 	Permissions *settingsPermissions `json:"permissions,omitempty"`
 	Env         map[string]string    `json:"env,omitempty"`
 	Hooks       map[string]any       `json:"hooks,omitempty"`
+	// EnabledMcpjsonServers — Claude Code в headless-режиме НЕ загружает серверы из
+	// project .mcp.json без явного включения (иначе требует интерактивного approve).
+	// Перечисляем имена серверов агента, чтобы инструменты были доступны.
+	EnabledMcpjsonServers []string `json:"enabledMcpjsonServers,omitempty"`
 }
 
 type settingsPermissions struct {
@@ -416,6 +436,12 @@ type settingsPermissions struct {
 
 func buildSettingsJSON(perms SandboxPermissions, codeSettings AgentCodeBackendSettings) ([]byte, error) {
 	f := settingsFile{Env: codeSettings.Env, Hooks: codeSettings.Hooks}
+	// Включаем MCP-серверы агента, иначе Claude Code в headless их не подхватит из .mcp.json.
+	for _, ref := range codeSettings.MCPServers {
+		if ref.Name != "" {
+			f.EnabledMcpjsonServers = append(f.EnabledMcpjsonServers, ref.Name)
+		}
+	}
 	if len(perms.Allow)+len(perms.Deny)+len(perms.Ask) > 0 || perms.DefaultMode != "" {
 		f.Permissions = &settingsPermissions{
 			Allow:       perms.Allow,
@@ -433,55 +459,164 @@ type mcpFile struct {
 }
 
 type mcpServerEntry struct {
-	Transport string            `json:"transport"`
-	Command   string            `json:"command,omitempty"`
-	Args      []string          `json:"args,omitempty"`
-	URL       string            `json:"url,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
+	// Type — Claude Code .mcp.json ожидает "type" (stdio|sse|http), не "transport".
+	Type    string            `json:"type"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	// Headers — HTTP-заголовки для remote (sse/http). Секреты подставляются как
+	// ${VAR}, Claude Code раскрывает их из env контейнера в рантайме.
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
-func buildMCPJSON(settings AgentCodeBackendSettings, registry MCPRegistryLookup) ([]byte, error) {
+// mcpSecretRE ловит ${secret:NAME} в любом месте строки (в т.ч. внутри "Bearer ...").
+var mcpSecretRE = regexp.MustCompile(`\$\{secret:([^}]+)\}`)
+
+// buildMCPJSON собирает .mcp.json для Claude Code из ссылок агента + реестра.
+// Возвращает (json, mcpEnv): mcpEnv — карта env-переменных sandbox с резолвленными
+// секретами; runner вливает её в EnvVars, а в файле остаётся ссылка ${VAR}. Так
+// токен не пишется открытым текстом в .mcp.json и не утекает в репозиторий.
+func buildMCPJSON(
+	ctx context.Context, settings AgentCodeBackendSettings, registry MCPRegistryLookup,
+	project *models.Project, resolver SecretResolver,
+) ([]byte, map[string]string, error) {
 	if len(settings.MCPServers) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
-	if registry == nil {
-		return nil, errors.New("mcp servers configured but registry lookup is not provided")
-	}
+	mcpEnv := map[string]string{}
 	f := mcpFile{MCPServers: map[string]mcpServerEntry{}}
 	for _, ref := range settings.MCPServers {
-		srv, ok := registry.LookupMCPServer(ref.Name)
-		if !ok {
-			return nil, fmt.Errorf("mcp server %q not found in registry", ref.Name)
-		}
-		if !srv.Transport.IsValid() {
-			return nil, fmt.Errorf("mcp server %q: invalid transport %q", ref.Name, srv.Transport)
-		}
-		var args []string
-		if len(srv.Args) > 0 {
-			if err := json.Unmarshal(srv.Args, &args); err != nil {
-				return nil, fmt.Errorf("mcp server %q: parse args: %w", ref.Name, err)
+		var (
+			transport         string
+			command, url      string
+			args              []string
+			envMap, headerMap map[string]string
+		)
+
+		if ref.isInline() {
+			// Сервер описан прямо у агента команды — реестр не нужен.
+			transport = ref.Type
+			command = ref.Command
+			url = ref.URL
+			args = append([]string(nil), ref.Args...)
+			envMap = ref.Env       // resolveMCPSecretMap не мутирует вход
+			headerMap = ref.Headers
+		} else {
+			// Ссылка на сервер из реестра (по имени).
+			if registry == nil {
+				return nil, nil, errors.New("mcp server reference requires registry lookup, which is not provided")
 			}
-		}
-		envMap := map[string]string{}
-		if len(srv.EnvTemplate) > 0 {
-			tmpl := map[string]string{}
-			if err := json.Unmarshal(srv.EnvTemplate, &tmpl); err != nil {
-				return nil, fmt.Errorf("mcp server %q: parse env_template: %w", ref.Name, err)
+			srv, ok := registry.LookupMCPServer(ref.Name)
+			if !ok {
+				return nil, nil, fmt.Errorf("mcp server %q not found in registry", ref.Name)
 			}
-			for k, v := range tmpl {
+			transport = string(srv.Transport)
+			command = srv.Command
+			url = srv.URL
+			if len(srv.Args) > 0 {
+				if err := json.Unmarshal(srv.Args, &args); err != nil {
+					return nil, nil, fmt.Errorf("mcp server %q: parse args: %w", ref.Name, err)
+				}
+			}
+			envMap = map[string]string{}
+			if len(srv.EnvTemplate) > 0 {
+				tmpl := map[string]string{}
+				if err := json.Unmarshal(srv.EnvTemplate, &tmpl); err != nil {
+					return nil, nil, fmt.Errorf("mcp server %q: parse env_template: %w", ref.Name, err)
+				}
+				for k, v := range tmpl {
+					envMap[k] = v
+				}
+			}
+			for k, v := range ref.Env { // overrides win
 				envMap[k] = v
 			}
+			headerMap = map[string]string{}
+			if len(srv.HeadersTemplate) > 0 {
+				if err := json.Unmarshal(srv.HeadersTemplate, &headerMap); err != nil {
+					return nil, nil, fmt.Errorf("mcp server %q: parse headers_template: %w", ref.Name, err)
+				}
+			}
 		}
-		for k, v := range ref.Env { // overrides win
-			envMap[k] = v
+
+		if !models.MCPTransport(transport).IsValid() {
+			return nil, nil, fmt.Errorf("mcp server %q: invalid transport %q", ref.Name, transport)
 		}
+
+		// Резолв ${secret:NAME} (env-индирекция) в env и headers.
+		resolvedEnv, err := resolveMCPSecretMap(ctx, project, resolver, ref.Name, envMap, mcpEnv)
+		if err != nil {
+			return nil, nil, err
+		}
+		resolvedHeaders, err := resolveMCPSecretMap(ctx, project, resolver, ref.Name, headerMap, mcpEnv)
+		if err != nil {
+			return nil, nil, err
+		}
+
 		f.MCPServers[ref.Name] = mcpServerEntry{
-			Transport: string(srv.Transport),
-			Command:   srv.Command,
-			Args:      args,
-			URL:       srv.URL,
-			Env:       envMap,
+			Type:    transport,
+			Command: command,
+			Args:    args,
+			URL:     url,
+			Env:     resolvedEnv,
+			Headers: resolvedHeaders,
 		}
 	}
-	return json.MarshalIndent(f, "", "  ")
+	body, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(mcpEnv) == 0 {
+		mcpEnv = nil
+	}
+	return body, mcpEnv, nil
+}
+
+// resolveMCPSecretMap заменяет ${secret:NAME} в значениях карты на ссылки ${VAR}
+// (env-индирекция) и кладёт plaintext в mcpEnv. Значения без шаблона — как есть.
+// Возвращает nil для пустой/полностью пустой карты (чтобы omitempty убрал поле).
+func resolveMCPSecretMap(
+	ctx context.Context, project *models.Project, resolver SecretResolver,
+	server string, kv map[string]string, mcpEnv map[string]string,
+) (map[string]string, error) {
+	if len(kv) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(kv))
+	for k, v := range kv {
+		matches := mcpSecretRE.FindAllStringSubmatch(v, -1)
+		if len(matches) == 0 {
+			out[k] = v
+			continue
+		}
+		resolved := v
+		for _, m := range matches {
+			name := strings.TrimSpace(m[1])
+			if name == "" {
+				return nil, fmt.Errorf("mcp server %q key %q: empty secret name", server, k)
+			}
+			if resolver == nil {
+				return nil, fmt.Errorf("mcp server %q key %q: secret resolver not configured", server, k)
+			}
+			if project == nil {
+				return nil, fmt.Errorf("mcp server %q key %q: project context required to resolve secret %q", server, k, name)
+			}
+			plain, err := resolver.Resolve(ctx, project, name)
+			if err != nil {
+				return nil, fmt.Errorf("mcp server %q key %q: resolve secret %q: %w", server, k, name, err)
+			}
+			envVar := mcpSecretEnvName(server, name)
+			mcpEnv[envVar] = plain
+			resolved = strings.ReplaceAll(resolved, m[0], "${"+envVar+"}")
+		}
+		out[k] = resolved
+	}
+	return out, nil
+}
+
+// mcpSecretEnvName — детерминированное имя env-переменной для секрета MCP-сервера.
+// Формат MCP_<SERVER>_<SECRET> (UPPER_SNAKE); префикс MCP_ разрешён в ValidateEnvKeys.
+func mcpSecretEnvName(server, secret string) string {
+	return "MCP_" + strings.ToUpper(toEnvSafe(server)) + "_" + strings.ToUpper(toEnvSafe(secret))
 }

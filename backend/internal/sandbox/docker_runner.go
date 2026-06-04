@@ -178,6 +178,19 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 			out = append(out, k+"="+v)
 		}
 	}
+	// MCPEnv (MCP_*) — резолвленные секреты MCP-серверов (Claude Code раскрывает
+	// ${VAR} из env при чтении .mcp.json). Тот же приоритет, что у HermesEnv.
+	if opts.AgentSettings != nil && len(opts.AgentSettings.MCPEnv) > 0 {
+		for k, v := range opts.AgentSettings.MCPEnv {
+			if _, dup := opts.EnvVars[k]; dup {
+				continue
+			}
+			if k == EnvRepoURL || k == EnvBranchName || k == EnvBackend {
+				continue
+			}
+			out = append(out, k+"="+v)
+		}
+	}
 	for k, v := range opts.EnvVars {
 		if k == EnvRepoURL || k == EnvBranchName || k == EnvBackend {
 			continue

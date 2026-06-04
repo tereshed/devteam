@@ -61,6 +61,32 @@ func TestDatabaseSecretResolver_UnknownProviderReturnsNotFound(t *testing.T) {
 	}
 }
 
+// Секрет из «Переменных проекта» (project_secrets) резолвится по key_name.
+func TestDatabaseSecretResolver_ResolvesProjectSecret(t *testing.T) {
+	db := openInMemoryDB(t)
+	enc := makeAESEncryptor(t)
+	r := NewDatabaseSecretResolver(db, enc)
+
+	id := uuid.New()
+	proj := &models.Project{ID: uuid.New()}
+	blob, err := enc.Encrypt([]byte("tok-abc"), []byte(id.String()))
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	ps := models.ProjectSecret{ID: id, ProjectID: proj.ID, KeyName: "PAI_TOKEN", EncryptedValue: blob}
+	if err := db.Create(&ps).Error; err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	got, err := r.Resolve(context.Background(), proj, "PAI_TOKEN")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if got != "tok-abc" {
+		t.Fatalf("expected tok-abc, got %q", got)
+	}
+}
+
 func openInMemoryDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	// in-memory SQLite — лёгкий заместитель *gorm.DB для тех веток, где Resolve
@@ -70,6 +96,19 @@ func openInMemoryDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
+	}
+	// project_secrets резолвится вторым шагом — таблица должна существовать,
+	// чтобы «секрет не найден» давал ErrSecretNotFound, а не ошибку «no such table».
+	// AutoMigrate не годится (Postgres-дефолты модели ломают sqlite DDL) — создаём руками.
+	if err := db.Exec(`CREATE TABLE project_secrets (
+		id text PRIMARY KEY,
+		project_id text,
+		key_name text,
+		encrypted_value blob,
+		created_at datetime,
+		updated_at datetime
+	)`).Error; err != nil {
+		t.Fatalf("create project_secrets: %v", err)
 	}
 	return db
 }

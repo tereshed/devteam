@@ -108,6 +108,10 @@ func sensitiveEnvKey(k string) bool {
 	if strings.HasPrefix(ku, "HERMES_MCP_") {
 		return true
 	}
+	// MCP_* — секреты MCP-серверов Claude Code (env-индирекция). Редактируем по префиксу.
+	if strings.HasPrefix(ku, "MCP_") {
+		return true
+	}
 	return strings.Contains(ku, "API_KEY") ||
 		strings.Contains(ku, "SECRET") ||
 		strings.Contains(ku, "TOKEN") ||

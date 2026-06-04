@@ -1,6 +1,7 @@
 package models
 
 import (
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,8 +29,14 @@ const (
 	AgentRoleAssistant AgentRole = "assistant"
 )
 
-// IsValid проверяет валидность роли агента
-func (r AgentRole) IsValid() bool {
+// roleNameRE — допустимый формат кастомной роли: snake_case, как у системных
+// (буква, далее буквы/цифры/подчёркивания). Защищает role-колонку и UI от мусора.
+var roleNameRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// IsSystem — роль с зашитой в движке семантикой: branch-policy в AgentWorker,
+// дефолтные агенты команды, исключение assistant из каталога роутера, отсутствие
+// code_backend у orchestrator/router. Набор системных ролей менять нельзя.
+func (r AgentRole) IsSystem() bool {
 	switch r {
 	case AgentRoleWorker, AgentRoleSupervisor, AgentRoleOrchestrator,
 		AgentRolePlanner, AgentRoleDeveloper, AgentRoleReviewer,
@@ -40,6 +47,17 @@ func (r AgentRole) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+// IsValid — системная роль ИЛИ корректно сформированная кастомная (snake_case, ≤50).
+// Кастомные роли разрешены для не-development команд (SMM, маркетинг и т.п.); они
+// исполняются как обычные LLM/sandbox-агенты, но без role-специфичной механики
+// системных ролей (см. IsSystem).
+func (r AgentRole) IsValid() bool {
+	if r.IsSystem() {
+		return true
+	}
+	return len(r) <= 50 && roleNameRE.MatchString(string(r))
 }
 
 // IsAutoCreated — роль принадлежит системному агенту (assistant, orchestrator, router).

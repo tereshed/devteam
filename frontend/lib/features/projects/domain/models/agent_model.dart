@@ -16,6 +16,11 @@ abstract class AgentModel with _$AgentModel {
     /// Роль агента в pipeline: 'planner', 'developer', 'reviewer', 'tester', 'orchestrator', 'worker', 'supervisor', 'devops'
     required String role,
 
+    /// Описание роли — попадает в каталог Router'а (по нему оркестратор выбирает агента).
+    /// Nullable: может быть не задано.
+    @JsonKey(name: 'role_description')
+    String? roleDescription,
+
     /// Имя модели LLM (например: 'claude-opus-4-7')
     /// Nullable: если не установлена, используется по умолчанию
     String? model,

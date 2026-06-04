@@ -72,6 +72,11 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 // (валидируется regex'ом codeBackendMCPNameRE) — перечислять их нельзя.
 const hermesMCPEnvPrefix = "HERMES_MCP_"
 
+// mcpEnvPrefix — Claude Code MCP-секреты (env-индирекция в .mcp.json). Имена
+// детерминированно собираются из имени MCP-сервера и имени секрета (MCP_<SRV>_<SECRET>),
+// поэтому разрешаем по префиксу, как HERMES_MCP_*.
+const mcpEnvPrefix = "MCP_"
+
 // ValidateSandboxID проверяет формат идентификатора до обращения к Docker API.
 // Политика MVP: полный ID контейнера Docker Engine — 64 символа [0-9a-f]
 // (нижний регистр, как отдаёт Engine). Короткие префиксы и произвольный ввод не допускаются.
@@ -152,7 +157,11 @@ func ValidateEnvKeys(env map[string]string) error {
 		if strings.HasPrefix(k, hermesMCPEnvPrefix) {
 			continue
 		}
-		return fmt.Errorf("env: disallowed key %q (use known keys or APP_* / HERMES_MCP_*): %w", k, ErrInvalidEnvKeys)
+		// MCP_* — секреты MCP-серверов Claude Code (env-индирекция в .mcp.json).
+		if strings.HasPrefix(k, mcpEnvPrefix) {
+			continue
+		}
+		return fmt.Errorf("env: disallowed key %q (use known keys or APP_* / HERMES_MCP_* / MCP_*): %w", k, ErrInvalidEnvKeys)
 	}
 	return nil
 }

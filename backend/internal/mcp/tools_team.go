@@ -42,6 +42,11 @@ func RegisterTeamTools(server *mcp.Server, projectSvc service.ProjectService, te
 	}, makeTeamAgentPatchHandler(projectSvc, teamSvc))
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_agent_create",
+		Description: "Создать нового агента в конкретной команде проекта. Поля: project_id, team_id, name, role, execution_kind, role_description (опционально), system_prompt (опционально), model (опционально), code_backend (опционально), temperature (опционально), max_tokens (опционально).",
+	}, makeTeamAgentCreateHandler(projectSvc, teamSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "team_list",
 		Description: "Получить список всех команд проекта (как GET /projects/:id/teams).",
 	}, makeTeamListHandler(projectSvc, teamSvc))
@@ -292,6 +297,57 @@ func teamServiceMCPError(err error) (*mcp.CallToolResult, any, error) {
 		return ValidationErr(err.Error())
 	default:
 		return Err("team operation failed", err)
+	}
+}
+
+// TeamAgentCreateParams определена в authorized_executor.go
+
+func makeTeamAgentCreateHandler(projectSvc service.ProjectService, teamSvc service.TeamService) func(ctx context.Context, req *mcp.CallToolRequest, params *TeamAgentCreateParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, params *TeamAgentCreateParams) (*mcp.CallToolResult, any, error) {
+		if params == nil || params.ProjectID == "" || params.TeamID == "" || params.Name == "" || params.Role == "" || params.ExecutionKind == "" {
+			return ValidationErr("project_id, team_id, name, role, execution_kind are required")
+		}
+		uid, ok := UserIDFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+		authRole, ok := UserRoleFromContext(ctx)
+		if !ok {
+			return ValidationErr("authentication required")
+		}
+
+		pid, err := uuid.Parse(params.ProjectID)
+		if err != nil {
+			return ValidationErr(fmt.Sprintf("invalid project_id: %q", params.ProjectID))
+		}
+		tid, err := uuid.Parse(params.TeamID)
+		if err != nil {
+			return ValidationErr(fmt.Sprintf("invalid team_id: %q", params.TeamID))
+		}
+
+		if _, err := projectSvc.GetByID(ctx, uid, authRole, pid); err != nil {
+			return projectServiceMCPError(err)
+		}
+
+		req := dto.CreateTeamAgentRequest{
+			Name:            params.Name,
+			Role:            params.Role,
+			ExecutionKind:   params.ExecutionKind,
+			RoleDescription: params.RoleDescription,
+			SystemPrompt:    params.SystemPrompt,
+			Model:           params.Model,
+			CodeBackend:     params.CodeBackend,
+			Temperature:     params.Temperature,
+			MaxTokens:       params.MaxTokens,
+		}
+
+		agent, err := teamSvc.CreateAgent(ctx, pid, tid, req)
+		if err != nil {
+			return teamServiceMCPError(err)
+		}
+
+		data := dto.ToAgentResponse(agent)
+		return OK(fmt.Sprintf("Agent %q created in team", data.Name), data)
 	}
 }
 

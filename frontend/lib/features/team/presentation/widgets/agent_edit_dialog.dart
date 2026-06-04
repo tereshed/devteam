@@ -111,6 +111,11 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
 
   late final SearchController _modelController;
   late final TextEditingController _systemPromptController;
+  late final TextEditingController _roleDescController;
+  late final TextEditingController _roleController;
+  // Кастомную роль можно редактировать; системная — read-only (механика оркестрации).
+  late final bool _isCustomRoleAgent = agentRoleIsCustom(widget.agent.role);
+  static final RegExp _customRoleRe = RegExp(r'^[a-z][a-z0-9_]*$');
   late final FocusNode _modelFocus;
   late final AgentModel _initial;
 
@@ -148,6 +153,10 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     _modelController.addListener(_recomputeDirty);
     _systemPromptController = TextEditingController()..text = widget.agent.systemPrompt ?? '';
     _systemPromptController.addListener(_recomputeDirty);
+    _roleDescController = TextEditingController()..text = widget.agent.roleDescription ?? '';
+    _roleDescController.addListener(_recomputeDirty);
+    _roleController = TextEditingController()..text = widget.agent.role;
+    _roleController.addListener(_recomputeDirty);
     _modelFocus = FocusNode();
     _promptId = widget.agent.promptId;
     _codeBackend = widget.agent.codeBackend;
@@ -289,6 +298,10 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     _modelController.dispose();
     _systemPromptController.removeListener(_recomputeDirty);
     _systemPromptController.dispose();
+    _roleDescController.removeListener(_recomputeDirty);
+    _roleDescController.dispose();
+    _roleController.removeListener(_recomputeDirty);
+    _roleController.dispose();
     _modelFocus.dispose();
     super.dispose();
   }
@@ -305,6 +318,12 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     final initialSysPrompt = (_initial.systemPrompt ?? '').trim();
     final sysPromptDirty = sysPromptTrim != initialSysPrompt;
 
+    final roleDescTrim = _roleDescController.text.trim();
+    final initialRoleDesc = (_initial.roleDescription ?? '').trim();
+    final roleDescDirty = roleDescTrim != initialRoleDesc;
+
+    final roleDirty = _isCustomRoleAgent && _roleController.text.trim() != _initial.role;
+
     final cbDirty = (_codeBackend ?? '') != (_initial.codeBackend ?? '');
     final pkDirty = (_providerKind ?? '') != (_initial.providerKind ?? '');
     final activeDirty = _isActive != _initial.isActive;
@@ -312,7 +331,7 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     final toolsDirty = !_sameToolIdSet(_selectedToolDefIds, _initialToolBindingIds);
 
     final next =
-        modelDirty || promptDirty || sysPromptDirty || cbDirty || pkDirty || activeDirty || toolsDirty;
+        modelDirty || promptDirty || sysPromptDirty || roleDescDirty || roleDirty || cbDirty || pkDirty || activeDirty || toolsDirty;
     if (next != _dirty) {
       setState(() => _dirty = next);
     }
@@ -434,6 +453,23 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
           : Patch.value(sysPromptTrim);
     }
 
+    final roleDescTrim = _roleDescController.text.trim();
+    final initialRoleDesc = (_initial.roleDescription ?? '').trim();
+    var roleDescPatch = const Patch<String?>.omit();
+    if (roleDescTrim != initialRoleDesc) {
+      roleDescPatch = roleDescTrim.isEmpty
+          ? const Patch<String?>.clear()
+          : Patch.value(roleDescTrim);
+    }
+
+    var rolePatch = const Patch<String>.omit();
+    if (_isCustomRoleAgent) {
+      final roleTrim = _roleController.text.trim();
+      if (roleTrim != _initial.role && roleTrim.isNotEmpty) {
+        rolePatch = Patch.value(roleTrim);
+      }
+    }
+
     final Patch<String?> cbPatch;
     if ((_codeBackend ?? '') != (_initial.codeBackend ?? '')) {
       cbPatch = _codeBackend == null || _codeBackend!.isEmpty
@@ -472,9 +508,11 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
     }
 
     return UpdateAgentPatch(
+      role: rolePatch,
       model: modelPatch,
       promptId: promptPatch,
       systemPrompt: sysPromptPatch,
+      roleDescription: roleDescPatch,
       codeBackend: cbPatch,
       providerKind: pkPatch,
       isActive: activePatch,
@@ -487,6 +525,16 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
       return;
     }
     final l10n = requireAppLocalizations(context, where: 'agentEditDialog.save');
+    // Кастомная роль обязана быть snake_case (Form тут нет — проверяем явно).
+    if (_isCustomRoleAgent) {
+      final roleTrim = _roleController.text.trim();
+      if (roleTrim.isEmpty || !_customRoleRe.hasMatch(roleTrim)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Роль: snake_case (латиница, цифры, _), например smm_writer')),
+        );
+        return;
+      }
+    }
     final patch = _buildPatch();
     final body = patch.toWireJson();
     if (body.isEmpty) {
@@ -742,6 +790,27 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                 const SizedBox(height: 16),
                 _ReadonlyAgentSummary(agent: widget.agent, l10n: l10n),
                 const SizedBox(height: 16),
+                // Роль: кастомную можно редактировать (snake_case), системная — read-only
+                // (показана в сводке выше; её менять нельзя — механика оркестрации).
+                if (_isCustomRoleAgent) ...[
+                  TextFormField(
+                    key: const Key('agentEditDialog_roleField'),
+                    controller: _roleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Роль (кастомная)',
+                      helperText: 'snake_case: латиница, цифры, _ (например smm_writer)',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) {
+                      final t = (v ?? '').trim();
+                      if (t.isEmpty) return 'Укажите роль';
+                      if (!_customRoleRe.hasMatch(t)) return 'snake_case: a-z, 0-9, _';
+                      return null;
+                    },
+                    onChanged: (_) => _recomputeDirty(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _ProviderKindField(
                   l10n: l10n,
                   value: _providerKind,
@@ -887,6 +956,18 @@ class _AgentEditDialogBodyState extends ConsumerState<_AgentEditDialogBody> {
                     });
                     _recomputeDirty();
                   },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('agentEditDialog_roleDescriptionField'),
+                  controller: _roleDescController,
+                  decoration: InputDecoration(
+                    labelText: l10n.agentsV2FieldRoleDescription,
+                    border: const OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                  minLines: 2,
+                  onChanged: (_) => _recomputeDirty(),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(

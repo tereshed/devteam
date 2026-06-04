@@ -11,6 +11,7 @@ import 'package:frontend/features/projects/presentation/widgets/project_settings
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_field_row.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_stack_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_vector_section.dart';
+import 'package:frontend/features/team/presentation/widgets/project_variables_section.dart';
 import 'package:frontend/features/webhooks/presentation/widgets/webhooks_list_section.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
@@ -149,7 +150,11 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     if (_saveBusy) {
       return;
     }
-    if (!_formKey.currentState!.validate()) {
+    // Форма живёт в табе General; tech stack вынесен в отдельный таб (вне формы),
+    // поэтому при сохранении оттуда _formKey.currentState может быть null (таб
+    // General не смонтирован). Null трактуем как «валидно» — у tech stack нет
+    // валидаторов, а git/vector берутся из контроллеров уровня экрана.
+    if (!(_formKey.currentState?.validate() ?? true)) {
       return;
     }
 
@@ -393,13 +398,15 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
           ),
         Expanded(
           child: DefaultTabController(
-            length: 2,
+            length: 3,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 TabBar(
+                  isScrollable: true,
                   tabs: [
                     Tab(text: l10n.projectSettingsTabGeneral),
+                    Tab(text: l10n.projectSettingsTabVariables),
                     Tab(text: AppLocalizations.of(context)!.webhooksTitle),
                   ],
                 ),
@@ -446,20 +453,43 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                                   onReindex: _onReindex,
                                 ),
                                 const SizedBox(height: 24),
-                                ProjectSettingsTechStackSection(
-                                  rows: _techRows,
-                                  onAddRow: _addTechRow,
-                                  onRemoveRow: _removeTechRow,
-                                  onClearTechStack: _onClearTechStack,
-                                  onRowChanged: _markDirty,
-                                ),
-                                const SizedBox(height: 24),
                                 FilledButton(
                                   onPressed: _saveBusy ? null : () => _onSave(project),
                                   child: Text(l10n.projectSettingsSave),
                                 ),
                               ],
                             ),
+                          ),
+                        ),
+                      ),
+                      // Таб «Переменные (Технологический стек)»: tech stack (часть
+                      // настроек проекта, сохраняется кнопкой ниже) + переменные/секреты
+                      // проекта (сохраняются самостоятельно через ProjectVariablesSection).
+                      RefreshIndicator(
+                        onRefresh: onRefresh,
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              ProjectSettingsTechStackSection(
+                                rows: _techRows,
+                                onAddRow: _addTechRow,
+                                onRemoveRow: _removeTechRow,
+                                onClearTechStack: _onClearTechStack,
+                                onRowChanged: _markDirty,
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton(
+                                onPressed: _saveBusy ? null : () => _onSave(project),
+                                child: Text(l10n.projectSettingsSave),
+                              ),
+                              const SizedBox(height: 32),
+                              const Divider(),
+                              const SizedBox(height: 16),
+                              ProjectVariablesSection(projectId: widget.projectId),
+                            ],
                           ),
                         ),
                       ),

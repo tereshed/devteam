@@ -32,11 +32,10 @@ void main() {
       expect(find.byIcon(Icons.settings_suggest), findsNothing);
     });
 
-    testWidgets('hidden when both agents configured', (tester) async {
+    testWidgets('hidden when router configured', (tester) async {
       await tester.pumpWidget(_wrap(
         state: const ProjectOnboardingState(
           loading: false,
-          orchestratorConfigured: true,
           routerConfigured: true,
         ),
       ));
@@ -45,25 +44,10 @@ void main() {
       expect(find.byIcon(Icons.settings_suggest), findsNothing);
     });
 
-    testWidgets('shows hint when orchestrator not configured', (tester) async {
-      await tester.pumpWidget(_wrap(
-        state: const ProjectOnboardingState(
-          loading: false,
-          orchestratorConfigured: false,
-          routerConfigured: true,
-        ),
-      ));
-      await tester.pumpAndSettle();
-
-      expect(find.byIcon(Icons.settings_suggest), findsOneWidget);
-      expect(find.text('Configure agents'), findsOneWidget);
-    });
-
     testWidgets('shows hint when router not configured', (tester) async {
       await tester.pumpWidget(_wrap(
         state: const ProjectOnboardingState(
           loading: false,
-          orchestratorConfigured: true,
           routerConfigured: false,
         ),
       ));

@@ -28,6 +28,10 @@ type BackendArtifacts struct {
 	MCPJSON        []byte
 	Skills         []AgentSkillArtifact
 	PermissionMode string
+	// MCPEnv — env-переменные sandbox с резолвленными секретами MCP (MCP_*).
+	// В .mcp.json остаётся ссылка ${VAR}; runner вливает MCPEnv в EnvVars контейнера,
+	// Claude Code раскрывает её в рантайме — токен не пишется в .mcp.json открыто.
+	MCPEnv map[string]string
 
 	// --- Hermes (Sprint 16.C) ---
 	// HermesConfigYAML — содержимое ~/.hermes/config.yaml (модель/toolsets/display).

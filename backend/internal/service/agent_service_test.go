@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -326,6 +327,96 @@ func TestAgentService_Create_SandboxHappyPath(t *testing.T) {
 	}
 	if a.Model != nil {
 		t.Errorf("sandbox-agent must NOT have model, got %v", *a.Model)
+	}
+}
+
+func TestAgentService_Create_SandboxModelGoesToSettings(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	cb := models.CodeBackendClaudeCode
+	model := "claude-haiku-4-5-20251001"
+	a, err := svc.Create(context.Background(), CreateAgentInput{
+		Name:          "sandbox-with-model",
+		Role:          models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindSandbox,
+		CodeBackend:   &cb,
+		Model:         &model,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Колонка model должна остаться пустой (CHECK chk_agents_kind_requirements),
+	// а модель — уехать в code_backend_settings.model.
+	if a.Model != nil {
+		t.Errorf("sandbox-agent must NOT have model column, got %v", *a.Model)
+	}
+	var settings AgentCodeBackendSettings
+	if err := json.Unmarshal(a.CodeBackendSettings, &settings); err != nil {
+		t.Fatalf("unmarshal settings: %v", err)
+	}
+	if settings.Model != model {
+		t.Errorf("expected settings.model=%q, got %q", model, settings.Model)
+	}
+}
+
+func TestAgentService_Create_RejectsInvalidProviderKind(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	pk := models.AgentProviderKind("not-a-real-provider")
+	_, err := svc.Create(context.Background(), CreateAgentInput{
+		Name:          "bad-provider",
+		Role:          models.AgentRolePlanner,
+		ExecutionKind: models.AgentExecutionKindLLM,
+		ProviderKind:  &pk,
+	})
+	if !errors.Is(err, ErrAgentValidation) {
+		t.Fatalf("expected ErrAgentValidation, got %v", err)
+	}
+}
+
+func TestAgentService_Create_CustomRoleHappyPath(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	desc := "Пишет SMM-посты для соцсетей по брифу."
+	prompt := "Ты SMM-копирайтер. Пиши вовлекающие посты."
+	a, err := svc.Create(context.Background(), CreateAgentInput{
+		Name:            "smm-writer",
+		Role:            models.AgentRole("smm_writer"),
+		ExecutionKind:   models.AgentExecutionKindLLM,
+		RoleDescription: &desc,
+		SystemPrompt:    &prompt,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if a.Role != models.AgentRole("smm_writer") {
+		t.Errorf("role mismatch: %q", a.Role)
+	}
+}
+
+func TestAgentService_Create_CustomRoleRequiresInstructions(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	// Кастомная роль без role_description/system_prompt — отклоняем.
+	_, err := svc.Create(context.Background(), CreateAgentInput{
+		Name:          "naked-custom",
+		Role:          models.AgentRole("smm_writer"),
+		ExecutionKind: models.AgentExecutionKindLLM,
+	})
+	if !errors.Is(err, ErrAgentValidation) {
+		t.Fatalf("expected ErrAgentValidation, got %v", err)
+	}
+}
+
+func TestAgentService_Create_RejectsMalformedRole(t *testing.T) {
+	svc := newAgentSvcForTest(t)
+	desc := "x"
+	prompt := "y"
+	_, err := svc.Create(context.Background(), CreateAgentInput{
+		Name:            "bad-role",
+		Role:            models.AgentRole("Bad Role!"),
+		ExecutionKind:   models.AgentExecutionKindLLM,
+		RoleDescription: &desc,
+		SystemPrompt:    &prompt,
+	})
+	if !errors.Is(err, ErrAgentValidation) {
+		t.Fatalf("expected ErrAgentValidation, got %v", err)
 	}
 }
 
@@ -845,8 +936,8 @@ func TestAgentService_CreateDefaultProjectAgents_HappyPath(t *testing.T) {
 	}
 
 	agents, total, _ := agentRepo.List(context.Background(), repository.AgentFilter{TeamID: &teamID})
-	if total != 8 {
-		t.Fatalf("expected 8 agents, got %d", total)
+	if total != 7 {
+		t.Fatalf("expected 7 agents, got %d", total)
 	}
 
 	roles := map[models.AgentRole]bool{}
@@ -871,7 +962,6 @@ func TestAgentService_CreateDefaultProjectAgents_HappyPath(t *testing.T) {
 		}
 	}
 	expectedRoles := []models.AgentRole{
-		models.AgentRoleOrchestrator,
 		models.AgentRoleRouter,
 		models.AgentRolePlanner,
 		models.AgentRoleDecomposer,
@@ -885,6 +975,10 @@ func TestAgentService_CreateDefaultProjectAgents_HappyPath(t *testing.T) {
 			t.Errorf("role %s not created", r)
 		}
 	}
+	// orchestrator — это Go-движок, отдельный LLM-агент не создаётся.
+	if roles[models.AgentRoleOrchestrator] {
+		t.Errorf("orchestrator agent must NOT be created (it is a Go engine, not an LLM)")
+	}
 }
 
 func TestAgentService_CreateDefaultProjectAgents_NonDevelopmentTeam(t *testing.T) {
@@ -896,8 +990,8 @@ func TestAgentService_CreateDefaultProjectAgents_NonDevelopmentTeam(t *testing.T
 	}
 
 	agents, total, _ := agentRepo.List(context.Background(), repository.AgentFilter{TeamID: &teamID})
-	if total != 2 {
-		t.Fatalf("expected 2 agents, got %d", total)
+	if total != 1 {
+		t.Fatalf("expected 1 agent, got %d", total)
 	}
 
 	roles := map[models.AgentRole]bool{}
@@ -912,7 +1006,6 @@ func TestAgentService_CreateDefaultProjectAgents_NonDevelopmentTeam(t *testing.T
 	}
 
 	expectedRoles := []models.AgentRole{
-		models.AgentRoleOrchestrator,
 		models.AgentRoleRouter,
 	}
 	for _, r := range expectedRoles {
@@ -922,6 +1015,7 @@ func TestAgentService_CreateDefaultProjectAgents_NonDevelopmentTeam(t *testing.T
 	}
 
 	unexpectedRoles := []models.AgentRole{
+		models.AgentRoleOrchestrator,
 		models.AgentRolePlanner,
 		models.AgentRoleDecomposer,
 		models.AgentRoleReviewer,

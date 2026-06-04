@@ -114,6 +114,49 @@ class TeamRepository {
     }
   }
 
+  /// Создает нового агента в команде.
+  Future<AgentModel> createAgent(
+    String projectId,
+    String teamId, {
+    required String name,
+    required String role,
+    required String executionKind,
+    String? roleDescription,
+    String? systemPrompt,
+    String? model,
+    String? providerKind,
+    String? codeBackend,
+    double? temperature,
+    int? maxTokens,
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty || teamId.isEmpty) {
+      throw ArgumentError('projectId and teamId are required');
+    }
+
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/teams/$teamId/agents',
+        data: {
+          'name': name,
+          'role': role,
+          'execution_kind': executionKind,
+          if (roleDescription != null) 'role_description': roleDescription,
+          if (systemPrompt != null) 'system_prompt': systemPrompt,
+          if (model != null) 'model': model,
+          if (providerKind != null) 'provider_kind': providerKind,
+          if (codeBackend != null) 'code_backend': codeBackend,
+          if (temperature != null) 'temperature': temperature,
+          if (maxTokens != null) 'max_tokens': maxTokens,
+        },
+        cancelToken: cancelToken,
+      );
+      return AgentModel.fromJson(_jsonBody(response));
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   /// Удаляет команду из проекта.
   Future<void> deleteTeam(
     String projectId,
@@ -130,6 +173,29 @@ class TeamRepository {
     try {
       await _dio.delete(
         '/projects/$projectId/teams/$teamId',
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Удаляет агента из команды проекта.
+  Future<void> deleteAgent(
+    String projectId,
+    String agentId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+    if (agentId.isEmpty) {
+      throw ArgumentError('agentId is required');
+    }
+
+    try {
+      await _dio.delete(
+        '/projects/$projectId/team/agents/$agentId',
         cancelToken: cancelToken,
       );
     } on DioException catch (e) {

@@ -95,6 +95,9 @@ abstract class MCPServerRegistryModel with _$MCPServerRegistryModel {
     required String transport,
     @Default('') String command,
     @Default('') String url,
+    @JsonKey(name: 'headers_template')
+    @Default(<String, dynamic>{})
+    Map<String, dynamic> headersTemplate,
     @Default('global') String scope,
     @JsonKey(name: 'is_active') @Default(true) bool isActive,
   }) = _MCPServerRegistryModel;

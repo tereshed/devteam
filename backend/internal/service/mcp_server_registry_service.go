@@ -41,15 +41,16 @@ func (s *MCPServerRegistryService) GetByID(ctx context.Context, id uuid.UUID) (*
 }
 
 type CreateMCPServerInput struct {
-	Name        string
-	Description string
-	Transport   string
-	Command     string
-	Args        []byte
-	URL         string
-	EnvTemplate []byte
-	Scope       string
-	IsActive    *bool
+	Name            string
+	Description     string
+	Transport       string
+	Command         string
+	Args            []byte
+	URL             string
+	EnvTemplate     []byte
+	HeadersTemplate []byte
+	Scope           string
+	IsActive        *bool
 }
 
 func (s *MCPServerRegistryService) Create(ctx context.Context, in CreateMCPServerInput) (*models.MCPServerRegistry, error) {
@@ -64,15 +65,16 @@ func (s *MCPServerRegistryService) Create(ctx context.Context, in CreateMCPServe
 	}
 
 	srv := &models.MCPServerRegistry{
-		Name:        in.Name,
-		Description: in.Description,
-		Transport:   transport,
-		Command:     in.Command,
-		Args:        in.Args,
-		URL:         in.URL,
-		EnvTemplate: in.EnvTemplate,
-		Scope:       scope,
-		IsActive:    isActive,
+		Name:            in.Name,
+		Description:     in.Description,
+		Transport:       transport,
+		Command:         in.Command,
+		Args:            in.Args,
+		URL:             in.URL,
+		EnvTemplate:     in.EnvTemplate,
+		HeadersTemplate: in.HeadersTemplate,
+		Scope:           scope,
+		IsActive:        isActive,
 	}
 
 	if err := s.repo.Create(ctx, srv); err != nil {
@@ -85,15 +87,16 @@ func (s *MCPServerRegistryService) Create(ctx context.Context, in CreateMCPServe
 }
 
 type UpdateMCPServerInput struct {
-	Name        string
-	Description string
-	Transport   string
-	Command     string
-	Args        []byte
-	URL         string
-	EnvTemplate []byte
-	Scope       string
-	IsActive    *bool
+	Name            string
+	Description     string
+	Transport       string
+	Command         string
+	Args            []byte
+	URL             string
+	EnvTemplate     []byte
+	HeadersTemplate []byte
+	Scope           string
+	IsActive        *bool
 }
 
 func (s *MCPServerRegistryService) Update(ctx context.Context, id uuid.UUID, in UpdateMCPServerInput) (*models.MCPServerRegistry, error) {
@@ -120,6 +123,7 @@ func (s *MCPServerRegistryService) Update(ctx context.Context, id uuid.UUID, in 
 	existing.Args = in.Args
 	existing.URL = in.URL
 	existing.EnvTemplate = in.EnvTemplate
+	existing.HeadersTemplate = in.HeadersTemplate
 	existing.Scope = scope
 	if in.IsActive != nil {
 		existing.IsActive = *in.IsActive

@@ -20,7 +20,8 @@ abstract class OnboardingState with _$OnboardingState {
 @freezed
 abstract class ProjectOnboardingState with _$ProjectOnboardingState {
   const factory ProjectOnboardingState({
-    @Default(false) bool orchestratorConfigured,
+    // Оркестратор — это Go-движок, отдельного LLM-агента нет. Готовность к
+    // оркестрации определяется настройкой единственного LLM в петле — router.
     @Default(false) bool routerConfigured,
     @Default(true) bool loading,
     @Default(false) bool hasError,
@@ -28,6 +29,5 @@ abstract class ProjectOnboardingState with _$ProjectOnboardingState {
 
   const ProjectOnboardingState._();
 
-  bool get needsAgentSetup =>
-      !loading && !hasError && (!orchestratorConfigured || !routerConfigured);
+  bool get needsAgentSetup => !loading && !hasError && !routerConfigured;
 }

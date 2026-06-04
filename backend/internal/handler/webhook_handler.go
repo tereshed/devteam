@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -28,6 +30,7 @@ type WebhookHandler struct {
 	convSvc  service.ConversationService
 	taskSvc  service.TaskService
 	baseURL  string
+	orchestratorSvc service.TaskOrchestrator
 }
 
 func NewWebhookHandler(
@@ -36,6 +39,7 @@ func NewWebhookHandler(
 	convSvc service.ConversationService,
 	taskSvc service.TaskService,
 	baseURL string,
+	orchestratorSvc service.TaskOrchestrator,
 ) *WebhookHandler {
 	return &WebhookHandler{
 		repo:     repo,
@@ -43,6 +47,7 @@ func NewWebhookHandler(
 		convSvc:  convSvc,
 		taskSvc:  taskSvc,
 		baseURL:  baseURL,
+		orchestratorSvc: orchestratorSvc,
 	}
 }
 
@@ -407,11 +412,16 @@ func (h *WebhookHandler) Trigger(c *gin.Context) {
 			TeamID:      webhook.TeamID,
 		}
 
-		_, err = h.taskSvc.Create(c.Request.Context(), project.UserID, models.RoleAdmin, project.ID, taskReq)
+		task, err := h.taskSvc.Create(c.Request.Context(), project.UserID, models.RoleAdmin, project.ID, taskReq)
 		if err != nil {
 			h.logTrigger(c, webhook, nil, nil, false, err.Error(), http.StatusInternalServerError)
 			apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
 			return
+		}
+
+		if err := h.orchestratorSvc.EnqueueInitialStep(context.Background(), task.ID); err != nil {
+			// Логируем ошибку, но задачу считаем созданной
+			h.logTrigger(c, webhook, nil, nil, false, fmt.Sprintf("failed to enqueue step: %v", err), http.StatusInternalServerError)
 		}
 
 		h.repo.IncrementTriggerCount(c.Request.Context(), webhook.ID)

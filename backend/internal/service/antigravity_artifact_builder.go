@@ -24,7 +24,7 @@ func (b *AntigravityArtifactBuilder) Backend() models.CodeBackend { return model
 // Build — собирает артефакты Antigravity по агенту.
 //
 // Как и для Claude Code, используется settings.json и mcp.json.
-func (b *AntigravityArtifactBuilder) Build(_ context.Context, agent *models.Agent, _ *models.Project, deps ArtifactBuilderDeps) (*BackendArtifacts, error) {
+func (b *AntigravityArtifactBuilder) Build(ctx context.Context, agent *models.Agent, project *models.Project, deps ArtifactBuilderDeps) (*BackendArtifacts, error) {
 	if agent == nil {
 		return nil, errors.New("antigravity builder: agent is nil")
 	}
@@ -47,7 +47,7 @@ func (b *AntigravityArtifactBuilder) Build(_ context.Context, agent *models.Agen
 		return nil, fmt.Errorf("antigravity builder: settings.json: %w", err)
 	}
 
-	mcpJSON, err := buildMCPJSON(codeSettings, deps.MCPRegistry)
+	mcpJSON, mcpEnv, err := buildMCPJSON(ctx, codeSettings, deps.MCPRegistry, project, deps.SecretResolver)
 	if err != nil {
 		return nil, fmt.Errorf("antigravity builder: mcp.json: %w", err)
 	}
@@ -67,6 +67,7 @@ func (b *AntigravityArtifactBuilder) Build(_ context.Context, agent *models.Agen
 	return &BackendArtifacts{
 		SettingsJSON:   settingsJSON,
 		MCPJSON:        mcpJSON,
+		MCPEnv:         mcpEnv,
 		Skills:         skills,
 		PermissionMode: perms.DefaultMode,
 	}, nil

@@ -25,10 +25,11 @@ type mcpServerRegistryRequest struct {
 	Transport   string         `json:"transport" binding:"required"`
 	Command     string         `json:"command"`
 	Args        datatypes.JSON `json:"args"`
-	URL         string         `json:"url"`
-	EnvTemplate datatypes.JSON `json:"env_template"`
-	Scope       string         `json:"scope"`
-	IsActive    *bool          `json:"is_active"`
+	URL             string         `json:"url"`
+	EnvTemplate     datatypes.JSON `json:"env_template"`
+	HeadersTemplate datatypes.JSON `json:"headers_template"`
+	Scope           string         `json:"scope"`
+	IsActive        *bool          `json:"is_active"`
 }
 
 // List returns all MCP servers in the registry.
@@ -90,15 +91,16 @@ func (h *MCPServerRegistryHandler) Create(c *gin.Context) {
 	}
 
 	srv, err := h.svc.Create(c.Request.Context(), service.CreateMCPServerInput{
-		Name:        req.Name,
-		Description: req.Description,
-		Transport:   req.Transport,
-		Command:     req.Command,
-		Args:        req.Args,
-		URL:         req.URL,
-		EnvTemplate: req.EnvTemplate,
-		Scope:       req.Scope,
-		IsActive:    req.IsActive,
+		Name:            req.Name,
+		Description:     req.Description,
+		Transport:       req.Transport,
+		Command:         req.Command,
+		Args:            req.Args,
+		URL:             req.URL,
+		EnvTemplate:     req.EnvTemplate,
+		HeadersTemplate: req.HeadersTemplate,
+		Scope:           req.Scope,
+		IsActive:        req.IsActive,
 	})
 	if err != nil {
 		writeMCPRegistryError(c, err)
@@ -131,15 +133,16 @@ func (h *MCPServerRegistryHandler) Update(c *gin.Context) {
 	}
 
 	srv, err := h.svc.Update(c.Request.Context(), id, service.UpdateMCPServerInput{
-		Name:        req.Name,
-		Description: req.Description,
-		Transport:   req.Transport,
-		Command:     req.Command,
-		Args:        req.Args,
-		URL:         req.URL,
-		EnvTemplate: req.EnvTemplate,
-		Scope:       req.Scope,
-		IsActive:    req.IsActive,
+		Name:            req.Name,
+		Description:     req.Description,
+		Transport:       req.Transport,
+		Command:         req.Command,
+		Args:            req.Args,
+		URL:             req.URL,
+		EnvTemplate:     req.EnvTemplate,
+		HeadersTemplate: req.HeadersTemplate,
+		Scope:           req.Scope,
+		IsActive:        req.IsActive,
 	})
 	if err != nil {
 		writeMCPRegistryError(c, err)

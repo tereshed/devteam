@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/devteam/backend/internal/models"
@@ -164,20 +166,116 @@ func TestBuildArtifacts_MCPJSON_ResolvesFromRegistry(t *testing.T) {
 
 	var parsed struct {
 		MCPServers map[string]struct {
-			Transport string            `json:"transport"`
-			Command   string            `json:"command"`
-			Args      []string          `json:"args"`
-			Env       map[string]string `json:"env"`
+			Type    string            `json:"type"`
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
 		} `json:"mcpServers"`
 	}
 	require.NoError(t, json.Unmarshal(art.MCPJSON, &parsed))
 	gh := parsed.MCPServers["github"]
-	assert.Equal(t, "stdio", gh.Transport)
+	assert.Equal(t, "stdio", gh.Type)
 	assert.Equal(t, "mcp-github", gh.Command)
 	assert.Equal(t, []string{"--port", "3001"}, gh.Args)
 	// merge env_template + override
 	assert.Equal(t, "v", gh.Env["DEFAULT"])
 	assert.Equal(t, "1", gh.Env["OVERRIDE"])
+}
+
+// Remote (sse) MCP-сервер с Bearer-секретом: токен НЕ попадает в .mcp.json
+// открытым текстом — в headers ссылка ${MCP_...}, а plaintext уходит в mcpEnv.
+func TestBuildMCPJSON_RemoteHeadersSecretEnvIndirection(t *testing.T) {
+	settings := AgentCodeBackendSettings{
+		MCPServers: []AgentMCPServerRef{{Name: "YandexTrackerTools"}},
+	}
+	registry := &fakeMCPRegistry{rows: map[string]*models.MCPServerRegistry{
+		"YandexTrackerTools": {
+			Name:            "YandexTrackerTools",
+			Transport:       models.MCPTransportSSE,
+			URL:             "https://yandex-tracker.mcp.prodavai.io/sse/",
+			HeadersTemplate: datatypes.JSON(`{"Authorization":"Bearer ${secret:YANDEX_TRACKER_TOKEN}"}`),
+		},
+	}}
+	resolver := &fakeSecretResolver{secrets: map[string]string{"YANDEX_TRACKER_TOKEN": "tok-abc"}}
+	project := &models.Project{ID: uuid.New()}
+
+	body, env, err := buildMCPJSON(context.Background(), settings, registry, project, resolver)
+	require.NoError(t, err)
+	require.NotNil(t, body)
+
+	var parsed struct {
+		MCPServers map[string]struct {
+			Type    string            `json:"type"`
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+		} `json:"mcpServers"`
+	}
+	require.NoError(t, json.Unmarshal(body, &parsed))
+	srv := parsed.MCPServers["YandexTrackerTools"]
+	assert.Equal(t, "sse", srv.Type)
+	assert.Equal(t, "https://yandex-tracker.mcp.prodavai.io/sse/", srv.URL)
+
+	auth := srv.Headers["Authorization"]
+	assert.NotContains(t, auth, "tok-abc", "plaintext token must NOT be in .mcp.json")
+	assert.Contains(t, auth, "Bearer ${MCP_")
+
+	var found bool
+	for k, v := range env {
+		if v == "tok-abc" {
+			found = true
+			assert.True(t, strings.HasPrefix(k, "MCP_"), "env key must use MCP_ prefix, got %q", k)
+			assert.Contains(t, auth, "${"+k+"}", "header must reference the env var")
+		}
+	}
+	assert.True(t, found, "resolved secret must be present in mcpEnv")
+}
+
+// Инлайн-определение сервера прямо у агента команды (без реестра): type/url/headers
+// заданы в ref, секрет резолвится через env-индирекцию, registry=nil допустим.
+func TestBuildMCPJSON_InlineServerWithSecret(t *testing.T) {
+	settings := AgentCodeBackendSettings{
+		MCPServers: []AgentMCPServerRef{{
+			Name:    "YandexTrackerTools",
+			Type:    "sse",
+			URL:     "https://yandex-tracker.mcp.prodavai.io/sse/",
+			Headers: map[string]string{"Authorization": "Bearer ${secret:YANDEX_TRACKER_TOKEN}"},
+		}},
+	}
+	resolver := &fakeSecretResolver{secrets: map[string]string{"YANDEX_TRACKER_TOKEN": "tok-xyz"}}
+	project := &models.Project{ID: uuid.New()}
+
+	// registry=nil — для инлайн-сервера реестр не нужен.
+	body, env, err := buildMCPJSON(context.Background(), settings, nil, project, resolver)
+	require.NoError(t, err)
+	require.NotNil(t, body)
+
+	var parsed struct {
+		MCPServers map[string]struct {
+			Type    string            `json:"type"`
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+		} `json:"mcpServers"`
+	}
+	require.NoError(t, json.Unmarshal(body, &parsed))
+	srv := parsed.MCPServers["YandexTrackerTools"]
+	assert.Equal(t, "sse", srv.Type)
+	assert.Equal(t, "https://yandex-tracker.mcp.prodavai.io/sse/", srv.URL)
+	assert.NotContains(t, srv.Headers["Authorization"], "tok-xyz")
+	assert.Contains(t, srv.Headers["Authorization"], "Bearer ${MCP_")
+
+	var found bool
+	for _, v := range env {
+		if v == "tok-xyz" {
+			found = true
+		}
+	}
+	assert.True(t, found, "resolved secret must be in mcpEnv")
+}
+
+// Инлайн-конфиг проходит строгую валидацию настроек (type/url/headers — разрешённые ключи).
+func TestValidateCodeBackendSettings_InlineMCPAllowed(t *testing.T) {
+	raw := []byte(`{"mcp_servers":[{"name":"YandexTrackerTools","type":"sse","url":"https://x/sse/","headers":{"Authorization":"Bearer ${secret:T}"}}]}`)
+	require.NoError(t, validateCodeBackendSettingsStrict(raw))
 }
 
 func TestBuildArtifacts_RejectsUnknownMCPServer(t *testing.T) {

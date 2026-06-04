@@ -613,7 +613,7 @@ func Run(role Role) {
 	toolDefinitionHandler := handler.NewToolDefinitionHandler(toolDefinitionService)
 	taskHandler := handler.NewTaskHandler(taskService, orchestratorService, taskControlBus, v2TaskLifecycle)
 	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
-	webhookHandler := handler.NewWebhookHandler(webhookRepo, projectRepo, conversationService, taskService, webhookPublicBase)
+	webhookHandler := handler.NewWebhookHandler(webhookRepo, projectRepo, conversationService, taskService, webhookPublicBase, orchestratorService)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
 
 	// PATCH /me/llm-credentials rate limit: shared через Redis при multi-instance (иначе

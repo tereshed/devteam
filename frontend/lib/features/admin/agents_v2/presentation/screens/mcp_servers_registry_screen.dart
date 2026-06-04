@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/l10n/require.dart';
@@ -77,6 +79,7 @@ class MCPServersRegistryScreen extends ConsumerWidget {
               description: data['description'] as String?,
               command: data['command'] as String?,
               url: data['url'] as String?,
+              headersTemplate: data['headers_template'] as Map<String, dynamic>?,
               scope: data['scope'] as String?,
               isActive: data['is_active'] as bool?,
             );
@@ -88,6 +91,7 @@ class MCPServersRegistryScreen extends ConsumerWidget {
               description: data['description'] as String?,
               command: data['command'] as String?,
               url: data['url'] as String?,
+              headersTemplate: data['headers_template'] as Map<String, dynamic>?,
               scope: data['scope'] as String?,
               isActive: data['is_active'] as bool?,
             );
@@ -187,6 +191,7 @@ class _MCPServerEditDialogState extends State<_MCPServerEditDialog> {
   late final TextEditingController _descCtrl;
   late final TextEditingController _commandCtrl;
   late final TextEditingController _urlCtrl;
+  late final TextEditingController _headersCtrl;
   late String _transport;
   late String _scope;
   late bool _isActive;
@@ -199,6 +204,10 @@ class _MCPServerEditDialogState extends State<_MCPServerEditDialog> {
     _descCtrl = TextEditingController(text: widget.server?.description ?? '');
     _commandCtrl = TextEditingController(text: widget.server?.command ?? '');
     _urlCtrl = TextEditingController(text: widget.server?.url ?? '');
+    final headers = widget.server?.headersTemplate ?? const {};
+    _headersCtrl = TextEditingController(
+      text: headers.isEmpty ? '' : const JsonEncoder.withIndent('  ').convert(headers),
+    );
     _transport = widget.server?.transport ?? 'stdio';
     _scope = widget.server?.scope ?? 'global';
     _isActive = widget.server?.isActive ?? true;
@@ -210,6 +219,7 @@ class _MCPServerEditDialogState extends State<_MCPServerEditDialog> {
     _descCtrl.dispose();
     _commandCtrl.dispose();
     _urlCtrl.dispose();
+    _headersCtrl.dispose();
     super.dispose();
   }
 
@@ -266,7 +276,7 @@ class _MCPServerEditDialogState extends State<_MCPServerEditDialog> {
                       border: const OutlineInputBorder(),
                     ),
                   )
-                else
+                else ...[
                   TextFormField(
                     controller: _urlCtrl,
                     decoration: InputDecoration(
@@ -274,6 +284,31 @@ class _MCPServerEditDialogState extends State<_MCPServerEditDialog> {
                       border: const OutlineInputBorder(),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _headersCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Headers (JSON)',
+                      helperText:
+                          'Напр.: {"Authorization": "Bearer \${secret:YANDEX_TRACKER_TOKEN}"}. '
+                          '\${secret:NAME} берётся из переменных проекта.',
+                      helperMaxLines: 3,
+                      border: OutlineInputBorder(),
+                    ),
+                    minLines: 2,
+                    maxLines: 6,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null;
+                      try {
+                        final decoded = jsonDecode(v) as Object?;
+                        if (decoded is! Map) return 'Должен быть JSON-объект';
+                        return null;
+                      } catch (_) {
+                        return 'Некорректный JSON';
+                      }
+                    },
+                  ),
+                ],
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: _scope,
@@ -316,12 +351,17 @@ class _MCPServerEditDialogState extends State<_MCPServerEditDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
+      Map<String, dynamic>? headers;
+      if (_transport != 'stdio' && _headersCtrl.text.trim().isNotEmpty) {
+        headers = (jsonDecode(_headersCtrl.text) as Map).cast<String, dynamic>();
+      }
       await widget.onSave({
         'name': _nameCtrl.text,
         'description': _descCtrl.text,
         'transport': _transport,
         'command': _commandCtrl.text,
         'url': _urlCtrl.text,
+        'headers_template': headers,
         'scope': _scope,
         'is_active': _isActive,
       });

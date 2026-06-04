@@ -4,18 +4,22 @@ import 'package:frontend/features/team/domain/tool_binding_patch_item.dart';
 /// Тело `PATCH /projects/:id/team/agents/:agentId` (зеркало Go `PatchAgentRequest`).
 class UpdateAgentPatch {
   const UpdateAgentPatch({
+    this.role = const Patch<String>.omit(),
     this.model = const Patch<String>.omit(),
     this.promptId = const Patch<String?>.omit(),
     this.systemPrompt = const Patch<String?>.omit(),
+    this.roleDescription = const Patch<String?>.omit(),
     this.codeBackend = const Patch<String?>.omit(),
     this.providerKind = const Patch<String?>.omit(),
     this.isActive = const Patch<bool>.omit(),
     this.toolBindings = const Patch<List<ToolBindingPatchItem>>.omit(),
   });
 
+  final Patch<String> role;
   final Patch<String> model;
   final Patch<String?> promptId;
   final Patch<String?> systemPrompt;
+  final Patch<String?> roleDescription;
   final Patch<String?> codeBackend;
   final Patch<String?> providerKind;
   final Patch<bool> isActive;
@@ -23,6 +27,10 @@ class UpdateAgentPatch {
 
   Map<String, dynamic> toWireJson() {
     final m = <String, dynamic>{};
+    // role нельзя сбрасывать в null — только сменить значение (для кастомных ролей).
+    if (role.isValue) {
+      m['role'] = role.requireValue;
+    }
     if (model.isClear) {
       m['model'] = null;
     } else if (model.isValue) {
@@ -37,6 +45,11 @@ class UpdateAgentPatch {
       m['system_prompt'] = null;
     } else if (systemPrompt.isValue) {
       m['system_prompt'] = systemPrompt.requireValue;
+    }
+    if (roleDescription.isClear) {
+      m['role_description'] = null;
+    } else if (roleDescription.isValue) {
+      m['role_description'] = roleDescription.requireValue;
     }
     if (codeBackend.isClear) {
       m['code_backend'] = null;

@@ -37,10 +37,12 @@ class AgentCard extends StatelessWidget {
     super.key,
     required this.agent,
     this.onTap,
+    this.onDelete,
   });
 
   final AgentModel agent;
   final VoidCallback? onTap;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -119,6 +121,15 @@ class AgentCard extends StatelessWidget {
               ],
             ),
           ),
+          if (onDelete != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 20),
+              color: scheme.error,
+              tooltip: l10n.delete,
+              onPressed: onDelete,
+            ),
+          ],
         ],
       ),
     );

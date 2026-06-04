@@ -30,6 +30,7 @@ type AgentResponse struct {
 	ID           string                 `json:"id"`
 	Name         string                 `json:"name"`
 	Role         string                 `json:"role"`
+	RoleDescription *string             `json:"role_description,omitempty"`
 	Model        *string                `json:"model"`
 	PromptID     *string                `json:"prompt_id,omitempty"`
 	PromptName   *string                `json:"prompt_name"`
@@ -50,6 +51,21 @@ type CreateTeamRequest struct {
 	Name string `json:"name" binding:"required"`
 	Type string `json:"type" binding:"required"`
 }
+
+// CreateTeamAgentRequest — запрос на создание агента в команде.
+type CreateTeamAgentRequest struct {
+	Name            string   `json:"name" binding:"required"`
+	Role            string   `json:"role" binding:"required"`
+	ExecutionKind   string   `json:"execution_kind" binding:"required"`
+	RoleDescription *string  `json:"role_description,omitempty"`
+	SystemPrompt    *string  `json:"system_prompt,omitempty"`
+	Model           *string  `json:"model,omitempty"`
+	ProviderKind    *string  `json:"provider_kind,omitempty"`
+	CodeBackend     *string  `json:"code_backend,omitempty"`
+	Temperature     *float64 `json:"temperature,omitempty"`
+	MaxTokens       *int     `json:"max_tokens,omitempty"`
+}
+
 
 // ToTeamResponse маппит модель команды в DTO.
 func ToTeamResponse(team *models.Team) TeamResponse {
@@ -122,10 +138,11 @@ func ToAgentResponse(agent *models.Agent) AgentResponse {
 	}
 
 	return AgentResponse{
-		ID:           agent.ID.String(),
-		Name:         agent.Name,
-		Role:         string(agent.Role),
-		Model:        modelVal,
+		ID:              agent.ID.String(),
+		Name:            agent.Name,
+		Role:            string(agent.Role),
+		RoleDescription: agent.RoleDescription,
+		Model:           modelVal,
 		PromptID:     promptID,
 		PromptName:   promptName,
 		SystemPrompt: agent.SystemPrompt,

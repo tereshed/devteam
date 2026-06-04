@@ -15,6 +15,17 @@ const Set<String> kNoBackendRoles = {'orchestrator', 'router'};
 /// `true`, если роль выбирает code_backend (все, кроме orchestrator/router).
 bool agentRoleUsesBackend(String role) => !kNoBackendRoles.contains(role);
 
+/// Системные роли (зеркало backend `AgentRole.IsSystem`): на них завязана механика
+/// оркестрации (branch-policy, дефолтные агенты, исключение assistant из каталога
+/// Router'а). Менять такую роль нельзя — read-only. Кастомные роли редактируемы.
+const Set<String> kSystemAgentRoles = {
+  'worker', 'supervisor', 'orchestrator', 'planner', 'developer', 'reviewer',
+  'tester', 'devops', 'router', 'decomposer', 'merger', 'assistant',
+};
+
+/// `true`, если роль кастомная (не системная) — её можно редактировать в UI.
+bool agentRoleIsCustom(String role) => !kSystemAgentRoles.contains(role);
+
 const Set<String> _allProviderKinds = {
   'anthropic',
   'anthropic_oauth',

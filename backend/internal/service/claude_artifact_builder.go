@@ -36,7 +36,7 @@ func (b *ClaudeArtifactBuilder) Backend() models.CodeBackend { return models.Cod
 // project пока не используется (Claude .mcp.json env-template не поддерживает
 // ${secret:NAME}-шаблоны), но принимается ради единого контракта ArtifactBuilder.
 // Когда добавим резолв секретов и для Claude — у нас уже будет «якорь» владельца.
-func (b *ClaudeArtifactBuilder) Build(_ context.Context, agent *models.Agent, _ *models.Project, deps ArtifactBuilderDeps) (*BackendArtifacts, error) {
+func (b *ClaudeArtifactBuilder) Build(ctx context.Context, agent *models.Agent, project *models.Project, deps ArtifactBuilderDeps) (*BackendArtifacts, error) {
 	if agent == nil {
 		return nil, errors.New("claude builder: agent is nil")
 	}
@@ -59,7 +59,7 @@ func (b *ClaudeArtifactBuilder) Build(_ context.Context, agent *models.Agent, _ 
 		return nil, fmt.Errorf("claude builder: settings.json: %w", err)
 	}
 
-	mcpJSON, err := buildMCPJSON(codeSettings, deps.MCPRegistry)
+	mcpJSON, mcpEnv, err := buildMCPJSON(ctx, codeSettings, deps.MCPRegistry, project, deps.SecretResolver)
 	if err != nil {
 		return nil, fmt.Errorf("claude builder: mcp.json: %w", err)
 	}
@@ -79,6 +79,7 @@ func (b *ClaudeArtifactBuilder) Build(_ context.Context, agent *models.Agent, _ 
 	return &BackendArtifacts{
 		SettingsJSON:   settingsJSON,
 		MCPJSON:        mcpJSON,
+		MCPEnv:         mcpEnv,
 		Skills:         skills,
 		PermissionMode: perms.DefaultMode,
 	}, nil

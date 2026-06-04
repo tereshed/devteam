@@ -28,6 +28,12 @@ type PatchAgentRequest struct {
 	systemPromptSet, systemPromptNull bool
 	systemPromptVal                  *string
 
+	roleDescriptionSet, roleDescriptionNull bool
+	roleDescriptionVal                      *string
+
+	roleSet bool
+	roleVal *string
+
 	isActiveSet bool
 	isActiveVal bool
 
@@ -97,6 +103,29 @@ func (p *PatchAgentRequest) UnmarshalJSON(data []byte) error {
 			}
 			p.systemPromptVal = &s
 		}
+	}
+	if v, ok := raw["role_description"]; ok {
+		p.roleDescriptionSet = true
+		if isJSONNull(v) {
+			p.roleDescriptionNull = true
+		} else {
+			var s string
+			if err := json.Unmarshal(v, &s); err != nil {
+				return err
+			}
+			p.roleDescriptionVal = &s
+		}
+	}
+	if v, ok := raw["role"]; ok {
+		p.roleSet = true
+		if isJSONNull(v) {
+			return errors.New("role cannot be null")
+		}
+		var s string
+		if err := json.Unmarshal(v, &s); err != nil {
+			return err
+		}
+		p.roleVal = &s
 	}
 	if v, ok := raw["provider_kind"]; ok {
 		p.providerKindSet = true
@@ -205,6 +234,31 @@ func (p PatchAgentRequest) SystemPromptValue() (string, bool) {
 		return "", false
 	}
 	return *p.systemPromptVal, true
+}
+
+func (p PatchAgentRequest) RoleDescriptionPresent() bool { return p.roleDescriptionSet }
+
+func (p PatchAgentRequest) RoleDescriptionClear() bool {
+	return p.roleDescriptionSet && p.roleDescriptionNull
+}
+
+func (p PatchAgentRequest) RoleDescriptionValue() (string, bool) {
+	if !p.roleDescriptionSet || p.roleDescriptionNull {
+		return "", false
+	}
+	if p.roleDescriptionVal == nil {
+		return "", false
+	}
+	return *p.roleDescriptionVal, true
+}
+
+func (p PatchAgentRequest) RolePresent() bool { return p.roleSet }
+
+func (p PatchAgentRequest) RoleValue() (string, bool) {
+	if !p.roleSet || p.roleVal == nil {
+		return "", false
+	}
+	return *p.roleVal, true
 }
 
 // ProviderKindPresent true если ключ "provider_kind" был в JSON (Sprint 15.e2e).

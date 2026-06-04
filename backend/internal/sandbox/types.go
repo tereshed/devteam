@@ -149,6 +149,10 @@ type AgentSettingsBundle struct {
 	SettingsJSON   []byte
 	MCPJSON        []byte
 	PermissionMode string
+	// MCPEnv — env-переменные с резолвленными секретами MCP (MCP_*). Runner мерджит
+	// их в SandboxOptions.EnvVars; в .mcp.json остаётся ссылка ${VAR}, которую Claude
+	// Code раскрывает из env в рантайме. Ключи проходят ValidateEnvKeys (префикс MCP_).
+	MCPEnv map[string]string
 
 	// HermesConfigYAML — содержимое /home/sandbox/.hermes/config.yaml.
 	HermesConfigYAML []byte

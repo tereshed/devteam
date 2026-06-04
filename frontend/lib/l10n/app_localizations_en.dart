@@ -1188,6 +1188,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectSettingsTabGeneral => 'General';
 
   @override
+  String get projectSettingsTabVariables => 'Variables (tech stack)';
+
+  @override
   String get projectSettingsNoChanges => 'No changes to save';
 
   @override
@@ -1885,7 +1888,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentSandboxSettingsMCPHelper =>
-      'JSON array of MCP server bindings: see docs.';
+      'JSON array of MCP servers. Inline server fields: name, type (sse/http/stdio), url, headers. In a header value you can reference a project variable via the secret:NAME prefix — it is injected at runtime and never written to the file.';
 
   @override
   String get agentSandboxSettingsSkillsHelper =>
@@ -2702,7 +2705,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingConfigureProjectAgents =>
-      'Configure the orchestrator and router agents — select an LLM provider and model for each so that task orchestration can begin.';
+      'Configure the router agent — select an LLM provider and model so that task orchestration can begin.';
 
   @override
   String get onboardingGoToTeam => 'Configure agents';

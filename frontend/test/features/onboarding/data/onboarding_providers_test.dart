@@ -160,7 +160,7 @@ void main() {
   });
 
   group('projectOnboardingStateProvider', () {
-    test('needs setup when orchestrator has no model', () async {
+    test('needs setup when router has no model', () async {
       final container = ProviderContainer(
         overrides: [
           teamProvider('p1').overrideWith(
@@ -173,11 +173,72 @@ void main() {
               updatedAt: DateTime(2024),
               agents: [
                 const AgentModel(
-                  id: 'a1',
-                  name: 'orchestrator',
-                  role: 'orchestrator',
+                  id: 'a2',
+                  name: 'router',
+                  role: 'router',
                   isActive: true,
                 ),
+              ],
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(teamProvider('p1').future);
+
+      final state = container.read(projectOnboardingStateProvider('p1'));
+      expect(state.loading, isFalse);
+      expect(state.routerConfigured, isFalse);
+      expect(state.needsAgentSetup, isTrue);
+    });
+
+    test('needs setup when router model set but providerKind missing',
+        () async {
+      final container = ProviderContainer(
+        overrides: [
+          teamProvider('p1').overrideWith(
+            (ref) async => TeamModel(
+              id: 't1',
+              name: 'Dev',
+              projectId: 'p1',
+              type: 'development',
+              createdAt: DateTime(2024),
+              updatedAt: DateTime(2024),
+              agents: [
+                const AgentModel(
+                  id: 'a2',
+                  name: 'router',
+                  role: 'router',
+                  isActive: true,
+                  model: 'claude-3-5-sonnet',
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(teamProvider('p1').future);
+
+      final state = container.read(projectOnboardingStateProvider('p1'));
+      expect(state.routerConfigured, isFalse);
+      expect(state.needsAgentSetup, isTrue);
+    });
+
+    test('no setup needed when router configured', () async {
+      final container = ProviderContainer(
+        overrides: [
+          teamProvider('p1').overrideWith(
+            (ref) async => TeamModel(
+              id: 't1',
+              name: 'Dev',
+              projectId: 'p1',
+              type: 'development',
+              createdAt: DateTime(2024),
+              updatedAt: DateTime(2024),
+              agents: [
                 const AgentModel(
                   id: 'a2',
                   name: 'router',
@@ -197,92 +258,7 @@ void main() {
 
       final state = container.read(projectOnboardingStateProvider('p1'));
       expect(state.loading, isFalse);
-      expect(state.orchestratorConfigured, isFalse);
       expect(state.routerConfigured, isTrue);
-      expect(state.needsAgentSetup, isTrue);
-    });
-
-    test('needs setup when model set but providerKind missing', () async {
-      final container = ProviderContainer(
-        overrides: [
-          teamProvider('p1').overrideWith(
-            (ref) async => TeamModel(
-              id: 't1',
-              name: 'Dev',
-              projectId: 'p1',
-              type: 'development',
-              createdAt: DateTime(2024),
-              updatedAt: DateTime(2024),
-              agents: [
-                const AgentModel(
-                  id: 'a1',
-                  name: 'orchestrator',
-                  role: 'orchestrator',
-                  isActive: true,
-                  model: 'claude-3-5-sonnet',
-                ),
-                const AgentModel(
-                  id: 'a2',
-                  name: 'router',
-                  role: 'router',
-                  isActive: true,
-                  model: 'claude-3-5-sonnet',
-                  providerKind: 'anthropic',
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      await container.read(teamProvider('p1').future);
-
-      final state = container.read(projectOnboardingStateProvider('p1'));
-      expect(state.orchestratorConfigured, isFalse);
-      expect(state.routerConfigured, isTrue);
-      expect(state.needsAgentSetup, isTrue);
-    });
-
-    test('no setup needed when both agents configured', () async {
-      final container = ProviderContainer(
-        overrides: [
-          teamProvider('p1').overrideWith(
-            (ref) async => TeamModel(
-              id: 't1',
-              name: 'Dev',
-              projectId: 'p1',
-              type: 'development',
-              createdAt: DateTime(2024),
-              updatedAt: DateTime(2024),
-              agents: [
-                const AgentModel(
-                  id: 'a1',
-                  name: 'orchestrator',
-                  role: 'orchestrator',
-                  isActive: true,
-                  model: 'claude-3-5-sonnet',
-                  providerKind: 'anthropic',
-                ),
-                const AgentModel(
-                  id: 'a2',
-                  name: 'router',
-                  role: 'router',
-                  isActive: true,
-                  model: 'claude-3-5-sonnet',
-                  providerKind: 'anthropic',
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      await container.read(teamProvider('p1').future);
-
-      final state = container.read(projectOnboardingStateProvider('p1'));
-      expect(state.loading, isFalse);
       expect(state.needsAgentSetup, isFalse);
     });
   });

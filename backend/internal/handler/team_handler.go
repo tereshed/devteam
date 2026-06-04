@@ -38,12 +38,16 @@ func writeTeamHandlerError(c *gin.Context, err error) {
 		errors.Is(err, service.ErrTeamAgentInvalidCodeBackend),
 		errors.Is(err, service.ErrTeamAgentInvalidProviderKind),
 		errors.Is(err, service.ErrTeamAgentInvalidToolBindings),
+		errors.Is(err, service.ErrTeamAgentRoleImmutable),
+		errors.Is(err, service.ErrTeamAgentInvalidRole),
 		errors.Is(err, service.ErrTeamCannotDeleteDevelopment),
 		errors.Is(err, service.ErrTeamTypeInvalid),
 		errors.Is(err, service.ErrTeamTypeCannotDeleteSystem),
-		errors.Is(err, service.ErrTeamTypeInUse):
+		errors.Is(err, service.ErrTeamTypeInUse),
+		errors.Is(err, service.ErrAgentValidation):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTeamAgentConflict),
+		errors.Is(err, service.ErrAgentNameAlreadyTaken),
 		errors.Is(err, service.ErrTeamTypeAlreadyExists):
 		apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, err.Error())
 	default:
@@ -241,6 +245,102 @@ func (h *TeamHandler) ListByProjectID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// CreateAgent создает нового агента в команде
+// @Summary Создание агента в команде
+// @Description Создает агента и привязывает его к указанной команде
+// @Tags teams
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
+// @Accept json
+// @Produce json
+// @Param id path string true "Project ID"
+// @Param teamId path string true "Team ID"
+// @Param request body dto.CreateTeamAgentRequest true "Параметры создания агента"
+// @Success 201 {object} dto.AgentResponse
+// @Router /projects/{id}/teams/{teamId}/agents [post]
+func (h *TeamHandler) CreateAgent(c *gin.Context) {
+	uid, role, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid project ID format")
+		return
+	}
+
+	teamID, err := uuid.Parse(c.Param("teamId"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid team ID format")
+		return
+	}
+
+	if _, err := h.projectService.GetByID(c.Request.Context(), uid, role, projectID); err != nil {
+		writeTeamHandlerError(c, err)
+		return
+	}
+
+	var req dto.CreateTeamAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
+		return
+	}
+
+	agent, err := h.teamService.CreateAgent(c.Request.Context(), projectID, teamID, req)
+	if err != nil {
+		writeTeamHandlerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.ToAgentResponse(agent))
+}
+
+// DeleteAgent удаляет агента из команды
+// @Summary Удаление агента команды
+// @Description Удаляет агента, принадлежащего команде указанного проекта
+// @Tags teams
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
+// @Produce json
+// @Param id path string true "Project ID"
+// @Param agentId path string true "Agent ID"
+// @Success 204
+// @Failure 404 {object} apierror.ErrorResponse
+// @Router /projects/{id}/team/agents/{agentId} [delete]
+func (h *TeamHandler) DeleteAgent(c *gin.Context) {
+	uid, role, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid project ID format")
+		return
+	}
+
+	agentID, err := uuid.Parse(c.Param("agentId"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid agent ID format")
+		return
+	}
+
+	if _, err := h.projectService.GetByID(c.Request.Context(), uid, role, projectID); err != nil {
+		writeTeamHandlerError(c, err)
+		return
+	}
+
+	if err := h.teamService.DeleteAgent(c.Request.Context(), projectID, agentID); err != nil {
+		writeTeamHandlerError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 // Create создает новую команду проекта

@@ -48,6 +48,19 @@ func (m *MockTeamService) PatchAgent(ctx context.Context, projectID, agentID uui
 	return args.Get(0).(*models.Team), args.Error(1)
 }
 
+func (m *MockTeamService) CreateAgent(ctx context.Context, projectID uuid.UUID, teamID uuid.UUID, req dto.CreateTeamAgentRequest) (*models.Agent, error) {
+	args := m.Called(ctx, projectID, teamID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
+func (m *MockTeamService) DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID) error {
+	args := m.Called(ctx, projectID, agentID)
+	return args.Error(0)
+}
+
 func (m *MockTeamService) GetAgentSettings(ctx context.Context, actor service.AgentSettingsActor, agentID uuid.UUID) (*models.Agent, error) {
 	args := m.Called(ctx, actor, agentID)
 	if args.Get(0) == nil {

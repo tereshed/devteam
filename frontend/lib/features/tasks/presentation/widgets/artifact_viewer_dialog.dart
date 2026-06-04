@@ -535,6 +535,13 @@ class _JsonView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // raw_output / raw_response — это одна большая текстовая строка. Показываем её
+    // как есть: реальные переносы строк (\n) и перенос длинных строк по ширине.
+    // Иначе JsonEncoder экранирует \n, текст уходит в одну строку и уезжает за край.
+    final raw = content['raw_output'] ?? content['raw_response'];
+    if (raw is String) {
+      return _LargeTextView(text: raw, kind: kind, wrap: true);
+    }
     final pretty = const JsonEncoder.withIndent('  ').convert(content);
     return _LargeTextView(text: pretty, kind: kind);
   }
@@ -544,10 +551,13 @@ class _JsonView extends StatelessWidget {
 /// "Copy full" — спасает UI thread на `merged_code` / `raw_output_truncated`,
 /// где content легко уходит в сотни KB.
 class _LargeTextView extends StatelessWidget {
-  const _LargeTextView({required this.text, required this.kind});
+  const _LargeTextView({required this.text, required this.kind, this.wrap = false});
 
   final String text;
   final String kind;
+  // wrap=true: строки переносятся по ширине (для raw-текста). false: одна строка,
+  // клип (для pretty-JSON — там перенос ломает выравнивание).
+  final bool wrap;
 
   Future<void> _copyAll(BuildContext context) async {
     final l10n =
@@ -569,7 +579,7 @@ class _LargeTextView extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (ctx) => Dialog.fullscreen(
-        child: _FullScreenText(text: text, kind: kind),
+        child: _FullScreenText(text: text, kind: kind, wrap: wrap),
       ),
     );
   }
@@ -633,12 +643,13 @@ class _LargeTextView extends StatelessWidget {
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               itemCount: lines.length,
-              itemExtent: 18,
+              // wrap: переменная высота строк (перенос), поэтому без itemExtent.
+              itemExtent: wrap ? null : 18,
               itemBuilder: (context, i) {
                 return Text(
                   lines[i],
-                  maxLines: 1,
-                  softWrap: false,
+                  maxLines: wrap ? null : 1,
+                  softWrap: wrap,
                   overflow: TextOverflow.clip,
                   style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 12, height: 1.4),
@@ -666,10 +677,11 @@ List<String> _splitLinesIsolate(String text) =>
 const int _kFullScreenIsolateThreshold = 50 * 1024;
 
 class _FullScreenText extends StatefulWidget {
-  const _FullScreenText({required this.text, required this.kind});
+  const _FullScreenText({required this.text, required this.kind, this.wrap = false});
 
   final String text;
   final String kind;
+  final bool wrap;
 
   @override
   State<_FullScreenText> createState() => _FullScreenTextState();
@@ -738,12 +750,12 @@ class _FullScreenTextState extends State<_FullScreenText> {
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: lines.length,
-              itemExtent: 18,
+              itemExtent: widget.wrap ? null : 18,
               itemBuilder: (context, i) {
                 return Text(
                   lines[i],
-                  maxLines: 1,
-                  softWrap: false,
+                  maxLines: widget.wrap ? null : 1,
+                  softWrap: widget.wrap,
                   overflow: TextOverflow.clip,
                   style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 12, height: 1.4),

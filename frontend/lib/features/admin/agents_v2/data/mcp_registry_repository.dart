@@ -55,6 +55,7 @@ class MCPRegistryRepository {
     List<String>? args,
     String? url,
     Map<String, dynamic>? envTemplate,
+    Map<String, dynamic>? headersTemplate,
     String? scope,
     bool? isActive,
     CancelToken? cancelToken,
@@ -68,6 +69,7 @@ class MCPRegistryRepository {
         if (args != null) 'args': args,
         if (url != null) 'url': url,
         if (envTemplate != null) 'env_template': envTemplate,
+        if (headersTemplate != null) 'headers_template': headersTemplate,
         if (scope != null) 'scope': scope,
         if (isActive != null) 'is_active': isActive,
       };
@@ -91,6 +93,7 @@ class MCPRegistryRepository {
     List<String>? args,
     String? url,
     Map<String, dynamic>? envTemplate,
+    Map<String, dynamic>? headersTemplate,
     String? scope,
     bool? isActive,
     CancelToken? cancelToken,
@@ -104,6 +107,7 @@ class MCPRegistryRepository {
         if (args != null) 'args': args,
         if (url != null) 'url': url,
         if (envTemplate != null) 'env_template': envTemplate,
+        if (headersTemplate != null) 'headers_template': headersTemplate,
         if (scope != null) 'scope': scope,
         if (isActive != null) 'is_active': isActive,
       };

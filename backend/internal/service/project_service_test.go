@@ -1814,25 +1814,20 @@ func TestProjectService_Create_CreatesDefaultProjectAgents(t *testing.T) {
 	require.NotNil(t, out)
 	assert.Equal(t, "Agent Project", out.Name)
 
-	// Verify that orchestrator and router agents were created in the agent repo.
+	// Verify that the router agent was created in the agent repo (orchestrator —
+	// это Go-движок, отдельный LLM-агент не создаётся).
 	agents, total, _ := agentRepo.List(ctx, repository.AgentFilter{})
-	require.Equal(t, int64(8), total)
-	require.Equal(t, 8, len(agents))
+	require.Equal(t, int64(7), total)
+	require.Equal(t, 7, len(agents))
 
 	roles := map[models.AgentRole]models.Agent{}
 	for _, a := range agents {
 		roles[a.Role] = a
 	}
 
-	// Orchestrator checks.
-	orch, ok := roles[models.AgentRoleOrchestrator]
-	require.True(t, ok, "orchestrator agent must exist")
-	assert.Equal(t, "orchestrator", orch.Name)
-	assert.NotNil(t, orch.TeamID)
-	assert.Equal(t, capturedTeamID, *orch.TeamID)
-	assert.NotNil(t, orch.SystemPrompt)
-	assert.Equal(t, "You are the orchestrator.", *orch.SystemPrompt)
-	assert.Equal(t, models.AgentExecutionKindLLM, orch.ExecutionKind)
+	// Orchestrator agent НЕ создаётся.
+	_, hasOrch := roles[models.AgentRoleOrchestrator]
+	require.False(t, hasOrch, "orchestrator agent must NOT exist (it is a Go engine)")
 
 	// Router checks.
 	rtr, ok := roles[models.AgentRoleRouter]
@@ -1878,7 +1873,8 @@ func TestProjectService_Create_RollbackOnAgentError(t *testing.T) {
 
 	_, err := svc.Create(ctx, userID, dto.CreateProjectRequest{Name: "Fail Project"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "default prompt for orchestrator")
+	// router — первый создаваемый дефолтный агент (orchestrator-агент больше не сидится).
+	assert.Contains(t, err.Error(), "default prompt for router")
 
 	// In a real DB the transaction would rollback, undoing the project and team
 	// creation. The mock repos don't truly rollback, but the service returned an

@@ -7,7 +7,9 @@ import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/features/team/domain/models/team_type_model.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_card.dart';
+import 'package:frontend/features/team/presentation/widgets/agent_create_dialog.dart';
 import 'package:frontend/features/team/presentation/widgets/agent_edit_dialog.dart';
+import 'package:go_router/go_router.dart';
 
 /// Вкладка «Команда»: состав без второго [Scaffold] (13.1).
 class TeamScreen extends ConsumerStatefulWidget {
@@ -252,6 +254,65 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
     }
   }
 
+  Future<void> _showDeleteAgentConfirmDialog(
+      BuildContext context, AgentModel agent) async {
+    final isRu = Localizations.localeOf(context).languageCode == 'ru';
+    final name = agent.name.trim().isEmpty ? agent.role : agent.name.trim();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isRu ? 'Удалить агента?' : 'Delete Agent?'),
+        content: Text(
+          isRu
+              ? 'Агент «$name» будет удалён без возможности восстановления.'
+              : 'Agent "$name" will be permanently deleted. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(isRu ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: Text(isRu ? 'Удалить' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await ref
+            .read(teamRepositoryProvider)
+            .deleteAgent(widget.projectId, agent.id);
+        ref.invalidate(teamsProvider(widget.projectId));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isRu ? 'Агент удалён' : 'Agent deleted',
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isRu ? 'Не удалось удалить агента: $e' : 'Failed to delete agent: $e',
+              ),
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     assert(widget.projectId.isNotEmpty);
@@ -381,6 +442,12 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                 icon: const Icon(Icons.add),
                 tooltip: isRu ? 'Создать команду' : 'Create Team',
               ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: onRefresh,
+                icon: const Icon(Icons.refresh),
+                tooltip: isRu ? 'Обновить' : 'Refresh',
+              ),
             ],
           ),
         ),
@@ -399,34 +466,39 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          activeTeam.name,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            activeTeam.name,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _translateTeamType(context, activeTeam.type, teamTypesList),
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
+                          const SizedBox(height: 4),
+                          Text(
+                            _translateTeamType(context, activeTeam.type, teamTypesList),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  if (activeTeam.type != 'development')
                     IconButton(
-                      icon: Icon(Icons.delete_outline, color: scheme.error),
-                      tooltip: isRu ? 'Удалить команду' : 'Delete Team',
-                      onPressed: () => _showDeleteConfirmDialog(context, activeTeam),
+                      icon: const Icon(Icons.person_add),
+                      tooltip: isRu ? 'Добавить агента' : 'Add Agent',
+                      onPressed: () => AgentCreateDialog.show(context, widget.projectId, activeTeam.id),
                     ),
-                ],
-              ),
+                    if (activeTeam.type != 'development')
+                      IconButton(
+                        icon: Icon(Icons.delete_outline, color: scheme.error),
+                        tooltip: isRu ? 'Удалить команду' : 'Delete Team',
+                        onPressed: () => _showDeleteConfirmDialog(context, activeTeam),
+                      ),
+                  ],
+                ),
             ),
           ),
         ),
@@ -462,6 +534,8 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                       projectId: widget.projectId,
                       agent: agent,
                     ),
+                    onDelete: () =>
+                        _showDeleteAgentConfirmDialog(context, agent),
                   ),
                 );
               },

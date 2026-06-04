@@ -26,6 +26,8 @@ var (
 	ErrTeamAgentInvalidProviderKind = errors.New("invalid provider_kind")
 	ErrTeamAgentConflict            = errors.New("agent update conflict")
 	ErrTeamAgentInvalidToolBindings = errors.New("invalid or inactive tool_definition_id in tool_bindings")
+	ErrTeamAgentRoleImmutable       = errors.New("cannot change role of a system agent")
+	ErrTeamAgentInvalidRole         = errors.New("invalid role: must be a custom (non-system) snake_case role")
 
 	// Sprint 15.B (B4): ownership-check для /agents/:id/settings и MCP-инструментов agent_settings_*.
 	ErrTeamAgentAccessDenied = errors.New("agent does not belong to current user's project")
@@ -44,6 +46,8 @@ type TeamService interface {
 	Create(ctx context.Context, projectID uuid.UUID, req dto.CreateTeamRequest) (*models.Team, error)
 	Delete(ctx context.Context, projectID, teamID uuid.UUID) error
 	Update(ctx context.Context, projectID uuid.UUID, req dto.UpdateTeamRequest) (*models.Team, error)
+	CreateAgent(ctx context.Context, projectID uuid.UUID, teamID uuid.UUID, req dto.CreateTeamAgentRequest) (*models.Agent, error)
+	DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID) error
 	PatchAgent(ctx context.Context, projectID, agentID uuid.UUID, req dto.PatchAgentRequest) (*models.Team, error)
 	// Sprint 15.23 — per-agent settings (code_backend_settings + sandbox_permissions).
 	// Sprint 15.e2e: llm_provider_id удалён, kind вынесен в agent.provider_kind (PATCH /team/agents/:id).
@@ -219,6 +223,64 @@ const maxAgentModelLen = 128
 
 const maxAgentToolBindings = 50
 
+func (s *teamService) CreateAgent(ctx context.Context, projectID uuid.UUID, teamID uuid.UUID, req dto.CreateTeamAgentRequest) (*models.Agent, error) {
+	team, err := s.teamRepo.GetByID(ctx, teamID)
+	if err != nil {
+		if errors.Is(err, repository.ErrTeamNotFound) {
+			return nil, ErrTeamNotFound
+		}
+		return nil, err
+	}
+	// Verify projectID matches
+	if team.ProjectID != projectID {
+		return nil, ErrTeamNotFound
+	}
+	
+	in := CreateAgentInput{
+		Name:            req.Name,
+		Role:            models.AgentRole(req.Role),
+		ExecutionKind:   models.AgentExecutionKind(req.ExecutionKind),
+		RoleDescription: req.RoleDescription,
+		SystemPrompt:    req.SystemPrompt,
+		TeamID:          &teamID,
+		Temperature:     req.Temperature,
+		MaxTokens:       req.MaxTokens,
+	}
+	if req.Model != nil && *req.Model != "" {
+		in.Model = req.Model
+	}
+	if req.ProviderKind != nil && *req.ProviderKind != "" {
+		pk := models.AgentProviderKind(*req.ProviderKind)
+		in.ProviderKind = &pk
+	}
+	if req.CodeBackend != nil && *req.CodeBackend != "" {
+		cb := models.CodeBackend(*req.CodeBackend)
+		in.CodeBackend = &cb
+	}
+	
+	if s.agentSvc == nil {
+		return nil, fmt.Errorf("AgentService is not configured")
+	}
+	
+	return s.agentSvc.Create(ctx, in)
+}
+
+// DeleteAgent удаляет агента команды. Принадлежность агента проекту проверяется
+// через GetAgentInProject (тот же гард, что у PatchAgent), чтобы нельзя было удалить
+// чужого агента по прямому ID.
+func (s *teamService) DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID) error {
+	if _, err := s.teamRepo.GetAgentInProject(ctx, projectID, agentID); err != nil {
+		if errors.Is(err, repository.ErrTeamAgentNotFound) {
+			return ErrTeamAgentNotFound
+		}
+		return err
+	}
+	if s.agentSvc == nil {
+		return fmt.Errorf("AgentService is not configured")
+	}
+	return s.agentSvc.Delete(ctx, agentID)
+}
+
 func dedupeSortedToolDefinitionIDs(ids []uuid.UUID) []uuid.UUID {
 	seen := make(map[uuid.UUID]struct{}, len(ids))
 	out := make([]uuid.UUID, 0, len(ids))
@@ -374,6 +436,35 @@ func (s *teamService) PatchAgent(ctx context.Context, projectID, agentID uuid.UU
 			agent.SystemPrompt = nil
 		} else if v, ok := req.SystemPromptValue(); ok {
 			agent.SystemPrompt = &v
+		}
+	}
+
+	if req.RoleDescriptionPresent() {
+		if req.RoleDescriptionClear() {
+			agent.RoleDescription = nil
+		} else if v, ok := req.RoleDescriptionValue(); ok {
+			trimmed := strings.TrimSpace(v)
+			if trimmed == "" {
+				agent.RoleDescription = nil
+			} else {
+				agent.RoleDescription = &trimmed
+			}
+		}
+	}
+
+	if req.RolePresent() {
+		if v, ok := req.RoleValue(); ok {
+			// Менять роль можно только у кастомных (не-системных) агентов, и только на
+			// другую кастомную роль: на системных ролях завязана механика оркестрации
+			// (branch-policy, дефолтные агенты, исключение assistant из каталога Router'а).
+			if agent.Role.IsSystem() {
+				return nil, ErrTeamAgentRoleImmutable
+			}
+			newRole := models.AgentRole(strings.TrimSpace(v))
+			if !newRole.IsValid() || newRole.IsSystem() {
+				return nil, ErrTeamAgentInvalidRole
+			}
+			agent.Role = newRole
 		}
 	}
 
@@ -561,6 +652,8 @@ var (
 	codeBackendEnvKeyRE = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 	// Skill name: буквы/цифры/-/_ (как у Claude Code skills).
 	codeBackendSkillNameRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+	// HTTP header name (RFC token, упрощённо): буквы/цифры/дефис — Authorization, X-Api-Key и т.п.
+	codeBackendHeaderNameRE = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 )
 
 // validateCodeBackendSettingsStrict — Sprint 15.N4 + Major fixes.
@@ -586,6 +679,21 @@ func validateCodeBackendSettingsStrict(raw []byte) error {
 		for k := range ref.Env {
 			if !codeBackendEnvKeyRE.MatchString(k) {
 				return fmt.Errorf("mcp_servers[%d].env[%q]: key must be UPPER_SNAKE_CASE", i, k)
+			}
+		}
+		// Инлайн-определение (type/url/headers заданы прямо у агента): валидируем transport
+		// и имена заголовков (HTTP-токены, не UPPER_SNAKE). Значения headers могут содержать
+		// ${secret:NAME} — резолвятся при сборке .mcp.json.
+		if ref.Type != "" {
+			switch ref.Type {
+			case "stdio", "sse", "http":
+			default:
+				return fmt.Errorf("mcp_servers[%d].type: invalid %q (allowed: stdio|sse|http)", i, ref.Type)
+			}
+		}
+		for k := range ref.Headers {
+			if !codeBackendHeaderNameRE.MatchString(k) {
+				return fmt.Errorf("mcp_servers[%d].headers[%q]: invalid HTTP header name", i, k)
 			}
 		}
 	}
@@ -704,7 +812,11 @@ var claudeCodeHookNameRE = regexp.MustCompile(
 
 // validateCodeBackendNestedKeys — Sprint 15.Major recursive DisallowUnknownFields.
 // Парсим в map[string]any и явно whitelist'им ключи MCPServerRef/AgentSkillRef.
-var allowedMCPServerRefKeys = map[string]struct{}{"name": {}, "env": {}}
+var allowedMCPServerRefKeys = map[string]struct{}{
+	"name": {}, "env": {},
+	// Инлайн-определение MCP-сервера на уровне агента команды.
+	"type": {}, "url": {}, "command": {}, "args": {}, "headers": {},
+}
 var allowedSkillRefKeys = map[string]struct{}{"name": {}, "source": {}, "config": {}}
 
 func validateCodeBackendNestedKeys(raw []byte) error {

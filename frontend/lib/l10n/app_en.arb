@@ -585,6 +585,8 @@
   "projectSettingsTechStackValueLabel": "Value",
   "projectSettingsSave": "Save",
   "projectSettingsTabGeneral": "General",
+  "projectSettingsTabVariables": "Variables (tech stack)",
+  "@projectSettingsTabVariables": { "description": "Project settings tab: tech stack + project variables/secrets" },
   "projectSettingsSaved": "Settings saved",
   "projectSettingsNoChanges": "No changes to save",
   "projectSettingsGitRemoteAccessFailed": "Could not reach the Git remote (clone or validation failed).",
@@ -1003,7 +1005,7 @@
   "agentSandboxSettingsProviderLabel": "LLM provider",
   "agentSandboxSettingsProviderNone": "— none —",
   "agentSandboxSettingsCodeBackendLabel": "Code backend",
-  "agentSandboxSettingsMCPHelper": "JSON array of MCP server bindings: see docs.",
+  "agentSandboxSettingsMCPHelper": "JSON array of MCP servers. Inline server fields: name, type (sse/http/stdio), url, headers. In a header value you can reference a project variable via the secret:NAME prefix — it is injected at runtime and never written to the file.",
   "@agentSandboxSettingsMCPHelper": {
     "description": "Helper text for MCP servers tab. JSON example removed to avoid ARB ICU lexer interpreting braces as placeholders (Sprint 15.C2)."
   },
@@ -1488,7 +1490,7 @@
   "@onboardingConfigureAssistant": { "description": "Phase 7: onboarding banner after registration — LLM provider exists but assistant not configured" },
   "onboardingGoToSettings": "Go to settings",
   "@onboardingGoToSettings": { "description": "Phase 7: onboarding banner CTA — navigate to settings" },
-  "onboardingConfigureProjectAgents": "Configure the orchestrator and router agents — select an LLM provider and model for each so that task orchestration can begin.",
+  "onboardingConfigureProjectAgents": "Configure the router agent — select an LLM provider and model so that task orchestration can begin.",
   "@onboardingConfigureProjectAgents": { "description": "Phase 7: onboarding banner after project creation — agents not configured" },
   "onboardingGoToTeam": "Configure agents",
   "@onboardingGoToTeam": { "description": "Phase 7: onboarding banner CTA — navigate to team agents" },

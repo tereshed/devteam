@@ -172,11 +172,32 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 		return nil, fmt.Errorf("%w: invalid execution_kind %q (allowed: llm, sandbox)", ErrAgentValidation, in.ExecutionKind)
 	}
 
+	// Кастомная (не-системная) роль не имеет seed-промпта в agent_role_prompts,
+	// поэтому требует явных инструкций: без role_description роутер не поймёт, что
+	// агент делает (и не назначит его), а без system_prompt сам агент не знает, что
+	// исполнять. Системные роли освобождены — у них есть дефолтные промпты.
+	if !in.Role.IsSystem() {
+		hasDesc := in.RoleDescription != nil && strings.TrimSpace(*in.RoleDescription) != ""
+		hasPrompt := (in.SystemPrompt != nil && strings.TrimSpace(*in.SystemPrompt) != "") || in.PromptID != nil
+		if !hasDesc || !hasPrompt {
+			return nil, fmt.Errorf("%w: custom-role agent requires role_description and system_prompt", ErrAgentValidation)
+		}
+	}
+
+	// role_description обязателен для видимости агента в каталоге Router'а:
+	// loadRouterState отфильтровывает агентов с пустым role_description, и такой
+	// агент никогда не получит задачу. Если вызывающий (напр. форма «Добавить агента»)
+	// не передал описание — подставляем дефолт из role-промпта.
+	roleDescription := in.RoleDescription
+	if roleDescription == nil || strings.TrimSpace(*roleDescription) == "" {
+		roleDescription = s.defaultRoleDescription(ctx, in.Role)
+	}
+
 	a := &models.Agent{
 		Name:            in.Name,
 		Role:            in.Role,
 		ExecutionKind:   in.ExecutionKind,
-		RoleDescription: in.RoleDescription,
+		RoleDescription: roleDescription,
 		SystemPrompt:    in.SystemPrompt,
 		PromptID:        in.PromptID,
 		ProviderKind:    in.ProviderKind,
@@ -206,10 +227,23 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 		if !in.CodeBackend.IsValid() {
 			return nil, fmt.Errorf("%w: invalid code_backend %q (allowed: claude-code/aider/hermes/custom/antigravity)", ErrAgentValidation, *in.CodeBackend)
 		}
-		if in.Model != nil && *in.Model != "" {
-			return nil, fmt.Errorf("%w: sandbox-agent must NOT have model", ErrAgentValidation)
-		}
 		a.CodeBackend = in.CodeBackend
+		// Для sandbox модель не хранится в колонке agents.model (CHECK chk_agents_kind_requirements),
+		// а кладётся в code_backend_settings.model — оттуда её берёт сборщик артефактов бекенда.
+		if in.Model != nil && strings.TrimSpace(*in.Model) != "" {
+			settings := AgentCodeBackendSettings{Model: strings.TrimSpace(*in.Model)}
+			raw, err := json.Marshal(settings)
+			if err != nil {
+				return nil, fmt.Errorf("marshal code_backend_settings: %w", err)
+			}
+			a.CodeBackendSettings = raw
+		}
+	}
+
+	// Валидация provider_kind (если передан явно): мусорное значение → 400, а не
+	// запись «битого» агента, которого потом не сможет запустить sandbox_auth_resolver.
+	if a.ProviderKind != nil && !a.ProviderKind.IsValid() {
+		return nil, fmt.Errorf("%w: invalid provider_kind %q", ErrAgentValidation, *a.ProviderKind)
 	}
 
 	// Auto-infer ProviderKind from Model if not explicitly provided
@@ -245,6 +279,21 @@ func (s *AgentService) Create(ctx context.Context, in CreateAgentInput) (*models
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
 	return a, nil
+}
+
+// defaultRoleDescription возвращает непустое описание роли: сначала пробует
+// role-промпт (тот же источник, что у CreateDefaultProjectAgents), затем
+// generic-fallback. Никогда не возвращает nil/пустую строку — иначе агент
+// окажется невидим для Router'а.
+func (s *AgentService) defaultRoleDescription(ctx context.Context, role models.AgentRole) *string {
+	if s.rolePromptRepo != nil {
+		if prompt, err := s.rolePromptRepo.GetByRole(ctx, string(role)); err == nil &&
+			prompt.Description != nil && strings.TrimSpace(*prompt.Description) != "" {
+			return prompt.Description
+		}
+	}
+	desc := "Default " + string(role) + " agent"
+	return &desc
 }
 
 // Update — частичное обновление с валидацией. Возвращает обновлённую запись.
@@ -596,8 +645,9 @@ func (s *AgentService) CreateDefaultAssistant(ctx context.Context, userID uuid.U
 }
 
 // CreateDefaultProjectAgents creates default agents for a team.
-// For development teams, all 8 agents (orchestrator, router, planner, decomposer, reviewer, developer, tester, merger) are created.
-// For other team types, only orchestrator and router are created.
+// For development teams, all 7 worker/decision agents (router, planner, decomposer, reviewer, developer, tester, merger) are created.
+// For other team types, only the router agent is created.
+// The orchestrator is a Go engine (orchestrator_v2.go), not an LLM agent, so no orchestrator agent row is seeded.
 // Each gets a system prompt and description from agent_role_prompts. Default LLM/sandbox settings are pre-configured.
 func (s *AgentService) CreateDefaultProjectAgents(ctx context.Context, teamID uuid.UUID, teamType string) error {
 	if s.rolePromptRepo == nil {
@@ -622,11 +672,11 @@ func (s *AgentService) CreateDefaultProjectAgents(ctx context.Context, teamID uu
 		settings     string
 		perms        string
 	}{
-		{
-			name: "orchestrator",
-			role: models.AgentRoleOrchestrator,
-			kind: models.AgentExecutionKindLLM,
-		},
+		// Агент роли router — единственный LLM в петле оркестрации: Orchestrator-движок
+		// (Go, orchestrator_v2.go) на каждом шаге зовёт именно его (RouterService.Decide).
+		// Отдельный агент роли orchestrator НЕ создаётся: движок — это код, а не LLM, и
+		// запись orchestrator-агента раньше никем не загружалась (мёртвый сид). Роль
+		// orchestrator остаётся зарезервированной системной (см. AgentRole.IsSystem).
 		{
 			name:         "router",
 			role:         models.AgentRoleRouter,
