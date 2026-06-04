@@ -89,6 +89,21 @@ curl -fsS https://<domain>/health && echo OK
 ansible -m shell -a 'docker compose -f /opt/devteam/docker-compose.yml -f /opt/devteam/deployment/prod/docker-compose.prod.yml ps' polymaths
 ```
 
+## Автодеплой по push (GitHub Actions)
+
+`.github/workflows/deploy.yml` гоняет этот плейбук на каждый push в ветку `deploy` (и вручную
+через workflow_dispatch). В CI `ansible-vault` НЕ используется — секреты приходят из GitHub
+Secrets как `--extra-vars`. Нужно завести:
+
+**Secrets:** `SSH_PRIVATE_KEY`, `DEPLOY_SSH_HOST`, `BACKEND_ENV` (полное содержимое прод
+`backend/.env`), `JWT_SECRET_KEY`, `BACKUP_AWS_ACCESS_KEY_ID`, `BACKUP_AWS_SECRET_ACCESS_KEY`.
+
+**Variables:** `DEPLOY_SSH_USER`, `DOMAIN`, `ACME_EMAIL`, `REPO_URL`, `BACKUP_S3_BUCKET`,
+`BACKUP_S3_ENDPOINT` (+ опц. `ORCHESTRATOR_STEP_WORKERS` / `ORCHESTRATOR_AGENT_WORKERS`).
+
+Предпосылки на VM: SSH-пользователь с **passwordless sudo** и доступ к репозиторию
+(`REPO_URL`) — приватный репо тянется deploy-key'ом с самой VM.
+
 ## Чего здесь нет (как и в варианте 0)
-HA/реплик, managed-БД, секретов в Lockbox, CI-триггера. Это ручной `ansible-playbook` с твоей машины —
-автозапуск по push (GitHub Actions → ansible) добавляется отдельно, когда захочешь.
+HA/реплик, managed-БД, секретов в Lockbox. Ручной запуск (`make deploy`) и автодеплой
+(Actions) сосуществуют: CI обходит vault через extra-vars, локально работает ansible-vault.

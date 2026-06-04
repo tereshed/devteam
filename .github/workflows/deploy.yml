@@ -1,0 +1,124 @@
+# deploy.yml — автодеплой «вариант 0» (одна VM) на push в ветку deploy.
+#
+# Гоняет deployment/ansible/site.yml против боевой VM. Секреты приходят из GitHub Secrets/Variables
+# как --extra-vars, поэтому ansible-vault в CI НЕ используется (vault нужен только для ручных
+# запусков с локальной машины).
+#
+# Требуемые GitHub Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   SSH_PRIVATE_KEY                 приватный ключ для SSH на VM (соответствующий public — в authorized_keys)
+#   DEPLOY_SSH_HOST                 IP/hostname VM
+#   BACKEND_ENV                     полное содержимое прод backend/.env (LLM-ключи, git-credential, ...)
+#   JWT_SECRET_KEY                  секрет JWT
+#   BACKUP_AWS_ACCESS_KEY_ID        ключ сервис-аккаунта Object Storage
+#   BACKUP_AWS_SECRET_ACCESS_KEY    секрет сервис-аккаунта Object Storage
+#
+# Требуемые GitHub Variables (там же → Variables):
+#   DEPLOY_SSH_USER                 SSH-пользователь (напр. ubuntu) с passwordless sudo
+#   DOMAIN                          напр. poly.example.com
+#   ACME_EMAIL                      email для Let's Encrypt
+#   REPO_URL                        откуда VM тянет код (приватный → deploy-key на VM)
+#   BACKUP_S3_BUCKET                напр. s3://polymaths-backups
+#   BACKUP_S3_ENDPOINT              напр. https://storage.yandexcloud.net
+#   ORCHESTRATOR_STEP_WORKERS       (опц.) дефолт 3
+#   ORCHESTRATOR_AGENT_WORKERS      (опц.) дефолт 8
+
+name: deploy
+
+on:
+  push:
+    branches: [deploy]
+  workflow_dispatch: {}
+
+# Один деплой за раз; новый push в deploy ждёт завершения предыдущего (не отменяем на середине).
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible + collections
+        working-directory: deployment/ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible-core
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+      - name: Generate inventory
+        working-directory: deployment/ansible
+        run: |
+          printf '[polymaths]\nprod ansible_host=%s ansible_user=%s\n' \
+            "${{ secrets.DEPLOY_SSH_HOST }}" "${{ vars.DEPLOY_SSH_USER }}" > inventory.ini
+
+      - name: Write prod backend.env
+        working-directory: deployment/ansible
+        run: |
+          mkdir -p files
+          cat > files/backend.env <<'BACKEND_ENV_EOF'
+          ${{ secrets.BACKEND_ENV }}
+          BACKEND_ENV_EOF
+          chmod 600 files/backend.env
+
+      - name: Build extra-vars
+        working-directory: deployment/ansible
+        env:
+          DOMAIN: ${{ vars.DOMAIN }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          REPO_URL: ${{ vars.REPO_URL }}
+          REPO_VERSION: ${{ github.ref_name }}
+          STEP_WORKERS: ${{ vars.ORCHESTRATOR_STEP_WORKERS || '3' }}
+          AGENT_WORKERS: ${{ vars.ORCHESTRATOR_AGENT_WORKERS || '8' }}
+          S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+          S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          AWS_KEY_ID: ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+        run: |
+          # jq -n --arg экранирует значения безопасно (никаких проблем с кавычками/спецсимволами).
+          jq -n \
+            --arg domain "$DOMAIN" \
+            --arg acme_email "$ACME_EMAIL" \
+            --arg repo_url "$REPO_URL" \
+            --arg repo_version "$REPO_VERSION" \
+            --argjson step_workers "$STEP_WORKERS" \
+            --argjson agent_workers "$AGENT_WORKERS" \
+            --arg backup_s3_bucket "$S3_BUCKET" \
+            --arg backup_s3_endpoint "$S3_ENDPOINT" \
+            --arg vault_jwt_secret_key "$JWT_SECRET_KEY" \
+            --arg vault_backup_aws_access_key_id "$AWS_KEY_ID" \
+            --arg vault_backup_aws_secret_access_key "$AWS_SECRET" \
+            '{
+              domain: $domain,
+              acme_email: $acme_email,
+              repo_url: $repo_url,
+              repo_version: $repo_version,
+              orchestrator_step_workers: $step_workers,
+              orchestrator_agent_workers: $agent_workers,
+              backup_s3_bucket: $backup_s3_bucket,
+              backup_s3_endpoint: $backup_s3_endpoint,
+              vault_jwt_secret_key: $vault_jwt_secret_key,
+              vault_backup_aws_access_key_id: $vault_backup_aws_access_key_id,
+              vault_backup_aws_secret_access_key: $vault_backup_aws_secret_access_key
+            }' > extra-vars.json
+
+      - name: Run playbook
+        working-directory: deployment/ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook site.yml \
+            --private-key ~/.ssh/id_deploy \
+            -e @extra-vars.json
