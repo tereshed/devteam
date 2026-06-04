@@ -1,0 +1,14 @@
+# site.yml — выкатка PolyMaths «вариант 0» (весь стек на одной VM) через Ansible.
+#
+#   ansible-galaxy collection install -r requirements.yml      # один раз
+#   ansible-playbook site.yml                                   # выкатка / редеплой
+#
+# Идемпотентно: первый прогон провижинит чистую VM, последующие = git pull + пересборка app.
+- name: Deploy PolyMaths (single-VM)
+  hosts: polymaths
+  become: true
+  roles:
+    - common   # пакеты + firewall (UFW: наружу только 22/80/443)
+    - docker   # Docker Engine + compose plugin
+    - app      # код, секреты, docker compose up
+    - backup   # ysql_dump → Object Storage + cron-гигиена диска

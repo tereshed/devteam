@@ -83,6 +83,21 @@ compose-validate:
 	$(COMPOSE_ROLES) config -q
 	@echo ">> all compose files valid (base, scale, roles)"
 
+# === Деплой (вариант 0: одна VM через Ansible) ===
+ANSIBLE_DIR := deployment/ansible
+
+# Установка коллекций Ansible (один раз на control-машине).
+deploy-setup:
+	cd $(ANSIBLE_DIR) && ansible-galaxy collection install -r requirements.yml
+
+# Выкатка/редеплой на VM из inventory.ini. Спросит vault-пароль для секретов.
+deploy:
+	cd $(ANSIBLE_DIR) && ansible-playbook site.yml --ask-vault-pass
+
+# Dry-run без изменений на хосте (--check).
+deploy-check:
+	cd $(ANSIBLE_DIR) && ansible-playbook site.yml --ask-vault-pass --check
+
 # === Тестирование (Backend) ===
 # test: полный прогон всех пакетов; -tags=integration подключает файлы с //go:build integration
 # (обычные *_test.go без тега тоже выполняются в этом же проходе).
@@ -369,6 +384,11 @@ help:
 	@echo "  make stack-deploy    - N identical replicas behind traefik (Swarm; needs swarm init)"
 	@echo "  make stack-rm        - Remove the Swarm stack"
 	@echo "  make compose-validate - Validate base + scale + roles compose files"
+	@echo ""
+	@echo "=== Deploy (вариант 0: одна VM, Ansible) ==="
+	@echo "  make deploy-setup    - Install Ansible collections (one-time)"
+	@echo "  make deploy          - Provision + deploy to VM from inventory.ini"
+	@echo "  make deploy-check    - Dry-run (--check), no host changes"
 	@echo ""
 	@echo "=== Frontend ==="
 	@echo "  make frontend-setup           - Setup frontend (pub get, gen-l10n, codegen)"

@@ -1,0 +1,22 @@
+# Caddyfile — авто-TLS reverse proxy для «варианта 0».
+# DOMAIN / ACME_EMAIL приходят из окружения (см. docker-compose.prod.yml).
+#
+# Caddy сам получает и продлевает сертификаты Let's Encrypt — нужен лишь публичный
+# A/AAAA-record домена на IP этой VM и открытые наружу 80/443.
+
+{
+	email {$ACME_EMAIL}
+}
+
+# Основной API + WebSocket (Gin, app:8080). Caddy проксирует WS прозрачно.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8080
+}
+
+# MCP-сервер (Model Context Protocol, app:8081) — на отдельном поддомене.
+# Заведи DNS-record mcp.${DOMAIN} → тот же IP. Если MCP наружу не нужен — удали этот блок.
+mcp.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8081
+}

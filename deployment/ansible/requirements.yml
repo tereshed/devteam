@@ -1,0 +1,4 @@
+# Коллекции для плейбука. Установка: ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: community.docker   # docker_compose_v2
+  - name: community.general  # ufw

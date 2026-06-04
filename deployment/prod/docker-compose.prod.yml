@@ -1,0 +1,69 @@
+# docker-compose.prod.yml — overlay «вариант 0»: ВСЁ на одной VM, минимум инфраструктуры.
+#
+# Накладывается ПОВЕРХ базового docker-compose.yml. Базовый уже описывает single-node стек
+# (app одним бинарём = api+worker+scheduler, yugabytedb, weaviate, t2v, redis, one-shot migrate).
+# Этот overlay добавляет ровно то, чего не хватает для боевой VM:
+#   1. Caddy — единственный сервис, смотрящий наружу (:80/:443), авто-TLS, проксирует на app.
+#   2. restart: unless-stopped — переживать ребуты VM и падения.
+#   3. Прод-тюнинг env (пулы оркестратора, не копить упавшие песочницы).
+#
+# Запуск (из корня репозитория):
+#   export DOMAIN=poly.example.com ACME_EMAIL=ops@example.com
+#   docker compose -f docker-compose.yml -f deployment/prod/docker-compose.prod.yml up -d --build
+#
+# Полный порядок первичного поднятия на чистой VM — см. deployment/prod/README.md.
+#
+# ВАЖНО про сайзинг: на этой же коробке оркестратор поднимает sandbox-контейнеры (Flutter/Go
+# сборки — RAM/CPU тяжело). Песочницы лимитированы per-container (internal/sandbox/docker_runner.go),
+# но хост должен вынести N параллельных. Реалистично: 16–32 GB RAM, ≥4 vCPU, ≥100 GB диск.
+# Если мало памяти — снижай ORCHESTRATOR_AGENT_WORKERS ниже.
+
+services:
+  # Reverse proxy + автоматический HTTPS (Let's Encrypt). Единственная точка входа снаружи.
+  # До app ходит по внутренней docker-сети (app:8080 / app:8081), поэтому публиковать
+  # порты app на хост не нужно (в базовом compose они на 127.0.0.1).
+  caddy:
+    image: caddy:2-alpine
+    container_name: wibe_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN, e.g. poly.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt}
+    volumes:
+      - ./deployment/prod/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # сертификаты — переживают пересоздание контейнера
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # Прод-настройки для основного бинаря (он же worker+scheduler в single-node режиме).
+  app:
+    restart: unless-stopped
+    environment:
+      # В проде НЕ копим контейнеры упавших песочниц — иначе забьют диск и docker ps.
+      # (Для дебага конкретного прогона временно верни "1".)
+      SANDBOX_KEEP_ON_FAILURE: "0"
+      # Публичный URL MCP — нужен, чтобы выдаваемые клиентам ссылки указывали на домен,
+      # а не на localhost. Роутится через Caddy (mcp.${DOMAIN}). См. Caddyfile.
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.${DOMAIN}}
+      # Пулы оркестратора под одну коробку. Поднимай постепенно, следя за RAM/диском.
+      ORCHESTRATOR_STEP_WORKERS: ${ORCHESTRATOR_STEP_WORKERS:-3}
+      ORCHESTRATOR_AGENT_WORKERS: ${ORCHESTRATOR_AGENT_WORKERS:-8}
+
+  # restart-политики для stateful-сервисов: пережить ребут VM.
+  yugabytedb:
+    restart: unless-stopped
+  weaviate:
+    restart: unless-stopped
+  t2v-transformers:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

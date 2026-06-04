@@ -1,0 +1,4 @@
+# Скопируй в inventory.ini и впиши IP/пользователя своей VM.
+# Если SSH по нестандартному порту — добавь ansible_port=NNNN (и не забудь открыть его в UFW, см. common).
+[polymaths]
+prod ansible_host=REPLACE_WITH_PUBLIC_IP ansible_user=ubuntu

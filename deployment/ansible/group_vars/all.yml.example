@@ -1,0 +1,31 @@
+# Скопируй в group_vars/all.yml и заполни. Секреты (vault_*) лучше держать в отдельном
+# зашифрованном файле group_vars/all/vault.yml (ansible-vault) — см. deployment/ansible/README.md.
+
+# --- Куда выкатываем -------------------------------------------------------
+project_dir: /opt/devteam
+repo_url: git@github.com:ORG/devteam.git   # private → нужен deploy-key на VM (см. README)
+repo_version: deploy                        # ветка/тег
+
+# --- Публичный домен / TLS -------------------------------------------------
+domain: poly.example.com
+acme_email: ops@example.com
+# mcp_public_url: https://mcp.poly.example.com   # по умолчанию = https://mcp.{{ domain }}
+
+# --- Тюнинг оркестратора под размер VM -------------------------------------
+orchestrator_step_workers: 3
+orchestrator_agent_workers: 8
+
+# --- Секреты для backend/.env (env_file контейнера app) --------------------
+# Файл с LLM-ключами/git-credential НЕ шаблонизируем (много ключей) — копируем как есть.
+# Положи свой prod-env по этому пути на control-машине (gitignored):
+backend_env_src: "{{ playbook_dir }}/files/backend.env"
+
+# --- Бэкап в Object Storage (Yandex S3-совместимое) ------------------------
+backup_s3_bucket: "s3://polymaths-backups"
+backup_s3_endpoint: "https://storage.yandexcloud.net"
+backup_retention_days: 7
+
+# --- СЕКРЕТЫ (зашифруй ansible-vault!) -------------------------------------
+vault_jwt_secret_key: "CHANGE_ME_long_random"
+vault_backup_aws_access_key_id: "CHANGE_ME"
+vault_backup_aws_secret_access_key: "CHANGE_ME"

@@ -1,0 +1,6 @@
+# Локальные/секретные артефакты — не коммитим.
+inventory.ini
+group_vars/all.yml
+group_vars/all/
+files/backend.env
+*.retry

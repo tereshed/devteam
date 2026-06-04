@@ -1,0 +1,45 @@
+# app — выкатка приложения: код, секреты, docker compose up.
+- name: Склонировать/обновить репозиторий
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ project_dir }}"
+    version: "{{ repo_version | default('deploy') }}"
+    force: true
+  # Приватный репо → положи deploy-key на VM (см. README) или используй HTTPS-токен в repo_url.
+
+- name: Узнать GID группы docker (для доступа app к /var/run/docker.sock)
+  ansible.builtin.getent:
+    database: group
+    key: docker
+
+- name: Зафиксировать docker_gid
+  ansible.builtin.set_fact:
+    docker_gid: "{{ getent_group['docker'][1] }}"
+
+- name: Положить backend/.env (LLM-ключи, git-credential, ...) — root-only
+  ansible.builtin.copy:
+    src: "{{ backend_env_src }}"
+    dest: "{{ project_dir }}/backend/.env"
+    mode: "0600"
+
+- name: Сгенерировать корневой .env для интерполяции docker compose (${DOMAIN}, ...)
+  ansible.builtin.template:
+    src: compose.env.j2
+    dest: "{{ project_dir }}/.env"
+    mode: "0640"
+
+- name: backup.sh исполняемый
+  ansible.builtin.file:
+    path: "{{ project_dir }}/deployment/prod/backup.sh"
+    mode: "0755"
+
+# docker_compose_v2 шеллит в `docker compose` на хосте: собирает образ и поднимает стек.
+# Корневой .env подхватывается автоматически. Идемпотентно: если конфиг/образ не менялись — no-op.
+- name: docker compose up (base + prod overlay)
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    files:
+      - docker-compose.yml
+      - deployment/prod/docker-compose.prod.yml
+    build: always
+    state: present

@@ -13,9 +13,12 @@ services:
       --tserver_flags="ysql_enable_auth=false,pgsql_proxy_bind_address=0.0.0.0:5433,cql_proxy_bind_address=0.0.0.0:9042"
       --master_flags="rpc_bind_addresses=0.0.0.0:7100"
     ports:
-      - "5433:5433"   # YSQL (PostgreSQL-compatible)
-      - "15000:7000"  # YugabyteDB Admin UI
-      - "9042:9042"   # YCQL (Cassandra-compatible, optional)
+      # Биндим на loopback: БД поднята с ysql_enable_auth=false (без пароля), поэтому
+      # публиковать её на 0.0.0.0 нельзя. Локалке localhost:5433 доступен как раньше;
+      # в prod доступ к БД — только внутри docker-сети (сервис yugabytedb:5433).
+      - "127.0.0.1:5433:5433"   # YSQL (PostgreSQL-compatible)
+      - "127.0.0.1:15000:7000"  # YugabyteDB Admin UI
+      - "127.0.0.1:9042:9042"   # YCQL (Cassandra-compatible, optional)
     volumes:
       # ВАЖНО: yugabyted (под root) хранит данные в /root/var (base_dir = $HOME/var), НЕ в
       # /home/yugabyte/yb_data. Старый монтаж на /home/yugabyte/yb_data оставлял volume пустым,
@@ -34,7 +37,8 @@ services:
     image: cr.weaviate.io/semitechnologies/weaviate:1.24.1
     container_name: wibe_weaviate
     ports:
-      - "8082:8080"  # Внешний порт 8082 (8081 теперь занят MCP-сервером)
+      # Loopback: Weaviate с ANONYMOUS_ACCESS=true — наружу публиковать нельзя.
+      - "127.0.0.1:8082:8080"  # Внешний порт 8082 (8081 теперь занят MCP-сервером)
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
@@ -73,7 +77,8 @@ services:
     container_name: wibe_redis
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      - "6379:6379"
+      # Loopback: Redis без пароля — наружу не публикуем.
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -143,8 +148,10 @@ services:
       ORCHESTRATOR_STEP_WORKERS: ${ORCHESTRATOR_STEP_WORKERS:-2}
       ORCHESTRATOR_AGENT_WORKERS: ${ORCHESTRATOR_AGENT_WORKERS:-4}
     ports:
-      - "8080:8080"   # Основной API (Gin)
-      - "8081:8081"   # MCP сервер (Model Context Protocol)
+      # Loopback: в prod наружу смотрит только Caddy (deployment/prod), а до app он
+      # ходит по docker-сети (app:8080 / app:8081). Локалке localhost:8080 как раньше.
+      - "127.0.0.1:8080:8080"   # Основной API (Gin)
+      - "127.0.0.1:8081:8081"   # MCP сервер (Model Context Protocol)
     volumes:
       - ./backend/db/migrations:/root/db/migrations
       - /var/run/docker.sock:/var/run/docker.sock

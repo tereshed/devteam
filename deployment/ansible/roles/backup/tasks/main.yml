@@ -1,0 +1,32 @@
+# backup — дамп БД в Object Storage + cron-гигиена диска.
+- name: Установить aws-cli (для выгрузки в S3-совместимое хранилище)
+  ansible.builtin.apt:
+    name: awscli
+    state: present
+    update_cache: true
+
+- name: Каталог локальных дампов
+  ansible.builtin.file:
+    path: "{{ backup_dir | default('/var/backups/polymaths') }}"
+    state: directory
+    mode: "0750"
+
+- name: Конфиг бэкапа (секреты S3) — root-only
+  ansible.builtin.template:
+    src: polymaths-backup.env.j2
+    dest: /etc/polymaths-backup.env
+    mode: "0600"
+
+- name: Cron — ежедневный дамп БД 03:30
+  ansible.builtin.cron:
+    name: polymaths-db-backup
+    minute: "30"
+    hour: "3"
+    job: "set -a; . /etc/polymaths-backup.env; set +a; {{ project_dir }}/deployment/prod/backup.sh >> /var/log/polymaths-backup.log 2>&1"
+
+- name: Cron — чистка Docker 04:00 (образы/слои старше 48ч)
+  ansible.builtin.cron:
+    name: polymaths-docker-prune
+    minute: "0"
+    hour: "4"
+    job: 'docker system prune -af --filter "until=48h" >> /var/log/docker-prune.log 2>&1'
