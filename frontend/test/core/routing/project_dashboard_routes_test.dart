@@ -76,6 +76,7 @@ void main() {
         chatNavigatorKey: kTestShellChatKey,
         tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
         teamNavigatorKey: kTestShellTeamKey,
+        schedulesNavigatorKey: kTestShellSchedulesKey,
         settingsNavigatorKey: kTestShellSettingsKey,
       );
       expect(branches.length, projectDashboardShellBranchPaths.length);

@@ -45,6 +45,7 @@ type Dependencies struct {
 	TeamHandler           *handler.TeamHandler
 	ToolDefinitionHandler *handler.ToolDefinitionHandler
 	TaskHandler           *handler.TaskHandler
+	ScheduledTaskHandler  *handler.ScheduledTaskHandler
 	WorkflowHandler       *handler.WorkflowHandler
 	WebhookHandler        *handler.WebhookHandler
 	ConversationHandler   *handler.ConversationHandler
@@ -327,6 +328,14 @@ func (s *Server) setupRoutes(deps Dependencies) {
 
 			projects.POST("/:id/tasks", deps.TaskHandler.Create)
 			projects.GET("/:id/tasks", deps.TaskHandler.List)
+
+			// Регулярные (cron) задачи проекта.
+			if deps.ScheduledTaskHandler != nil {
+				projects.POST("/:id/scheduled-tasks", deps.ScheduledTaskHandler.Create)
+				projects.GET("/:id/scheduled-tasks", deps.ScheduledTaskHandler.List)
+				projects.PUT("/:id/scheduled-tasks/:scheduleId", deps.ScheduledTaskHandler.Update)
+				projects.DELETE("/:id/scheduled-tasks/:scheduleId", deps.ScheduledTaskHandler.Delete)
+			}
 
 			projects.GET("/:id", deps.ProjectHandler.GetByID)
 			projects.PUT("/:id", deps.ProjectHandler.Update)

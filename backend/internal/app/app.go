@@ -560,6 +560,19 @@ func Run(role Role) {
 	// Ground-truth-гейт завершения: done подтверждается открытым PR, иначе → needs_human.
 	orchestratorService.SetPullRequestPublisher(prPublisher)
 
+	// ScheduledTaskService — регулярные (cron) задачи проекта. Раннер ниже (leader-gated)
+	// тикает раз в минуту и создаёт обычные task'ы по созревшим расписаниям.
+	scheduledTaskRepo := repository.NewScheduledTaskRepository(db)
+	scheduledTaskService := service.NewScheduledTaskService(
+		scheduledTaskRepo,
+		taskService,
+		projectService,
+		teamService,
+		userRepo,
+		orchestratorService,
+		slog.Default(),
+	)
+
 	// TaskLifecycleService — POST /tasks/:id/cancel handler использует.
 	v2TaskLifecycle := service.NewTaskLifecycleService(db, v2Notifier, v2Logger)
 	_ = v2TaskLifecycle  // подключается в task_handler через wiring ниже (Stage 5g.6)
@@ -604,6 +617,13 @@ func Run(role Role) {
 		sched.Stop()
 	})
 
+	// Scheduled tasks runner (cron) — задача-синглтон (только лидер): тикает раз в минуту,
+	// выбирает созревшие расписания (is_active && next_run_at<=now) и создаёт задачи.
+	leaderElector.OnLeader("scheduled-tasks", func(ctx context.Context) {
+		runner := service.NewScheduledTaskRunner(scheduledTaskService, time.Minute, slog.Default())
+		runner.Run(ctx)
+	})
+
 	// Handlers
 	authHandler := handler.NewAuthHandler(authService, jwtManager)
 	apiKeyHandler := handler.NewApiKeyHandler(apiKeyService, &cfg.MCP)
@@ -612,6 +632,7 @@ func Run(role Role) {
 	teamHandler := handler.NewTeamHandler(teamService, projectService)
 	toolDefinitionHandler := handler.NewToolDefinitionHandler(toolDefinitionService)
 	taskHandler := handler.NewTaskHandler(taskService, orchestratorService, taskControlBus, v2TaskLifecycle)
+	scheduledTaskHandler := handler.NewScheduledTaskHandler(scheduledTaskService)
 	webhookPublicBase := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	webhookHandler := handler.NewWebhookHandler(webhookRepo, projectRepo, conversationService, taskService, webhookPublicBase, orchestratorService)
 	workflowHandler := handler.NewWorkflowHandler(workflowEngine)
@@ -860,6 +881,7 @@ func Run(role Role) {
 		TeamHandler:           teamHandler,
 		ToolDefinitionHandler: toolDefinitionHandler,
 		TaskHandler:           taskHandler,
+		ScheduledTaskHandler:  scheduledTaskHandler,
 		WorkflowHandler:       workflowHandler,
 		WebhookHandler:        webhookHandler,
 		ConversationHandler:   conversationHandler,
@@ -928,6 +950,7 @@ func Run(role Role) {
 			ProjectService:         projectService,
 			TeamService:            teamService,
 			TaskService:            taskService,
+			ScheduledTaskService:   scheduledTaskService,
 			ToolDefinitionService:  toolDefinitionService,
 			OrchestratorSvc:        orchestratorService,
 			ApiKeyService:          apiKeyService,

@@ -2985,4 +2985,156 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get webhookTaskPriorityTemplateHint =>
       'Например: <issue.priority> (Ожидается: low, medium, high, critical)';
+
+  @override
+  String get projectDashboardSchedules => 'Расписание';
+
+  @override
+  String get schedulesTitle => 'Регулярные задачи';
+
+  @override
+  String get schedulesEmpty => 'Пока нет регулярных задач';
+
+  @override
+  String get schedulesAdd => 'Новая регулярная задача';
+
+  @override
+  String get schedulesLoadError => 'Не удалось загрузить расписания';
+
+  @override
+  String get scheduleActive => 'Активно';
+
+  @override
+  String get scheduleInactive => 'Выключено';
+
+  @override
+  String get scheduleNextRunLabel => 'Следующий запуск';
+
+  @override
+  String get scheduleLastRunLabel => 'Последний запуск';
+
+  @override
+  String get scheduleNeverRun => 'ещё не запускалась';
+
+  @override
+  String get scheduleEnableTooltip => 'Включить';
+
+  @override
+  String get scheduleDisableTooltip => 'Выключить';
+
+  @override
+  String get scheduleEdit => 'Редактировать';
+
+  @override
+  String get scheduleDelete => 'Удалить';
+
+  @override
+  String get scheduleDeleteTitle => 'Удалить расписание?';
+
+  @override
+  String get scheduleDeleteMessage =>
+      'Расписание будет удалено. Уже созданные задачи останутся.';
+
+  @override
+  String get scheduleCreateTitle => 'Новая регулярная задача';
+
+  @override
+  String get scheduleEditTitle => 'Редактировать расписание';
+
+  @override
+  String get scheduleNameLabel => 'Название';
+
+  @override
+  String get scheduleNameHint => 'Ночной рефактор';
+
+  @override
+  String get scheduleNameRequired => 'Введите название';
+
+  @override
+  String get scheduleDescriptionLabel => 'Описание задачи';
+
+  @override
+  String get scheduleDescriptionHint => 'Что нужно сделать в каждой задаче';
+
+  @override
+  String get scheduleTeamLabel => 'Команда';
+
+  @override
+  String get scheduleTeamNone => 'Без команды';
+
+  @override
+  String get schedulePriorityLabel => 'Приоритет';
+
+  @override
+  String get scheduleFrequencyLabel => 'Частота';
+
+  @override
+  String get scheduleFreqDaily => 'Ежедневно';
+
+  @override
+  String get scheduleFreqWeekly => 'Еженедельно';
+
+  @override
+  String get scheduleFreqHourly => 'Каждые N часов';
+
+  @override
+  String get scheduleFreqCustom => 'Своё (cron)';
+
+  @override
+  String get scheduleTimeLabel => 'Время';
+
+  @override
+  String get scheduleIntervalHoursLabel => 'Интервал, часов';
+
+  @override
+  String get scheduleWeekdaysLabel => 'Дни недели';
+
+  @override
+  String get scheduleWeekdaysRequired => 'Выберите хотя бы один день';
+
+  @override
+  String get scheduleCronLabel => 'Cron-выражение';
+
+  @override
+  String get scheduleCronHint => '0 9 * * 1-5';
+
+  @override
+  String get scheduleCronInvalid =>
+      'Некорректное cron-выражение (нужно 5 полей)';
+
+  @override
+  String get scheduleCronPreviewLabel => 'Cron';
+
+  @override
+  String get scheduleSave => 'Сохранить';
+
+  @override
+  String get scheduleCancel => 'Отмена';
+
+  @override
+  String get scheduleSavedSnack => 'Расписание сохранено';
+
+  @override
+  String get scheduleDeletedSnack => 'Расписание удалено';
+
+  @override
+  String get weekdayShortMon => 'Пн';
+
+  @override
+  String get weekdayShortTue => 'Вт';
+
+  @override
+  String get weekdayShortWed => 'Ср';
+
+  @override
+  String get weekdayShortThu => 'Чт';
+
+  @override
+  String get weekdayShortFri => 'Пт';
+
+  @override
+  String get weekdayShortSat => 'Сб';
+
+  @override
+  String get weekdayShortSun => 'Вс';
 }

@@ -46,6 +46,11 @@ class ProjectDashboardShell extends StatelessWidget {
             label: l10n.projectDashboardTeam,
           ),
           (
+            icon: Icons.event_repeat_outlined,
+            selectedIcon: Icons.event_repeat,
+            label: l10n.projectDashboardSchedules,
+          ),
+          (
             icon: Icons.settings_outlined,
             selectedIcon: Icons.settings,
             label: l10n.projectDashboardSettings,

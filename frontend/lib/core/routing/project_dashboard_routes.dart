@@ -5,6 +5,7 @@ import 'package:frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/project_dashboard_overview_screen.dart';
 import 'package:frontend/features/projects/presentation/screens/project_settings_screen.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_destination_placeholder.dart';
+import 'package:frontend/features/schedules/presentation/screens/schedules_list_screen.dart';
 import 'package:frontend/features/tasks/presentation/screens/task_detail_screen.dart';
 import 'package:frontend/features/tasks/presentation/screens/tasks_list_screen.dart';
 import 'package:frontend/features/team/presentation/screens/team_screen.dart';
@@ -32,6 +33,10 @@ const String projectDashboardShellBranchTasksSegment = 'tasks';
 /// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
 const String projectDashboardShellBranchTeamSegment = 'team';
 
+/// Сегмент URL вкладки «Расписание» в shell (`/projects/:id/schedules`).
+/// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
+const String projectDashboardShellBranchSchedulesSegment = 'schedules';
+
 /// Сегмент URL вкладки «Настройки» в shell (`/projects/:id/settings`).
 /// Должен совпадать с соответствующим элементом [projectDashboardShellBranchPaths].
 const String projectDashboardShellBranchSettingsSegment = 'settings';
@@ -42,6 +47,7 @@ const List<String> projectDashboardShellBranchPaths = [
   'chat',
   projectDashboardShellBranchTasksSegment,
   projectDashboardShellBranchTeamSegment,
+  projectDashboardShellBranchSchedulesSegment,
   projectDashboardShellBranchSettingsSegment,
 ];
 
@@ -168,6 +174,7 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
   required GlobalKey<NavigatorState> chatNavigatorKey,
   required GlobalKey<NavigatorState> tasksNavigatorKey,
   required GlobalKey<NavigatorState> teamNavigatorKey,
+  required GlobalKey<NavigatorState> schedulesNavigatorKey,
   required GlobalKey<NavigatorState> settingsNavigatorKey,
 }) {
   final entries =
@@ -188,6 +195,10 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
         (
           key: teamNavigatorKey,
           title: (l) => l.projectDashboardTeam,
+        ),
+        (
+          key: schedulesNavigatorKey,
+          title: (l) => l.projectDashboardSchedules,
         ),
         (
           key: settingsNavigatorKey,
@@ -278,6 +289,18 @@ List<StatefulShellBranch> buildProjectDashboardShellBranches({
                 return NoTransitionPage(
                   key: state.pageKey,
                   child: TeamScreen(projectId: projectId),
+                );
+              },
+            )
+          else if (projectDashboardShellBranchPaths[i] ==
+              projectDashboardShellBranchSchedulesSegment)
+            GoRoute(
+              path: projectDashboardShellBranchSchedulesSegment,
+              pageBuilder: (context, state) {
+                final projectId = state.pathParameters['id']!;
+                return NoTransitionPage(
+                  key: state.pageKey,
+                  child: SchedulesListScreen(projectId: projectId),
                 );
               },
             )

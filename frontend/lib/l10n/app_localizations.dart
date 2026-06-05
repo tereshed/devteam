@@ -5497,6 +5497,306 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Например: <issue.priority> (Ожидается: low, medium, high, critical)'**
   String get webhookTaskPriorityTemplateHint;
+
+  /// No description provided for @projectDashboardSchedules.
+  ///
+  /// In ru, this message translates to:
+  /// **'Расписание'**
+  String get projectDashboardSchedules;
+
+  /// No description provided for @schedulesTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Регулярные задачи'**
+  String get schedulesTitle;
+
+  /// No description provided for @schedulesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока нет регулярных задач'**
+  String get schedulesEmpty;
+
+  /// No description provided for @schedulesAdd.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новая регулярная задача'**
+  String get schedulesAdd;
+
+  /// No description provided for @schedulesLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить расписания'**
+  String get schedulesLoadError;
+
+  /// No description provided for @scheduleActive.
+  ///
+  /// In ru, this message translates to:
+  /// **'Активно'**
+  String get scheduleActive;
+
+  /// No description provided for @scheduleInactive.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выключено'**
+  String get scheduleInactive;
+
+  /// No description provided for @scheduleNextRunLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Следующий запуск'**
+  String get scheduleNextRunLabel;
+
+  /// No description provided for @scheduleLastRunLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Последний запуск'**
+  String get scheduleLastRunLabel;
+
+  /// No description provided for @scheduleNeverRun.
+  ///
+  /// In ru, this message translates to:
+  /// **'ещё не запускалась'**
+  String get scheduleNeverRun;
+
+  /// No description provided for @scheduleEnableTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Включить'**
+  String get scheduleEnableTooltip;
+
+  /// No description provided for @scheduleDisableTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выключить'**
+  String get scheduleDisableTooltip;
+
+  /// No description provided for @scheduleEdit.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать'**
+  String get scheduleEdit;
+
+  /// No description provided for @scheduleDelete.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get scheduleDelete;
+
+  /// No description provided for @scheduleDeleteTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить расписание?'**
+  String get scheduleDeleteTitle;
+
+  /// No description provided for @scheduleDeleteMessage.
+  ///
+  /// In ru, this message translates to:
+  /// **'Расписание будет удалено. Уже созданные задачи останутся.'**
+  String get scheduleDeleteMessage;
+
+  /// No description provided for @scheduleCreateTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новая регулярная задача'**
+  String get scheduleCreateTitle;
+
+  /// No description provided for @scheduleEditTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать расписание'**
+  String get scheduleEditTitle;
+
+  /// No description provided for @scheduleNameLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Название'**
+  String get scheduleNameLabel;
+
+  /// No description provided for @scheduleNameHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ночной рефактор'**
+  String get scheduleNameHint;
+
+  /// No description provided for @scheduleNameRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите название'**
+  String get scheduleNameRequired;
+
+  /// No description provided for @scheduleDescriptionLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание задачи'**
+  String get scheduleDescriptionLabel;
+
+  /// No description provided for @scheduleDescriptionHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Что нужно сделать в каждой задаче'**
+  String get scheduleDescriptionHint;
+
+  /// No description provided for @scheduleTeamLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Команда'**
+  String get scheduleTeamLabel;
+
+  /// No description provided for @scheduleTeamNone.
+  ///
+  /// In ru, this message translates to:
+  /// **'Без команды'**
+  String get scheduleTeamNone;
+
+  /// No description provided for @schedulePriorityLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Приоритет'**
+  String get schedulePriorityLabel;
+
+  /// No description provided for @scheduleFrequencyLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Частота'**
+  String get scheduleFrequencyLabel;
+
+  /// No description provided for @scheduleFreqDaily.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ежедневно'**
+  String get scheduleFreqDaily;
+
+  /// No description provided for @scheduleFreqWeekly.
+  ///
+  /// In ru, this message translates to:
+  /// **'Еженедельно'**
+  String get scheduleFreqWeekly;
+
+  /// No description provided for @scheduleFreqHourly.
+  ///
+  /// In ru, this message translates to:
+  /// **'Каждые N часов'**
+  String get scheduleFreqHourly;
+
+  /// No description provided for @scheduleFreqCustom.
+  ///
+  /// In ru, this message translates to:
+  /// **'Своё (cron)'**
+  String get scheduleFreqCustom;
+
+  /// No description provided for @scheduleTimeLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Время'**
+  String get scheduleTimeLabel;
+
+  /// No description provided for @scheduleIntervalHoursLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Интервал, часов'**
+  String get scheduleIntervalHoursLabel;
+
+  /// No description provided for @scheduleWeekdaysLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дни недели'**
+  String get scheduleWeekdaysLabel;
+
+  /// No description provided for @scheduleWeekdaysRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите хотя бы один день'**
+  String get scheduleWeekdaysRequired;
+
+  /// No description provided for @scheduleCronLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Cron-выражение'**
+  String get scheduleCronLabel;
+
+  /// No description provided for @scheduleCronHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'0 9 * * 1-5'**
+  String get scheduleCronHint;
+
+  /// No description provided for @scheduleCronInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Некорректное cron-выражение (нужно 5 полей)'**
+  String get scheduleCronInvalid;
+
+  /// No description provided for @scheduleCronPreviewLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Cron'**
+  String get scheduleCronPreviewLabel;
+
+  /// No description provided for @scheduleSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get scheduleSave;
+
+  /// No description provided for @scheduleCancel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get scheduleCancel;
+
+  /// No description provided for @scheduleSavedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Расписание сохранено'**
+  String get scheduleSavedSnack;
+
+  /// No description provided for @scheduleDeletedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Расписание удалено'**
+  String get scheduleDeletedSnack;
+
+  /// No description provided for @weekdayShortMon.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пн'**
+  String get weekdayShortMon;
+
+  /// No description provided for @weekdayShortTue.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вт'**
+  String get weekdayShortTue;
+
+  /// No description provided for @weekdayShortWed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ср'**
+  String get weekdayShortWed;
+
+  /// No description provided for @weekdayShortThu.
+  ///
+  /// In ru, this message translates to:
+  /// **'Чт'**
+  String get weekdayShortThu;
+
+  /// No description provided for @weekdayShortFri.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пт'**
+  String get weekdayShortFri;
+
+  /// No description provided for @weekdayShortSat.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сб'**
+  String get weekdayShortSat;
+
+  /// No description provided for @weekdayShortSun.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вс'**
+  String get weekdayShortSun;
 }
 
 class _AppLocalizationsDelegate

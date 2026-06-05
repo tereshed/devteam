@@ -36,6 +36,8 @@ final GlobalKey<NavigatorState> _projectShellChatNavKey =
     GlobalKey<NavigatorState>(debugLabel: 'projectShellChat');
 final GlobalKey<NavigatorState> _projectShellTeamNavKey =
     GlobalKey<NavigatorState>(debugLabel: 'projectShellTeam');
+final GlobalKey<NavigatorState> _projectShellSchedulesNavKey =
+    GlobalKey<NavigatorState>(debugLabel: 'projectShellSchedules');
 final GlobalKey<NavigatorState> _projectShellSettingsNavKey =
     GlobalKey<NavigatorState>(debugLabel: 'projectShellSettings');
 
@@ -294,6 +296,7 @@ class AppRouter {
                   chatNavigatorKey: _projectShellChatNavKey,
                   tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
                   teamNavigatorKey: _projectShellTeamNavKey,
+                  schedulesNavigatorKey: _projectShellSchedulesNavKey,
                   settingsNavigatorKey: _projectShellSettingsNavKey,
                 ),
               ),

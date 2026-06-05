@@ -459,6 +459,28 @@ definitions:
     - name
     - template
     type: object
+  dto.CreateScheduledTaskRequest:
+    properties:
+      cron_expression:
+        maxLength: 255
+        minLength: 1
+        type: string
+      description:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        maxLength: 500
+        minLength: 1
+        type: string
+      priority:
+        type: string
+      team_id:
+        type: string
+    required:
+    - cron_expression
+    - name
+    type: object
   dto.CreateTaskMessageRequest:
     properties:
       content:
@@ -978,6 +1000,44 @@ definitions:
     - email
     - password
     type: object
+  dto.ScheduledTaskListResponse:
+    properties:
+      scheduled_tasks:
+        items:
+          $ref: '#/definitions/dto.ScheduledTaskResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ScheduledTaskResponse:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      cron_expression:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      last_run_at:
+        type: string
+      name:
+        type: string
+      next_run_at:
+        type: string
+      priority:
+        type: string
+      project_id:
+        type: string
+      team_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.SendAssistantMessageRequest:
     properties:
       client_message_id:
@@ -1299,6 +1359,23 @@ definitions:
       json_schema:
         type: string
       template:
+        type: string
+    type: object
+  dto.UpdateScheduledTaskRequest:
+    properties:
+      clear_team:
+        type: boolean
+      cron_expression:
+        type: string
+      description:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      priority:
+        type: string
+      team_id:
         type: string
     type: object
   dto.UpdateTaskRequest:
@@ -5358,6 +5435,198 @@ paths:
       summary: Переиндексация проекта
       tags:
       - projects
+  /projects/{id}/scheduled-tasks:
+    get:
+      description: Возвращает все расписания проекта.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ScheduledTaskListResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Список регулярных задач проекта
+      tags:
+      - scheduled-tasks
+    post:
+      consumes:
+      - application/json
+      description: Создаёт расписание, по которому в проекте будут периодически создаваться
+        задачи.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные расписания
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateScheduledTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ScheduledTaskResponse'
+        "400":
+          description: Невалидный JSON / cron / priority / имя
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Команда не принадлежит проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Создание регулярной задачи
+      tags:
+      - scheduled-tasks
+  /projects/{id}/scheduled-tasks/{scheduleId}:
+    delete:
+      description: Удаляет расписание проекта. Уже созданные задачи не затрагиваются.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Scheduled Task ID
+        in: path
+        name: scheduleId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Расписание / проект не найдены
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Удаление регулярной задачи
+      tags:
+      - scheduled-tasks
+    put:
+      consumes:
+      - application/json
+      description: Частично обновляет расписание (имя, описание, cron, приоритет,
+        команду, активность).
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Scheduled Task ID
+        in: path
+        name: scheduleId
+        required: true
+        type: string
+      - description: Изменения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateScheduledTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ScheduledTaskResponse'
+        "400":
+          description: Невалидный JSON / cron / priority / имя
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Расписание / проект не найдены
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Команда не принадлежит проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Обновление регулярной задачи
+      tags:
+      - scheduled-tasks
   /projects/{id}/secrets:
     get:
       parameters:

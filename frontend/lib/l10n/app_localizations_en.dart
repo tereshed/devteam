@@ -2962,4 +2962,156 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get webhookTaskPriorityTemplateHint =>
       'e.g. <issue.priority> (Expected: low, medium, high, critical)';
+
+  @override
+  String get projectDashboardSchedules => 'Schedule';
+
+  @override
+  String get schedulesTitle => 'Scheduled tasks';
+
+  @override
+  String get schedulesEmpty => 'No scheduled tasks yet';
+
+  @override
+  String get schedulesAdd => 'New scheduled task';
+
+  @override
+  String get schedulesLoadError => 'Failed to load scheduled tasks';
+
+  @override
+  String get scheduleActive => 'Active';
+
+  @override
+  String get scheduleInactive => 'Disabled';
+
+  @override
+  String get scheduleNextRunLabel => 'Next run';
+
+  @override
+  String get scheduleLastRunLabel => 'Last run';
+
+  @override
+  String get scheduleNeverRun => 'not run yet';
+
+  @override
+  String get scheduleEnableTooltip => 'Enable';
+
+  @override
+  String get scheduleDisableTooltip => 'Disable';
+
+  @override
+  String get scheduleEdit => 'Edit';
+
+  @override
+  String get scheduleDelete => 'Delete';
+
+  @override
+  String get scheduleDeleteTitle => 'Delete schedule?';
+
+  @override
+  String get scheduleDeleteMessage =>
+      'The schedule will be removed. Already created tasks remain.';
+
+  @override
+  String get scheduleCreateTitle => 'New scheduled task';
+
+  @override
+  String get scheduleEditTitle => 'Edit schedule';
+
+  @override
+  String get scheduleNameLabel => 'Name';
+
+  @override
+  String get scheduleNameHint => 'Nightly refactor';
+
+  @override
+  String get scheduleNameRequired => 'Enter a name';
+
+  @override
+  String get scheduleDescriptionLabel => 'Task description';
+
+  @override
+  String get scheduleDescriptionHint => 'What each task should do';
+
+  @override
+  String get scheduleTeamLabel => 'Team';
+
+  @override
+  String get scheduleTeamNone => 'No team';
+
+  @override
+  String get schedulePriorityLabel => 'Priority';
+
+  @override
+  String get scheduleFrequencyLabel => 'Frequency';
+
+  @override
+  String get scheduleFreqDaily => 'Daily';
+
+  @override
+  String get scheduleFreqWeekly => 'Weekly';
+
+  @override
+  String get scheduleFreqHourly => 'Every N hours';
+
+  @override
+  String get scheduleFreqCustom => 'Custom (cron)';
+
+  @override
+  String get scheduleTimeLabel => 'Time';
+
+  @override
+  String get scheduleIntervalHoursLabel => 'Interval, hours';
+
+  @override
+  String get scheduleWeekdaysLabel => 'Days of week';
+
+  @override
+  String get scheduleWeekdaysRequired => 'Select at least one day';
+
+  @override
+  String get scheduleCronLabel => 'Cron expression';
+
+  @override
+  String get scheduleCronHint => '0 9 * * 1-5';
+
+  @override
+  String get scheduleCronInvalid =>
+      'Invalid cron expression (5 fields required)';
+
+  @override
+  String get scheduleCronPreviewLabel => 'Cron';
+
+  @override
+  String get scheduleSave => 'Save';
+
+  @override
+  String get scheduleCancel => 'Cancel';
+
+  @override
+  String get scheduleSavedSnack => 'Schedule saved';
+
+  @override
+  String get scheduleDeletedSnack => 'Schedule deleted';
+
+  @override
+  String get weekdayShortMon => 'Mon';
+
+  @override
+  String get weekdayShortTue => 'Tue';
+
+  @override
+  String get weekdayShortWed => 'Wed';
+
+  @override
+  String get weekdayShortThu => 'Thu';
+
+  @override
+  String get weekdayShortFri => 'Fri';
+
+  @override
+  String get weekdayShortSat => 'Sat';
+
+  @override
+  String get weekdayShortSun => 'Sun';
 }

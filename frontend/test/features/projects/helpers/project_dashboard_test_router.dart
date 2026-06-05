@@ -18,6 +18,8 @@ final GlobalKey<NavigatorState> kTestShellChatKey =
     GlobalKey<NavigatorState>(debugLabel: 'testShellChat');
 final GlobalKey<NavigatorState> kTestShellTeamKey =
     GlobalKey<NavigatorState>(debugLabel: 'testShellTeam');
+final GlobalKey<NavigatorState> kTestShellSchedulesKey =
+    GlobalKey<NavigatorState>(debugLabel: 'testShellSchedules');
 final GlobalKey<NavigatorState> kTestShellSettingsKey =
     GlobalKey<NavigatorState>(debugLabel: 'testShellSettings');
 
@@ -68,6 +70,7 @@ GoRouter buildProjectDashboardTestRouter({
                   chatNavigatorKey: kTestShellChatKey,
                   tasksNavigatorKey: projectDashboardShellTasksNavigatorKey,
                   teamNavigatorKey: kTestShellTeamKey,
+                  schedulesNavigatorKey: kTestShellSchedulesKey,
                   settingsNavigatorKey: kTestShellSettingsKey,
                 ),
               ),

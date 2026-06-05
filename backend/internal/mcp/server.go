@@ -19,6 +19,7 @@ type Dependencies struct {
 	ProjectService  service.ProjectService
 	TeamService     service.TeamService
 	TaskService     service.TaskService
+	ScheduledTaskService service.ScheduledTaskService
 	ToolDefinitionService service.ToolDefinitionService
 	ConversationSvc service.ConversationService
 	OrchestratorSvc service.TaskOrchestrator
@@ -72,6 +73,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterTeamTools(server, deps.ProjectService, deps.TeamService)
 	RegisterToolDefinitionTools(server, deps.ToolDefinitionService)
 	RegisterTaskTools(server, deps.TaskService, deps.OrchestratorSvc)
+	RegisterScheduledTaskTools(server, deps.ScheduledTaskService)
 	RegisterConversationTools(server, deps.ConversationSvc)
 	RegisterClaudeCodeAuthTools(server, deps.ClaudeCodeAuthService)
 	RegisterAntigravityAuthTools(server, deps.AntigravityAuthService)
