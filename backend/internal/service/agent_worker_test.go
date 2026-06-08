@@ -666,7 +666,7 @@ func TestSplitDecomposition_CreatesAndIdempotent(t *testing.T) {
 	decompID := uuid.New()
 	content := datatypes.JSON(`{"subtasks":[{"title":"Domain layer"},{"title":"Repository"},{"title":"HTTP handlers"}]}`)
 
-	n, err := w.splitDecomposition(context.Background(), taskID, decompID, content)
+	n, err := w.splitDecomposition(context.Background(), nil, taskID, decompID, content)
 	if err != nil {
 		t.Fatalf("split: %v", err)
 	}
@@ -688,11 +688,140 @@ func TestSplitDecomposition_CreatesAndIdempotent(t *testing.T) {
 	}
 
 	// Идемпотентность: второй вызов не создаёт дублей.
-	n2, err := w.splitDecomposition(context.Background(), taskID, decompID, content)
+	n2, err := w.splitDecomposition(context.Background(), nil, taskID, decompID, content)
 	if err != nil {
 		t.Fatalf("split #2: %v", err)
 	}
 	if n2 != 0 {
 		t.Errorf("expected 0 on idempotent re-split, got %d", n2)
 	}
+}
+
+// multiRepoProject — проект с primary `main` и `self-service` для мульти-репо тестов сплита.
+func multiRepoProject() *models.Project {
+	return &models.Project{
+		Repositories: []models.ProjectRepository{
+			{Slug: "main", IsPrimary: true},
+			{Slug: "self-service"},
+		},
+	}
+}
+
+func repoSlugOfArtifact(t *testing.T, a models.Artifact) string {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(a.Content, &m); err != nil {
+		t.Fatalf("unmarshal subtask content: %v", err)
+	}
+	s, _ := m["repo_slug"].(string)
+	return s
+}
+
+// TestSplitDecomposition_MultiRepo_KeepsAndInfers — в мульти-репо проекте явный валидный
+// repo_slug сохраняется, а пропущенный выводится из текста подзадачи и проставляется в content.
+func TestSplitDecomposition_MultiRepo_KeepsAndInfers(t *testing.T) {
+	repo := newMemArtifactRepo()
+	w := &AgentWorker{artifactRepo: repo, logger: discardLogger()}
+	content := datatypes.JSON(`{"subtasks":[
+		{"title":"explicit","description":"x","repo_slug":"self-service"},
+		{"title":"Repo: self-service router","description":"Правка в self-service routers.py"}
+	]}`)
+
+	n, err := w.splitDecomposition(context.Background(), multiRepoProject(), uuid.New(), uuid.New(), content)
+	if err != nil {
+		t.Fatalf("split: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 created, got %d", n)
+	}
+	for _, a := range repo.created {
+		if a.Kind != models.ArtifactKindSubtaskDescription {
+			continue
+		}
+		if got := repoSlugOfArtifact(t, a); got != "self-service" {
+			t.Errorf("subtask %q: repo_slug = %q, want self-service", a.Summary, got)
+		}
+	}
+}
+
+// TestSplitDecomposition_MultiRepo_RejectsUnresolvable — подзадача без repo_slug и без
+// упоминания известного slug в тексте отвергает всю декомпозицию (ничего не создаётся).
+func TestSplitDecomposition_MultiRepo_RejectsUnresolvable(t *testing.T) {
+	repo := newMemArtifactRepo()
+	w := &AgentWorker{artifactRepo: repo, logger: discardLogger()}
+	content := datatypes.JSON(`{"subtasks":[
+		{"title":"ok","description":"work in self-service"},
+		{"title":"ambiguous","description":"generic change with no repo hint"}
+	]}`)
+
+	n, err := w.splitDecomposition(context.Background(), multiRepoProject(), uuid.New(), uuid.New(), content)
+	if !errors.Is(err, ErrDecompositionRepoSlugMissing) {
+		t.Fatalf("err = %v, want ErrDecompositionRepoSlugMissing", err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 created on reject, got %d", n)
+	}
+	for _, a := range repo.created {
+		if a.Kind == models.ArtifactKindSubtaskDescription {
+			t.Fatalf("no subtask_description must be created on reject, got %q", a.Summary)
+		}
+	}
+}
+
+// TestInferRepoSlugFromText — единственный токен выводится, неоднозначность/подстрока — нет.
+func TestInferRepoSlugFromText(t *testing.T) {
+	slugs := []string{"main", "self-service", "mcp-servers"}
+	cases := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"explicit prose", "Репозиторий: self-service. Backend: FastAPI.", "self-service"},
+		{"none", "just some generic description", ""},
+		{"ambiguous", "touch self-service and mcp-servers", ""},
+		{"substring not matched", "this is the domain logic", ""}, // 'main' внутри 'domain' не считается
+		{"whole token main", "work in main repo", "main"},
+		{"empty", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := inferRepoSlugFromText(c.text, slugs); got != c.want {
+				t.Errorf("inferRepoSlugFromText(%q) = %q, want %q", c.text, got, c.want)
+			}
+		})
+	}
+}
+
+func TestSandboxRealDiff(t *testing.T) {
+	realDiff := "diff --git a/x.go b/x.go\n@@ -1,1 +1,2 @@\n a\n+b\n"
+	cases := []struct {
+		name   string
+		result *agent.ExecutionResult
+		want   string
+	}{
+		{"nil result", nil, ""},
+		{"no artifacts json", &agent.ExecutionResult{}, ""},
+		// sandbox executor: ArtifactsJSON = {"diff","commit_hash","branch_name"} без kind → берём реальный diff
+		{"sandbox shape", &agent.ExecutionResult{ArtifactsJSON: []byte(`{"diff":"` + "diff --git a/x b/x\\n" + `","branch_name":"b","commit_hash":"abc"}`)}, "diff --git a/x b/x\n"},
+		{"sandbox full diff", &agent.ExecutionResult{ArtifactsJSON: mustJSON(map[string]any{"diff": realDiff, "branch_name": "b"})}, realDiff},
+		// LLM executor: ArtifactsJSON — это envelope с kind → НЕ трогаем (вернуть пусто)
+		{"llm envelope has kind", &agent.ExecutionResult{ArtifactsJSON: mustJSON(map[string]any{"kind": "code_diff", "diff": "ignored", "content": map[string]any{"diff": "x"}})}, ""},
+		{"empty diff", &agent.ExecutionResult{ArtifactsJSON: mustJSON(map[string]any{"branch_name": "b"})}, ""},
+		{"invalid json", &agent.ExecutionResult{ArtifactsJSON: []byte(`not-json`)}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := sandboxRealDiff(c.result); got != c.want {
+				t.Fatalf("sandboxRealDiff = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }

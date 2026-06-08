@@ -47,7 +47,7 @@ func NewComposer(dir string) (*Composer, error) {
 		roleUsers:   make(map[string]string),
 	}
 
-	roles := []string{"orchestrator", "planner", "developer", "reviewer", "tester"}
+	roles := []string{"orchestrator", "planner", "developer", "reviewer", "tester", "decomposer", "merger"}
 	for _, r := range roles {
 		path := filepath.Join(dir, r+".yaml")
 		if err := s.Validate(path); err != nil {
@@ -109,6 +109,8 @@ func ValidateAllYAMLAgainstSchema(dir string) error {
 		"developer.yaml",
 		"reviewer.yaml",
 		"tester.yaml",
+		"decomposer.yaml",
+		"merger.yaml",
 	}
 	for _, name := range files {
 		if err := s.Validate(filepath.Join(dir, name)); err != nil {

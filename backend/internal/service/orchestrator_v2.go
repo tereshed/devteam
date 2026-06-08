@@ -914,40 +914,58 @@ func (o *Orchestrator) enqueueOneAgentJob(ctx context.Context, tx *gorm.DB, task
 	return nil
 }
 
-// resolveRepoSlugForJob определяет repo_slug подзадачи по target_artifact_id из input.
-// Поднимается по цепочке parent_id (subtask_description → code_diff → review → ...), пока не
-// найдёт repo_slug в content артефакта. Пусто, если репо не указан (одно-репо проект /
-// decomposer не проставил slug) — вызывающий код откатывается на primary-репо.
+// resolveRepoSlugForJob определяет repo_slug подзадачи по target_artifact_id(s) из input.
+// Поддерживает обе формы: target_artifact_id (строка) и target_artifact_ids (массив) —
+// последнюю шлёт merger, передавая все одобренные code_diff'ы разом. Для каждого
+// артефакта-кандидата поднимается по цепочке parent_id (subtask_description → code_diff →
+// review → ...), пока не найдёт repo_slug в content. Возвращает первый найденный slug.
+// Пусто, если репо не указан (одно-репо проект / decomposer не проставил slug) — вызывающий
+// код откатывается на primary-репо.
 func (o *Orchestrator) resolveRepoSlugForJob(ctx context.Context, tx *gorm.DB, input map[string]any) string {
-	if input == nil {
-		return ""
-	}
-	raw, ok := input["target_artifact_id"]
-	if !ok {
-		return ""
-	}
-	idStr, ok := raw.(string)
-	if !ok || idStr == "" {
-		return ""
-	}
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		return ""
-	}
-	for depth := 0; depth < 6 && id != uuid.Nil; depth++ {
-		var art models.Artifact
-		if err := tx.WithContext(ctx).Where("id = ?", id).First(&art).Error; err != nil {
-			return ""
+	for _, idStr := range targetArtifactIDsFromInput(input) {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			continue
 		}
-		if slug := extractRepoSlug(art.Content); slug != "" {
-			return slug
+		for depth := 0; depth < 6 && id != uuid.Nil; depth++ {
+			var art models.Artifact
+			if err := tx.WithContext(ctx).Where("id = ?", id).First(&art).Error; err != nil {
+				break
+			}
+			if slug := extractRepoSlug(art.Content); slug != "" {
+				return slug
+			}
+			if art.ParentID == nil {
+				break
+			}
+			id = *art.ParentID
 		}
-		if art.ParentID == nil {
-			return ""
-		}
-		id = *art.ParentID
 	}
 	return ""
+}
+
+// targetArtifactIDsFromInput извлекает id артефактов из input, поддерживая singular
+// (target_artifact_id) и plural (target_artifact_ids) формы — ср. AgentRequest.RawTargetArtifactIDs.
+func targetArtifactIDsFromInput(input map[string]any) []string {
+	if input == nil {
+		return nil
+	}
+	var ids []string
+	if raw, ok := input["target_artifact_id"]; ok {
+		if s, ok := raw.(string); ok && s != "" {
+			ids = append(ids, s)
+		}
+	}
+	if raw, ok := input["target_artifact_ids"]; ok {
+		if arr, ok := raw.([]interface{}); ok {
+			for _, item := range arr {
+				if s, ok := item.(string); ok && s != "" {
+					ids = append(ids, s)
+				}
+			}
+		}
+	}
+	return ids
 }
 
 // repoDefaultBranch возвращает валидную default-ветку репо проекта по slug.

@@ -30,6 +30,36 @@ func TestExtractRepoSlug(t *testing.T) {
 	}
 }
 
+func TestTargetArtifactIDsFromInput(t *testing.T) {
+	cases := []struct {
+		name  string
+		input map[string]any
+		want  []string
+	}{
+		{"nil", nil, nil},
+		{"singular", map[string]any{"target_artifact_id": "a"}, []string{"a"}},
+		// merger шлёт plural-форму — раньше она игнорировалась, и repo_slug откатывался на primary-репо.
+		{"plural", map[string]any{"target_artifact_ids": []interface{}{"a", "b"}}, []string{"a", "b"}},
+		{"both", map[string]any{"target_artifact_id": "a", "target_artifact_ids": []interface{}{"b"}}, []string{"a", "b"}},
+		{"plural skips empties/non-strings", map[string]any{"target_artifact_ids": []interface{}{"a", "", 7}}, []string{"a"}},
+		{"empty singular", map[string]any{"target_artifact_id": ""}, nil},
+		{"absent", map[string]any{"other": "x"}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := targetArtifactIDsFromInput(c.input)
+			if len(got) != len(c.want) {
+				t.Fatalf("got %v, want %v", got, c.want)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Fatalf("got %v, want %v", got, c.want)
+				}
+			}
+		})
+	}
+}
+
 func TestResolveSlugFromArtifact_ClimbsParentChain(t *testing.T) {
 	// subtask_description (repo_slug=core) ← code_diff ← review(code_diff)
 	subtaskID := uuid.New()

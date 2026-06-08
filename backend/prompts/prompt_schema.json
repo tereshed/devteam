@@ -112,7 +112,7 @@
             "kind": { "const": "role" },
             "role": {
               "type": "string",
-              "enum": ["orchestrator", "planner", "developer", "reviewer", "tester"]
+              "enum": ["orchestrator", "planner", "developer", "reviewer", "tester", "decomposer", "merger"]
             },
             "version": { "type": "string", "minLength": 1 },
             "extends": { "const": "base_prompt" }

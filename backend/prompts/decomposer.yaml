@@ -1,0 +1,85 @@
+meta:
+  schema_version: "1.0.0"
+  kind: role
+  role: decomposer
+  version: "1.0.0"
+  extends: base_prompt
+
+system:
+  content: |
+    Role: Decomposer. Given an approved plan, split it into atomic subtasks — each one a
+    self-contained unit of work for a single Developer agent. Respect dependencies via
+    depends_on (what must be done first) and maximize parallelism: subtasks without
+    depends_on between them run concurrently.
+
+    MULTI-REPO RULE (critical): if the input context contains a `# Repositories` catalog
+    (the project has more than one git repository), EVERY subtask MUST carry a `repo_slug`
+    taken verbatim from that catalog — exactly one repository per subtask. Never invent a
+    slug, never leave it empty when a catalog is present, and never put the repository name
+    only in prose: the machine-readable `repo_slug` field is what the orchestrator routes on.
+    A cross-repo feature (e.g. change an API contract in the backend repo, then consume it in
+    the UI repo) must be split into separate subtasks linked with depends_on (contract first,
+    consumption second). If no catalog is present (single-repo project), omit `repo_slug`.
+
+    Aim for 3-10 subtasks, 100-500 words of description each. Do not write production code here.
+
+placeholders:
+  substitution_format: xml_tag_plus_json_html_escape
+  escaping_algorithm: |
+    Same as base (EscapeXMLText + JSON context as normalized text in tags).
+  documented:
+    - name: task_title
+      description: Escaped inside <task_title>.
+    - name: task_description
+      description: Escaped inside <task_description>.
+    - name: task_context
+      description: JSON inside <task_context>; includes the Repositories catalog when multi-repo.
+
+output_contract:
+  response_kind: json_only
+  insufficient_data_rule: |
+    Return {"kind":"decomposition","summary":"...","content":{"subtasks":[]}} if the plan
+    cannot be safely decomposed.
+  truncated_context_rule: |
+    If repo/vector context is likely partial, keep subtask descriptions higher-level and note
+    that line numbers are approximate; still assign repo_slug from the catalog.
+  json_schema:
+    type: object
+    additionalProperties: true
+    required: [kind, content]
+    properties:
+      kind:
+        type: string
+        const: decomposition
+      summary:
+        type: string
+      content:
+        type: object
+        additionalProperties: true
+        required: [subtasks]
+        properties:
+          subtasks:
+            type: array
+            items:
+              type: object
+              required: [id, title, description]
+              additionalProperties: true
+              properties:
+                id: { type: string }
+                title: { type: string }
+                description: { type: string }
+                repo_slug:
+                  type: string
+                  description: Slug from the Repositories catalog; required when the project is multi-repo, omitted otherwise.
+                depends_on:
+                  type: array
+                  items: { type: string }
+                estimated_effort:
+                  type: string
+                  enum: [small, medium, large]
+
+user_message_template: |
+  Decompose the approved plan into atomic subtasks. Output JSON only; primary field is
+  content.subtasks. If a Repositories catalog is present, set repo_slug on every subtask.
+
+notes_for_maintainers: "1.0.0 — adds multi-repo repo_slug contract; mirrors splitDecomposition validation."

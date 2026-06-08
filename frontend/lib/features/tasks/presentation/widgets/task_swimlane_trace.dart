@@ -596,12 +596,20 @@ class _TraceLayout {
   late final double topOffset;
   late final double contentH;
 
+  /// Прямоугольники спанов после ГОРИЗОНТАЛЬНОЙ УПАКОВКИ внутри дорожки:
+  /// пересекающиеся по времени спаны одного агента раздвигаются вправо встык
+  /// (а не рисуются друг поверх друга). Считается один раз — painter боксов,
+  /// кликабельные оверлеи и кривые-зависимости берут геометрию отсюда, поэтому
+  /// всегда совпадают.
+  late final Map<String, Rect> _spanRects;
+
   _TraceLayout({required this.size, required this.model, required this.gutter}) {
     contentH = rulerH + model.lanes.length * laneH;
     // Ось — в координате шагов: равная ширина на каждый интервал решений роутера.
     unitW = (size.width - gutter - rightPad) / model.stepCount;
     // Лента прижата к верху (а не центрируется по высоте).
     topOffset = 12;
+    _spanRects = _packLanes();
   }
 
   double get bandTop => topOffset + rulerH;
@@ -610,11 +618,63 @@ class _TraceLayout {
   double laneCenter(int i) => topOffset + rulerH + i * laneH + laneH / 2;
   double xOf(double sec) => gutter + model.stepCoordOf(sec) * unitW;
 
-  Rect spanRect(_Span s) {
+  Rect spanRect(_Span s) => _spanRects[s.node.id] ?? _naturalRect(s);
+
+  // «Естественный» прямоугольник (старт→конец по времени), нижняя граница
+  // ширины — по подписи. Фолбэк, если спана нет в упакованной карте.
+  Rect _naturalRect(_Span s) {
     final cy = laneCenter(laneIndex(s.laneKey));
     final x0 = xOf(s.startSec);
-    final x1 = xOf(s.endSec);
-    return Rect.fromLTRB(x0, cy - barH / 2, math.max(x1, x0 + 10), cy + barH / 2);
+    final w = math.max(xOf(s.endSec) - x0, _chipMinWidth(s));
+    return Rect.fromLTRB(x0, cy - barH / 2, x0 + w, cy + barH / 2);
+  }
+
+  // Раскладка спанов по дорожкам без наложения. Внутри одной дорожки идём слева
+  // направо; если очередной спан налезает на предыдущий — сдвигаем его вправо до
+  // правого края предыдущего + зазор. Ширина бара = max(длительность, ширина
+  // подписи), чтобы мгновенные события-точки не схлопывались в нечитаемые
+  // обрезки. Гейты роутера и now-line остаются в истинных координатах времени.
+  Map<String, Rect> _packLanes() {
+    const gap = 6.0;
+    final byLane = <String, List<_Span>>{};
+    for (final s in model.spans) {
+      (byLane[s.laneKey] ??= <_Span>[]).add(s);
+    }
+    final out = <String, Rect>{};
+    byLane.forEach((laneKey, list) {
+      list.sort((a, b) => a.startSec.compareTo(b.startSec));
+      final cy = laneCenter(laneIndex(laneKey));
+      var cursor = double.negativeInfinity;
+      for (final s in list) {
+        final natLeft = xOf(s.startSec);
+        final w = math.max(xOf(s.endSec) - natLeft, _chipMinWidth(s));
+        final left = math.max(natLeft, cursor + gap);
+        out[s.node.id] =
+            Rect.fromLTRB(left, cy - barH / 2, left + w, cy + barH / 2);
+        cursor = left + w;
+      }
+    });
+    return out;
+  }
+
+  // Минимальная ширина бара = ширина его подписи (глиф + label) + поля,
+  // измеренная тем же стилем, что и при отрисовке (size 11.5 / w600).
+  double _chipMinWidth(_Span s) {
+    final glyph = switch (s.result) {
+      _SpanResult.ok => '✓ ',
+      _SpanResult.changes => '⚠ ',
+      _SpanResult.failed => '✕ ',
+      _ => '',
+    };
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '$glyph${s.label}',
+        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return tp.width + 18;
   }
 }
 

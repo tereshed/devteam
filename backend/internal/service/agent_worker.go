@@ -429,13 +429,13 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	var targetArtifacts []*models.Artifact
 	if payload.Input != nil {
 		var rawIDs []string
-		
+
 		if rawSingular, ok := payload.Input["target_artifact_id"]; ok {
 			if s, ok := rawSingular.(string); ok && s != "" {
 				rawIDs = append(rawIDs, s)
 			}
 		}
-		
+
 		if rawPlural, ok := payload.Input["target_artifact_ids"]; ok {
 			if arr, ok := rawPlural.([]interface{}); ok {
 				for _, item := range arr {
@@ -461,12 +461,12 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 					art = a
 				}
 			}
-			
+
 			if art != nil {
 				targetArtifacts = append(targetArtifacts, art)
 			}
 		}
-		
+
 		if len(targetArtifacts) > 0 {
 			targetArtifact = targetArtifacts[0]
 		}
@@ -482,7 +482,7 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		// декомпозиции реально есть subtasks — иначе проваливаемся в обычное исполнение.
 		if len(extractSubtasks(targetArtifact.Content)) > 0 {
 			w.logger.InfoContext(execCtx, "bypassing decomposer execution: splitting decomposition artifact directly", "artifact_id", targetArtifact.ID)
-			if _, err := w.splitDecomposition(parentCtx, ev.TaskID, targetArtifact.ID, targetArtifact.Content); err != nil {
+			if _, err := w.splitDecomposition(parentCtx, task.Project, ev.TaskID, targetArtifact.ID, targetArtifact.Content); err != nil {
 				w.failEvent(parentCtx, ev, fmt.Errorf("split decomposition: %w", err))
 				return
 			}
@@ -508,6 +508,37 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 
 			w.enqueueFollowupStep(parentCtx, ev.TaskID)
 			return
+		}
+	}
+
+	// Fix 2 (multi-repo guard, defence-in-depth): developer, работающий над КОНКРЕТНОЙ
+	// подзадачей (есть target-артефакт), не должен запускаться против primary-репо вслепую.
+	// Если orchestrator не проставил _repo_slug (decomposer не дал repo_slug подзадаче),
+	// пробуем вывести его из текста целевого артефакта; не вышло — фейлим job (retry →
+	// router → needs_human), чтобы не редактировать чужой репозиторий. Тривиальный developer
+	// без target-артефакта (orchestrator целит во весь проект) не трогаем — для него primary
+	// остаётся валидным дефолтом.
+	if agentRec.ExecutionKind == models.AgentExecutionKindSandbox &&
+		agentRec.Role == models.AgentRoleDeveloper && task.Project != nil &&
+		len(targetArtifacts) > 0 {
+		if slugs := projectRepoSlugs(task.Project); len(slugs) >= 2 {
+			slug := stringFromAny(payload.Input["_repo_slug"])
+			if slug == "" || task.Project.RepoBySlug(slug) == nil {
+				if inf := inferRepoSlugFromText(repoInferTextFromArtifacts(targetArtifacts), slugs); inf != "" {
+					if payload.Input == nil {
+						payload.Input = map[string]any{}
+					}
+					payload.Input["_repo_slug"] = inf
+					w.logger.WarnContext(execCtx, "developer repo_slug missing; inferred from target artifact",
+						"task_id", ev.TaskID, "inferred_repo_slug", inf)
+					slug = inf
+				}
+			}
+			if slug == "" || task.Project.RepoBySlug(slug) == nil {
+				w.failEvent(parentCtx, ev, fmt.Errorf(
+					"multi-repo project but developer subtask has no resolvable repo_slug (repos: %v); refusing to run against primary repo to avoid wrong-repo edits", slugs))
+				return
+			}
 		}
 	}
 
@@ -632,7 +663,12 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	// dispatch'а Router'ом. Иначе «умный» Router может уйти к developer'ам мимо подзадач,
 	// и code_diff'ы окажутся orphaned (без parent), а поток — сплющенным.
 	if agentRec.Name == "decomposer" {
-		w.splitLatestDecomposition(parentCtx, task.ProjectID, ev.TaskID)
+		if err := w.splitLatestDecomposition(parentCtx, task.Project, ev.TaskID); err != nil {
+			// Невалидная декомпозиция (мульти-репо без resolvable repo_slug): фейлим event,
+			// чтобы decomposer перегенерил с правильным repo_slug, а не разложил на primary.
+			w.failEvent(parentCtx, ev, fmt.Errorf("decomposition rejected: %w", err))
+			return
+		}
 	}
 
 	// Releasing worktree после успешного завершения (содержимое уже закоммичено агентом).
@@ -857,11 +893,20 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		content = json.RawMessage(`{}`)
 	}
 
-	// Inject the branch name into code_diff content if we have a worktree
-	if wtRec != nil && envelope.Kind == string(models.ArtifactKindCodeDiff) {
+	// Для code_diff подменяем рукописный diff и ветку на реальные данные из sandbox.
+	// LLM склонен «конспектировать» diff в JSON (хунки вида `@@ imports @@` вместо
+	// `@@ -165,6 +165,7 @@`, «(new file) — full content added» без тела), что git apply
+	// не берёт, и merger вынужден переписывать руками. Реальный full.diff (git diff --cached
+	// origin/<base>, см. entrypoint) — машинно-применим, поэтому он первичен.
+	if envelope.Kind == string(models.ArtifactKindCodeDiff) {
 		var contentMap map[string]any
 		if err := json.Unmarshal(content, &contentMap); err == nil {
-			contentMap["branch_name"] = wtRec.BranchName
+			if realDiff := sandboxRealDiff(result); realDiff != "" {
+				contentMap["diff"] = realDiff
+			}
+			if wtRec != nil {
+				contentMap["branch_name"] = wtRec.BranchName
+			}
 			if updatedContent, err := json.Marshal(contentMap); err == nil {
 				content = updatedContent
 			}
@@ -1149,6 +1194,29 @@ func rawOutputContent(result *agent.ExecutionResult) json.RawMessage {
 	return b
 }
 
+// sandboxRealDiff извлекает реальный unified diff, собранный sandbox-entrypoint'ом
+// (full.diff = git diff --cached origin/<base>), из ExecutionResult.ArtifactsJSON.
+// SandboxAgentExecutor кладёт туда {"diff","commit_hash","branch_name"} БЕЗ поля kind;
+// LLM-executor же кладёт в ArtifactsJSON готовый envelope с kind. Поэтому при наличии
+// kind возвращаем пусто — чтобы не трогать LLM-only путь и не подменять diff там, где
+// реального full.diff из песочницы нет.
+func sandboxRealDiff(result *agent.ExecutionResult) string {
+	if result == nil || len(result.ArtifactsJSON) == 0 {
+		return ""
+	}
+	var sb struct {
+		Kind string `json:"kind"`
+		Diff string `json:"diff"`
+	}
+	if err := json.Unmarshal(result.ArtifactsJSON, &sb); err != nil {
+		return ""
+	}
+	if sb.Kind != "" {
+		return ""
+	}
+	return sb.Diff
+}
+
 func truncateRunesForArtifact(s string, max int) string {
 	runes := []rune(s)
 	if len(runes) <= max {
@@ -1229,12 +1297,127 @@ func extractRepoSlug(content datatypes.JSON) string {
 	return ""
 }
 
+// ErrDecompositionRepoSlugMissing — мульти-репо проект, но у подзадачи декомпозиции нет
+// разрешимого repo_slug (ни явного из каталога, ни выводимого из текста). Декомпозиция
+// отвергается (split не создаёт subtask_description), event фейлится → retry/backoff, при
+// исчерпании Router эскалирует в needs_human. Лучше пере-сгенерировать декомпозицию, чем
+// молча разложить подзадачи на primary-репо и наредактировать не тот репозиторий.
+var ErrDecompositionRepoSlugMissing = errors.New("decomposition subtask has no resolvable repo_slug in multi-repo project")
+
+// projectRepoSlugs — список slug'ов репозиториев проекта (пусто для legacy/одно-репо).
+func projectRepoSlugs(project *models.Project) []string {
+	if project == nil {
+		return nil
+	}
+	out := make([]string, 0, len(project.Repositories))
+	for i := range project.Repositories {
+		if s := strings.TrimSpace(project.Repositories[i].Slug); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func stringFromAny(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+func containsStr(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// inferRepoSlugFromText возвращает ЕДИНСТВЕННЫЙ известный slug, встречающийся в тексте как
+// отдельный токен (регистронезависимо). Пусто, если совпадений ноль или больше одного:
+// неоднозначность — это сигнал отвергнуть/эскалировать, а не угадывать (иначе рискуем
+// разложить работу на чужой репозиторий).
+func inferRepoSlugFromText(text string, slugs []string) string {
+	if text == "" {
+		return ""
+	}
+	lower := strings.ToLower(text)
+	found := ""
+	for _, s := range slugs {
+		ls := strings.ToLower(strings.TrimSpace(s))
+		if ls == "" {
+			continue
+		}
+		if containsWholeToken(lower, ls) {
+			if found != "" && found != s {
+				return "" // неоднозначно
+			}
+			found = s
+		}
+	}
+	return found
+}
+
+// containsWholeToken — есть ли needle в haystack как целый токен (границы — не [a-z0-9_-]).
+// Оба аргумента ожидаются в нижнем регистре.
+func containsWholeToken(haystack, needle string) bool {
+	from := 0
+	for {
+		i := strings.Index(haystack[from:], needle)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isSlugTokenByte(haystack[i-1])
+		right := i + len(needle)
+		rightOK := right >= len(haystack) || !isSlugTokenByte(haystack[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+}
+
+func isSlugTokenByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-' || b == '_'
+}
+
+// repoInferTextFromArtifacts — конкатенация summary+title+description целевых артефактов для
+// вывода repo_slug, когда он не проставлен явно (defence-in-depth на стороне воркера).
+func repoInferTextFromArtifacts(arts []*models.Artifact) string {
+	var b strings.Builder
+	for _, a := range arts {
+		if a == nil {
+			continue
+		}
+		b.WriteString(a.Summary)
+		b.WriteByte('\n')
+		if len(a.Content) == 0 {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal(a.Content, &m) != nil {
+			continue
+		}
+		b.WriteString(stringFromAny(m["title"]))
+		b.WriteByte('\n')
+		b.WriteString(stringFromAny(m["description"]))
+		b.WriteByte('\n')
+		if inner, ok := m["content"].(map[string]any); ok {
+			b.WriteString(stringFromAny(inner["title"]))
+			b.WriteByte('\n')
+			b.WriteString(stringFromAny(inner["description"]))
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
 // splitDecomposition разбивает артефакт decomposition на индивидуальные subtask_description
 // (по одному на каждый элемент content.subtasks), привязывая их parent_id к декомпозиции.
 // ИДЕМПОТЕНТНО: если для этой декомпозиции subtask_description уже созданы — ничего не делает
 // (bypass при повторном dispatch и first-pass auto-split не должны плодить дубли). Возвращает
 // число созданных артефактов.
-func (w *AgentWorker) splitDecomposition(ctx context.Context, taskID, decompositionID uuid.UUID, content datatypes.JSON) (int, error) {
+func (w *AgentWorker) splitDecomposition(ctx context.Context, project *models.Project, taskID, decompositionID uuid.UUID, content datatypes.JSON) (int, error) {
 	// Идемпотентность: пропускаем, если уже разбивали.
 	if existing, err := w.artifactRepo.ListMetadataByTaskID(ctx, taskID, false); err == nil {
 		for _, a := range existing {
@@ -1249,7 +1432,19 @@ func (w *AgentWorker) splitDecomposition(ctx context.Context, taskID, decomposit
 		return 0, nil
 	}
 
-	created := 0
+	// Мульти-репо: каждая подзадача обязана иметь валидный repo_slug. Сначала
+	// валидируем/нормализуем ВСЕ подзадачи (без частичного создания артефактов): если slug
+	// отсутствует/невалиден — пробуем вывести его из текста подзадачи; если не вышло —
+	// отвергаем всю декомпозицию (ErrDecompositionRepoSlugMissing). Так developer не уедет
+	// на primary-репо вслепую.
+	slugs := projectRepoSlugs(project)
+	multiRepo := len(slugs) >= 2
+
+	type preparedSubtask struct {
+		title string
+		bytes []byte
+	}
+	prepared := make([]preparedSubtask, 0, len(subtasks))
 	for _, stVal := range subtasks {
 		stMap, ok := stVal.(map[string]any)
 		if !ok {
@@ -1259,15 +1454,38 @@ func (w *AgentWorker) splitDecomposition(ctx context.Context, taskID, decomposit
 		if t, ok := stMap["title"].(string); ok && t != "" {
 			title = t
 		}
-		subtaskBytes, _ := json.Marshal(stMap)
+		if multiRepo {
+			slug := strings.TrimSpace(stringFromAny(stMap["repo_slug"]))
+			if slug == "" || !containsStr(slugs, slug) {
+				inferText := title + "\n" + stringFromAny(stMap["description"])
+				if inf := inferRepoSlugFromText(inferText, slugs); inf != "" {
+					w.logger.WarnContext(ctx, "decomposer omitted/invalid repo_slug; inferred from subtask text",
+						"task_id", taskID, "subtask", truncate(title, 80), "given_repo_slug", slug, "inferred_repo_slug", inf)
+					slug = inf
+				} else {
+					return 0, fmt.Errorf("%w: subtask %q (project repos: %v, given: %q)",
+						ErrDecompositionRepoSlugMissing, truncate(title, 80), slugs, slug)
+				}
+			}
+			stMap["repo_slug"] = slug // нормализуем в content артефакта → downstream резолв тривиален
+		}
+		subtaskBytes, err := json.Marshal(stMap)
+		if err != nil {
+			return 0, fmt.Errorf("marshal subtask: %w", err)
+		}
+		prepared = append(prepared, preparedSubtask{title: title, bytes: subtaskBytes})
+	}
+
+	created := 0
+	for _, p := range prepared {
 		parentID := decompositionID
 		art := &models.Artifact{
 			TaskID:        taskID,
 			ParentID:      &parentID,
 			ProducerAgent: "decomposer",
 			Kind:          models.ArtifactKindSubtaskDescription,
-			Summary:       title,
-			Content:       datatypes.JSON(subtaskBytes),
+			Summary:       p.title,
+			Content:       datatypes.JSON(p.bytes),
 			Status:        models.ArtifactStatusReady,
 		}
 		if !models.ValidateArtifactSummary(art.Summary) {
@@ -1288,11 +1506,11 @@ func (w *AgentWorker) splitDecomposition(ctx context.Context, taskID, decomposit
 // Router'ом). Без этого «умный» Router может уйти к developer'ам мимо подзадач, и code_diff'ы
 // окажутся без parent (orphaned), а поток — «сплющенным». No-op если декомпозиции нет или она
 // уже разбита.
-func (w *AgentWorker) splitLatestDecomposition(ctx context.Context, projectID, taskID uuid.UUID) {
+func (w *AgentWorker) splitLatestDecomposition(ctx context.Context, project *models.Project, taskID uuid.UUID) error {
 	arts, err := w.artifactRepo.ListByTaskID(ctx, taskID, true)
 	if err != nil {
 		w.logger.WarnContext(ctx, "auto-split: list artifacts failed", "task_id", taskID, "error", err.Error())
-		return
+		return nil
 	}
 	var latest *models.Artifact
 	for i := range arts {
@@ -1301,18 +1519,29 @@ func (w *AgentWorker) splitLatestDecomposition(ctx context.Context, projectID, t
 		}
 	}
 	if latest == nil {
-		return
+		return nil
 	}
-	n, err := w.splitDecomposition(ctx, taskID, latest.ID, latest.Content)
+	n, err := w.splitDecomposition(ctx, project, taskID, latest.ID, latest.Content)
 	if err != nil {
+		// Невалидная декомпозиция (мульти-репо без resolvable repo_slug) пробрасывается наверх:
+		// caller зафейлит event → retry/backoff перегенерит decomposer'а. Прочие ошибки
+		// (инфраструктурные) логируем и не валим job — поведение как раньше.
+		if errors.Is(err, ErrDecompositionRepoSlugMissing) {
+			return err
+		}
 		w.logger.WarnContext(ctx, "auto-split decomposition failed", "task_id", taskID, "error", err.Error())
-		return
+		return nil
 	}
 	if n > 0 {
+		projectID := uuid.Nil
+		if project != nil {
+			projectID = project.ID
+		}
 		w.logger.InfoContext(ctx, "auto-split decomposition into subtasks",
 			"task_id", taskID, "decomposition_id", latest.ID, "subtasks", n)
 		w.publishArtifactCreated(ctx, projectID, taskID, "decomposer")
 	}
+	return nil
 }
 
 // publishArtifactCreated шлёт ArtifactCreated в EventBus для live-апдейта UI (HubBridge →
