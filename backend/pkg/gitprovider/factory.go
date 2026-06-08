@@ -18,11 +18,13 @@ func NewFactory() Factory {
 
 // Create returns a GitProvider for the given providerType and credentials.
 // The providerType is normalized (trimmed and lowercased) before matching.
-// Supported types: "github", "local". Returns ErrUnknownProvider otherwise.
+// Supported types: "github", "gitlab", "local". Returns ErrUnknownProvider otherwise.
 func (f *DefaultFactory) Create(providerType string, creds Credentials) (GitProvider, error) {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
 	case "github":
 		return NewGitHubProvider(creds), nil
+	case "gitlab":
+		return NewGitLabProvider(creds), nil
 	case "local":
 		return NewLocalGitProvider(creds), nil
 	default:

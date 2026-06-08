@@ -56,7 +56,7 @@ type Dependencies struct {
 	UserLlmCredentialHandler *handler.UserLlmCredentialHandler
 	LlmCredentialsPatchRL    *middleware.LlmCredentialsPatchRateLimiter
 
-	ClaudeCodeAuthHandler *handler.ClaudeCodeAuthHandler
+	ClaudeCodeAuthHandler  *handler.ClaudeCodeAuthHandler
 	AntigravityAuthHandler *handler.AntigravityAuthHandler
 
 	// UI Refactoring Stage 3a — git OAuth интеграции (GitHub / GitLab / BYO GitLab).
@@ -297,6 +297,14 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				gl.DELETE("/revoke", deps.GitIntegrationHandler.RevokeGitLab)
 			}
 
+			// Мульти-аккаунт: список всех подключённых OAuth-аккаунтов + disconnect по id.
+			accounts := api.Group("/integrations/accounts")
+			accounts.Use(authMW)
+			{
+				accounts.GET("", deps.GitIntegrationHandler.ListAccounts)
+				accounts.DELETE("/:id", deps.GitIntegrationHandler.RevokeAccount)
+			}
+
 			repos := api.Group("/integrations/:provider/repos")
 			repos.Use(authMW)
 			{
@@ -337,6 +345,12 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				projects.DELETE("/:id/scheduled-tasks/:scheduleId", deps.ScheduledTaskHandler.Delete)
 			}
 
+			// Мульти-репо: управление git-репозиториями проекта.
+			projects.GET("/:id/repositories", deps.ProjectHandler.ListRepositories)
+			projects.POST("/:id/repositories", deps.ProjectHandler.AddRepository)
+			projects.PUT("/:id/repositories/:repoId", deps.ProjectHandler.UpdateRepository)
+			projects.DELETE("/:id/repositories/:repoId", deps.ProjectHandler.RemoveRepository)
+
 			projects.GET("/:id", deps.ProjectHandler.GetByID)
 			projects.PUT("/:id", deps.ProjectHandler.Update)
 			projects.DELETE("/:id", deps.ProjectHandler.Delete)
@@ -370,6 +384,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				tasks.GET("/:id/artifacts", deps.OrchestrationV2Handler.ListArtifacts)
 				tasks.GET("/:id/artifacts/:artifactId", deps.OrchestrationV2Handler.GetArtifact)
 				tasks.GET("/:id/router-decisions", deps.OrchestrationV2Handler.ListRouterDecisions)
+				tasks.GET("/:id/events", deps.OrchestrationV2Handler.ListTaskEvents)
 			}
 		}
 
@@ -502,7 +517,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			{
 				// Tasks-tab правой панели — live-список in-progress задач юзера.
 				assistant.GET("/active-tasks", deps.AssistantHandler.ListActiveTasks)
-				
+
 				// Статус конфигурации ассистента (есть ли ключи у пользователя).
 				assistant.GET("/status", deps.AssistantHandler.GetStatus)
 

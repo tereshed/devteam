@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:frontend/features/projects/domain/models/project_repository_model.dart';
 
 part 'project_model.freezed.dart';
 part 'project_model.g.dart';
@@ -31,6 +32,10 @@ abstract class ProjectModel with _$ProjectModel {
     @JsonKey(name: 'git_credential')
     GitCredentialModel? gitCredential,
 
+    /// Выбранный OAuth-аккаунт провайдера (мульти-аккаунт). null — фолбэк на первый аккаунт.
+    @JsonKey(name: 'git_integration_credential_id')
+    String? gitIntegrationCredentialId,
+
     /// Хэш последнего проиндексированного коммита
     @JsonKey(name: 'last_indexed_commit')
     @Default('')
@@ -51,6 +56,10 @@ abstract class ProjectModel with _$ProjectModel {
     /// Дополнительные настройки (JSON объект)
     @Default(<String, dynamic>{})
     Map<String, dynamic> settings,
+
+    /// Git-репозитории проекта (мульти-репо). Пусто для legacy-проектов без репо-реестра.
+    @Default(<ProjectRepositoryModel>[])
+    List<ProjectRepositoryModel> repositories,
 
     /// Дата создания
     @JsonKey(name: 'created_at')

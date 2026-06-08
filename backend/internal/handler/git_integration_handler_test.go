@@ -53,6 +53,9 @@ func (s *stubGitIntegrationSvc) HandleCallback(context.Context, string, string, 
 func (s *stubGitIntegrationSvc) Revoke(context.Context, uuid.UUID, models.GitIntegrationProvider) (bool, error) {
 	return s.revokeFailed, s.revokeErr
 }
+func (s *stubGitIntegrationSvc) RevokeByID(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return s.revokeFailed, s.revokeErr
+}
 func (s *stubGitIntegrationSvc) Status(context.Context, uuid.UUID, models.GitIntegrationProvider) (*service.GitIntegrationStatus, error) {
 	return s.statusRes, s.statusErr
 }

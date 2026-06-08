@@ -3,6 +3,7 @@ import 'package:frontend/core/api/dio_providers.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_repository.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
 import 'package:frontend/features/tasks/domain/models/router_decision_model.dart';
+import 'package:frontend/features/tasks/domain/models/task_event_model.dart';
 
 final orchestrationV2RepositoryProvider =
     Provider<OrchestrationV2Repository>((ref) {
@@ -32,4 +33,11 @@ final taskRouterDecisionsProvider = FutureProvider.autoDispose
   return ref
       .watch(orchestrationV2RepositoryProvider)
       .listRouterDecisions(taskId);
+});
+
+final taskEventsProvider = FutureProvider.autoDispose
+    .family<List<TaskEventModel>, String>((ref, taskId) {
+  return ref
+      .watch(orchestrationV2RepositoryProvider)
+      .listTaskEvents(taskId);
 });

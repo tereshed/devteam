@@ -108,10 +108,16 @@ func (r *projectRepository) createWithDB(ctx context.Context, db *gorm.DB, proje
 	return nil
 }
 
-// GetByID возвращает проект с Preload GitCredential
+// GetByID возвращает проект с Preload GitCredential и Repositories (по sort_order)
 func (r *projectRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Project, error) {
 	var project models.Project
-	if err := r.db.WithContext(ctx).Preload("GitCredential").Where("id = ?", id).First(&project).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Preload("GitCredential").
+		Preload("Repositories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC, created_at ASC")
+		}).
+		Preload("Repositories.GitCredential").
+		Where("id = ?", id).First(&project).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrProjectNotFound
 		}

@@ -31,6 +31,7 @@ class GitIntegrationsRepository {
     String? host,
     String? byoClientId,
     String? byoClientSecret,
+    String? scopes,
     CancelToken? cancelToken,
   }) async {
     final body = <String, dynamic>{'redirect_uri': redirectUri};
@@ -42,6 +43,9 @@ class GitIntegrationsRepository {
     }
     if (byoClientSecret != null && byoClientSecret.isNotEmpty) {
       body['byo_client_secret'] = byoClientSecret;
+    }
+    if (scopes != null && scopes.isNotEmpty) {
+      body['scopes'] = scopes;
     }
     try {
       final resp = await _dio.post<Map<String, dynamic>>(
@@ -128,6 +132,54 @@ class GitIntegrationsRepository {
     }
   }
 
+  /// Мульти-аккаунт: все подключённые OAuth-аккаунты пользователя
+  /// ([GET /integrations/accounts]) — по одному элементу на аккаунт с `id`.
+  Future<List<GitProviderConnection>> fetchAccounts({
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.get<List<dynamic>>(
+        '/integrations/accounts',
+        cancelToken: cancelToken,
+      );
+      final list = resp.data ?? [];
+      final out = <GitProviderConnection>[];
+      for (final e in list) {
+        if (e is! Map<String, dynamic>) {
+          continue;
+        }
+        final provider = GitIntegrationProvider.tryParse(
+          (e['provider'] as String?) ?? '',
+        );
+        if (provider == null) {
+          continue;
+        }
+        out.add(_parseStatus(provider, e));
+      }
+      return out;
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
+  /// Отозвать конкретный аккаунт по id ([DELETE /integrations/accounts/:id]).
+  /// Возвращает `remoteRevokeFailed`.
+  Future<bool> disconnectAccount(
+    String id, {
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final resp = await _dio.delete<Map<String, dynamic>>(
+        '/integrations/accounts/$id',
+        cancelToken: cancelToken,
+      );
+      final data = resp.data ?? <String, dynamic>{};
+      return data['remote_revoke_failed'] == true;
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    }
+  }
+
   /// Получить список репозиториев для подключенного провайдера.
   Future<List<GitRepositoryModel>> fetchRepositories(
     GitIntegrationProvider provider, {
@@ -185,6 +237,7 @@ class GitIntegrationsRepository {
       status: connected
           ? GitProviderConnectionStatus.connected
           : GitProviderConnectionStatus.disconnected,
+      id: _string(data['id']),
       host: _string(data['host']),
       accountLogin: _string(data['account_login']),
       scopes: _string(data['scopes']),

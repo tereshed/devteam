@@ -31,6 +31,12 @@ class GitIntegrationsScreen extends ConsumerWidget {
       where: 'GitIntegrationsScreen',
     );
     final state = ref.watch(gitIntegrationsControllerProvider);
+    // Мульти-аккаунт: после изменения статуса любого провайдера (OAuth завершён /
+    // disconnect / WS-эхо) перечитываем список аккаунтов.
+    ref.listen(gitIntegrationsControllerProvider, (prev, next) {
+      ref.invalidate(gitAccountsProvider);
+    });
+    final accountsAsync = ref.watch(gitAccountsProvider);
     final connected = _displayOrder
         .where(
           (p) =>
@@ -63,6 +69,14 @@ class GitIntegrationsScreen extends ConsumerWidget {
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
+          ),
+          const SizedBox(height: 24),
+          _AccountsSection(
+            accounts: accountsAsync.maybeWhen(
+              data: (list) => list,
+              orElse: () => const [],
+            ),
+            onDisconnect: (acc) => _onDisconnectAccount(context, ref, acc),
           ),
           const SizedBox(height: 24),
           if (state.isLoading && state.connections.isEmpty)
@@ -129,18 +143,39 @@ class GitIntegrationsScreen extends ConsumerWidget {
         return githubCard(
           context,
           connection: conn,
-          onConnect: isConnected ? null : onConnect,
+          // Connect доступен всегда (мульти-аккаунт): можно подключить ещё аккаунт.
+          onConnect: onConnect,
           onDisconnect: isConnected ? onDisconnect : null,
         );
       case GitIntegrationProvider.gitlab:
         return gitlabCard(
           context,
           connection: conn,
-          onConnect: isConnected ? null : onConnect,
+          onConnect: onConnect,
           onDisconnect: isConnected ? onDisconnect : null,
-          onConnectSelfHosted: isConnected ? null : onConnectSelfHosted,
+          onConnectSelfHosted: onConnectSelfHosted,
         );
     }
+  }
+
+  Future<void> _onDisconnectAccount(
+    BuildContext context,
+    WidgetRef ref,
+    GitProviderConnection account,
+  ) async {
+    final id = account.id;
+    if (id == null) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(gitIntegrationsRepositoryProvider).disconnectAccount(id);
+    } on Object catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+    ref.invalidate(gitAccountsProvider);
+    // Обновим и контроллер (per-provider статус), чтобы карточки не висли «connected».
+    await ref.read(gitIntegrationsControllerProvider.notifier).refresh();
   }
 
   /// Конструирует URL коллбэка, который мы заявляем провайдеру при `init`.
@@ -216,6 +251,55 @@ class GitIntegrationsScreen extends ConsumerWidget {
     await ref
         .read(gitIntegrationsControllerProvider.notifier)
         .disconnect(provider);
+  }
+}
+
+/// Список подключённых OAuth-аккаунтов (мульти-аккаунт) с disconnect по id.
+class _AccountsSection extends StatelessWidget {
+  const _AccountsSection({required this.accounts, required this.onDisconnect});
+
+  final List<GitProviderConnection> accounts;
+  final void Function(GitProviderConnection) onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = requireAppLocalizations(context, where: '_AccountsSection');
+    final theme = Theme.of(context);
+    if (accounts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          l10n.integrationsGitAccountsSectionTitle,
+          style: theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        for (final a in accounts)
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Icon(
+                a.provider == GitIntegrationProvider.github
+                    ? Icons.code
+                    : Icons.fork_right,
+              ),
+              title: Text(a.accountLogin ?? a.id ?? a.provider.jsonValue),
+              subtitle: Text(
+                a.host != null && a.host!.isNotEmpty
+                    ? '${a.provider.jsonValue} · ${a.host}'
+                    : a.provider.jsonValue,
+              ),
+              trailing: IconButton(
+                tooltip: l10n.integrationsGitDisconnectAccountTooltip,
+                icon: const Icon(Icons.link_off),
+                onPressed: () => onDisconnect(a),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 

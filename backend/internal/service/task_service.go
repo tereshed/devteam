@@ -298,13 +298,15 @@ func applyTimestampsOnStateChange(task *models.Task, from, to models.TaskState) 
 }
 
 func (s *taskService) checkAgentInTeam(ctx context.Context, projectID, agentID uuid.UUID) error {
-	team, err := s.teamSvc.GetByProjectID(ctx, projectID)
+	teams, err := s.teamSvc.ListByProjectID(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("failed to get team: %w", err)
 	}
-	for i := range team.Agents {
-		if team.Agents[i].ID == agentID {
-			return nil
+	for _, team := range teams {
+		for i := range team.Agents {
+			if team.Agents[i].ID == agentID {
+				return nil
+			}
 		}
 	}
 	return ErrAgentNotInTeam
@@ -430,6 +432,13 @@ func (s *taskService) listRequestToFilter(projectID uuid.UUID, req dto.ListTasks
 		Search:          req.Search,
 		AssignedAgentID: req.AssignedAgentID,
 		ParentTaskID:    req.ParentTaskID,
+	}
+	if req.TeamID != nil && *req.TeamID != "" {
+		tid, err := uuid.Parse(*req.TeamID)
+		if err != nil {
+			return f, err
+		}
+		f.TeamID = &tid
 	}
 	if req.Status != nil && *req.Status != "" {
 		st, err := parseTaskState(*req.Status)
@@ -733,6 +742,23 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 				return err
 			}
 			task.Priority = p
+		}
+		if req.TeamID != nil {
+			teams, err := s.teamSvc.ListByProjectID(txCtx, task.ProjectID)
+			if err != nil {
+				return err
+			}
+			found := false
+			for _, t := range teams {
+				if t.ID == *req.TeamID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return ErrTeamNotInProject
+			}
+			task.TeamID = req.TeamID
 		}
 		if req.ClearAssignedAgent {
 			task.AssignedAgentID = nil

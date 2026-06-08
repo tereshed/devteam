@@ -24,11 +24,12 @@ import (
 
 // GitRepository представляет метаданные удаленного git-репозитория.
 type GitRepository struct {
-	Name        string `json:"name"`
-	FullName    string `json:"full_name"`
-	HTMLURL     string `json:"html_url"`
-	CloneURL    string `json:"clone_url"`
-	Description string `json:"description"`
+	Name          string `json:"name"`
+	FullName      string `json:"full_name"`
+	HTMLURL       string `json:"html_url"`
+	CloneURL      string `json:"clone_url"`
+	Description   string `json:"description"`
+	DefaultBranch string `json:"default_branch"`
 }
 
 // Reason-коды для IntegrationConnectionChanged (Git OAuth) — зеркало §4a.5.
@@ -44,6 +45,9 @@ const (
 
 // GitIntegrationStatus — публичный статус подключения git-провайдера.
 type GitIntegrationStatus struct {
+	// ID — id credential-строки (мульти-аккаунт): нужен, чтобы выбрать конкретный аккаунт
+	// у проекта/репо (git_integration_credential_id). Пустая строка для disconnected-слота.
+	ID           string                        `json:"id,omitempty"`
 	Provider     models.GitIntegrationProvider `json:"provider"`
 	Connected    bool                          `json:"connected"`
 	Host         string                        `json:"host,omitempty"`
@@ -70,6 +74,9 @@ type BYOGitLabInit struct {
 	Host         string // raw, валидируется
 	ClientID     string
 	ClientSecret string
+	// Scopes — OAuth-scopes через пробел (должны быть подмножеством scope OAuth-приложения
+	// на инстансе). Пусто → дефолт из конфига бэкенда (gitlabSharedScopes).
+	Scopes string
 }
 
 // GitIntegrationService — управление OAuth-привязками GitHub/GitLab/BYO GitLab.
@@ -94,6 +101,8 @@ type GitIntegrationService interface {
 	// Revoke вызывает remote revoke endpoint провайдера, затем удаляет локальную запись (fail-soft).
 	// remoteFailed=true означает, что remote-revoke упал (сеть) — локально всё равно удалено.
 	Revoke(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) (remoteFailed bool, err error)
+	// RevokeByID отзывает+удаляет конкретный аккаунт (мульти-аккаунт disconnect).
+	RevokeByID(ctx context.Context, userID, id uuid.UUID) (remoteFailed bool, err error)
 	// Status — статус одного провайдера; nil если не подключён.
 	Status(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) (*GitIntegrationStatus, error)
 	// ListStatuses — все подключённые провайдеры пользователя.
@@ -215,11 +224,16 @@ func (s *gitIntegrationService) InitGitLabBYO(ctx context.Context, userID uuid.U
 	if err != nil {
 		return nil, err
 	}
+	// Scopes: явно заданные в форме (под scope OAuth-приложения инстанса) или дефолт из конфига.
+	scopes := strings.TrimSpace(byo.Scopes)
+	if scopes == "" {
+		scopes = gitlabSharedScopes(s.deps.GitLab)
+	}
 	// Build a BYO oauth client just to compute authorize URL — нам не нужен HTTP-клиент пока.
 	tmp := NewGitLabOAuthClient(GitLabOAuthConfig{
 		ClientID:     byo.ClientID,
 		ClientSecret: byo.ClientSecret,
-		Scopes:       gitlabSharedScopes(s.deps.GitLab),
+		Scopes:       scopes,
 		BaseURL:      canonical,
 	})
 	state, err := s.deps.StateStore.New(GitOAuthState{
@@ -275,7 +289,18 @@ func (s *gitIntegrationService) HandleCallback(ctx context.Context, code, state,
 		return nil, err
 	}
 
-	cred, err := s.persistCred(persistCtx, pending, tok)
+	// Мульти-аккаунт: тянем login/username аккаунта, чтобы различать подключения одного
+	// провайдера. Best-effort — провал не валит подключение (account_login останется пустым).
+	accountLogin := ""
+	if login, lerr := client.GetAuthenticatedLogin(ctx, tok.AccessToken); lerr == nil {
+		accountLogin = login
+	} else {
+		s.deps.Logger.Warn("git oauth: fetch account login failed (non-fatal)",
+			"provider", string(pending.Provider),
+			"error_summary", logging.SafeRawAttr([]byte(lerr.Error())))
+	}
+
+	cred, err := s.persistCred(persistCtx, pending, tok, accountLogin)
 	if err != nil {
 		s.publishStatus(persistCtx, pending.UserID, pending.Provider, events.IntegrationStatusError, GitReasonInternalError, nil, nil, false)
 		return nil, fmt.Errorf("persist: %w", err)
@@ -289,6 +314,23 @@ func (s *gitIntegrationService) HandleCallback(ctx context.Context, code, state,
 	}, nil
 }
 
+func (s *gitIntegrationService) RevokeByID(ctx context.Context, userID, id uuid.UUID) (bool, error) {
+	cred, err := s.deps.Repo.GetByID(ctx, id)
+	if errors.Is(err, repository.ErrGitIntegrationNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if cred.UserID != userID {
+		// Чужой аккаунт скрываем как not-found (не раскрываем существование).
+		return false, nil
+	}
+	return s.revokeCred(ctx, userID, cred, func() error {
+		return s.deps.Repo.DeleteByID(ctx, userID, id)
+	})
+}
+
 func (s *gitIntegrationService) Revoke(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) (bool, error) {
 	cred, err := s.deps.Repo.GetByUserAndProvider(ctx, userID, provider)
 	if errors.Is(err, repository.ErrGitIntegrationNotFound) {
@@ -297,6 +339,14 @@ func (s *gitIntegrationService) Revoke(ctx context.Context, userID uuid.UUID, pr
 	if err != nil {
 		return false, err
 	}
+	return s.revokeCred(ctx, userID, cred, func() error {
+		return s.deps.Repo.DeleteByUserAndProvider(ctx, userID, cred.Provider)
+	})
+}
+
+// revokeCred — общая логика: best-effort remote revoke → локальное удаление (через deleteFn).
+func (s *gitIntegrationService) revokeCred(ctx context.Context, userID uuid.UUID, cred *models.GitIntegrationCredential, deleteFn func() error) (bool, error) {
+	provider := cred.Provider
 
 	// 1. Сначала remote revoke (best-effort) — порядок важен по спеке 3.4/3.5.
 	remoteFailed := false
@@ -325,7 +375,7 @@ func (s *gitIntegrationService) Revoke(ctx context.Context, userID uuid.UUID, pr
 	}
 
 	// 2. Локальное удаление — всегда, даже если remote-revoke упал.
-	if err := s.deps.Repo.DeleteByUserAndProvider(ctx, userID, provider); err != nil {
+	if err := deleteFn(); err != nil {
 		return remoteFailed, err
 	}
 
@@ -422,7 +472,7 @@ func (s *gitIntegrationService) buildSafeHTTPClient(allowedIPs []net.IP) *http.C
 	return SafeGitHTTPClient(allowedIPs, timeout)
 }
 
-func (s *gitIntegrationService) persistCred(ctx context.Context, pending GitOAuthState, tok *GitOAuthToken) (*models.GitIntegrationCredential, error) {
+func (s *gitIntegrationService) persistCred(ctx context.Context, pending GitOAuthState, tok *GitOAuthToken, accountLogin string) (*models.GitIntegrationCredential, error) {
 	id := uuid.New()
 	aad := repository.GitIntegrationCredentialAAD(id)
 	accessEnc, err := s.deps.Encryptor.Encrypt([]byte(tok.AccessToken), aad)
@@ -455,11 +505,20 @@ func (s *gitIntegrationService) persistCred(ctx context.Context, pending GitOAut
 		RefreshTokenEnc:    refreshEnc,
 		TokenType:          firstNonEmpty(tok.TokenType, "Bearer"),
 		Scopes:             tok.Scopes,
+		AccountLogin:       accountLogin,
 		ExpiresAt:          tok.ExpiresAt,
 		LastRefreshedAt:    &now,
 	}
 	if err := s.deps.Repo.Upsert(ctx, cred); err != nil {
 		return nil, err
+	}
+	// Мульти-аккаунт self-heal: если логин аккаунта захвачен, убираем legacy-строку
+	// без account_login для той же (user, provider, host), оставшуюся с до-апгрейда.
+	if accountLogin != "" {
+		if derr := s.deps.Repo.DeleteLegacyUnlabeled(ctx, pending.UserID, pending.Provider, pending.Host); derr != nil {
+			s.deps.Logger.Warn("git oauth: cleanup legacy unlabeled credential failed (non-fatal)",
+				"provider", string(pending.Provider), "error_summary", logging.SafeRawAttr([]byte(derr.Error())))
+		}
 	}
 	return cred, nil
 }
@@ -502,6 +561,7 @@ func (s *gitIntegrationService) publishStatus(ctx context.Context, userID uuid.U
 func credToStatus(cred *models.GitIntegrationCredential) GitIntegrationStatus {
 	now := cred.CreatedAt
 	return GitIntegrationStatus{
+		ID:           cred.ID.String(),
 		Provider:     cred.Provider,
 		Connected:    true,
 		Host:         cred.Host,
@@ -540,6 +600,60 @@ func gitlabSharedScopes(c GitOAuthClient) string {
 	return "api read_user"
 }
 
+// ensureFreshToken возвращает валидный access-token аккаунта, обновляя его через refresh-токен,
+// если срок жизни истёк (GitLab — 2ч). Новые токены перешифровываются под тем же id (AAD=id,
+// id НЕ меняется → FK-ссылки сохраняются) и персистятся.
+func (s *gitIntegrationService) ensureFreshToken(ctx context.Context, cred *models.GitIntegrationCredential) (string, error) {
+	aad := repository.GitIntegrationCredentialAAD(cred.ID)
+	access, err := s.decryptToString(cred.AccessTokenEnc, aad)
+	if err != nil {
+		return "", fmt.Errorf("decrypt token: %w", err)
+	}
+	const skew = 60 * time.Second
+	if cred.ExpiresAt == nil || cred.ExpiresAt.After(s.deps.Now().Add(skew)) {
+		return access, nil
+	}
+	if len(cred.RefreshTokenEnc) == 0 {
+		return access, nil // нечем рефрешить — вызов упадёт на 401 (диагностируемо)
+	}
+	refresh, err := s.decryptToString(cred.RefreshTokenEnc, aad)
+	if err != nil {
+		return "", fmt.Errorf("decrypt refresh token: %w", err)
+	}
+	client, _, perr := s.providerClientForCred(ctx, cred)
+	if perr != nil {
+		return access, nil
+	}
+	tok, rerr := client.RefreshToken(ctx, refresh)
+	if rerr != nil {
+		return "", fmt.Errorf("refresh token: %w", rerr)
+	}
+	accessEnc, err := s.deps.Encryptor.Encrypt([]byte(tok.AccessToken), aad)
+	if err != nil {
+		return "", fmt.Errorf("encrypt refreshed access: %w", err)
+	}
+	var refreshEnc []byte
+	if tok.RefreshToken != "" {
+		refreshEnc, err = s.deps.Encryptor.Encrypt([]byte(tok.RefreshToken), aad)
+		if err != nil {
+			return "", fmt.Errorf("encrypt refreshed refresh: %w", err)
+		}
+	}
+	now := s.deps.Now()
+	if uerr := s.deps.Repo.UpdateTokens(ctx, cred.ID, accessEnc, refreshEnc, tok.ExpiresAt, &now); uerr != nil {
+		s.deps.Logger.Warn("git oauth: persist refreshed token failed (using new token anyway)",
+			"error_summary", logging.SafeRawAttr([]byte(uerr.Error())))
+	}
+	return tok.AccessToken, nil
+}
+
+// FreshAccessToken — публичная обёртка над ensureFreshToken: отдаёт валидный access-token
+// аккаунта (рефрешит истёкший через refresh-токен и персистит). Используется путями клонирования
+// (индексация, sandbox), которым нужен живой токен self-hosted GitLab (TTL ~2ч).
+func (s *gitIntegrationService) FreshAccessToken(ctx context.Context, cred *models.GitIntegrationCredential) (string, error) {
+	return s.ensureFreshToken(ctx, cred)
+}
+
 func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]GitRepository, error) {
 	if userID == uuid.Nil {
 		return nil, errors.New("user id required")
@@ -548,9 +662,9 @@ func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uui
 	if err != nil {
 		return nil, err
 	}
-	accessToken, err := s.decryptToString(cred.AccessTokenEnc, repository.GitIntegrationCredentialAAD(cred.ID))
+	accessToken, err := s.ensureFreshToken(ctx, cred)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt token: %w", err)
+		return nil, err
 	}
 
 	if provider == models.GitIntegrationProviderGitHub {
@@ -571,11 +685,12 @@ func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uui
 			}
 			for _, r := range repos {
 				allRepos = append(allRepos, GitRepository{
-					Name:        r.GetName(),
-					FullName:    r.GetFullName(),
-					HTMLURL:     r.GetHTMLURL(),
-					CloneURL:    r.GetCloneURL(),
-					Description: r.GetDescription(),
+					Name:          r.GetName(),
+					FullName:      r.GetFullName(),
+					HTMLURL:       r.GetHTMLURL(),
+					CloneURL:      r.GetCloneURL(),
+					Description:   r.GetDescription(),
+					DefaultBranch: r.GetDefaultBranch(),
 				})
 			}
 			if resp.NextPage == 0 {
@@ -597,7 +712,8 @@ func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uui
 			httpClient = &http.Client{Timeout: 30 * time.Second}
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/api/v4/projects?membership=true&simple=true&per_page=100&order_by=updated_at", nil)
+		// Без simple=true — иначе GitLab не возвращает default_branch (нужен для автозаполнения ветки).
+		req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/api/v4/projects?membership=true&per_page=100&order_by=updated_at", nil)
 		if err != nil {
 			return nil, err
 		}
@@ -620,6 +736,7 @@ func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uui
 			WebURL            string `json:"web_url"`
 			HTTPURLToRepo     string `json:"http_url_to_repo"`
 			Description       string `json:"description"`
+			DefaultBranch     string `json:"default_branch"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&gitlabProjects); err != nil {
 			return nil, fmt.Errorf("decode gitlab projects: %w", err)
@@ -628,11 +745,12 @@ func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uui
 		allRepos := make([]GitRepository, 0, len(gitlabProjects))
 		for _, p := range gitlabProjects {
 			allRepos = append(allRepos, GitRepository{
-				Name:        p.Name,
-				FullName:    p.PathWithNamespace,
-				HTMLURL:     p.WebURL,
-				CloneURL:    p.HTTPURLToRepo,
-				Description: p.Description,
+				Name:          p.Name,
+				FullName:      p.PathWithNamespace,
+				HTMLURL:       p.WebURL,
+				CloneURL:      p.HTTPURLToRepo,
+				Description:   p.Description,
+				DefaultBranch: p.DefaultBranch,
 			})
 		}
 		return allRepos, nil
@@ -652,9 +770,9 @@ func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uui
 	if err != nil {
 		return nil, err
 	}
-	accessToken, err := s.decryptToString(cred.AccessTokenEnc, repository.GitIntegrationCredentialAAD(cred.ID))
+	accessToken, err := s.ensureFreshToken(ctx, cred)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt token: %w", err)
+		return nil, err
 	}
 
 	if provider == models.GitIntegrationProviderGitHub {
@@ -673,11 +791,12 @@ func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uui
 			return nil, fmt.Errorf("github create repo: %w", err)
 		}
 		return &GitRepository{
-			Name:        r.GetName(),
-			FullName:    r.GetFullName(),
-			HTMLURL:     r.GetHTMLURL(),
-			CloneURL:    r.GetCloneURL(),
-			Description: r.GetDescription(),
+			Name:          r.GetName(),
+			FullName:      r.GetFullName(),
+			HTMLURL:       r.GetHTMLURL(),
+			CloneURL:      r.GetCloneURL(),
+			Description:   r.GetDescription(),
+			DefaultBranch: r.GetDefaultBranch(),
 		}, nil
 	} else if provider == models.GitIntegrationProviderGitLab {
 		baseURL := "https://gitlab.com"
@@ -733,17 +852,19 @@ func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uui
 			WebURL            string `json:"web_url"`
 			HTTPURLToRepo     string `json:"http_url_to_repo"`
 			Description       string `json:"description"`
+			DefaultBranch     string `json:"default_branch"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
 			return nil, fmt.Errorf("decode gitlab project: %w", err)
 		}
 
 		return &GitRepository{
-			Name:        p.Name,
-			FullName:    p.PathWithNamespace,
-			HTMLURL:     p.WebURL,
-			CloneURL:    p.HTTPURLToRepo,
-			Description: p.Description,
+			Name:          p.Name,
+			FullName:      p.PathWithNamespace,
+			HTMLURL:       p.WebURL,
+			CloneURL:      p.HTTPURLToRepo,
+			Description:   p.Description,
+			DefaultBranch: p.DefaultBranch,
 		}, nil
 	}
 

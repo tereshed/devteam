@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,13 +15,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
+	"github.com/google/uuid"
 )
 
 // Политика образов (5.5): при отсутствии локально выполняем ImagePull и обязательно дочитываем тело ответа.
@@ -146,8 +147,8 @@ func taskContainerName(taskID string) string {
 	return TaskContainerNamePrefix + taskID
 }
 
-func sandboxBridgeNetworkName(taskID string) string {
-	sum := sha256.Sum256([]byte(taskID))
+func sandboxBridgeNetworkName(taskID, executionID string) string {
+	sum := sha256.Sum256([]byte(taskID + executionID))
 	return fmt.Sprintf("devteam-sbx-%x", sum[:8])
 }
 
@@ -202,6 +203,13 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 		EnvBranchName+"="+opts.Branch,
 		EnvBackend+"="+string(opts.Backend),
 	)
+	// Мульти-репо: соседние репозитории — JSON-массив в SIBLING_REPOS. Entrypoint клонирует
+	// их read-only тем же GIT_TOKEN (host-scoped credential helper).
+	if len(opts.SiblingRepos) > 0 {
+		if blob, err := json.Marshal(opts.SiblingRepos); err == nil {
+			out = append(out, EnvSiblingRepos+"="+string(blob))
+		}
+	}
 	// Sprint 15.22 / 15.M5: permission-mode для claude code CLI.
 	// Жёстко валидируем значение по белому списку, чтобы инъекция вида "default\n--evil-flag"
 	// или произвольный текст из БД не попадал в env контейнера.
@@ -639,7 +647,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 			return nil, err
 		}
 	} else {
-		netName = sandboxBridgeNetworkName(opts.TaskID)
+		netName = sandboxBridgeNetworkName(opts.TaskID, opts.ExecutionID)
 		netResp, nerr := r.cli.NetworkCreate(ctx, netName, network.CreateOptions{
 			Driver: "bridge",
 			Options: map[string]string{

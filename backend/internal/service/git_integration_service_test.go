@@ -79,6 +79,70 @@ func (r *fakeRepo) DeleteByUserAndProvider(_ context.Context, uid uuid.UUID, p m
 	return nil
 }
 
+func (r *fakeRepo) UpdateTokens(_ context.Context, id uuid.UUID, accessTokenEnc, refreshTokenEnc []byte, expiresAt, lastRefreshedAt *time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.byKey {
+		if c.ID == id {
+			c.AccessTokenEnc = accessTokenEnc
+			if len(refreshTokenEnc) > 0 {
+				c.RefreshTokenEnc = refreshTokenEnc
+			}
+			c.ExpiresAt = expiresAt
+			c.LastRefreshedAt = lastRefreshedAt
+			return nil
+		}
+	}
+	return repository.ErrGitIntegrationNotFound
+}
+
+func (r *fakeRepo) GetByID(_ context.Context, id uuid.UUID) (*models.GitIntegrationCredential, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.byKey {
+		if c.ID == id {
+			cp := *c
+			return &cp, nil
+		}
+	}
+	return nil, repository.ErrGitIntegrationNotFound
+}
+
+func (r *fakeRepo) ListByUserAndProvider(_ context.Context, uid uuid.UUID, p models.GitIntegrationProvider) ([]models.GitIntegrationCredential, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []models.GitIntegrationCredential
+	for _, c := range r.byKey {
+		if c.UserID == uid && c.Provider == p {
+			out = append(out, *c)
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeRepo) DeleteByID(_ context.Context, uid, id uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for k, c := range r.byKey {
+		if c.ID == id && c.UserID == uid {
+			delete(r.byKey, k)
+			return nil
+		}
+	}
+	return repository.ErrGitIntegrationNotFound
+}
+
+func (r *fakeRepo) DeleteLegacyUnlabeled(_ context.Context, uid uuid.UUID, p models.GitIntegrationProvider, host string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for k, c := range r.byKey {
+		if c.UserID == uid && c.Provider == p && c.Host == host && c.AccountLogin == "" {
+			delete(r.byKey, k)
+		}
+	}
+	return nil
+}
+
 // ─── recording event bus ────────────────────────────────────────────────────
 
 type recordingBus struct {
@@ -115,6 +179,7 @@ func (b *recordingBus) lastIntegration(t *testing.T) events.IntegrationConnectio
 
 type fakeOAuthClient struct {
 	tok       *GitOAuthToken
+	login     string
 	exchErr   error
 	revokeErr error
 	exchCount int
@@ -133,6 +198,17 @@ func (c *fakeOAuthClient) ExchangeCode(_ context.Context, code, _ string) (*GitO
 		return nil, c.exchErr
 	}
 	return c.tok, nil
+}
+func (c *fakeOAuthClient) GetAuthenticatedLogin(_ context.Context, _ string) (string, error) {
+	c.calls = append(c.calls, "login")
+	return c.login, nil
+}
+func (c *fakeOAuthClient) RefreshToken(_ context.Context, _ string) (*GitOAuthToken, error) {
+	c.calls = append(c.calls, "refresh")
+	if c.tok != nil {
+		return c.tok, nil
+	}
+	return &GitOAuthToken{AccessToken: "refreshed", TokenType: "Bearer"}, nil
 }
 func (c *fakeOAuthClient) Revoke(_ context.Context, _ string) error {
 	c.calls = append(c.calls, "revoke")

@@ -208,6 +208,17 @@ class AppLocalizationsRu extends AppLocalizations {
       'Шифруется AES-256-GCM в базе.';
 
   @override
+  String get integrationsGitlabHostFieldScopes => 'Scopes';
+
+  @override
+  String get integrationsGitlabHostFieldScopesHint =>
+      'Должны совпадать со scope, включёнными в вашем OAuth-приложении. \'api\' покрывает всё; для гранулярных приложений, например, \'read_api read_repository write_repository\'.';
+
+  @override
+  String get integrationsGitlabHostValidationScopesRequired =>
+      'Укажите хотя бы один scope';
+
+  @override
   String get integrationsGitlabHostValidationHostRequired =>
       'Укажите URL вашего GitLab';
 
@@ -246,7 +257,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get integrationsGitlabHostInstructionsStep4 =>
-      'Отметьте Confidential. Scopes: api, read_user, read_repository, write_repository.';
+      'Отметьте Confidential. Scope: api (покрывает clone, push и merge request\'ы).';
 
   @override
   String get integrationsGitlabHostInstructionsStep5 =>
@@ -1120,6 +1131,108 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get projectSettingsSectionGit => 'Git-репозиторий';
+
+  @override
+  String get repositoriesSectionTitle => 'Репозитории';
+
+  @override
+  String get repositoriesSectionSubtitle =>
+      'Git-репозитории проекта. Decomposer раскладывает подзадачи по репозиториям.';
+
+  @override
+  String get repositoriesAddButton => 'Добавить репозиторий';
+
+  @override
+  String get repositoriesEmpty => 'Репозиториев пока нет';
+
+  @override
+  String get repositoryPrimaryBadge => 'primary';
+
+  @override
+  String get repositoryFieldSlug => 'Slug';
+
+  @override
+  String get repositoryFieldSlugHint => 'например ui, core, infra';
+
+  @override
+  String get repositoryFieldDisplayName => 'Отображаемое имя';
+
+  @override
+  String get repositoryFieldUrl => 'Git URL';
+
+  @override
+  String get repositoryFieldBranch => 'Ветка по умолчанию';
+
+  @override
+  String get repositoryFieldProvider => 'Git-провайдер';
+
+  @override
+  String get repositoryFieldRole => 'Роль (для decomposer)';
+
+  @override
+  String get repositoryFieldRoleHint =>
+      'например Flutter UI, высоконагруженный Go-бэкенд';
+
+  @override
+  String get repositoryAddDialogTitle => 'Добавить репозиторий';
+
+  @override
+  String get repositoryAddSubmit => 'Добавить';
+
+  @override
+  String get repositoryRemoveTooltip => 'Удалить репозиторий';
+
+  @override
+  String get repositoryRemoveConfirmTitle => 'Удалить репозиторий?';
+
+  @override
+  String repositoryRemoveConfirmBody(String slug) {
+    return 'Репозиторий «$slug» будет откреплён от проекта.';
+  }
+
+  @override
+  String get repositoryRemoveConfirmAction => 'Удалить';
+
+  @override
+  String get repositoryLastIndexedLabel => 'Последняя индексация';
+
+  @override
+  String get gitAccountSectionTitle => 'Git-аккаунт';
+
+  @override
+  String get gitAccountFieldLabel => 'Аккаунт';
+
+  @override
+  String get gitAccountHelper =>
+      'Какой подключённый аккаунт использовать для клонирования и pull request\'ов.';
+
+  @override
+  String get gitAccountNoneHint =>
+      'Нет подключённых аккаунтов этого провайдера. Подключите в «Git-провайдеры».';
+
+  @override
+  String get gitAccountDefaultOption =>
+      'По умолчанию (первый подключённый аккаунт)';
+
+  @override
+  String get integrationsGitConnectAnotherCta => 'Подключить ещё аккаунт';
+
+  @override
+  String get integrationsGitAccountsSectionTitle => 'Подключённые аккаунты';
+
+  @override
+  String get integrationsGitDisconnectAccountTooltip =>
+      'Отключить этот аккаунт';
+
+  @override
+  String get createProjectAccountLabel => 'Git-аккаунт';
+
+  @override
+  String get createProjectAccountLocal => 'Локально (без git)';
+
+  @override
+  String get createProjectAccountNoneHint =>
+      'Нет подключённых аккаунтов. Подключите в «Git-провайдеры», чтобы выбирать репозитории.';
 
   @override
   String get projectSettingsSectionVector => 'Векторный индекс';

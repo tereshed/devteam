@@ -55,45 +55,51 @@ type AgentRequest struct {
 	Input map[string]any `json:"input,omitempty"`
 }
 
-// TargetArtifactID извлекает target_artifact_id из Input (если есть). Используется
-// для проверки дубликатов в параллельном fan-out и для пометки in-flight по артефакту.
+// TargetArtifactID извлекает первый target_artifact_id из Input (если есть).
+// Оставлен для совместимости с тестами и старым кодом.
 func (a AgentRequest) TargetArtifactID() (uuid.UUID, bool) {
-	if a.Input == nil {
+	ids, ok := a.RawTargetArtifactIDs()
+	if !ok || len(ids) == 0 {
 		return uuid.Nil, false
 	}
-	raw, ok := a.Input["target_artifact_id"]
-	if !ok {
-		return uuid.Nil, false
-	}
-	s, ok := raw.(string)
-	if !ok || s == "" {
-		return uuid.Nil, false
-	}
-	id, err := uuid.Parse(s)
+	id, err := uuid.Parse(ids[0])
 	if err != nil {
 		return uuid.Nil, false
 	}
 	return id, true
 }
 
-// RawTargetArtifactID возвращает сырое строковое значение input.target_artifact_id и
-// признак его НАЛИЧИЯ (непустая строка), БЕЗ парсинга в UUID. Нужно чтобы отличать
-// «target отсутствует» от «target присутствует, но невалиден» — Router иногда выдаёт
-// обрезанный 8-символьный id вместо полного UUID, и такой случай надо отвергать с
-// корректирующим retry, а не молча пропускать.
-func (a AgentRequest) RawTargetArtifactID() (string, bool) {
+// RawTargetArtifactIDs возвращает сырые строковые значения input.target_artifact_ids
+// (или target_artifact_id если это строка) и признак их НАЛИЧИЯ.
+func (a AgentRequest) RawTargetArtifactIDs() ([]string, bool) {
 	if a.Input == nil {
-		return "", false
+		return nil, false
 	}
-	raw, ok := a.Input["target_artifact_id"]
-	if !ok {
-		return "", false
+	
+	// Support both singular and plural forms for backward compatibility
+	var rawIDs []string
+	
+	if rawSingular, ok := a.Input["target_artifact_id"]; ok {
+		if s, ok := rawSingular.(string); ok && s != "" {
+			rawIDs = append(rawIDs, s)
+		}
 	}
-	s, ok := raw.(string)
-	if !ok || s == "" {
-		return "", false
+	
+	if rawPlural, ok := a.Input["target_artifact_ids"]; ok {
+		if arr, ok := rawPlural.([]interface{}); ok {
+			for _, item := range arr {
+				if s, ok := item.(string); ok && s != "" {
+					rawIDs = append(rawIDs, s)
+				}
+			}
+		}
 	}
-	return s, true
+	
+	if len(rawIDs) == 0 {
+		return nil, false
+	}
+	
+	return rawIDs, true
 }
 
 // RouterState — снимок состояния задачи для одного вызова Router'а.
@@ -108,6 +114,15 @@ type RouterState struct {
 	DeadJobs  []models.TaskEvent // agent_job, исчерпавшие retry (OOM/timeout/crash) — НЕ переназначать вслепую
 	StepNo    int                // текущий step number (для max-steps трекинга в промпте)
 	MaxSteps  int                // конфиг max_steps_per_task
+	// Repositories — git-репозитории проекта (мульти-репо). Рендерятся в промпт секцией
+	// `# Repositories`, чтобы decomposer раскладывал подзадачи по нужному репо (repo_slug).
+	Repositories []models.ProjectRepository
+	// RecentDecisions — последние Router-решения по ЭТОЙ задаче в хронологическом порядке
+	// (ASC по step_no). Даёт Router'у память о том, кого он уже запускал и почему — без неё
+	// LLM на каждом шаге видит только title+artifacts и может счесть задачу «только созданной»
+	// и заново вызвать того же агента (инцидент SupportAggent). Рендерятся секцией
+	// `# Recent routing history`. Пусто на первом шаге.
+	RecentDecisions []models.RouterDecision
 }
 
 // RouterConfig — настройки сервиса.
@@ -401,51 +416,49 @@ func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent, existin
 	}
 
 	for i, req := range d.Agents {
-		raw, hasTarget := req.RawTargetArtifactID()
+		rawIDs, hasTarget := req.RawTargetArtifactIDs()
 		if !hasTarget {
 			continue
 		}
-		// target присутствует — он ОБЯЗАН быть полным валидным UUID. Router иногда
-		// галлюцинирует обрезанный 8-символьный id ("dd271455"); раньше такой id молча
-		// пропускался (TargetArtifactID → ok=false → continue), из-за чего воркер не мог
-		// загрузить targetArtifact, а review сохранялся с parent_id=NULL (orphaned).
-		// Теперь отвергаем с корректирующим retry, чтобы Router прислал полный id.
-		id, err := uuid.Parse(raw)
-		if err != nil {
-			var validIDs []string
-			for _, art := range existingArtifacts {
-				validIDs = append(validIDs, fmt.Sprintf("%s (%s)", art.ID, art.Kind))
+		
+		for _, raw := range rawIDs {
+			id, err := uuid.Parse(raw)
+			if err != nil {
+				var validIDs []string
+				for _, art := range existingArtifacts {
+					validIDs = append(validIDs, fmt.Sprintf("%s (%s)", art.ID, art.Kind))
+				}
+				validList := strings.Join(validIDs, ", ")
+				if validList == "" {
+					validList = "(no artifacts exist)"
+				}
+				return Decision{}, &correctionHint{
+					LogCode:    correctionCodeInvalidArtifactID,
+					PromptText: fmt.Sprintf(`agents[%d] target_artifact_id=%q is not a valid full UUID. Copy the EXACT full id from the Artifacts list (e.g. "550e8400-e29b-41d4-a716-446655440000"), do not abbreviate. Available: %s.`, i, raw, validList),
+				}
 			}
-			validList := strings.Join(validIDs, ", ")
-			if validList == "" {
-				validList = "(no artifacts exist)"
+			if _, exists := artifactsMap[id]; !exists {
+				var validIDs []string
+				for _, art := range existingArtifacts {
+					validIDs = append(validIDs, fmt.Sprintf("%s (%s)", art.ID, art.Kind))
+				}
+				validList := strings.Join(validIDs, ", ")
+				if validList == "" {
+					validList = "(no artifacts exist)"
+				}
+				return Decision{}, &correctionHint{
+					LogCode:    correctionCodeUnknownArtifact,
+					PromptText: fmt.Sprintf(`agents[%d] targets artifact %s which does not exist in this task. Choose from the available artifacts: %s.`, i, id, validList),
+				}
 			}
-			return Decision{}, &correctionHint{
-				LogCode:    correctionCodeInvalidArtifactID,
-				PromptText: fmt.Sprintf(`agents[%d] target_artifact_id=%q is not a valid full UUID. Copy the EXACT full id from the Artifacts list (e.g. "550e8400-e29b-41d4-a716-446655440000"), do not abbreviate. Available: %s.`, i, raw, validList),
+			if prev, dup := seen[id]; dup {
+				return Decision{}, &correctionHint{
+					LogCode:    correctionCodeDuplicateArtifact,
+					PromptText: fmt.Sprintf(`agents[%d] and agents[%d] both target the same artifact %s; one job per artifact per step.`, prev, i, id),
+				}
 			}
+			seen[id] = i
 		}
-		if _, exists := artifactsMap[id]; !exists {
-			var validIDs []string
-			for _, art := range existingArtifacts {
-				validIDs = append(validIDs, fmt.Sprintf("%s (%s)", art.ID, art.Kind))
-			}
-			validList := strings.Join(validIDs, ", ")
-			if validList == "" {
-				validList = "(no artifacts exist)"
-			}
-			return Decision{}, &correctionHint{
-				LogCode:    correctionCodeUnknownArtifact,
-				PromptText: fmt.Sprintf(`agents[%d] targets artifact %s which does not exist in this task. Choose from the available artifacts: %s.`, i, id, validList),
-			}
-		}
-		if prev, dup := seen[id]; dup {
-			return Decision{}, &correctionHint{
-				LogCode:    correctionCodeDuplicateArtifact,
-				PromptText: fmt.Sprintf(`agents[%d] and agents[%d] both target the same artifact %s; one job per artifact per step.`, prev, i, id),
-			}
-		}
-		seen[id] = i
 	}
 
 	return d, nil
@@ -470,6 +483,25 @@ func (r *RouterService) buildUserPrompt(state RouterState, correction string) st
 	if state.Task.Description != "" {
 		b.WriteString(state.Task.Description)
 		b.WriteString("\n\n")
+	}
+
+	// Мульти-репо: показываем каталог репозиториев проекта, только если их больше одного.
+	// Для одно-репо проекта секция избыточна (всё пишется в единственный репо).
+	if len(state.Repositories) > 1 {
+		b.WriteString("# Repositories\n")
+		b.WriteString("Проект состоит из нескольких git-репозиториев. Каждая подзадача относится РОВНО к одному репо (см. repo_slug). Кросс-репо фичу декомпозируй на подзадачи с depends_on.\n")
+		for _, repo := range state.Repositories {
+			marker := ""
+			if repo.IsPrimary {
+				marker = " (primary)"
+			}
+			desc := strings.TrimSpace(repo.RoleDescription)
+			if desc == "" {
+				desc = repo.DisplayName
+			}
+			fmt.Fprintf(&b, "- slug=%s%s: %s\n", repo.Slug, marker, desc)
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("# Available Agents\n")
@@ -504,6 +536,33 @@ func (r *RouterService) buildUserPrompt(state RouterState, correction string) st
 			)
 		}
 		b.WriteString("\n")
+	}
+
+	// Память Router'а о собственных прошлых решениях по этой задаче. Без неё LLM видит только
+	// title+artifacts и склонен счесть задачу «только созданной», заново вызвав того же агента
+	// (инцидент SupportAggent). Показываем, кого уже запускали — артефакты этих агентов выше.
+	if len(state.RecentDecisions) > 0 {
+		b.WriteString("# Recent routing history (YOUR previous decisions on this task)\n")
+		for _, d := range state.RecentDecisions {
+			agentsStr := "(waiting — no agents dispatched)"
+			if len(d.ChosenAgents) > 0 {
+				agentsStr = "dispatched [" + strings.Join([]string(d.ChosenAgents), ", ") + "]"
+			}
+			outcome := ""
+			if d.Outcome != nil {
+				outcome = fmt.Sprintf(" outcome=%s", *d.Outcome)
+			}
+			reason := strings.TrimSpace(d.Reason)
+			if reason != "" {
+				reason = " — " + reason
+			}
+			fmt.Fprintf(&b, "- step %d: %s%s%s\n", d.StepNo, agentsStr, outcome, reason)
+		}
+		b.WriteString("These agents ALREADY RAN; their results are in the Artifacts section above. " +
+			"Do NOT re-dispatch an agent that has already produced a ready artifact unless you have a NEW, " +
+			"concrete instruction that will change its output. If the deliverable already exists, finish the " +
+			"task (DONE outcome=done), or escalate (outcome=needs_human) if you are blocked. Repeating the same " +
+			"dispatch is a loop and will be force-stopped.\n\n")
 	}
 
 	if len(state.InFlight) > 0 {
@@ -545,6 +604,7 @@ func (r *RouterService) buildUserPrompt(state RouterState, correction string) st
 - Decomposition auto-expands: once a 'decomposition' artifact is approved it is split into 'subtask_description' artifacts automatically — you do NOT need to re-run the decomposer for that.
 - Gate the merger: do NOT dispatch the merger while ANY in-flight job is running or while ANY subtask still lacks an approved code_diff. Merge only once every subtask is approved.
 - Review of a fix is scoped: when a reviewer (or developer) targets an artifact that already has a parent review with changes_requested, judge ONLY whether the previous review's points are resolved. Do not expand the scope and invent new unrelated requirements round after round.
+- Don't loop. Check "Recent routing history": if an agent you already dispatched has produced a ready artifact and you have no new concrete instruction that would change the result, do NOT dispatch it again — finish the task (DONE outcome=done if the deliverable exists) or escalate (outcome=needs_human) if you are stuck. A task is not "just created" if it already has artifacts or routing history.
 - Don't fight the environment. If a job is in "Failed jobs" above, retrying the identical agent on the identical target will fail the same way — escalate to needs_human instead.
 
 `)
@@ -554,9 +614,10 @@ Respond with ONE valid JSON object, no markdown fences, no prose around it:
 {
   "done": false,
   "outcome": null,
-  "agents": [{"agent": "<name>", "input": {"target_artifact_id": "<uuid or omit>", "instructions": "..."}}],
+  "agents": [{"agent": "<name>", "input": {"target_artifact_id": "<uuid or omit>", "target_artifact_ids": ["<uuid1>", "<uuid2>"], "instructions": "..."}}],
   "reason": "1-2 sentences explaining your choice"
 }
+Note: For merger, use target_artifact_ids array to pass ALL approved code_diff artifacts you want to merge at once.
 If task is complete/failed/needs-human: set done=true, outcome accordingly, agents=[].
 `)
 

@@ -9,7 +9,6 @@ import 'package:frontend/features/integrations/git/presentation/widgets/connect_
 import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
 import 'package:frontend/features/projects/presentation/controllers/create_project_controller.dart';
-import 'package:frontend/features/projects/presentation/utils/git_provider_display.dart';
 import 'package:frontend/features/projects/presentation/utils/git_remote_url.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -32,7 +31,11 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
   final _descCtrl = TextEditingController();
   final _urlCtrl = TextEditingController();
 
-  String _gitProvider = gitProviders.first;
+  // Мульти-аккаунт: вместо выбора типа провайдера выбираем подключённый аккаунт.
+  // _accountId — выбранный git_integration_credential_id (null = «Локально, без git»).
+  // _gitProvider выводится из аккаунта ('github'/'gitlab') либо 'local'.
+  String _gitProvider = kLocalGitProvider;
+  String? _accountId;
   bool _attemptedSubmit = false;
   bool _manualUrl = false;
   GitRepositoryModel? _selectedRepo;
@@ -67,6 +70,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
       description: _descCtrl.text.trim(),
       gitProvider: _gitProvider,
       gitUrl: _isRemoteProvider(_gitProvider) ? _urlCtrl.text.trim() : '',
+      gitIntegrationCredentialId: _accountId,
       vectorCollection: '',
     );
 
@@ -181,32 +185,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                     maxLines: 6,
                   ),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    initialValue: _gitProvider,
-                    decoration: InputDecoration(
-                      labelText: l10n.gitProviderFieldLabel,
-                    ),
-                    items: [
-                      for (final p in gitProviders)
-                        DropdownMenuItem(
-                          value: p,
-                          child: Text(gitProviderDisplayLabel(context, p)),
-                        ),
-                    ],
-                    onChanged: isBusy
-                        ? null
-                        : (v) {
-                            if (v == null) {
-                              return;
-                            }
-                            setState(() {
-                              _gitProvider = v;
-                              _selectedRepo = null;
-                              _manualUrl = false;
-                              _urlCtrl.clear();
-                            });
-                          },
-                  ),
+                  _buildAccountSelector(context, l10n, isBusy),
                   if (_isRemoteProvider(_gitProvider)) ...[
                     const SizedBox(height: 16),
                     ..._buildRemoteGitUrlSection(context, theme, l10n, isBusy),
@@ -229,6 +208,88 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
         ),
       ),
     );
+  }
+
+  /// Селектор подключённого git-аккаунта (мульти-аккаунт). Заменяет выбор типа провайдера:
+  /// выбранный аккаунт задаёт провайдера и git_integration_credential_id.
+  Widget _buildAccountSelector(
+    BuildContext context,
+    AppLocalizations l10n,
+    bool isBusy,
+  ) {
+    final theme = Theme.of(context);
+    final accounts = ref.watch(gitAccountsProvider).maybeWhen(
+          data: (list) => list
+              .where((a) =>
+                  a.status == GitProviderConnectionStatus.connected &&
+                  a.id != null)
+              .toList(),
+          orElse: () => const <GitProviderConnection>[],
+        );
+    final hasSelected =
+        _accountId != null && accounts.any((a) => a.id == _accountId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DropdownButtonFormField<String?>(
+          // ignore: deprecated_member_use
+          value: hasSelected ? _accountId : null,
+          decoration: InputDecoration(
+            labelText: l10n.createProjectAccountLabel,
+          ),
+          items: [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text(l10n.createProjectAccountLocal),
+            ),
+            for (final a in accounts)
+              DropdownMenuItem<String?>(
+                value: a.id,
+                child: Text(_accountLabel(a)),
+              ),
+          ],
+          onChanged: isBusy
+              ? null
+              : (id) {
+                  setState(() {
+                    _accountId = id;
+                    if (id == null) {
+                      _gitProvider = kLocalGitProvider;
+                    } else {
+                      _gitProvider = accounts
+                          .firstWhere((a) => a.id == id)
+                          .provider
+                          .jsonValue;
+                    }
+                    _selectedRepo = null;
+                    _manualUrl = false;
+                    _urlCtrl.clear();
+                  });
+                },
+        ),
+        if (accounts.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              l10n.createProjectAccountNoneHint,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _accountLabel(GitProviderConnection a) {
+    final provider =
+        a.provider == GitIntegrationProvider.github ? 'GitHub' : 'GitLab';
+    final login = a.accountLogin ?? '';
+    final host = a.host ?? '';
+    if (host.isNotEmpty) {
+      return login.isNotEmpty ? '$provider · $login @ $host' : '$provider · $host';
+    }
+    return login.isNotEmpty ? '$provider · $login' : provider;
   }
 
   List<Widget> _buildRemoteGitUrlSection(

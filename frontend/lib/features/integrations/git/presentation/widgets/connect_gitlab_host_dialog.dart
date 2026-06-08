@@ -58,6 +58,10 @@ class _ConnectGitlabHostDialogState
   final _hostController = TextEditingController();
   final _clientIdController = TextEditingController();
   final _clientSecretController = TextEditingController();
+  // Scopes должны совпадать с разрешёнными в OAuth-приложении на инстансе.
+  // `api` — полный набор (clone/push/MR); для гранулярных приложений, например,
+  // `read_api read_repository write_repository`.
+  final _scopesController = TextEditingController(text: 'api');
   bool _busy = false;
   bool _instructionsExpanded = false;
   String? _errorMessage;
@@ -67,6 +71,7 @@ class _ConnectGitlabHostDialogState
     _hostController.dispose();
     _clientIdController.dispose();
     _clientSecretController.dispose();
+    _scopesController.dispose();
     // Если диалог закрыли (Esc/клик мимо) во время активного init-запроса —
     // откатываем pending в disconnected. В success-пути `_busy=false`
     // выставляется до `Navigator.pop`, поэтому штатное закрытие сюда не падает.
@@ -102,6 +107,7 @@ class _ConnectGitlabHostDialogState
         host: host,
         byoClientId: _clientIdController.text.trim(),
         byoClientSecret: _clientSecretController.text.trim(),
+        scopes: _scopesController.text.trim(),
         updateStateOnError: false,
       );
       if (!mounted) {
@@ -230,6 +236,20 @@ class _ConnectGitlabHostDialogState
                   validator: (v) => _validateRequired(
                     v,
                     l10n.integrationsGitlabHostValidationClientSecretRequired,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _scopesController,
+                  enabled: !_busy,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    labelText: l10n.integrationsGitlabHostFieldScopes,
+                    helperText: l10n.integrationsGitlabHostFieldScopesHint,
+                  ),
+                  validator: (v) => _validateRequired(
+                    v,
+                    l10n.integrationsGitlabHostValidationScopesRequired,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -407,5 +427,9 @@ Future<bool> showAndLaunchConnectGitlabHost(
     }
     return false;
   }
+  // Фолбэк-поллинг статуса (как у github): на экране интеграций активного
+  // WS может не быть, и без поллинга карточка зависла бы в pending после
+  // успешной авторизации в браузере.
+  controller.pollUntilSettled(GitIntegrationProvider.gitlab);
   return true;
 }

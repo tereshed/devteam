@@ -42,9 +42,73 @@ type GitOAuthClient interface {
 	AuthCodeURL(state, redirectURI string) string
 	// ExchangeCode обменивает authorization-code на токены.
 	ExchangeCode(ctx context.Context, code, redirectURI string) (*GitOAuthToken, error)
+	// GetAuthenticatedLogin возвращает login/username аккаунта по access-token (мульти-аккаунт:
+	// нужен чтобы различать несколько подключений одного провайдера). Пустая строка — если
+	// провайдер не вернул логин (не фатально для подключения).
+	GetAuthenticatedLogin(ctx context.Context, accessToken string) (string, error)
+	// RefreshToken обновляет access-token по refresh-токену (grant_type=refresh_token).
+	// Нужен для провайдеров с короткоживущими токенами (GitLab — 2ч).
+	RefreshToken(ctx context.Context, refreshToken string) (*GitOAuthToken, error)
 	// Revoke best-effort вызов revoke endpoint провайдера. Возвращает nil при HTTP 2xx/4xx
 	// (4xx = «уже отозвано»), оборачивает ErrGitOAuthProviderUnreachable при сетевой ошибке.
 	Revoke(ctx context.Context, accessToken string) error
+}
+
+// postOAuthToken — общий POST к token-endpoint (refresh_token grant). Парсит JSON-ответ
+// в GitOAuthToken. GitLab ротирует refresh_token — возвращаем новый, если пришёл.
+func postOAuthToken(ctx context.Context, httpClient *http.Client, tokenURL string, form url.Values, acceptJSON bool) (*GitOAuthToken, error) {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("oauth refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if acceptJSON {
+		req.Header.Set("Accept", "application/json")
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: token endpoint: %v", ErrGitOAuthProviderUnreachable, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if resp.StatusCode >= 500 {
+		return nil, fmt.Errorf("%w: token HTTP %d", ErrGitOAuthProviderUnreachable, resp.StatusCode)
+	}
+	var parsed struct {
+		AccessToken      string `json:"access_token"`
+		TokenType        string `json:"token_type"`
+		Scope            string `json:"scope"`
+		RefreshToken     string `json:"refresh_token"`
+		ExpiresIn        int    `json:"expires_in"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("%w: malformed token response", ErrGitOAuthProviderUnreachable)
+	}
+	if parsed.Error != "" {
+		if parsed.Error == "invalid_grant" {
+			return nil, fmt.Errorf("%w: %s", ErrGitOAuthInvalidGrant, parsed.ErrorDescription)
+		}
+		return nil, fmt.Errorf("%w: %q: %s", ErrGitOAuthProviderUnreachable, parsed.Error, parsed.ErrorDescription)
+	}
+	if parsed.AccessToken == "" {
+		return nil, fmt.Errorf("%w: empty access_token on refresh", ErrGitOAuthInvalidGrant)
+	}
+	tok := &GitOAuthToken{
+		AccessToken:  parsed.AccessToken,
+		RefreshToken: parsed.RefreshToken,
+		TokenType:    firstNonEmpty(parsed.TokenType, "Bearer"),
+		Scopes:       parsed.Scope,
+	}
+	if parsed.ExpiresIn > 0 {
+		exp := time.Now().Add(time.Duration(parsed.ExpiresIn) * time.Second).UTC()
+		tok.ExpiresAt = &exp
+	}
+	return tok, nil
 }
 
 // ─── GitHub ──────────────────────────────────────────────────────────────────
@@ -164,6 +228,40 @@ func (c *githubOAuthClient) ExchangeCode(ctx context.Context, code, redirectURI 
 		tok.ExpiresAt = &exp
 	}
 	return tok, nil
+}
+
+func (c *githubOAuthClient) GetAuthenticatedLogin(ctx context.Context, accessToken string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.APIBaseURL+"/user", nil)
+	if err != nil {
+		return "", fmt.Errorf("github user request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := c.cfg.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("%w: github /user: %v", ErrGitOAuthProviderUnreachable, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("%w: github /user HTTP %d", ErrGitOAuthProviderUnreachable, resp.StatusCode)
+	}
+	var parsed struct {
+		Login string `json:"login"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "", fmt.Errorf("%w: github malformed /user response", ErrGitOAuthProviderUnreachable)
+	}
+	return parsed.Login, nil
+}
+
+func (c *githubOAuthClient) RefreshToken(ctx context.Context, refreshToken string) (*GitOAuthToken, error) {
+	form := url.Values{}
+	form.Set("client_id", c.cfg.ClientID)
+	form.Set("client_secret", c.cfg.ClientSecret)
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refreshToken)
+	return postOAuthToken(ctx, c.cfg.HTTPClient, c.cfg.TokenURL, form, true)
 }
 
 func (c *githubOAuthClient) Revoke(ctx context.Context, accessToken string) error {
@@ -306,6 +404,40 @@ func (c *gitlabOAuthClient) ExchangeCode(ctx context.Context, code, redirectURI 
 	return tok, nil
 }
 
+func (c *gitlabOAuthClient) GetAuthenticatedLogin(ctx context.Context, accessToken string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+"/api/v4/user", nil)
+	if err != nil {
+		return "", fmt.Errorf("gitlab user request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.cfg.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("%w: gitlab /user: %v", ErrGitOAuthProviderUnreachable, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("%w: gitlab /user HTTP %d", ErrGitOAuthProviderUnreachable, resp.StatusCode)
+	}
+	var parsed struct {
+		Username string `json:"username"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "", fmt.Errorf("%w: gitlab malformed /user response", ErrGitOAuthProviderUnreachable)
+	}
+	return parsed.Username, nil
+}
+
+func (c *gitlabOAuthClient) RefreshToken(ctx context.Context, refreshToken string) (*GitOAuthToken, error) {
+	form := url.Values{}
+	form.Set("client_id", c.cfg.ClientID)
+	form.Set("client_secret", c.cfg.ClientSecret)
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refreshToken)
+	return postOAuthToken(ctx, c.cfg.HTTPClient, c.cfg.BaseURL+"/oauth/token", form, true)
+}
+
 func (c *gitlabOAuthClient) Revoke(ctx context.Context, accessToken string) error {
 	// POST /oauth/revoke (form): token=<access_token>&client_id=...&client_secret=...
 	form := url.Values{}
@@ -338,6 +470,12 @@ type unconfiguredGitOAuth struct{}
 
 func (unconfiguredGitOAuth) AuthCodeURL(_, _ string) string { return "" }
 func (unconfiguredGitOAuth) ExchangeCode(context.Context, string, string) (*GitOAuthToken, error) {
+	return nil, ErrGitOAuthNotConfigured
+}
+func (unconfiguredGitOAuth) GetAuthenticatedLogin(context.Context, string) (string, error) {
+	return "", ErrGitOAuthNotConfigured
+}
+func (unconfiguredGitOAuth) RefreshToken(context.Context, string) (*GitOAuthToken, error) {
 	return nil, ErrGitOAuthNotConfigured
 }
 func (unconfiguredGitOAuth) Revoke(context.Context, string) error { return ErrGitOAuthNotConfigured }

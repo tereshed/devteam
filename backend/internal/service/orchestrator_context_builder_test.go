@@ -32,6 +32,7 @@ func TestContextBuilder_Build_DBIsSourceOfTruth(t *testing.T) {
 			ProviderKind:  &provider,
 		},
 		&models.Project{},
+		nil,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, model, input.Model)
@@ -51,6 +52,7 @@ func TestContextBuilder_Build_EmptyModelStaysEmpty(t *testing.T) {
 			ExecutionKind: models.AgentExecutionKindLLM,
 		},
 		&models.Project{},
+		nil,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, "", input.Model)
@@ -145,6 +147,7 @@ func TestContextBuilder_Build_SandboxAgentModelFromSettings(t *testing.T) {
 			CodeBackendSettings: []byte(`{"model": "deepseek/deepseek-v4-flash"}`),
 		},
 		&models.Project{},
+		nil,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, "deepseek/deepseek-v4-flash", input.Model)

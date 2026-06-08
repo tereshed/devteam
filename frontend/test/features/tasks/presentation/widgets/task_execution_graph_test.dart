@@ -28,6 +28,7 @@ void main() {
       final nodes = buildAgentNodes(
         decisions: decisions,
         artifacts: const [],
+        events: const [],
         taskState: 'active',
         assignedAgentName: null,
         assignedAgentRole: null,
@@ -51,6 +52,7 @@ void main() {
       final nodes = buildAgentNodes(
         decisions: [dec(0, const [], t0, outcome: 'needs_human')],
         artifacts: const [],
+        events: const [],
         taskState: 'needs_human',
         assignedAgentName: null,
         assignedAgentRole: null,

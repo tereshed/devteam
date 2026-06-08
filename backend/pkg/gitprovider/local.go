@@ -34,7 +34,7 @@ func (l *LocalGitProvider) ValidateAccess(ctx context.Context, repoURL string) e
 	}
 	checkURL := strings.TrimSpace(repoURL)
 	if isHTTPURL(checkURL) && l.creds.Token != "" {
-		checkURL = injectTokenInURL(checkURL, l.creds.Token)
+		checkURL = l.injectAuth(checkURL)
 	}
 	_, stderr, err := l.effectiveRunner().RunGit(ctx, "", "ls-remote", "--", checkURL)
 	if err == nil {
@@ -58,7 +58,7 @@ func (l *LocalGitProvider) Clone(ctx context.Context, repoURL string, opts Clone
 	}
 	cloneURL := repoURL
 	if l.creds.Token != "" && isHTTPURL(cloneURL) {
-		cloneURL = injectTokenInURL(cloneURL, l.creds.Token)
+		cloneURL = l.injectAuth(cloneURL)
 	}
 	args := []string{"clone"}
 	if opts.Branch != "" {
@@ -102,7 +102,7 @@ func (l *LocalGitProvider) Push(ctx context.Context, workDir string, opts PushOp
 	ru := strings.TrimSpace(remoteURL)
 	pushTarget := remote
 	if l.creds.Token != "" && isHTTPURL(ru) {
-		pushTarget = injectTokenInURL(ru, l.creds.Token)
+		pushTarget = l.injectAuth(ru)
 	}
 	args := []string{"push"}
 	if opts.Force {

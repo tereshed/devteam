@@ -3,30 +3,30 @@ package mcp
 import (
 	"net/http"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/internal/ws"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Dependencies содержит зависимости MCP-сервера
 type Dependencies struct {
-	Config          config.MCPConfig
-	LLMService      service.LLMService
-	WorkflowEngine  service.WorkflowEngine
-	PromptService   service.PromptService
-	ProjectService  service.ProjectService
-	TeamService     service.TeamService
-	TaskService     service.TaskService
-	ScheduledTaskService service.ScheduledTaskService
+	Config                config.MCPConfig
+	LLMService            service.LLMService
+	WorkflowEngine        service.WorkflowEngine
+	PromptService         service.PromptService
+	ProjectService        service.ProjectService
+	TeamService           service.TeamService
+	TaskService           service.TaskService
+	ScheduledTaskService  service.ScheduledTaskService
 	ToolDefinitionService service.ToolDefinitionService
-	ConversationSvc service.ConversationService
-	OrchestratorSvc service.TaskOrchestrator
-	ApiKeyService   service.ApiKeyService
+	ConversationSvc       service.ConversationService
+	OrchestratorSvc       service.TaskOrchestrator
+	ApiKeyService         service.ApiKeyService
 
 	// Sprint 15.15: опционально. nil — инструменты не регистрируются.
-	ClaudeCodeAuthService service.ClaudeCodeAuthService
+	ClaudeCodeAuthService  service.ClaudeCodeAuthService
 	AntigravityAuthService service.AntigravityAuthService
 
 	// UI Refactoring Stage 3a — git OAuth интеграции (опционально, nil → пропускаем).
@@ -70,6 +70,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterWorkflowTools(server, deps.WorkflowEngine, deps.Config)
 	RegisterPromptTools(server, deps.PromptService)
 	RegisterProjectTools(server, deps.ProjectService)
+	RegisterProjectRepositoryTools(server, deps.ProjectService)
 	RegisterTeamTools(server, deps.ProjectService, deps.TeamService)
 	RegisterToolDefinitionTools(server, deps.ToolDefinitionService)
 	RegisterTaskTools(server, deps.TaskService, deps.OrchestratorSvc)

@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/devteam/backend/internal/handler/dto"
-	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/internal/service"
-	"github.com/devteam/backend/internal/indexer"
 	"gorm.io/datatypes"
 )
 
@@ -102,6 +102,35 @@ func (m *MockProjectService) SearchCode(ctx context.Context, userID uuid.UUID, u
 func (m *MockProjectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
 	args := m.Called(ctx, userID, userRole, projectID)
 	return args.String(0), args.Error(1)
+}
+
+func (m *MockProjectService) ListRepositories(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) ([]models.ProjectRepository, error) {
+	args := m.Called(ctx, userID, userRole, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.ProjectRepository), args.Error(1)
+}
+
+func (m *MockProjectService) AddRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.AddRepositoryRequest) (*models.ProjectRepository, error) {
+	args := m.Called(ctx, userID, userRole, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.ProjectRepository), args.Error(1)
+}
+
+func (m *MockProjectService) UpdateRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID, req dto.UpdateRepositoryRequest) (*models.ProjectRepository, error) {
+	args := m.Called(ctx, userID, userRole, projectID, repoID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.ProjectRepository), args.Error(1)
+}
+
+func (m *MockProjectService) RemoveRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID) error {
+	args := m.Called(ctx, userID, userRole, projectID, repoID)
+	return args.Error(0)
 }
 
 func setupProjectRouter(mockSvc *MockProjectService, withAuth bool) *gin.Engine {

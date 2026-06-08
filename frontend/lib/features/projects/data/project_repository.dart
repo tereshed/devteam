@@ -3,6 +3,7 @@ import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/api/dio_api_error.dart';
 import 'package:frontend/core/api/dio_repository_error_map.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
+import 'package:frontend/features/projects/domain/models/project_repository_model.dart';
 import 'package:frontend/features/projects/domain/project_exceptions.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
 
@@ -215,6 +216,87 @@ class ProjectRepository {
     try {
       await _dio.delete(
         '/projects/$id',
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Список git-репозиториев проекта (мульти-репо). [GET /projects/:id/repositories]
+  Future<List<ProjectRepositoryModel>> listRepositories(
+    String projectId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+    try {
+      final response = await _dio.get(
+        '/projects/$projectId/repositories',
+        cancelToken: cancelToken,
+      );
+      return RepositoryListResponse.fromJson(_jsonBody(response)).repositories;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Добавляет репозиторий в проект. [POST /projects/:id/repositories]
+  Future<ProjectRepositoryModel> createRepository(
+    String projectId,
+    CreateRepositoryRequest request, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty) {
+      throw ArgumentError('projectId is required');
+    }
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/repositories',
+        data: request.toJson(),
+        cancelToken: cancelToken,
+      );
+      return ProjectRepositoryModel.fromJson(_jsonBody(response));
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Обновляет репозиторий проекта. [PUT /projects/:id/repositories/:repoId]
+  Future<ProjectRepositoryModel> updateRepository(
+    String projectId,
+    String repoId,
+    UpdateRepositoryRequest request, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty || repoId.isEmpty) {
+      throw ArgumentError('projectId and repoId are required');
+    }
+    try {
+      final response = await _dio.put(
+        '/projects/$projectId/repositories/$repoId',
+        data: request.toJson(),
+        cancelToken: cancelToken,
+      );
+      return ProjectRepositoryModel.fromJson(_jsonBody(response));
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  /// Удаляет репозиторий проекта. [DELETE /projects/:id/repositories/:repoId]
+  Future<void> deleteRepository(
+    String projectId,
+    String repoId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty || repoId.isEmpty) {
+      throw ArgumentError('projectId and repoId are required');
+    }
+    try {
+      await _dio.delete(
+        '/projects/$projectId/repositories/$repoId',
         cancelToken: cancelToken,
       );
     } on DioException catch (e) {

@@ -367,7 +367,6 @@ func (m *MockGitProvider) Push(ctx context.Context, workDir string, opts gitprov
 	return nil
 }
 
-
 // MockEncryptor — мок Encryptor.
 type MockEncryptor struct {
 	mock.Mock
@@ -391,6 +390,10 @@ func (m *MockCodeIndexer) SearchContext(ctx context.Context, projectID uuid.UUID
 }
 
 func (m *MockCodeIndexer) IndexProjectMaybe(ctx context.Context, req indexer.IndexingRequest) error {
+	return nil
+}
+
+func (m *MockCodeIndexer) PruneToPrefixes(ctx context.Context, projectID uuid.UUID, prefixes []string) error {
 	return nil
 }
 
@@ -1898,7 +1901,7 @@ func TestProjectService_RunBackgroundReindexing(t *testing.T) {
 	pr := new(MockProjectRepository)
 	gf := new(MockFactory)
 	mp := new(MockGitProvider)
-	
+
 	// Create project service using raw pr to test UpdateStatus and UpdateStatusAndCommit expectations
 	svc := newProjectServiceWithIndexer(
 		pr,
@@ -1922,23 +1925,23 @@ func TestProjectService_RunBackgroundReindexing(t *testing.T) {
 		},
 		// 2. Remote project with no changes - should be ignored
 		{
-			ID:                 projectID2,
-			UserID:             userID,
-			GitProvider:        models.GitProviderGitHub,
-			GitURL:             "https://github.com/o/r1",
-			GitDefaultBranch:   "main",
-			Status:             models.ProjectStatusReady,
-			LastIndexedCommit:  "current_sha",
+			ID:                projectID2,
+			UserID:            userID,
+			GitProvider:       models.GitProviderGitHub,
+			GitURL:            "https://github.com/o/r1",
+			GitDefaultBranch:  "main",
+			Status:            models.ProjectStatusReady,
+			LastIndexedCommit: "current_sha",
 		},
 		// 3. Remote project with changes - should trigger reindexing
 		{
-			ID:                 projectID3,
-			UserID:             userID,
-			GitProvider:        models.GitProviderGitHub,
-			GitURL:             "https://github.com/o/r2",
-			GitDefaultBranch:   "main",
-			Status:             models.ProjectStatusReady,
-			LastIndexedCommit:  "old_sha",
+			ID:                projectID3,
+			UserID:            userID,
+			GitProvider:       models.GitProviderGitHub,
+			GitURL:            "https://github.com/o/r2",
+			GitDefaultBranch:  "main",
+			Status:            models.ProjectStatusReady,
+			LastIndexedCommit: "old_sha",
 		},
 	}
 
@@ -1952,7 +1955,7 @@ func TestProjectService_RunBackgroundReindexing(t *testing.T) {
 	gf.On("Create", "github", mock.Anything).Return(mp, nil).Once()
 	mp.On("GetLatestCommitSHA", ctx, "https://github.com/o/r2", "main").Return("new_sha", nil).Once()
 	pr.On("UpdateStatus", ctx, projectID3, models.ProjectStatusReady, models.ProjectStatusIndexing).Return(nil).Once()
-	
+
 	// Expectations inside runIndexingPipeline for project 3
 	mp.On("Clone", mock.Anything, "https://github.com/o/r2", mock.Anything).Return(nil).Once()
 	pr.On("UpdateStatusAndCommit", mock.Anything, projectID3, models.ProjectStatusIndexing, models.ProjectStatusReady, "new_sha").Return(nil).Once()
@@ -1984,7 +1987,7 @@ func TestProjectService_SearchCode(t *testing.T) {
 	}
 
 	pr.On("GetByID", ctx, projectID).Return(existing, nil)
-	
+
 	expectedChunks := []indexer.Chunk{
 		{FilePath: "main.go", Content: "package main"},
 	}
@@ -2041,4 +2044,3 @@ func TestProjectService_GetProjectRepoPath(t *testing.T) {
 		pr.AssertExpectations(t)
 	})
 }
-

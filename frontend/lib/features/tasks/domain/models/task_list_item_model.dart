@@ -32,6 +32,10 @@ abstract class TaskListItemModel with _$TaskListItemModel {
     @JsonKey(name: 'assigned_agent')
     AgentSummaryModel? assignedAgent,
 
+    /// Команда
+    @JsonKey(name: 'team_id')
+    String? teamId,
+
     /// Кто создал задачу — строка из [createdByTypes]
     @JsonKey(name: 'created_by_type')
     required String createdByType,

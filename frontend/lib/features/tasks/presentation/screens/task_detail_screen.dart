@@ -27,6 +27,7 @@ import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/shared/widgets/diff_viewer.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Порог ширины: RefreshIndicator vs AppBar refresh (12.4 / 12.5).
 const double kTaskDetailMobileBreakpointWidth = 600;
@@ -388,45 +389,50 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       final teamAsync = ref.watch(teamProvider(widget.projectId));
       final decisionsAsync = ref.watch(taskRouterDecisionsProvider(widget.taskId));
       final artifactsAsync = ref.watch(taskArtifactsProvider(widget.taskId));
+      final eventsAsync = ref.watch(taskEventsProvider(widget.taskId));
 
       return teamAsync.maybeWhen(
         data: (team) => decisionsAsync.maybeWhen(
           data: (decisions) => artifactsAsync.maybeWhen(
-            data: (artifacts) {
-              final nodes = buildAgentNodes(
-                decisions: decisions,
-                artifacts: artifacts,
-                taskState: data.task!.status,
-                assignedAgentName: data.task!.assignedAgent?.name,
-                assignedAgentRole: data.task!.assignedAgent?.role,
-                teamAgents: team.agents,
-              );
-              AgentNodeData? agentNode;
-              try {
-                agentNode = nodes.firstWhere((n) => n.id == _selectedAgentNodeId);
-              } catch (_) {
+            data: (artifacts) => eventsAsync.maybeWhen(
+              data: (events) {
+                final nodes = buildAgentNodes(
+                  decisions: decisions,
+                  artifacts: artifacts,
+                  events: events,
+                  taskState: data.task!.status,
+                  assignedAgentName: data.task!.assignedAgent?.name,
+                  assignedAgentRole: data.task!.assignedAgent?.role,
+                  teamAgents: team.agents,
+                );
+                AgentNodeData? agentNode;
                 try {
-                  agentNode = nodes.firstWhere((n) => n.name == _selectedAgentName);
+                  agentNode = nodes.firstWhere((n) => n.id == _selectedAgentNodeId);
                 } catch (_) {
-                  if (nodes.isNotEmpty) {
-                    agentNode = nodes.first;
+                  try {
+                    agentNode = nodes.firstWhere((n) => n.name == _selectedAgentName);
+                  } catch (_) {
+                    if (nodes.isNotEmpty) {
+                      agentNode = nodes.first;
+                    }
                   }
                 }
-              }
-              if (agentNode == null) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              return AgentInspectorPanel(
-                projectId: widget.projectId,
-                taskId: widget.taskId,
-                agent: agentNode,
-                onClose: () {
-                  setState(() {
-                    _showInspector = false;
-                  });
-                },
-              );
-            },
+                if (agentNode == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return AgentInspectorPanel(
+                  projectId: widget.projectId,
+                  taskId: widget.taskId,
+                  agent: agentNode,
+                  onClose: () {
+                    setState(() {
+                      _showInspector = false;
+                    });
+                  },
+                );
+              },
+              orElse: () => const Center(child: CircularProgressIndicator()),
+            ),
             orElse: () => const Center(child: CircularProgressIndicator()),
           ),
           orElse: () => const Center(child: CircularProgressIndicator()),
@@ -1138,6 +1144,70 @@ class _SectionBlock extends StatelessWidget {
   }
 }
 
+/// Рендер «Итога» задачи с кликабельными ссылками. Мульти-репо: task.result содержит
+/// по строке на каждый затронутый репозиторий (`slug: PR #N url`), каждый PR-URL кликабелен.
+class _TaskResultView extends StatelessWidget {
+  const _TaskResultView({required this.result});
+
+  final String result;
+
+  static final RegExp _urlRe = RegExp(r'https?://[^\s]+');
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lines = result
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: _line(context, theme, line),
+          ),
+      ],
+    );
+  }
+
+  Widget _line(BuildContext context, ThemeData theme, String line) {
+    final match = _urlRe.firstMatch(line);
+    if (match == null) {
+      return SelectableText(line, style: theme.textTheme.bodyMedium);
+    }
+    final before = line.substring(0, match.start);
+    final url = match.group(0)!;
+    final after = line.substring(match.end);
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (before.trim().isNotEmpty)
+          Text(before.trim(), style: theme.textTheme.bodyMedium),
+        if (before.trim().isNotEmpty) const SizedBox(width: 4),
+        InkWell(
+          onTap: () => launchUrl(
+            Uri.parse(url),
+            mode: LaunchMode.externalApplication,
+          ),
+          child: Text(
+            url,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+        if (after.trim().isNotEmpty) const SizedBox(width: 4),
+        if (after.trim().isNotEmpty)
+          Text(after.trim(), style: theme.textTheme.bodyMedium),
+      ],
+    );
+  }
+}
+
 class _SubtasksSection extends StatelessWidget {
   const _SubtasksSection({
     required this.projectId,
@@ -1621,7 +1691,7 @@ class _GeneralInfoInspectorPanelState
                                 color: Theme.of(context).colorScheme.outline,
                               ),
                         )
-                      : SelectableText(r, style: Theme.of(context).textTheme.bodyMedium),
+                      : _TaskResultView(result: r),
                 ),
                 const SizedBox(height: 12),
                 if (s != null && s.trim().isNotEmpty) ...[

@@ -7,19 +7,21 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 
 	// Ошибки сущностей
-	ErrUserNotFound    = errors.New("user not found")
-	ErrUserExists      = errors.New("user already exists")
-	ErrProjectNotFound = errors.New("project not found")
-	ErrProjectNameExists = errors.New("project with this name already exists")
-	ErrAgentNotFound   = errors.New("agent not found")
-	ErrTeamAgentNotFound = errors.New("agent not found for project team")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrUserExists            = errors.New("user already exists")
+	ErrProjectNotFound       = errors.New("project not found")
+	ErrProjectNameExists     = errors.New("project with this name already exists")
+	ErrProjectRepoNotFound   = errors.New("project repository not found")
+	ErrProjectRepoSlugExists = errors.New("project repository with this slug already exists")
+	ErrAgentNotFound         = errors.New("agent not found")
+	ErrTeamAgentNotFound     = errors.New("agent not found for project team")
 
 	// Ошибки Conversation
 	ErrConversationNotFound      = errors.New("conversation not found")
 	ErrInvalidConversationStatus = errors.New("invalid conversation status")
 
 	// Ошибки ConversationMessage
-	ErrMessageNotFound = errors.New("message not found")
+	ErrMessageNotFound    = errors.New("message not found")
 	ErrInvalidMessageRole = errors.New("invalid message role")
 
 	// Ошибки Task
@@ -33,7 +35,7 @@ var (
 	ErrLLMProviderNameExists = errors.New("llm provider with this name already exists")
 
 	// Ошибки ClaudeCodeSubscription (Sprint 15.12)
-	ErrClaudeCodeSubscriptionNotFound = errors.New("claude code subscription not found")
+	ErrClaudeCodeSubscriptionNotFound  = errors.New("claude code subscription not found")
 	ErrAntigravitySubscriptionNotFound = errors.New("antigravity subscription not found")
 
 	// Ошибки GitIntegrationCredential (UI Refactoring Stage 3a).

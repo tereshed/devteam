@@ -4,15 +4,15 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/mock"
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
-	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/pkg/llm"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
 )
 
 // --- Shared test helpers ---
@@ -453,6 +453,35 @@ func (m *mockProjectService) GetProjectRepoPath(ctx context.Context, userID uuid
 	return args.String(0), args.Error(1)
 }
 
+func (m *mockProjectService) ListRepositories(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) ([]models.ProjectRepository, error) {
+	args := m.Called(ctx, userID, userRole, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.ProjectRepository), args.Error(1)
+}
+
+func (m *mockProjectService) AddRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.AddRepositoryRequest) (*models.ProjectRepository, error) {
+	args := m.Called(ctx, userID, userRole, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.ProjectRepository), args.Error(1)
+}
+
+func (m *mockProjectService) UpdateRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID, req dto.UpdateRepositoryRequest) (*models.ProjectRepository, error) {
+	args := m.Called(ctx, userID, userRole, projectID, repoID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.ProjectRepository), args.Error(1)
+}
+
+func (m *mockProjectService) RemoveRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID) error {
+	args := m.Called(ctx, userID, userRole, projectID, repoID)
+	return args.Error(0)
+}
+
 func (m *mockTaskService) Close() error {
 	return nil
 }
@@ -567,4 +596,3 @@ func (m *mockTaskOrchestrator) EnqueueInitialStep(ctx context.Context, taskID uu
 	args := m.Called(ctx, taskID)
 	return args.Error(0)
 }
-

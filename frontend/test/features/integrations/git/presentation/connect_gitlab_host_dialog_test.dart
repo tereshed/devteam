@@ -30,6 +30,7 @@ class _Repo implements GitIntegrationsRepository {
     String? host,
     String? byoClientId,
     String? byoClientSecret,
+    String? scopes,
     cancelToken,
   }) async {
     if (initThrows != null) {

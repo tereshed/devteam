@@ -70,6 +70,7 @@ abstract class TaskListFilter with _$TaskListFilter {
     List<String>? statuses,
     String? priority,
     String? assignedAgentId,
+    String? teamId,
     String? createdByType,
     String? createdById,
     String? parentTaskId,
@@ -95,6 +96,7 @@ abstract class TaskListFilter with _$TaskListFilter {
     final stList = statuses;
     final pr = priority;
     final agentId = assignedAgentId;
+    final tid = teamId;
     final cbt = createdByType;
     final cbid = createdById;
     final parentId = parentTaskId;
@@ -108,6 +110,7 @@ abstract class TaskListFilter with _$TaskListFilter {
       if (stList != null && stList.isNotEmpty) 'statuses': stList,
       if (pr != null && pr.isNotEmpty) 'priority': pr,
       if (agentId != null && agentId.isNotEmpty) 'assigned_agent_id': agentId,
+      if (tid != null && tid.isNotEmpty) 'team_id': tid,
       if (cbt != null && cbt.isNotEmpty) 'created_by_type': cbt,
       if (cbid != null && cbid.isNotEmpty) 'created_by_id': cbid,
       if (parentId != null && parentId.isNotEmpty) 'parent_task_id': parentId,

@@ -11,6 +11,7 @@ abstract class GitRepositoryModel with _$GitRepositoryModel {
     @JsonKey(name: 'html_url') required String htmlUrl,
     @JsonKey(name: 'clone_url') required String cloneUrl,
     String? description,
+    @JsonKey(name: 'default_branch') @Default('') String defaultBranch,
   }) = _GitRepositoryModel;
 
   factory GitRepositoryModel.fromJson(Map<String, dynamic> json) =>

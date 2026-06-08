@@ -1,5 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
+import 'package:frontend/features/projects/domain/models/project_repository_model.dart';
 
 part 'requests.freezed.dart';
 part 'requests.g.dart';
@@ -60,6 +61,8 @@ abstract class CreateProjectRequest with _$CreateProjectRequest {
     String gitDefaultBranch,
     @JsonKey(name: 'git_credential_id')
     String? gitCredentialId,
+    @JsonKey(name: 'git_integration_credential_id')
+    String? gitIntegrationCredentialId,
     @JsonKey(name: 'vector_collection')
     required String vectorCollection,
     @JsonKey(name: 'tech_stack')
@@ -90,6 +93,10 @@ abstract class UpdateProjectRequest with _$UpdateProjectRequest {
     String? gitDefaultBranch,
     @JsonKey(name: 'git_credential_id')
     String? gitCredentialId,
+    @JsonKey(name: 'git_integration_credential_id')
+    String? gitIntegrationCredentialId,
+    @JsonKey(name: 'remove_git_integration_credential')
+    bool? removeGitIntegrationCredential,
     @JsonKey(name: 'vector_collection')
     String? vectorCollection,
     String? status,
@@ -109,4 +116,86 @@ abstract class UpdateProjectRequest with _$UpdateProjectRequest {
 
   factory UpdateProjectRequest.fromJson(Map<String, dynamic> json) =>
       _$UpdateProjectRequestFromJson(json);
+}
+
+/// Ответ на запрос списка репозиториев проекта (мульти-репо)
+@freezed
+abstract class RepositoryListResponse with _$RepositoryListResponse {
+  const factory RepositoryListResponse({
+    @Default(<ProjectRepositoryModel>[]) List<ProjectRepositoryModel> repositories,
+    @Default(0) int total,
+  }) = _RepositoryListResponse;
+
+  const RepositoryListResponse._();
+
+  factory RepositoryListResponse.fromJson(Map<String, dynamic> json) =>
+      _$RepositoryListResponseFromJson(json);
+}
+
+/// Request для добавления репозитория в проект
+@freezed
+abstract class CreateRepositoryRequest with _$CreateRepositoryRequest {
+  const factory CreateRepositoryRequest({
+    required String slug,
+    @JsonKey(name: 'display_name')
+    required String displayName,
+    @JsonKey(name: 'role_description')
+    @Default('')
+    String roleDescription,
+    @JsonKey(name: 'git_provider')
+    required String gitProvider,
+    @JsonKey(name: 'git_url')
+    required String gitUrl,
+    @JsonKey(name: 'git_default_branch')
+    @Default('main')
+    String gitDefaultBranch,
+    @JsonKey(name: 'git_credential_id')
+    String? gitCredentialId,
+    @JsonKey(name: 'git_integration_credential_id')
+    String? gitIntegrationCredentialId,
+    @JsonKey(name: 'is_primary')
+    @Default(false)
+    bool isPrimary,
+    @JsonKey(name: 'sort_order')
+    @Default(0)
+    int sortOrder,
+  }) = _CreateRepositoryRequest;
+
+  const CreateRepositoryRequest._();
+
+  factory CreateRepositoryRequest.fromJson(Map<String, dynamic> json) =>
+      _$CreateRepositoryRequestFromJson(json);
+}
+
+/// Request для обновления репозитория проекта (partial update)
+@freezed
+abstract class UpdateRepositoryRequest with _$UpdateRepositoryRequest {
+  @JsonSerializable(includeIfNull: false)
+  const factory UpdateRepositoryRequest({
+    @JsonKey(name: 'display_name')
+    String? displayName,
+    @JsonKey(name: 'role_description')
+    String? roleDescription,
+    @JsonKey(name: 'git_provider')
+    String? gitProvider,
+    @JsonKey(name: 'git_url')
+    String? gitUrl,
+    @JsonKey(name: 'git_default_branch')
+    String? gitDefaultBranch,
+    @JsonKey(name: 'git_credential_id')
+    String? gitCredentialId,
+    @JsonKey(name: 'git_integration_credential_id')
+    String? gitIntegrationCredentialId,
+    @JsonKey(name: 'remove_git_integration_credential')
+    bool? removeGitIntegrationCredential,
+    @JsonKey(name: 'is_primary')
+    bool? isPrimary,
+    @JsonKey(name: 'sort_order')
+    int? sortOrder,
+  }) = _UpdateRepositoryRequest;
+
+  const UpdateRepositoryRequest._();
+
+  factory UpdateRepositoryRequest.fromJson(Map<String, dynamic> json) =>
+      _$UpdateRepositoryRequestFromJson(json);
 }

@@ -35,6 +35,9 @@ func (m *mockIdxCodeIndexer) SearchContext(ctx context.Context, projectID uuid.U
 	}
 	return args.Get(0).([]indexer.Chunk), args.Error(1)
 }
+func (m *mockIdxCodeIndexer) PruneToPrefixes(ctx context.Context, projectID uuid.UUID, prefixes []string) error {
+	return nil
+}
 
 type mockIdxTaskIndexer struct{ mock.Mock }
 
@@ -119,6 +122,22 @@ func (m *mockIdxProjectService) SearchCode(ctx context.Context, userID uuid.UUID
 }
 func (m *mockIdxProjectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
 	return "", nil
+}
+
+func (m *mockIdxProjectService) ListRepositories(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) ([]models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockIdxProjectService) AddRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.AddRepositoryRequest) (*models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockIdxProjectService) UpdateRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID, req dto.UpdateRepositoryRequest) (*models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockIdxProjectService) RemoveRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID) error {
+	return nil
 }
 
 type mockIdxSyncRepo struct{ mock.Mock }
@@ -844,4 +863,3 @@ func TestConcurrent_FullIndexAndDeleteTask_NoRace(t *testing.T) {
 	}()
 	wg.Wait()
 }
-

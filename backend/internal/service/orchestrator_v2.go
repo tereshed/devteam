@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // orchestrator_v2.go — Sprint 17 / Orchestration v2 — Orchestrator.Step.
@@ -56,6 +58,17 @@ type OrchestratorConfig struct {
 	// переназначает того же агента → снова OOM». 0/отрицательное — выключено.
 	MaxDeadJobsPerTask int
 
+	// MaxSameAgentRepeats — сколько подряд идущих Router-решений могут выбрать ОДИН И ТОТ ЖЕ
+	// непустой набор агентов до того, как Orchestrator детерминированно эскалирует задачу в
+	// needs_human, не вызывая Router. Предохранитель против петли «Router переназначает того
+	// же агента, тот снова кладёт raw_output, задача не сходится» (см. инцидент SupportAggent:
+	// router на каждом шаге считал задачу «только созданной» и снова звал support). Ни один
+	// здоровый flow не выбирает идентичный одиночный набор агентов N раз подряд (developer↔
+	// reviewer чередуются, параллельные подзадачи идут одним решением). 0/отрицательное —
+	// выключено. Основная защита — память Router'а о прошлых решениях (RecentDecisions в
+	// промпте); этот backstop — последний рубеж, если LLM игнорирует историю.
+	MaxSameAgentRepeats int
+
 	// DefaultBaseBranch — fallback если Project.GitDefaultBranch пуст.
 	// Обычно "main".
 	DefaultBaseBranch string
@@ -64,10 +77,11 @@ type OrchestratorConfig struct {
 // DefaultOrchestratorConfig возвращает разумные дефолты MVP.
 func DefaultOrchestratorConfig() OrchestratorConfig {
 	return OrchestratorConfig{
-		WorkerID:           "orchestrator-default",
-		MaxStepsPerTask:    40,
-		MaxDeadJobsPerTask: 3,
-		DefaultBaseBranch:  "main",
+		WorkerID:            "orchestrator-default",
+		MaxStepsPerTask:     40,
+		MaxDeadJobsPerTask:  3,
+		MaxSameAgentRepeats: 4,
+		DefaultBaseBranch:   "main",
 	}
 }
 
@@ -118,6 +132,9 @@ func NewOrchestrator(
 	}
 	if cfg.MaxDeadJobsPerTask < 0 {
 		cfg.MaxDeadJobsPerTask = 0
+	}
+	if cfg.MaxSameAgentRepeats < 0 {
+		cfg.MaxSameAgentRepeats = 0
 	}
 	if cfg.DefaultBaseBranch == "" {
 		cfg.DefaultBaseBranch = "main"
@@ -245,6 +262,20 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 				fmt.Sprintf("%d agent jobs exhausted retries (likely sandbox OOM/timeout); human inspection required", len(state.DeadJobs)))
 		}
 
+		// 6.7. Repeated-dispatch backstop. Если Router N раз подряд выбрал ОДИН И ТОТ ЖЕ
+		// непустой набор агентов — задача не сходится (Router зациклился, переназначая того же
+		// агента). Эскалируем в needs_human, не вызывая LLM. Последний рубеж: основную защиту
+		// даёт память Router'а (RecentDecisions в промпте), но если LLM её игнорирует — ловим
+		// здесь. См. инцидент SupportAggent (router на каждом шаге считал задачу «только
+		// созданной»). Использует уже загруженный state.RecentDecisions.
+		if reps, agentSet := repeatedDispatchRun(state.RecentDecisions); o.cfg.MaxSameAgentRepeats > 0 && reps >= o.cfg.MaxSameAgentRepeats {
+			o.logger.WarnContext(ctx, "same agent set re-dispatched too many times, escalating to needs_human",
+				"task_id", task.ID, "agents", agentSet, "repeats", reps, "max", o.cfg.MaxSameAgentRepeats)
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID))
+			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
+				fmt.Sprintf("router re-dispatched the same agent(s) [%s] %d times without convergence; human inspection required", agentSet, reps))
+		}
+
 		// 7. Router.Decide — может вернуть Done или массив агентов.
 		// Внутри уже есть retry-пайплайн при галлюцинациях; ошибка отсюда — инфра.
 		decision, err := o.routerSvc.Decide(ctx, state)
@@ -354,7 +385,12 @@ func (o *Orchestrator) schedulePullRequestPublish(taskID uuid.UUID) func(context
 			return
 		}
 		var project models.Project
-		if err := o.db.WithContext(ctx).Preload("GitCredential").
+		if err := o.db.WithContext(ctx).
+			Preload("GitCredential").
+			Preload("Repositories", func(db *gorm.DB) *gorm.DB {
+				return db.Order("sort_order ASC, created_at ASC")
+			}).
+			Preload("Repositories.GitCredential").
 			First(&project, "id = ?", task.ProjectID).Error; err != nil {
 			o.logger.ErrorContext(ctx, "pr-gate: load project failed", "task_id", taskID, "error", err)
 			return
@@ -369,37 +405,180 @@ func (o *Orchestrator) schedulePullRequestPublish(taskID uuid.UUID) func(context
 			return
 		}
 
-		pr, err := o.prPublisher.Publish(ctx, &task, &project)
-		if err != nil {
-			branch := ""
-			if task.BranchName != nil {
-				branch = *task.BranchName
-			}
-			reason := fmt.Sprintf(
-				"Задача не завершена: не удалось открыть PR — изменения не приземлены в репозиторий (%v). "+
-					"Привяжите git-credential к проекту и убедитесь, что ветка %q запушена в remote.",
-				err, branch,
-			)
-			o.logger.WarnContext(ctx, "pr-gate: PR not opened → downgrading done→needs_human",
-				"task_id", taskID, "error", err)
-			if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
-				Updates(map[string]any{
-					"state":         models.TaskStateNeedsHuman,
-					"error_message": reason,
-					"updated_at":    time.Now(),
-				}).Error; uerr != nil {
-				o.logger.ErrorContext(ctx, "pr-gate: downgrade update failed", "task_id", taskID, "error", uerr)
-			}
+		// Мульти-репо: определяем затронутые репозитории по code_diff/merged_code артефактам.
+		// Пусто → одно-репо/legacy путь (один PR по полям проекта, прежнее поведение).
+		touched := o.resolveTouchedRepos(ctx, taskID, &project)
+		if len(touched) == 0 {
+			o.publishSingleRepoPR(ctx, taskID, &task, &project)
 			return
 		}
+		o.publishMultiRepoPRs(ctx, taskID, &task, &project, touched)
+	}
+}
 
-		o.logger.InfoContext(ctx, "pr-gate: PR opened for completed task",
-			"task_id", taskID, "pr_number", pr.Number, "pr_url", pr.HTMLURL)
-		if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
-			Update("result", fmt.Sprintf("PR #%d: %s", pr.Number, pr.HTMLURL)).Error; uerr != nil {
-			o.logger.WarnContext(ctx, "pr-gate: store PR url failed", "task_id", taskID, "error", uerr)
+// publishSingleRepoPR — прежнее одно-репо поведение гейта (один PR по полям проекта).
+func (o *Orchestrator) publishSingleRepoPR(ctx context.Context, taskID uuid.UUID, task *models.Task, project *models.Project) {
+	pr, err := o.prPublisher.Publish(ctx, task, project)
+	if err != nil {
+		branch := ""
+		if task.BranchName != nil {
+			branch = *task.BranchName
+		}
+		reason := fmt.Sprintf(
+			"Задача не завершена: не удалось открыть PR — изменения не приземлены в репозиторий (%v). "+
+				"Привяжите git-credential к проекту и убедитесь, что ветка %q запушена в remote.",
+			err, branch,
+		)
+		o.logger.WarnContext(ctx, "pr-gate: PR not opened → downgrading done→needs_human",
+			"task_id", taskID, "error", err)
+		o.downgradeToNeedsHuman(ctx, taskID, reason)
+		return
+	}
+
+	o.logger.InfoContext(ctx, "pr-gate: PR opened for completed task",
+		"task_id", taskID, "pr_number", pr.Number, "pr_url", pr.HTMLURL)
+	if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
+		Update("result", fmt.Sprintf("PR #%d: %s", pr.Number, pr.HTMLURL)).Error; uerr != nil {
+		o.logger.WarnContext(ctx, "pr-gate: store PR url failed", "task_id", taskID, "error", uerr)
+	}
+}
+
+// publishMultiRepoPRs открывает по PR на каждый затронутый репозиторий. Задача done только
+// если по всем затронутым репо PR успешно открыт (либо репо local/без PR — тогда пропуск
+// не считается провалом). Любая реальная ошибка → needs_human. Открытые PR персистятся в
+// task_pull_requests, агрегированный список — в task.result.
+func (o *Orchestrator) publishMultiRepoPRs(ctx context.Context, taskID uuid.UUID, task *models.Task, project *models.Project, repos []*models.ProjectRepository) {
+	type opened struct {
+		slug   string
+		number int
+		url    string
+	}
+	var ok []opened
+	var failures []string
+
+	for _, repo := range repos {
+		pr, err := o.prPublisher.PublishForRepo(ctx, task, project, repo)
+		if err != nil {
+			// Пропуск (local-провайдер / нечего пушить) не считаем провалом гейта —
+			// для такого репо PR не требуется.
+			if errors.Is(err, ErrPullRequestSkipped) {
+				o.logger.InfoContext(ctx, "pr-gate: repo skipped (no PR needed)",
+					"task_id", taskID, "repo_slug", repo.Slug, "reason", err.Error())
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: %v", repo.Slug, err))
+			continue
+		}
+		ok = append(ok, opened{slug: repo.Slug, number: pr.Number, url: pr.HTMLURL})
+		tpr := &models.TaskPullRequest{TaskID: taskID, RepoSlug: repo.Slug, PRNumber: pr.Number, PRURL: pr.HTMLURL}
+		if uerr := o.db.WithContext(ctx).
+			Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "task_id"}, {Name: "repo_slug"}}, DoNothing: true}).
+			Create(tpr).Error; uerr != nil {
+			o.logger.WarnContext(ctx, "pr-gate: persist task_pull_request failed",
+				"task_id", taskID, "repo_slug", repo.Slug, "error", uerr)
 		}
 	}
+
+	if len(failures) > 0 {
+		reason := fmt.Sprintf(
+			"Задача не завершена: не удалось открыть PR в части репозиториев — изменения не приземлены (%s). "+
+				"Привяжите git-credential к этим репозиториям и убедитесь, что ветка запушена в remote.",
+			strings.Join(failures, "; "),
+		)
+		o.logger.WarnContext(ctx, "pr-gate: multi-repo PR failures → downgrading done→needs_human",
+			"task_id", taskID, "failures", strings.Join(failures, "; "))
+		o.downgradeToNeedsHuman(ctx, taskID, reason)
+		return
+	}
+
+	if len(ok) == 0 {
+		o.logger.InfoContext(ctx, "pr-gate: no PRs needed across touched repos (all skipped)", "task_id", taskID)
+		return
+	}
+	parts := make([]string, 0, len(ok))
+	for _, r := range ok {
+		parts = append(parts, fmt.Sprintf("%s: PR #%d %s", r.slug, r.number, r.url))
+	}
+	result := strings.Join(parts, "\n")
+	o.logger.InfoContext(ctx, "pr-gate: multi-repo PRs opened", "task_id", taskID, "count", len(ok))
+	if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
+		Update("result", result).Error; uerr != nil {
+		o.logger.WarnContext(ctx, "pr-gate: store PR urls failed", "task_id", taskID, "error", uerr)
+	}
+}
+
+// downgradeToNeedsHuman переводит задачу done→needs_human с честной причиной.
+func (o *Orchestrator) downgradeToNeedsHuman(ctx context.Context, taskID uuid.UUID, reason string) {
+	if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
+		Updates(map[string]any{
+			"state":         models.TaskStateNeedsHuman,
+			"error_message": reason,
+			"updated_at":    time.Now(),
+		}).Error; uerr != nil {
+		o.logger.ErrorContext(ctx, "pr-gate: downgrade update failed", "task_id", taskID, "error", uerr)
+	}
+}
+
+// resolveTouchedRepos возвращает репозитории проекта, затронутые задачей (по code_diff/
+// merged_code артефактам и их repo_slug). Пусто, если у проекта нет репо-реестра (legacy)
+// либо нет code-артефактов. code_diff без repo_slug относим к primary-репо.
+func (o *Orchestrator) resolveTouchedRepos(ctx context.Context, taskID uuid.UUID, project *models.Project) []*models.ProjectRepository {
+	if project == nil || len(project.Repositories) == 0 {
+		return nil
+	}
+	arts, err := o.artifactRepo.ListByTaskID(ctx, taskID, false)
+	if err != nil {
+		o.logger.WarnContext(ctx, "pr-gate: list artifacts failed for touched-repo resolution", "task_id", taskID, "error", err)
+		return nil
+	}
+	byID := make(map[uuid.UUID]*models.Artifact, len(arts))
+	for i := range arts {
+		byID[arts[i].ID] = &arts[i]
+	}
+	slugSet := make(map[string]bool)
+	hasCode := false
+	for i := range arts {
+		a := &arts[i]
+		if a.Kind != models.ArtifactKindCodeDiff && a.Kind != models.ArtifactKindMergedCode {
+			continue
+		}
+		hasCode = true
+		slug := resolveSlugFromArtifact(a, byID)
+		if slug == "" {
+			if pr := project.PrimaryRepo(); pr != nil {
+				slug = pr.Slug
+			}
+		}
+		if slug != "" {
+			slugSet[slug] = true
+		}
+	}
+	if !hasCode {
+		return nil
+	}
+	repos := make([]*models.ProjectRepository, 0, len(slugSet))
+	for slug := range slugSet {
+		if r := project.RepoBySlug(slug); r != nil {
+			repos = append(repos, r)
+		}
+	}
+	return repos
+}
+
+// resolveSlugFromArtifact ищет repo_slug в content артефакта, поднимаясь по цепочке
+// parent_id (code_diff → subtask_description, где repo_slug проставлен decomposer'ом).
+func resolveSlugFromArtifact(a *models.Artifact, byID map[uuid.UUID]*models.Artifact) string {
+	cur := a
+	for depth := 0; depth < 6 && cur != nil; depth++ {
+		if s := extractRepoSlug(cur.Content); s != "" {
+			return s
+		}
+		if cur.ParentID == nil {
+			return ""
+		}
+		cur = byID[*cur.ParentID]
+	}
+	return ""
 }
 
 // taskHasCodeChanges — были ли у задачи реальные изменения кода (артефакт code_diff).
@@ -506,16 +685,76 @@ func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *m
 		return RouterState{}, fmt.Errorf("load dead jobs: %w", err)
 	}
 
+	// Репозитории проекта (мульти-репо) — для секции `# Repositories` в промпте Router'а.
+	var repos []models.ProjectRepository
+	if err := tx.WithContext(ctx).
+		Where("project_id = ?", task.ProjectID).
+		Order("sort_order ASC, created_at ASC").
+		Find(&repos).Error; err != nil {
+		return RouterState{}, fmt.Errorf("load project repositories: %w", err)
+	}
+
+	// Недавние Router-решения — память о прошлых шагах (кого уже запускали). Грузим последние
+	// recentDecisionsLimit (DESC), затем разворачиваем в ASC для хронологичного рендера. Тот же
+	// срез использует backstop повторных назначений (см. detectRepeatedDispatch).
+	var recent []models.RouterDecision
+	if err := tx.WithContext(ctx).
+		Where("task_id = ?", task.ID).
+		Order("step_no DESC").
+		Limit(recentDecisionsLimit).
+		Find(&recent).Error; err != nil {
+		return RouterState{}, fmt.Errorf("load recent router decisions: %w", err)
+	}
+	for i, j := 0, len(recent)-1; i < j; i, j = i+1, j-1 {
+		recent[i], recent[j] = recent[j], recent[i]
+	}
+
 	return RouterState{
-		Task:      task,
-		TeamID:    teamID,
-		Agents:    agents,
-		Artifacts: artifacts,
-		InFlight:  inflight,
-		DeadJobs:  deadJobs,
-		StepNo:    task.CurrentStepNo,
-		MaxSteps:  o.cfg.MaxStepsPerTask,
+		Task:            task,
+		TeamID:          teamID,
+		Agents:          agents,
+		Artifacts:       artifacts,
+		InFlight:        inflight,
+		DeadJobs:        deadJobs,
+		StepNo:          task.CurrentStepNo,
+		MaxSteps:        o.cfg.MaxStepsPerTask,
+		Repositories:    repos,
+		RecentDecisions: recent,
 	}, nil
+}
+
+// recentDecisionsLimit — сколько последних Router-решений подтягивать в RouterState для
+// памяти Router'а (секция `# Recent routing history`) и для backstop'а повторных назначений.
+// Достаточно, чтобы покрыть и историю для LLM, и окно MaxSameAgentRepeats (которое заметно
+// меньше). Больше — лишний раздув промпта.
+const recentDecisionsLimit = 8
+
+// repeatedDispatchRun возвращает длину хвоста подряд идущих Router-решений с ОДНИМ И ТЕМ ЖЕ
+// непустым набором выбранных агентов (множество, без учёта порядка) и человекочитаемую метку
+// этого набора. decisions ожидаются в хронологическом порядке (ASC по step_no). Решения с
+// пустым набором агентов («ожидание» при in-flight job'ах) прерывают серию и не учитываются —
+// они не являются повторным назначением. Используется repeated-dispatch backstop'ом (см. Step)
+// для детекта зацикливания Router'а (переназначение одного и того же агента без сходимости).
+func repeatedDispatchRun(decisions []models.RouterDecision) (int, string) {
+	run := 0
+	var key, label string
+	for i := len(decisions) - 1; i >= 0; i-- {
+		agents := []string(decisions[i].ChosenAgents)
+		if len(agents) == 0 {
+			break
+		}
+		sorted := append([]string(nil), agents...)
+		sort.Strings(sorted)
+		k := strings.Join(sorted, ",")
+		if run == 0 {
+			key = k
+			label = strings.Join(agents, ", ")
+		} else if k != key {
+			break
+		}
+		run++
+	}
+	return run, label
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -644,7 +883,19 @@ func (o *Orchestrator) enqueueOneAgentJob(ctx context.Context, tx *gorm.DB, task
 		if payload.Input == nil {
 			payload.Input = map[string]any{}
 		}
-		payload.Input["_base_branch"] = baseBranch
+		// Мульти-репо: определяем целевой репозиторий подзадачи по repo_slug из target-артефакта
+		// (subtask_description или его потомков). Кладём _repo_slug; base_branch берём из
+		// default-ветки этого репо (если у задачи нет явного branch override).
+		repoBaseBranch := baseBranch
+		if slug := o.resolveRepoSlugForJob(ctx, tx, req.Input); slug != "" {
+			payload.Input["_repo_slug"] = slug
+			if task.BranchName == nil || *task.BranchName == "" {
+				if b, ok := o.repoDefaultBranch(ctx, tx, task.ProjectID, slug); ok {
+					repoBaseBranch = b
+				}
+			}
+		}
+		payload.Input["_base_branch"] = repoBaseBranch
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -661,6 +912,54 @@ func (o *Orchestrator) enqueueOneAgentJob(ctx context.Context, tx *gorm.DB, task
 		return fmt.Errorf("create task_event: %w", err)
 	}
 	return nil
+}
+
+// resolveRepoSlugForJob определяет repo_slug подзадачи по target_artifact_id из input.
+// Поднимается по цепочке parent_id (subtask_description → code_diff → review → ...), пока не
+// найдёт repo_slug в content артефакта. Пусто, если репо не указан (одно-репо проект /
+// decomposer не проставил slug) — вызывающий код откатывается на primary-репо.
+func (o *Orchestrator) resolveRepoSlugForJob(ctx context.Context, tx *gorm.DB, input map[string]any) string {
+	if input == nil {
+		return ""
+	}
+	raw, ok := input["target_artifact_id"]
+	if !ok {
+		return ""
+	}
+	idStr, ok := raw.(string)
+	if !ok || idStr == "" {
+		return ""
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return ""
+	}
+	for depth := 0; depth < 6 && id != uuid.Nil; depth++ {
+		var art models.Artifact
+		if err := tx.WithContext(ctx).Where("id = ?", id).First(&art).Error; err != nil {
+			return ""
+		}
+		if slug := extractRepoSlug(art.Content); slug != "" {
+			return slug
+		}
+		if art.ParentID == nil {
+			return ""
+		}
+		id = *art.ParentID
+	}
+	return ""
+}
+
+// repoDefaultBranch возвращает валидную default-ветку репо проекта по slug.
+func (o *Orchestrator) repoDefaultBranch(ctx context.Context, tx *gorm.DB, projectID uuid.UUID, slug string) (string, bool) {
+	var repo models.ProjectRepository
+	if err := tx.WithContext(ctx).Where("project_id = ? AND slug = ?", projectID, slug).First(&repo).Error; err != nil {
+		return "", false
+	}
+	if repo.GitDefaultBranch == "" || ValidateBaseBranch(repo.GitDefaultBranch) != nil {
+		return "", false
+	}
+	return repo.GitDefaultBranch, true
 }
 
 // resolveBaseBranch — порядок: task.BranchName → Project.GitDefaultBranch → cfg.DefaultBaseBranch.

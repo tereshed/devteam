@@ -532,7 +532,17 @@ COMMIT_HASH="$(git rev-parse HEAD)"
 PHASE="push"
 PUSHED=0
 PUSH_URL=""
+
+HAS_UNPUSHED=0
 if [[ "$COMMIT_HASH" != "$INITIAL_COMMIT_HASH" ]]; then
+  HAS_UNPUSHED=1
+elif ! git rev-parse --verify --quiet "origin/${BRANCH_NAME}" >/dev/null; then
+  HAS_UNPUSHED=1
+elif ! git diff --quiet HEAD "origin/${BRANCH_NAME}"; then
+  HAS_UNPUSHED=1
+fi
+
+if [[ "$HAS_UNPUSHED" -eq 1 ]]; then
   if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
     PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
   elif [[ "${REPO_URL}" =~ ^file:// || "${REPO_URL}" =~ ^ssh:// || "${REPO_URL}" =~ ^git@ ]]; then

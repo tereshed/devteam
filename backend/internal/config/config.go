@@ -303,7 +303,11 @@ func Load() (*Config, error) {
 		GitLabOAuth: GitLabOAuthAppConfig{
 			ClientID:     getEnv("GITLAB_OAUTH_CLIENT_ID", ""),
 			ClientSecret: getEnv("GITLAB_OAUTH_CLIENT_SECRET", ""),
-			Scopes:       getEnv("GITLAB_OAUTH_SCOPES", "api read_user read_repository write_repository"),
+			// GitLab scope `api` — полный read-write супермножество: покрывает clone,
+			// push, создание MR и /user (account_login). Отдельные read_user/
+			// read_repository/write_repository избыточны и часто не включены в self-hosted
+			// (BYO) OAuth-приложении → GitLab отдаёт invalid_scope. Достаточно `api`.
+			Scopes: getEnv("GITLAB_OAUTH_SCOPES", "api"),
 		},
 		Weaviate: WeaviateConfig{
 			Host:   getEnv("WEAVIATE_HOST", "localhost:8082"),

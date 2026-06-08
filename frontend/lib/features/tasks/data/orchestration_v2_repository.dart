@@ -3,6 +3,7 @@ import 'package:frontend/core/api/dio_repository_error_map.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_exceptions.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
 import 'package:frontend/features/tasks/domain/models/router_decision_model.dart';
+import 'package:frontend/features/tasks/domain/models/task_event_model.dart';
 
 /// Чтение v2-данных задачи: артефакты + router decisions.
 ///
@@ -107,6 +108,22 @@ class OrchestrationV2Repository {
       return _asList(response.data)
           .whereType<Map<String, dynamic>>()
           .map(RouterDecision.fromJson)
+          .toList(growable: false);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  Future<List<TaskEventModel>> listTaskEvents(String taskId,
+      {CancelToken? cancelToken}) async {
+    try {
+      final response = await _dio.get(
+        '/tasks/$taskId/events',
+        cancelToken: cancelToken,
+      );
+      return _asList(response.data)
+          .whereType<Map<String, dynamic>>()
+          .map(TaskEventModel.fromJson)
           .toList(growable: false);
     } on DioException catch (e) {
       throw _mapError(e);

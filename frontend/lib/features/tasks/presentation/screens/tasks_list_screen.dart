@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/features/projects/domain/models.dart';
 import 'package:frontend/features/tasks/domain/models/task_list_item_model.dart';
 import 'package:frontend/features/tasks/domain/models/task_model.dart';
 import 'package:frontend/features/tasks/domain/requests.dart';
@@ -10,6 +11,7 @@ import 'package:frontend/features/tasks/presentation/controllers/task_list_contr
 import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_card.dart';
+import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -151,6 +153,20 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
         .setFilter(cur.copyWith(priority: priorityOrNull));
   }
 
+  Future<void> _applyTeamFilter(String? teamIdOrNull) async {
+    final async = ref.read(taskListControllerProvider(projectId: widget.projectId));
+    final cur = _unwrapTaskListState(async)?.filter;
+    if (cur == null) {
+      return;
+    }
+    if (cur.teamId == teamIdOrNull) {
+      return;
+    }
+    await ref
+        .read(taskListControllerProvider(projectId: widget.projectId).notifier)
+        .setFilter(cur.copyWith(teamId: teamIdOrNull));
+  }
+
   Future<void> _clearFiltersToDefaults() async {
     await ref
         .read(taskListControllerProvider(projectId: widget.projectId).notifier)
@@ -165,6 +181,8 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
     final isWide = width >= kTasksListMobileBreakpointWidth;
 
     final async = ref.watch(taskListControllerProvider(projectId: widget.projectId));
+    final asyncTeams = ref.watch(teamsProvider(widget.projectId));
+    final teams = asyncTeams.hasValue ? asyncTeams.requireValue : null;
 
     ref.listen(taskListControllerProvider(projectId: widget.projectId), (prev, next) {
       final prevSearch = _unwrapTaskListState(prev)?.filter.search;
@@ -223,8 +241,10 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
           searchController: _searchController,
           onSearchChanged: _onSearchChanged,
           filter: effective?.filter,
+          teams: teams,
           onStatusSelected: _applyStatusFilter,
           onPrioritySelected: _applyPriorityFilter,
+          onTeamSelected: _applyTeamFilter,
           showTrailingRefresh: isWide,
           onTrailingRefresh: _onRefresh,
         ),
@@ -232,6 +252,7 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
           child: _TasksListBody(
             async: async,
             effective: effective,
+            teams: teams,
             l10n: l10n,
             isWide: isWide,
             filterDiffersFromDefaults: effective != null &&
@@ -261,8 +282,10 @@ class _TasksFilterPanel extends StatelessWidget {
     required this.searchController,
     required this.onSearchChanged,
     required this.filter,
+    required this.teams,
     required this.onStatusSelected,
     required this.onPrioritySelected,
+    required this.onTeamSelected,
     required this.showTrailingRefresh,
     required this.onTrailingRefresh,
   });
@@ -271,8 +294,10 @@ class _TasksFilterPanel extends StatelessWidget {
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
   final TaskListFilter? filter;
+  final List<TeamModel>? teams;
   final Future<void> Function(String?) onStatusSelected;
   final Future<void> Function(String?) onPrioritySelected;
+  final Future<void> Function(String?) onTeamSelected;
   final bool showTrailingRefresh;
   final Future<void> Function() onTrailingRefresh;
 
@@ -280,6 +305,7 @@ class _TasksFilterPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final st = filter?.status;
     final pr = filter?.priority;
+    final tId = filter?.teamId;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -351,6 +377,27 @@ class _TasksFilterPanel extends StatelessWidget {
               },
             ),
           ),
+          if (teams != null && teams!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 44,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: teams!.length + 1,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, i) {
+                  final sel = i == 0 ? null : teams![i - 1].id;
+                  final selected = tId == sel;
+                  final label = i == 0 ? l10n.filterAll : teams![i - 1].name;
+                  return FilterChip(
+                    label: Text(label),
+                    selected: selected,
+                    onSelected: (_) => onTeamSelected(sel),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -361,6 +408,7 @@ class _TasksListBody extends StatelessWidget {
   const _TasksListBody({
     required this.async,
     required this.effective,
+    required this.teams,
     required this.l10n,
     required this.isWide,
     required this.filterDiffersFromDefaults,
@@ -374,6 +422,7 @@ class _TasksListBody extends StatelessWidget {
 
   final AsyncValue<TaskListState> async;
   final TaskListState? effective;
+  final List<TeamModel>? teams;
   final AppLocalizations l10n;
   final bool isWide;
   final bool filterDiffersFromDefaults;
@@ -454,6 +503,7 @@ class _TasksListBody extends StatelessWidget {
                   : false,
               child: _TasksTable(
                 items: state.items,
+                teams: teams,
                 isLoadingMore: state.isLoadingMore,
                 l10n: l10n,
                 onTaskTap: onTaskTap,
@@ -518,6 +568,7 @@ class _TasksListBody extends StatelessWidget {
 const double _kColStatus = 150;
 const double _kColPriority = 130;
 const double _kColAgent = 140;
+const double _kColTeam = 140;
 const double _kColUpdated = 120;
 const double _kColChevron = 40;
 
@@ -559,12 +610,14 @@ String _fmtUpdated(String localeTag, DateTime dt) {
 class _TasksTable extends StatefulWidget {
   const _TasksTable({
     required this.items,
+    required this.teams,
     required this.isLoadingMore,
     required this.l10n,
     required this.onTaskTap,
   });
 
   final List<TaskListItemModel> items;
+  final List<TeamModel>? teams;
   final bool isLoadingMore;
   final AppLocalizations l10n;
   final void Function(TaskListItemModel task) onTaskTap;
@@ -626,6 +679,7 @@ class _TasksTableState extends State<_TasksTable> {
               final task = sorted[i];
               return _TaskTableRow(
                 task: task,
+                teams: widget.teams,
                 l10n: widget.l10n,
                 zebra: i.isOdd,
                 onTap: () => widget.onTaskTap(task),
@@ -686,6 +740,7 @@ class _TasksTableState extends State<_TasksTable> {
           cell(_SortKey.title, l10n.tasksColTask, expand: true),
           cell(_SortKey.priority, l10n.tasksColPriority, width: _kColPriority),
           cell(null, l10n.tasksColAgent, width: _kColAgent),
+          cell(null, 'КОМАНДА', width: _kColTeam),
           cell(_SortKey.updated, l10n.tasksColUpdated, width: _kColUpdated),
           const SizedBox(width: _kColChevron),
         ],
@@ -697,12 +752,14 @@ class _TasksTableState extends State<_TasksTable> {
 class _TaskTableRow extends StatelessWidget {
   const _TaskTableRow({
     required this.task,
+    required this.teams,
     required this.l10n,
     required this.zebra,
     required this.onTap,
   });
 
   final TaskListItemModel task;
+  final List<TeamModel>? teams;
   final AppLocalizations l10n;
   final bool zebra;
   final VoidCallback onTap;
@@ -715,6 +772,9 @@ class _TaskTableRow extends StatelessWidget {
     final prTone = taskPriorityTone(task.priority);
     final localeTag = Localizations.localeOf(context).toLanguageTag();
     final agent = task.assignedAgent?.name ?? '—';
+    final teamName = task.teamId != null && teams != null
+        ? teams!.where((t) => t.id == task.teamId).firstOrNull?.name ?? '—'
+        : '—';
 
     return Material(
       color: zebra
@@ -778,6 +838,16 @@ class _TaskTableRow extends StatelessWidget {
                 width: _kColAgent,
                 child: Text(
                   agent,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ),
+              SizedBox(
+                width: _kColTeam,
+                child: Text(
+                  teamName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall

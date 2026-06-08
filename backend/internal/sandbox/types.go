@@ -14,9 +14,9 @@ const DefaultSandboxStopGrace = 10 * time.Second
 // Instruction и Context из SandboxOptions не имеют имён ENV в Go: большие тексты
 // передаются только файлами (PromptFilePath, ContextFilePath), см. CopyToContainer в 5.5.
 const (
-	EnvRepoURL          = "REPO_URL"
-	EnvBranchName       = "BRANCH_NAME"
-	EnvBaseRef          = "BASE_REF"
+	EnvRepoURL    = "REPO_URL"
+	EnvBranchName = "BRANCH_NAME"
+	EnvBaseRef    = "BASE_REF"
 	// EnvStartRef — ref, с которого entrypoint начинает работу (developer стартует с BASE_REF;
 	// reviewer/tester получают START_REF=branch-name developer'а). См. entrypoint.sh.
 	EnvStartRef         = "START_REF"
@@ -38,12 +38,23 @@ const (
 	EnvAntigravityAPIKey        = "ANTIGRAVITY_API_KEY"
 	EnvAntigravityOAuthToken    = "ANTIGRAVITY_OAUTH_TOKEN"
 	EnvAntigravityBaseURL       = "ANTIGRAVITY_BASE_URL"
+	// EnvSiblingRepos — мульти-репо: JSON-массив соседних репозиториев проекта
+	// [{"slug","url","branch"}], которые entrypoint клонирует read-only в SiblingsPath.
+	// Аутентификация — тем же GIT_TOKEN (host-scoped credential helper), что и целевой репо.
+	EnvSiblingRepos = "SIBLING_REPOS"
+	// EnvGitTokenUser — username для инъекции GIT_TOKEN в HTTPS-URL (clone/push).
+	// Пусто/не задан → "x-access-token" (GitHub). GitLab требует "oauth2" для OAuth2-токенов.
+	EnvGitTokenUser = "GIT_TOKEN_USER"
 )
 
 // Фиксированные пути артефактов внутри контейнера (не из env — защита от path injection).
 const (
-	WorkspacePath   = "/workspace"
-	RepoPath        = "/workspace/repo"
+	WorkspacePath = "/workspace"
+	RepoPath      = "/workspace/repo"
+	// SiblingsPath — корень read-only клонов соседних репозиториев (мульти-репо):
+	// /workspace/siblings/<slug>. Доступны агенту для чтения контрактов/типов, но не
+	// участвуют в diff/commit/push (затрагивается только RepoPath).
+	SiblingsPath    = "/workspace/siblings"
 	PromptFilePath  = "/workspace/prompt.txt"
 	ContextFilePath = "/workspace/context.txt"
 	AgentLogPath    = "/workspace/agent.log"
@@ -123,7 +134,7 @@ type SandboxOptions struct {
 
 	// Timeout — бизнес-таймаут жизни задачи в изоляции (после успешного start контейнера, политика 5.5/5.8).
 	// Ноль и отрицательные значения запрещены как «бесконечность»: используйте EffectiveTimeout() перед таймерами.
-	Timeout       time.Duration
+	Timeout time.Duration
 	// StopGracePeriod — время SIGTERM до SIGKILL при Stop (5.8). Ноль — DefaultSandboxStopGrace; <0 запрещено в Validate.
 	StopGracePeriod time.Duration
 	ResourceLimit   ResourceLimit
@@ -136,6 +147,17 @@ type SandboxOptions struct {
 	// AgentSettings — per-agent артефакты (Sprint 15.22): ~/.claude/settings.json, .mcp.json,
 	// permission-mode (флаг CLI). Если nil — настройки агента не пробрасываются (legacy-поведение).
 	AgentSettings *AgentSettingsBundle
+
+	// SiblingRepos — мульти-репо: соседние репозитории проекта, монтируемые read-only
+	// (entrypoint клонирует их в SiblingsPath/<slug>). Каждый URL обязан пройти ValidateRepoURL.
+	SiblingRepos []SiblingRepoSpec
+}
+
+// SiblingRepoSpec — соседний репозиторий проекта для read-only клонирования в sandbox.
+type SiblingRepoSpec struct {
+	Slug    string `json:"slug"`
+	RepoURL string `json:"url"`
+	Branch  string `json:"branch"`
 }
 
 // AgentSettingsBundle — то, что копируется в контейнер при RunTask (Sprint 15.22).

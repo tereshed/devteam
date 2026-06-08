@@ -7,6 +7,7 @@ import 'package:frontend/features/projects/domain/models/agent_model.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
 import 'package:frontend/features/tasks/domain/models/router_decision_model.dart';
+import 'package:frontend/features/tasks/domain/models/task_event_model.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_execution_graph.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/l10n/app_localizations.dart';
@@ -77,6 +78,7 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
     final teamAsync = ref.watch(teamProvider(widget.projectId));
     final decisionsAsync = ref.watch(taskRouterDecisionsProvider(widget.taskId));
     final artifactsAsync = ref.watch(taskArtifactsProvider(widget.taskId));
+    final eventsAsync = ref.watch(taskEventsProvider(widget.taskId));
 
     Widget loadError(Object err) => Center(
           child: Text(
@@ -94,8 +96,12 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
         data: (decisions) => artifactsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, _) => loadError(err),
-          data: (artifacts) =>
-              _buildTrace(context, l10n, decisions, artifacts, team.agents),
+          data: (artifacts) => eventsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => loadError(err),
+            data: (events) =>
+                _buildTrace(context, l10n, decisions, artifacts, events, team.agents),
+          ),
         ),
       ),
     );
@@ -106,6 +112,7 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
     AppLocalizations l10n,
     List<RouterDecision> decisions,
     List<Artifact> artifacts,
+    List<TaskEventModel> events,
     List<AgentModel> teamAgents,
   ) {
     if (decisions.isEmpty) {
@@ -126,6 +133,7 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
     final nodes = buildAgentNodes(
       decisions: decisions,
       artifacts: artifacts,
+      events: events,
       taskState: widget.taskState,
       assignedAgentName: widget.assignedAgentName,
       assignedAgentRole: widget.assignedAgentRole,

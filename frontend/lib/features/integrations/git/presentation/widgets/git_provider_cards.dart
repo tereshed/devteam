@@ -110,44 +110,49 @@ IntegrationProviderCard gitProviderCard(
   final l10n = requireAppLocalizations(context, where: 'gitProviderCard');
   final brand = _brandFor(l10n, provider);
   final status = _toIntegrationStatus(connection.status);
+  final isConnected = connection.status == GitProviderConnectionStatus.connected;
   final actions = <IntegrationAction>[];
-  if (connection.status == GitProviderConnectionStatus.connected) {
-    if (onDisconnect != null) {
-      actions.add(
-        IntegrationAction(
-          label: l10n.integrationsGitDisconnectCta,
-          style: IntegrationActionStyle.destructive,
-          onPressed: onDisconnect,
-          isBusy: busy,
-        ),
-      );
-    }
-  } else {
-    if (onConnect != null) {
-      actions.add(
-        IntegrationAction(
-          label: connection.status == GitProviderConnectionStatus.error
-              ? l10n.integrationsGitRetry
-              : l10n.integrationsGitConnectCta,
-          style: IntegrationActionStyle.primary,
-          onPressed: onConnect,
-          icon: Icons.link,
-          isBusy:
-              busy || connection.status == GitProviderConnectionStatus.pending,
-        ),
-      );
-    }
-    if (onConnectSelfHosted != null) {
-      actions.add(
-        IntegrationAction(
-          label: l10n.integrationsGitConnectSelfHostedCta,
-          style: IntegrationActionStyle.secondary,
-          onPressed: onConnectSelfHosted,
-          icon: Icons.dns_outlined,
-          isBusy: busy,
-        ),
-      );
-    }
+  // Connect доступен всегда (мульти-аккаунт): для уже подключённого провайдера —
+  // «Подключить ещё аккаунт». Disconnect (provider-level) — только когда подключён;
+  // per-account disconnect живёт в секции «Подключённые аккаунты».
+  if (onConnect != null) {
+    actions.add(
+      IntegrationAction(
+        label: isConnected
+            ? l10n.integrationsGitConnectAnotherCta
+            : (connection.status == GitProviderConnectionStatus.error
+                ? l10n.integrationsGitRetry
+                : l10n.integrationsGitConnectCta),
+        style: isConnected
+            ? IntegrationActionStyle.secondary
+            : IntegrationActionStyle.primary,
+        onPressed: onConnect,
+        icon: Icons.link,
+        isBusy:
+            busy || connection.status == GitProviderConnectionStatus.pending,
+      ),
+    );
+  }
+  if (onConnectSelfHosted != null) {
+    actions.add(
+      IntegrationAction(
+        label: l10n.integrationsGitConnectSelfHostedCta,
+        style: IntegrationActionStyle.secondary,
+        onPressed: onConnectSelfHosted,
+        icon: Icons.dns_outlined,
+        isBusy: busy,
+      ),
+    );
+  }
+  if (isConnected && onDisconnect != null) {
+    actions.add(
+      IntegrationAction(
+        label: l10n.integrationsGitDisconnectCta,
+        style: IntegrationActionStyle.destructive,
+        onPressed: onDisconnect,
+        isBusy: busy,
+      ),
+    );
   }
   return IntegrationProviderCard(
     logo: Icon(

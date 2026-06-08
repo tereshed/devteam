@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/dio_providers.dart';
@@ -14,6 +15,18 @@ final gitIntegrationsRepositoryProvider = Provider<GitIntegrationsRepository>((
 ) {
   final dio = ref.watch(dioClientProvider);
   return GitIntegrationsRepository(dio: dio);
+});
+
+/// Мульти-аккаунт: все подключённые OAuth-аккаунты пользователя (с id).
+/// Источник для списка аккаунтов на экране интеграций и пикеров в форме проекта/репо.
+/// После connect/disconnect инвалидируется (`ref.invalidate`).
+final gitAccountsProvider =
+    FutureProvider.autoDispose<List<GitProviderConnection>>((ref) async {
+  final cancelToken = CancelToken();
+  ref.onDispose(cancelToken.cancel);
+  return ref
+      .read(gitIntegrationsRepositoryProvider)
+      .fetchAccounts(cancelToken: cancelToken);
 });
 
 /// Снимок состояния экрана Git Integrations.
@@ -201,6 +214,7 @@ class GitIntegrationsController extends Notifier<GitIntegrationsState> {
     String? host,
     String? byoClientId,
     String? byoClientSecret,
+    String? scopes,
     bool updateStateOnError = true,
   }) async {
     applyLocal(
@@ -219,6 +233,7 @@ class GitIntegrationsController extends Notifier<GitIntegrationsState> {
             host: host,
             byoClientId: byoClientId,
             byoClientSecret: byoClientSecret,
+            scopes: scopes,
           );
       // Race: пока летел init, кто-то откатил pending (например, диалог
       // закрыли). Не возвращаем URL — иначе UI откроет браузер впустую и

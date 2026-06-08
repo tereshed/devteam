@@ -446,6 +446,24 @@ abstract class AppLocalizations {
   /// **'Шифруется AES-256-GCM в базе.'**
   String get integrationsGitlabHostFieldSecretHint;
 
+  /// No description provided for @integrationsGitlabHostFieldScopes.
+  ///
+  /// In ru, this message translates to:
+  /// **'Scopes'**
+  String get integrationsGitlabHostFieldScopes;
+
+  /// No description provided for @integrationsGitlabHostFieldScopesHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Должны совпадать со scope, включёнными в вашем OAuth-приложении. \'api\' покрывает всё; для гранулярных приложений, например, \'read_api read_repository write_repository\'.'**
+  String get integrationsGitlabHostFieldScopesHint;
+
+  /// No description provided for @integrationsGitlabHostValidationScopesRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите хотя бы один scope'**
+  String get integrationsGitlabHostValidationScopesRequired;
+
   /// ui_refactoring stage 3b: BYO dialog client-side validation
   ///
   /// In ru, this message translates to:
@@ -503,7 +521,7 @@ abstract class AppLocalizations {
   /// ui_refactoring stage 3b: BYO step
   ///
   /// In ru, this message translates to:
-  /// **'Отметьте Confidential. Scopes: api, read_user, read_repository, write_repository.'**
+  /// **'Отметьте Confidential. Scope: api (покрывает clone, push и merge request\'ы).'**
   String get integrationsGitlabHostInstructionsStep4;
 
   /// ui_refactoring stage 3b: BYO step
@@ -2029,6 +2047,192 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Git-репозиторий'**
   String get projectSettingsSectionGit;
+
+  /// No description provided for @repositoriesSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Репозитории'**
+  String get repositoriesSectionTitle;
+
+  /// No description provided for @repositoriesSectionSubtitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-репозитории проекта. Decomposer раскладывает подзадачи по репозиториям.'**
+  String get repositoriesSectionSubtitle;
+
+  /// No description provided for @repositoriesAddButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить репозиторий'**
+  String get repositoriesAddButton;
+
+  /// No description provided for @repositoriesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Репозиториев пока нет'**
+  String get repositoriesEmpty;
+
+  /// No description provided for @repositoryPrimaryBadge.
+  ///
+  /// In ru, this message translates to:
+  /// **'primary'**
+  String get repositoryPrimaryBadge;
+
+  /// No description provided for @repositoryFieldSlug.
+  ///
+  /// In ru, this message translates to:
+  /// **'Slug'**
+  String get repositoryFieldSlug;
+
+  /// No description provided for @repositoryFieldSlugHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'например ui, core, infra'**
+  String get repositoryFieldSlugHint;
+
+  /// No description provided for @repositoryFieldDisplayName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отображаемое имя'**
+  String get repositoryFieldDisplayName;
+
+  /// No description provided for @repositoryFieldUrl.
+  ///
+  /// In ru, this message translates to:
+  /// **'Git URL'**
+  String get repositoryFieldUrl;
+
+  /// No description provided for @repositoryFieldBranch.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ветка по умолчанию'**
+  String get repositoryFieldBranch;
+
+  /// No description provided for @repositoryFieldProvider.
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-провайдер'**
+  String get repositoryFieldProvider;
+
+  /// No description provided for @repositoryFieldRole.
+  ///
+  /// In ru, this message translates to:
+  /// **'Роль (для decomposer)'**
+  String get repositoryFieldRole;
+
+  /// No description provided for @repositoryFieldRoleHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'например Flutter UI, высоконагруженный Go-бэкенд'**
+  String get repositoryFieldRoleHint;
+
+  /// No description provided for @repositoryAddDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить репозиторий'**
+  String get repositoryAddDialogTitle;
+
+  /// No description provided for @repositoryAddSubmit.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить'**
+  String get repositoryAddSubmit;
+
+  /// No description provided for @repositoryRemoveTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить репозиторий'**
+  String get repositoryRemoveTooltip;
+
+  /// No description provided for @repositoryRemoveConfirmTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить репозиторий?'**
+  String get repositoryRemoveConfirmTitle;
+
+  /// No description provided for @repositoryRemoveConfirmBody.
+  ///
+  /// In ru, this message translates to:
+  /// **'Репозиторий «{slug}» будет откреплён от проекта.'**
+  String repositoryRemoveConfirmBody(String slug);
+
+  /// No description provided for @repositoryRemoveConfirmAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get repositoryRemoveConfirmAction;
+
+  /// No description provided for @repositoryLastIndexedLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Последняя индексация'**
+  String get repositoryLastIndexedLabel;
+
+  /// No description provided for @gitAccountSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-аккаунт'**
+  String get gitAccountSectionTitle;
+
+  /// No description provided for @gitAccountFieldLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт'**
+  String get gitAccountFieldLabel;
+
+  /// No description provided for @gitAccountHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'Какой подключённый аккаунт использовать для клонирования и pull request\'ов.'**
+  String get gitAccountHelper;
+
+  /// No description provided for @gitAccountNoneHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет подключённых аккаунтов этого провайдера. Подключите в «Git-провайдеры».'**
+  String get gitAccountNoneHint;
+
+  /// No description provided for @gitAccountDefaultOption.
+  ///
+  /// In ru, this message translates to:
+  /// **'По умолчанию (первый подключённый аккаунт)'**
+  String get gitAccountDefaultOption;
+
+  /// No description provided for @integrationsGitConnectAnotherCta.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить ещё аккаунт'**
+  String get integrationsGitConnectAnotherCta;
+
+  /// No description provided for @integrationsGitAccountsSectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключённые аккаунты'**
+  String get integrationsGitAccountsSectionTitle;
+
+  /// No description provided for @integrationsGitDisconnectAccountTooltip.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отключить этот аккаунт'**
+  String get integrationsGitDisconnectAccountTooltip;
+
+  /// No description provided for @createProjectAccountLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Git-аккаунт'**
+  String get createProjectAccountLabel;
+
+  /// No description provided for @createProjectAccountLocal.
+  ///
+  /// In ru, this message translates to:
+  /// **'Локально (без git)'**
+  String get createProjectAccountLocal;
+
+  /// No description provided for @createProjectAccountNoneHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет подключённых аккаунтов. Подключите в «Git-провайдеры», чтобы выбирать репозитории.'**
+  String get createProjectAccountNoneHint;
 
   /// Секция Weaviate (13.4)
   ///

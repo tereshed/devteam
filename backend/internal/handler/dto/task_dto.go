@@ -35,6 +35,7 @@ type ListTasksRequest struct {
 	CreatedByType   *string    `form:"created_by_type"`
 	CreatedByID     *uuid.UUID `form:"created_by_id"`
 	ParentTaskID    *uuid.UUID `form:"parent_task_id"`
+	TeamID          *string    `form:"team_id"`
 	RootOnly        bool       `form:"root_only"`
 	BranchName      *string    `form:"branch_name"`
 	Search          *string    `form:"search"`
@@ -55,6 +56,7 @@ type UpdateTaskRequest struct {
 	Description        *string    `json:"description"`
 	Priority           *string    `json:"priority"`
 	Status             *string    `json:"status"`
+	TeamID             *uuid.UUID `json:"team_id"`
 	AssignedAgentID    *uuid.UUID `json:"assigned_agent_id"`
 	ClearAssignedAgent bool       `json:"clear_assigned_agent"`
 	BranchName         *string    `json:"branch_name"`

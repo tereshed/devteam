@@ -7,6 +7,7 @@ import 'package:frontend/features/projects/domain/models/agent_model.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/domain/models/router_decision_model.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
+import 'package:frontend/features/tasks/domain/models/task_event_model.dart';
 import 'package:intl/intl.dart';
 
 enum NodeStatus { pending, running, success, failed }
@@ -26,6 +27,8 @@ class AgentNodeData {
   final int stepNo;
   final NodeKind kind;
   final String? reason; // для router-ноды — reason решения
+  final String? instructions;
+  final List<String>? targetArtifactIds;
 
   const AgentNodeData({
     required this.id,
@@ -37,12 +40,15 @@ class AgentNodeData {
     required this.stepNo,
     this.kind = NodeKind.agent,
     this.reason,
+    this.instructions,
+    this.targetArtifactIds,
   });
 }
 
 List<AgentNodeData> buildAgentNodes({
   required List<RouterDecision> decisions,
   required List<Artifact> artifacts,
+  required List<TaskEventModel> events,
   required String taskState,
   required String? assignedAgentName,
   required String? assignedAgentRole,
@@ -122,17 +128,38 @@ List<AgentNodeData> buildAgentNodes({
     ));
 
     for (int aIdx = 0; aIdx < d.chosenAgents.length; aIdx++) {
-      final agentName = d.chosenAgents[aIdx];
+      final baseAgentName = d.chosenAgents[aIdx];
+      int duplicateCount = 0;
+      for (int i = 0; i < aIdx; i++) {
+        if (d.chosenAgents[i] == baseAgentName) {
+          duplicateCount++;
+        }
+      }
+      final agentName = duplicateCount > 0 ? '$baseAgentName ${duplicateCount + 1}' : baseAgentName;
+
       final teamAgent = teamAgents.firstWhere(
-        (a) => a.name == agentName,
+        (a) => a.name == baseAgentName,
         orElse: () => AgentModel(
-          id: agentName,
-          name: agentName,
-          role: assignedAgentName == agentName ? (assignedAgentRole ?? agentName) : agentName,
+          id: baseAgentName,
+          name: baseAgentName,
+          role: assignedAgentName == baseAgentName ? (assignedAgentRole ?? baseAgentName) : baseAgentName,
           isActive: true,
         ),
       );
       final role = teamAgent.role;
+
+      final stepEvents = events.where((e) => 
+        e.kind == 'agent_job' && 
+        e.agentName == baseAgentName && 
+        (e.createdAt.isAfter(start) || e.createdAt.isAtSameMomentAs(start)) && 
+        e.createdAt.isBefore(end)
+      ).toList();
+      TaskEventModel? event;
+      if (duplicateCount < stepEvents.length) {
+        event = stepEvents[duplicateCount];
+      }
+      final instructions = event?.instructions;
+      final targetArtifactIds = event?.targetArtifactIds;
 
       NodeStatus status;
       if (isStepRunning && isLast) {
@@ -149,15 +176,27 @@ List<AgentNodeData> buildAgentNodes({
       final nodeSubtasks = <String>[];
 
       for (final art in artifacts) {
-        if (art.producerAgent.toLowerCase() == agentName.toLowerCase()) {
-          final isAfterOrEqual = art.createdAt.isAfter(start) || art.createdAt.isAtSameMomentAs(start);
-          final isBefore = art.createdAt.isBefore(end);
-          if (isAfterOrEqual && isBefore) {
-            nodeArtifacts.add(art);
-            if (art.kind == 'subtask_description') {
-              final title = art.subtaskTitle ?? art.summary;
-              if (title.isNotEmpty && !nodeSubtasks.contains(title)) {
-                nodeSubtasks.add(title);
+        if (art.producerAgent.toLowerCase() == baseAgentName.toLowerCase()) {
+          if (targetArtifactIds != null && targetArtifactIds.isNotEmpty) {
+            if (art.parentId != null && targetArtifactIds.contains(art.parentId)) {
+              nodeArtifacts.add(art);
+              if (art.kind == 'subtask_description') {
+                final title = art.subtaskTitle ?? art.summary;
+                if (title.isNotEmpty && !nodeSubtasks.contains(title)) {
+                  nodeSubtasks.add(title);
+                }
+              }
+            }
+          } else {
+            final isAfterOrEqual = art.createdAt.isAfter(start) || art.createdAt.isAtSameMomentAs(start);
+            final isBefore = art.createdAt.isBefore(end);
+            if (isAfterOrEqual && isBefore) {
+              nodeArtifacts.add(art);
+              if (art.kind == 'subtask_description') {
+                final title = art.subtaskTitle ?? art.summary;
+                if (title.isNotEmpty && !nodeSubtasks.contains(title)) {
+                  nodeSubtasks.add(title);
+                }
               }
             }
           }
@@ -172,6 +211,8 @@ List<AgentNodeData> buildAgentNodes({
         subtasks: nodeSubtasks,
         artifacts: nodeArtifacts,
         stepNo: d.stepNo,
+        instructions: instructions,
+        targetArtifactIds: targetArtifactIds,
       ));
     }
   }
@@ -280,6 +321,7 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
     final teamAsync = ref.watch(teamProvider(widget.projectId));
     final decisionsAsync = ref.watch(taskRouterDecisionsProvider(widget.taskId));
     final artifactsAsync = ref.watch(taskArtifactsProvider(widget.taskId));
+    final eventsAsync = ref.watch(taskEventsProvider(widget.taskId));
 
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
@@ -311,15 +353,25 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                 ),
               ),
               data: (artifacts) {
-                // 1. Построение списка нод последовательных шагов
-                final nodesList = buildAgentNodes(
-                  decisions: decisions,
-                  artifacts: artifacts,
-                  taskState: widget.taskState,
-                  assignedAgentName: widget.assignedAgentName,
-                  assignedAgentRole: widget.assignedAgentRole,
-                  teamAgents: team.agents,
-                );
+                return eventsAsync.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (err, _) => Center(
+                    child: Text(
+                      '${l10n.dataLoadError}: $err',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                  data: (events) {
+                    // 1. Построение списка нод последовательных шагов
+                    final nodesList = buildAgentNodes(
+                      decisions: decisions,
+                      artifacts: artifacts,
+                      events: events,
+                      taskState: widget.taskState,
+                      assignedAgentName: widget.assignedAgentName,
+                      assignedAgentRole: widget.assignedAgentRole,
+                      teamAgents: team.agents,
+                    );
 
                 // 2. Группировка по «уровню» и построение уровней (самый свежий наверху).
                 //    Уровень кодирует порядок Orchestrator → Router(step) → агенты(step) →
@@ -408,6 +460,8 @@ class _TaskExecutionGraphState extends ConsumerState<TaskExecutionGraph>
                 } else {
                   return _build2DCanvas(context, nodesList, edges, activeAgent, levels);
                 }
+                  },
+                );
               },
             );
           },

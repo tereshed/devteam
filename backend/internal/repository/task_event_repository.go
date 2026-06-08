@@ -67,6 +67,9 @@ type TaskEventRepository interface {
 	// эскалировать задачу в needs_human. Возвращаются только agent_job (step_req-смерти
 	// не несут полезной для Router'а информации).
 	ListDeadByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.TaskEvent, error)
+
+	// ListAllByTaskID — возвращает все события для задачи (для UI/debug).
+	ListAllByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.TaskEvent, error)
 }
 
 type taskEventRepository struct {
@@ -230,6 +233,18 @@ func (r *taskEventRepository) ListDeadByTaskID(ctx context.Context, taskID uuid.
 		Find(&events).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to list dead task events for task %s: %w", taskID, err)
+	}
+	return events, nil
+}
+
+func (r *taskEventRepository) ListAllByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.TaskEvent, error) {
+	var events []models.TaskEvent
+	err := r.db.WithContext(ctx).
+		Where("task_id = ?", taskID).
+		Order("created_at ASC, id ASC").
+		Find(&events).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all task events for task %s: %w", taskID, err)
 	}
 	return events, nil
 }

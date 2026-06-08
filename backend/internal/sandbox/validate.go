@@ -31,6 +31,7 @@ var allowedSandboxEnvKeys = map[string]struct{}{
 	"GITHUB_TOKEN":             {},
 	"GITLAB_TOKEN":             {},
 	"GIT_TOKEN":                {},
+	EnvGitTokenUser:            {},
 	"BITBUCKET_TOKEN":          {},
 	"DEVTEAM_AGENT_MODEL":       {},
 	"DEVTEAM_AGENT_TEMPERATURE": {},

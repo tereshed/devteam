@@ -64,6 +64,7 @@ class _FakeRepo implements GitIntegrationsRepository {
     String? host,
     String? byoClientId,
     String? byoClientSecret,
+    String? scopes,
     cancelToken,
   }) async {
     initCallCount++;

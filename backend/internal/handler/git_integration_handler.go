@@ -12,6 +12,7 @@ import (
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // GitIntegrationHandler — HTTP handler для OAuth-интеграций GitHub / GitLab / BYO GitLab.
@@ -109,7 +110,7 @@ func (h *GitIntegrationHandler) InitGitLab(c *gin.Context) {
 	)
 	if req.Host != "" || req.ByoClientID != "" || req.ByoClientSecret != "" {
 		out, err = h.svc.InitGitLabBYO(c.Request.Context(), uid, req.RedirectURI, service.BYOGitLabInit{
-			Host: req.Host, ClientID: req.ByoClientID, ClientSecret: req.ByoClientSecret,
+			Host: req.Host, ClientID: req.ByoClientID, ClientSecret: req.ByoClientSecret, Scopes: req.Scopes,
 		})
 	} else {
 		out, err = h.svc.InitGitLabShared(c.Request.Context(), uid, req.RedirectURI)
@@ -266,6 +267,70 @@ func (h *GitIntegrationHandler) RevokeGitLab(c *gin.Context) {
 	h.handleRevoke(c, models.GitIntegrationProviderGitLab)
 }
 
+// ListAccounts — GET /integrations/accounts. Все подключённые OAuth-аккаунты пользователя
+// (мульти-аккаунт): по одному элементу на аккаунт с id + account_login для выбора у проекта/репо.
+//
+// @Summary Список подключённых OAuth-аккаунтов
+// @Tags git-integrations
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Produce json
+// @Success 200 {array} dto.GitIntegrationStatusResponse
+// @Failure 401 {object} apierror.ErrorResponse
+// @Failure 500 {object} apierror.ErrorResponse
+// @Router /integrations/accounts [get]
+func (h *GitIntegrationHandler) ListAccounts(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+	statuses, err := h.svc.ListStatuses(c.Request.Context(), uid)
+	if err != nil {
+		h.mapErr(c, "list accounts", err)
+		return
+	}
+	out := make([]dto.GitIntegrationStatusResponse, 0, len(statuses))
+	for _, s := range statuses {
+		out = append(out, gitStatusToDTO(s))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// RevokeAccount — DELETE /integrations/accounts/:id. Отозвать конкретный аккаунт (мульти-аккаунт).
+//
+// @Summary Отозвать подключённый OAuth-аккаунт по id
+// @Tags git-integrations
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Produce json
+// @Param id path string true "Credential ID"
+// @Success 200 {object} dto.GitIntegrationRevokeResponse
+// @Failure 400 {object} apierror.ErrorResponse
+// @Failure 401 {object} apierror.ErrorResponse
+// @Failure 500 {object} apierror.ErrorResponse
+// @Router /integrations/accounts/{id} [delete]
+func (h *GitIntegrationHandler) RevokeAccount(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid ID format")
+		return
+	}
+	remoteFailed, err := h.svc.RevokeByID(c.Request.Context(), uid, id)
+	if err != nil {
+		h.mapErr(c, "revoke account", err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.GitIntegrationRevokeResponse{
+		RemoteRevokeFailed: remoteFailed,
+	})
+}
+
 func (h *GitIntegrationHandler) handleRevoke(c *gin.Context, provider models.GitIntegrationProvider) {
 	uid, ok := getUserID(c)
 	if !ok {
@@ -403,6 +468,7 @@ func classifyGitErr(err error) string {
 
 func gitStatusToDTO(s service.GitIntegrationStatus) dto.GitIntegrationStatusResponse {
 	return dto.GitIntegrationStatusResponse{
+		ID:           s.ID,
 		Provider:     string(s.Provider),
 		Connected:    s.Connected,
 		Host:         s.Host,
@@ -462,4 +528,3 @@ func (h *GitIntegrationHandler) CreateRepository(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, repo)
 }
-

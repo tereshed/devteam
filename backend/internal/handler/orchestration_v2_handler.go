@@ -43,11 +43,12 @@ import (
 // Используется в ReleaseWorktree (Sprint 17 / 6.3); если nil — endpoint отвечает
 // 503 Service Unavailable, чтобы admin понимал почему кнопка не работает.
 type OrchestrationV2Handler struct {
-	artifactRepo repository.ArtifactRepository
-	decisionRepo repository.RouterDecisionRepository
-	worktreeRepo repository.WorktreeRepository
-	taskSvc      service.TaskService
-	worktreeMgr  *service.WorktreeManager
+	artifactRepo  repository.ArtifactRepository
+	decisionRepo  repository.RouterDecisionRepository
+	worktreeRepo  repository.WorktreeRepository
+	taskEventRepo repository.TaskEventRepository
+	taskSvc       service.TaskService
+	worktreeMgr   *service.WorktreeManager
 }
 
 // NewOrchestrationV2Handler — конструктор.
@@ -55,15 +56,17 @@ func NewOrchestrationV2Handler(
 	artifactRepo repository.ArtifactRepository,
 	decisionRepo repository.RouterDecisionRepository,
 	worktreeRepo repository.WorktreeRepository,
+	taskEventRepo repository.TaskEventRepository,
 	taskSvc service.TaskService,
 	worktreeMgr *service.WorktreeManager,
 ) *OrchestrationV2Handler {
 	return &OrchestrationV2Handler{
-		artifactRepo: artifactRepo,
-		decisionRepo: decisionRepo,
-		worktreeRepo: worktreeRepo,
-		taskSvc:      taskSvc,
-		worktreeMgr:  worktreeMgr,
+		artifactRepo:  artifactRepo,
+		decisionRepo:  decisionRepo,
+		worktreeRepo:  worktreeRepo,
+		taskEventRepo: taskEventRepo,
+		taskSvc:       taskSvc,
+		worktreeMgr:   worktreeMgr,
 	}
 }
 
@@ -111,6 +114,16 @@ type worktreeResponse struct {
 	State       string     `json:"state"`
 	AllocatedAt time.Time  `json:"allocated_at"`
 	ReleasedAt  *time.Time `json:"released_at,omitempty"`
+}
+
+// taskEventResponse — событие очереди (agent_job).
+type taskEventResponse struct {
+	ID          int64          `json:"id"`
+	TaskID      string         `json:"task_id"`
+	Kind        string         `json:"kind"`
+	Payload     datatypes.JSON `json:"payload" swaggertype:"object"`
+	CreatedAt   time.Time      `json:"created_at"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
 }
 
 // listWorktreesQuery — query params для GET /worktrees.
@@ -258,6 +271,59 @@ func (h *OrchestrationV2Handler) ListRouterDecisions(c *gin.Context) {
 	out := make([]routerDecisionResponse, 0, len(decisions))
 	for i := range decisions {
 		out = append(out, toRouterDecisionResponse(&decisions[i]))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"items": out,
+		"total": len(out),
+	})
+}
+
+// ListTaskEvents возвращает список событий задачи.
+// @Summary List task events (debug/UI)
+// @Description Все события (включая payload).
+// @Tags orchestration-v2
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Task UUID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} apierror.ErrorResponse
+// @Failure 403 {object} apierror.ErrorResponse "no access to task"
+// @Failure 404 {object} apierror.ErrorResponse
+// @Router /tasks/{id}/events [get]
+func (h *OrchestrationV2Handler) ListTaskEvents(c *gin.Context) {
+	userID, userRole, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+	taskID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid task id")
+		return
+	}
+	if _, err := h.taskSvc.GetByID(c.Request.Context(), userID, userRole, taskID); err != nil {
+		writeTaskServiceError(c, err)
+		return
+	}
+	events, err := h.taskEventRepo.ListAllByTaskID(c.Request.Context(), taskID)
+	if err != nil {
+		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
+		return
+	}
+	out := make([]taskEventResponse, 0, len(events))
+	for i := range events {
+		var completedAt *time.Time
+		if events[i].CompletedAt != nil && !events[i].CompletedAt.IsZero() {
+			t := *events[i].CompletedAt
+			completedAt = &t
+		}
+		out = append(out, taskEventResponse{
+			ID:          events[i].ID,
+			TaskID:      events[i].TaskID.String(),
+			Kind:        string(events[i].Kind),
+			Payload:     events[i].Payload,
+			CreatedAt:   events[i].CreatedAt,
+			CompletedAt: completedAt,
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"items": out,

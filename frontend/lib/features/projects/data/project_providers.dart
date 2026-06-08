@@ -42,6 +42,21 @@ Future<ProjectModel> project(Ref ref, String id) {
       );
 }
 
+/// Список git-репозиториев проекта (мульти-репо).
+@riverpod
+Future<List<ProjectRepositoryModel>> projectRepositories(
+  Ref ref,
+  String projectId,
+) {
+  final cancelToken = CancelToken();
+  ref.onDispose(cancelToken.cancel);
+
+  return ref.watch(projectRepositoryProvider).listRepositories(
+        projectId,
+        cancelToken: cancelToken,
+      );
+}
+
 @Riverpod(keepAlive: true)
 class ActiveProjectId extends _$ActiveProjectId {
   @override

@@ -523,8 +523,8 @@ func mapServiceErr(err error) (json.RawMessage, error) {
 	case errors.Is(err, service.ErrAgentConcurrentUpdate):
 		return businessErr("error", "конфликт параллельного обновления агента")
 	default:
-		// Generic — но НЕ просачиваем raw err.Error() (может содержать SQL/secrets).
-		return businessErr("error", "внутренняя ошибка при выполнении инструмента")
+		slog.Error("MCP tool execution failed (unmapped error)", "error", err)
+		return businessErr("internal_error", "внутренняя ошибка: "+err.Error())
 	}
 }
 
@@ -821,6 +821,7 @@ type taskCreateArgs struct {
 	Title           string  `json:"title"`
 	Description     *string `json:"description,omitempty"`
 	Priority        *string `json:"priority,omitempty"`
+	TeamID          *string `json:"team_id,omitempty"`
 	AssignedAgentID *string `json:"assigned_agent_id,omitempty"`
 	ParentTaskID    *string `json:"parent_task_id,omitempty"`
 }
@@ -853,6 +854,13 @@ func (e *AuthorizedExecutor) taskCreate(ctx context.Context, auth agentloop.Auth
 	}
 	if a.Priority != nil {
 		createReq.Priority = *a.Priority
+	}
+	if a.TeamID != nil && *a.TeamID != "" {
+		teamID, err := uuid.Parse(*a.TeamID)
+		if err != nil {
+			return businessErr("validation", fmt.Sprintf("invalid team_id: %q", *a.TeamID))
+		}
+		createReq.TeamID = &teamID
 	}
 	if a.AssignedAgentID != nil && *a.AssignedAgentID != "" {
 		agentID, err := uuid.Parse(*a.AssignedAgentID)
@@ -896,6 +904,7 @@ type taskUpdateArgs struct {
 	Description        *string `json:"description,omitempty"`
 	Priority           *string `json:"priority,omitempty"`
 	Status             *string `json:"status,omitempty"`
+	TeamID             *string `json:"team_id,omitempty"`
 	AssignedAgentID    *string `json:"assigned_agent_id,omitempty"`
 	ClearAssignedAgent bool    `json:"clear_assigned_agent,omitempty"`
 	BranchName         *string `json:"branch_name,omitempty"`
@@ -930,6 +939,13 @@ func (e *AuthorizedExecutor) taskUpdate(ctx context.Context, auth agentloop.Auth
 		Status:             a.Status,
 		ClearAssignedAgent: a.ClearAssignedAgent,
 		BranchName:         a.BranchName,
+	}
+	if a.TeamID != nil && *a.TeamID != "" {
+		teamID, err := uuid.Parse(*a.TeamID)
+		if err != nil {
+			return businessErr("validation", fmt.Sprintf("invalid team_id: %q", *a.TeamID))
+		}
+		updateReq.TeamID = &teamID
 	}
 	if a.AssignedAgentID != nil && *a.AssignedAgentID != "" {
 		agentID, err := uuid.Parse(*a.AssignedAgentID)
@@ -1427,8 +1443,8 @@ var (
 	schemaProjectUpdate     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
 	schemaTaskList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaTaskGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
-	schemaTaskCreate        = json.RawMessage(`{"type":"object","required":["project_id","title"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"assigned_agent_id":{"type":"string","format":"uuid"},"parent_task_id":{"type":"string","format":"uuid"}}}`)
-	schemaTaskUpdate        = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"status":{"type":"string"},"assigned_agent_id":{"type":"string","format":"uuid"},"clear_assigned_agent":{"type":"boolean"},"branch_name":{"type":"string"}}}`)
+	schemaTaskCreate        = json.RawMessage(`{"type":"object","required":["project_id","title"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"parent_task_id":{"type":"string","format":"uuid"}}}`)
+	schemaTaskUpdate        = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"status":{"type":"string"},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"clear_assigned_agent":{"type":"boolean"},"branch_name":{"type":"string"}}}`)
 	schemaConvList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaConvGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
 	schemaConvCreate        = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"}}}`)

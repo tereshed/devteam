@@ -351,7 +351,14 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 
 	// Загружаем task для description/title (executor их использует).
 	var task models.Task
-	if err := w.db.WithContext(execCtx).Preload("Project").Preload("Project.GitCredential").Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
+	if err := w.db.WithContext(execCtx).
+		Preload("Project").
+		Preload("Project.GitCredential").
+		Preload("Project.Repositories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC, created_at ASC")
+		}).
+		Preload("Project.Repositories.GitCredential").
+		Where("id = ?", ev.TaskID).First(&task).Error; err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("load task %s: %w", ev.TaskID, err))
 		return
 	}
@@ -419,28 +426,49 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	}
 
 	var targetArtifact *models.Artifact
+	var targetArtifacts []*models.Artifact
 	if payload.Input != nil {
-		if rawID, ok := payload.Input["target_artifact_id"]; ok {
-			if idStr, ok := rawID.(string); ok && idStr != "" {
-				if id, err := uuid.Parse(idStr); err == nil {
-					art, err := w.artifactRepo.GetByID(execCtx, id)
-					if err != nil {
-						w.logger.WarnContext(execCtx, "failed to load target artifact", "artifact_id", id, "error", err)
-					} else {
-						targetArtifact = art
-					}
-				} else {
-					// Страховка: Router мог прислать обрезанный id (например 8-символьный
-					// "dd271455" вместо полного UUID). Валидация Router'а это отвергает с retry,
-					// но если такой id всё же дошёл — резолвим по уникальному префиксу среди
-					// артефактов задачи, чтобы не потерять связь (иначе review → parent_id=NULL).
-					if art := w.resolveArtifactByPrefix(execCtx, ev.TaskID, idStr); art != nil {
-						w.logger.WarnContext(execCtx, "resolved truncated target_artifact_id by prefix",
-							"raw", idStr, "resolved_id", art.ID, "task_id", ev.TaskID)
-						targetArtifact = art
+		var rawIDs []string
+		
+		if rawSingular, ok := payload.Input["target_artifact_id"]; ok {
+			if s, ok := rawSingular.(string); ok && s != "" {
+				rawIDs = append(rawIDs, s)
+			}
+		}
+		
+		if rawPlural, ok := payload.Input["target_artifact_ids"]; ok {
+			if arr, ok := rawPlural.([]interface{}); ok {
+				for _, item := range arr {
+					if s, ok := item.(string); ok && s != "" {
+						rawIDs = append(rawIDs, s)
 					}
 				}
 			}
+		}
+
+		for _, idStr := range rawIDs {
+			var art *models.Artifact
+			if id, err := uuid.Parse(idStr); err == nil {
+				if a, err := w.artifactRepo.GetByID(execCtx, id); err != nil {
+					w.logger.WarnContext(execCtx, "failed to load target artifact", "artifact_id", id, "error", err)
+				} else {
+					art = a
+				}
+			} else {
+				if a := w.resolveArtifactByPrefix(execCtx, ev.TaskID, idStr); a != nil {
+					w.logger.WarnContext(execCtx, "resolved truncated target_artifact_id by prefix",
+						"raw", idStr, "resolved_id", a.ID, "task_id", ev.TaskID)
+					art = a
+				}
+			}
+			
+			if art != nil {
+				targetArtifacts = append(targetArtifacts, art)
+			}
+		}
+		
+		if len(targetArtifacts) > 0 {
+			targetArtifact = targetArtifacts[0]
 		}
 	}
 
@@ -485,7 +513,9 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 
 	var in agent.ExecutionInput
 	if w.contextBuilder != nil {
-		builtIn, err := w.contextBuilder.Build(execCtx, &task, &agentRec, task.Project)
+		// Мульти-репо: целевой репозиторий подзадачи (по _repo_slug из payload, иначе primary).
+		targetRepo := resolveTargetRepo(task.Project, payload.Input)
+		builtIn, err := w.contextBuilder.Build(execCtx, &task, &agentRec, task.Project, targetRepo)
 		if err != nil {
 			w.failEvent(parentCtx, ev, fmt.Errorf("context builder: %w", err))
 			return
@@ -496,20 +526,21 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		in.ContextJSON = inputJSON
 		in.StructuredContext = inputJSON
 
-		// If there is a target artifact, and it's not already in PromptUser,
-		// append it in the target_artifact XML format.
-		if targetArtifact != nil && !strings.Contains(in.PromptUser, fmt.Sprintf("<target_artifact id=%q", targetArtifact.ID.String())) {
-			prettyContent := ""
-			if len(targetArtifact.Content) > 0 {
-				var prettyJSON bytes.Buffer
-				if err := json.Indent(&prettyJSON, targetArtifact.Content, "", "  "); err == nil {
-					prettyContent = prettyJSON.String()
-				} else {
-					prettyContent = string(targetArtifact.Content)
+		// If there are target artifacts, append them in the target_artifact XML format.
+		for _, art := range targetArtifacts {
+			if !strings.Contains(in.PromptUser, fmt.Sprintf("<target_artifact id=%q", art.ID.String())) {
+				prettyContent := ""
+				if len(art.Content) > 0 {
+					var prettyJSON bytes.Buffer
+					if err := json.Indent(&prettyJSON, art.Content, "", "  "); err == nil {
+						prettyContent = prettyJSON.String()
+					} else {
+						prettyContent = string(art.Content)
+					}
 				}
+				in.PromptUser = in.PromptUser + fmt.Sprintf("\n\n<target_artifact id=%q producer=%q kind=%q summary=%q>\n%s\n</target_artifact>\n",
+					art.ID.String(), art.ProducerAgent, string(art.Kind), art.Summary, prettyContent)
 			}
-			in.PromptUser = in.PromptUser + fmt.Sprintf("\n\n<target_artifact id=%q producer=%q kind=%q summary=%q>\n%s\n</target_artifact>\n",
-				targetArtifact.ID.String(), targetArtifact.ProducerAgent, string(targetArtifact.Kind), targetArtifact.Summary, prettyContent)
 		}
 	} else {
 		in = w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
@@ -1180,6 +1211,24 @@ func extractSubtasks(content datatypes.JSON) []any {
 	return nil
 }
 
+// extractRepoSlug достаёт repo_slug подзадачи из content артефакта (мульти-репо).
+// Поддерживает обе формы: {"repo_slug":"..."} и {"content":{"repo_slug":"..."}}.
+func extractRepoSlug(content datatypes.JSON) string {
+	var m map[string]any
+	if err := json.Unmarshal(content, &m); err != nil {
+		return ""
+	}
+	if s, ok := m["repo_slug"].(string); ok && s != "" {
+		return s
+	}
+	if inner, ok := m["content"].(map[string]any); ok {
+		if s, ok := inner["repo_slug"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 // splitDecomposition разбивает артефакт decomposition на индивидуальные subtask_description
 // (по одному на каждый элемент content.subtasks), привязывая их parent_id к декомпозиции.
 // ИДЕМПОТЕНТНО: если для этой декомпозиции subtask_description уже созданы — ничего не делает
@@ -1455,8 +1504,28 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 		MaxTokens:         agentRec.MaxTokens,
 	}
 	if task.Project != nil {
-		in.GitURL = task.Project.GitURL
-		in.GitDefaultBranch = task.Project.GitDefaultBranch
+		// Мульти-репо: целевой репозиторий подзадачи определяется по _repo_slug из payload
+		// (его проставляет orchestrator из repo_slug подзадачи), иначе primary-репо, иначе
+		// старые поля проекта (бэк-компат с одно-репо моделью).
+		if targetRepo := resolveTargetRepo(task.Project, input); targetRepo != nil {
+			in.GitURL = targetRepo.GitURL
+			in.GitDefaultBranch = targetRepo.GitDefaultBranch
+			// Соседние репозитории (read-only) — контракты/типы для согласования API↔UI.
+			for i := range task.Project.Repositories {
+				sib := &task.Project.Repositories[i]
+				if sib.Slug == targetRepo.Slug {
+					continue
+				}
+				in.SiblingRepos = append(in.SiblingRepos, agent.SiblingRepo{
+					Slug:   sib.Slug,
+					GitURL: sib.GitURL,
+					Branch: sib.GitDefaultBranch,
+				})
+			}
+		} else {
+			in.GitURL = task.Project.GitURL
+			in.GitDefaultBranch = task.Project.GitDefaultBranch
+		}
 	}
 	if task.BranchName != nil {
 		in.BranchName = *task.BranchName
@@ -1480,7 +1549,57 @@ func (w *AgentWorker) buildExecutionInput(task *models.Task, agentRec *models.Ag
 		in.PromptUser = fmt.Sprintf("\n\n<target_artifact id=%q producer=%q kind=%q summary=%q>\n%s\n</target_artifact>\n",
 			targetArtifact.ID.String(), targetArtifact.ProducerAgent, string(targetArtifact.Kind), targetArtifact.Summary, prettyContent)
 	}
+	// Мульти-репо: каталог репозиториев проекта во входном контексте агента (decomposer
+	// проставляет repo_slug подзадачам; developer понимает доступные соседние репо).
+	if task.Project != nil {
+		if catalog := renderRepoCatalog(task.Project.Repositories); catalog != "" {
+			in.PromptUser = catalog + in.PromptUser
+		}
+	}
 	return in
+}
+
+// resolveTargetRepo выбирает целевой репозиторий подзадачи: по _repo_slug из payload,
+// иначе primary-репо проекта. Возвращает nil, если у проекта нет загруженных репозиториев
+// (тогда вызывающий код откатывается на старые поля Project.Git*).
+func resolveTargetRepo(project *models.Project, input map[string]any) *models.ProjectRepository {
+	if project == nil || len(project.Repositories) == 0 {
+		return nil
+	}
+	if input != nil {
+		if raw, ok := input["_repo_slug"]; ok {
+			if slug, ok := raw.(string); ok && slug != "" {
+				if repo := project.RepoBySlug(slug); repo != nil {
+					return repo
+				}
+			}
+		}
+	}
+	return project.PrimaryRepo()
+}
+
+// renderRepoCatalog рендерит секцию `# Repositories` для входного контекста агента.
+// Пусто, если репозиториев меньше двух (одно-репо проекту каталог не нужен).
+func renderRepoCatalog(repos []models.ProjectRepository) string {
+	if len(repos) < 2 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("# Repositories\n")
+	b.WriteString("Проект состоит из нескольких git-репозиториев. Каждая подзадача относится РОВНО к одному репо (repo_slug). Кросс-репо фичу декомпозируй на подзадачи с depends_on.\n")
+	for _, repo := range repos {
+		marker := ""
+		if repo.IsPrimary {
+			marker = " (primary)"
+		}
+		desc := strings.TrimSpace(repo.RoleDescription)
+		if desc == "" {
+			desc = repo.DisplayName
+		}
+		fmt.Fprintf(&b, "- slug=%s%s: %s\n", repo.Slug, marker, desc)
+	}
+	b.WriteString("\n")
+	return b.String()
 }
 
 // extractMultipleArtifacts attempts to extract multiple artifacts from result.Output or result.ArtifactsJSON.

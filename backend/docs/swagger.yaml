@@ -9,6 +9,39 @@ definitions:
         description: Human-readable message
         type: string
     type: object
+  dto.AddRepositoryRequest:
+    properties:
+      display_name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      git_credential_id:
+        type: string
+      git_default_branch:
+        type: string
+      git_integration_credential_id:
+        description: GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера
+          для этого репо (мульти-аккаунт).
+        type: string
+      git_provider:
+        type: string
+      git_url:
+        type: string
+      is_primary:
+        type: boolean
+      role_description:
+        type: string
+      slug:
+        maxLength: 64
+        minLength: 1
+        type: string
+      sort_order:
+        type: integer
+    required:
+    - display_name
+    - git_url
+    - slug
+    type: object
   dto.AgentResponse:
     properties:
       code_backend:
@@ -423,6 +456,10 @@ definitions:
         type: string
       git_default_branch:
         type: string
+      git_integration_credential_id:
+        description: GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера
+          (мульти-аккаунт).
+        type: string
       git_provider:
         type: string
       git_url:
@@ -724,6 +761,8 @@ definitions:
         type: string
       host:
         type: string
+      id:
+        type: string
       provider:
         type: string
       scopes:
@@ -932,6 +971,52 @@ definitions:
       total:
         type: integer
     type: object
+  dto.ProjectRepositoryListResponse:
+    properties:
+      repositories:
+        items:
+          $ref: '#/definitions/dto.ProjectRepositoryResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ProjectRepositoryResponse:
+    properties:
+      created_at:
+        type: string
+      display_name:
+        type: string
+      git_credential:
+        $ref: '#/definitions/dto.GitCredentialSummary'
+      git_default_branch:
+        type: string
+      git_integration_credential_id:
+        type: string
+      git_provider:
+        type: string
+      git_url:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      last_indexed_commit:
+        type: string
+      project_id:
+        type: string
+      role_description:
+        type: string
+      slug:
+        type: string
+      sort_order:
+        type: integer
+      status:
+        type: string
+      updated_at:
+        type: string
+      vector_collection:
+        type: string
+    type: object
   dto.ProjectResponse:
     properties:
       created_at:
@@ -944,6 +1029,8 @@ definitions:
         description: nil — ключ в JSON не выводится
       git_default_branch:
         type: string
+      git_integration_credential_id:
+        type: string
       git_provider:
         type: string
       git_url:
@@ -952,6 +1039,12 @@ definitions:
         type: string
       name:
         type: string
+      repositories:
+        description: Repositories — git-репозитории проекта (мульти-репо). Пусто для
+          legacy-проектов без репо.
+        items:
+          $ref: '#/definitions/dto.ProjectRepositoryResponse'
+        type: array
       settings:
         type: string
       status:
@@ -1333,6 +1426,10 @@ definitions:
         type: string
       git_default_branch:
         type: string
+      git_integration_credential_id:
+        description: Выбор OAuth-аккаунта (мульти-аккаунт). RemoveGitIntegrationCredential=true
+          — отвязать.
+        type: string
       git_provider:
         type: string
       git_url:
@@ -1340,6 +1437,8 @@ definitions:
       name:
         type: string
       remove_git_credential:
+        type: boolean
+      remove_git_integration_credential:
         type: boolean
       settings:
         type: string
@@ -1360,6 +1459,29 @@ definitions:
         type: string
       template:
         type: string
+    type: object
+  dto.UpdateRepositoryRequest:
+    properties:
+      display_name:
+        type: string
+      git_credential_id:
+        type: string
+      git_default_branch:
+        type: string
+      git_integration_credential_id:
+        type: string
+      git_provider:
+        type: string
+      git_url:
+        type: string
+      is_primary:
+        type: boolean
+      remove_git_integration_credential:
+        type: boolean
+      role_description:
+        type: string
+      sort_order:
+        type: integer
     type: object
   dto.UpdateScheduledTaskRequest:
     properties:
@@ -2238,6 +2360,11 @@ definitions:
         type: string
       git_default_branch:
         type: string
+      git_integration_credential_id:
+        description: |-
+          GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера (мульти-аккаунт).
+          NULL → фолбэк на первый аккаунт провайдера владельца (обратная совместимость).
+        type: string
       git_provider:
         $ref: '#/definitions/models.GitProvider'
       git_url:
@@ -2248,6 +2375,13 @@ definitions:
         type: string
       name:
         type: string
+      repositories:
+        description: |-
+          Repositories — git-репозитории проекта (мульти-репо). Для существующих проектов
+          миграция 078 создаёт одну primary-строку slug='main' из полей git_* выше.
+        items:
+          $ref: '#/definitions/models.ProjectRepository'
+        type: array
       settings:
         type: object
       status:
@@ -2259,6 +2393,48 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
       user_id:
+        type: string
+      vector_collection:
+        type: string
+    type: object
+  models.ProjectRepository:
+    properties:
+      created_at:
+        type: string
+      display_name:
+        type: string
+      git_credential:
+        $ref: '#/definitions/models.GitCredential'
+      git_credentials_id:
+        type: string
+      git_default_branch:
+        type: string
+      git_integration_credential_id:
+        description: |-
+          GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера для этого репо
+          (мульти-аккаунт). NULL → наследует выбор проекта / фолбэк на первый аккаунт провайдера.
+        type: string
+      git_provider:
+        $ref: '#/definitions/models.GitProvider'
+      git_url:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      last_indexed_commit:
+        type: string
+      project_id:
+        type: string
+      role_description:
+        type: string
+      slug:
+        type: string
+      sort_order:
+        type: integer
+      status:
+        $ref: '#/definitions/models.ProjectStatus'
+      updated_at:
         type: string
       vector_collection:
         type: string
@@ -4428,6 +4604,64 @@ paths:
       summary: Триггер webhook
       tags:
       - webhooks
+  /integrations/accounts:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.GitIntegrationStatusResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Список подключённых OAuth-аккаунтов
+      tags:
+      - git-integrations
+  /integrations/accounts/{id}:
+    delete:
+      parameters:
+      - description: Credential ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GitIntegrationRevokeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Отозвать подключённый OAuth-аккаунт по id
+      tags:
+      - git-integrations
   /integrations/github/auth/callback:
     post:
       consumes:
@@ -5433,6 +5667,190 @@ paths:
       - ApiKeyAuth: []
       - OAuth2Password: []
       summary: Переиндексация проекта
+      tags:
+      - projects
+  /projects/{id}/repositories:
+    get:
+      description: Возвращает git-репозитории проекта (мульти-репо).
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProjectRepositoryListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Список репозиториев проекта
+      tags:
+      - projects
+    post:
+      consumes:
+      - application/json
+      description: Добавляет git-репозиторий в проект (мульти-репо). Первый репозиторий
+        становится primary.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные репозитория
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AddRepositoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ProjectRepositoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Добавление репозитория в проект
+      tags:
+      - projects
+  /projects/{id}/repositories/{repoId}:
+    delete:
+      description: Удаляет git-репозиторий из проекта. Primary нельзя удалить, пока
+        есть другие репозитории.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Repository ID
+        in: path
+        name: repoId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Удаление репозитория проекта
+      tags:
+      - projects
+    put:
+      consumes:
+      - application/json
+      description: Частичное обновление репозитория проекта (мульти-репо).
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Repository ID
+        in: path
+        name: repoId
+        required: true
+        type: string
+      - description: Поля для обновления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateRepositoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProjectRepositoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Обновление репозитория проекта
       tags:
       - projects
   /projects/{id}/scheduled-tasks:

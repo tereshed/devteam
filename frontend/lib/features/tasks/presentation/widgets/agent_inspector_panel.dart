@@ -83,6 +83,7 @@ class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel> {
               padding: const EdgeInsets.only(bottom: 16),
               children: [
                 _metaRow(theme, scheme, l10n),
+                _inputContext(theme, scheme),
                 if (hasArtifacts) ...[
                   _sectionHeader(
                     theme,
@@ -255,6 +256,65 @@ class _AgentInspectorPanelState extends ConsumerState<AgentInspectorPanel> {
           ),
         ),
       );
+
+  Widget _inputContext(ThemeData theme, ColorScheme scheme) {
+    final hasTargets = widget.agent.targetArtifactIds != null && widget.agent.targetArtifactIds!.isNotEmpty;
+    if (widget.agent.instructions == null && !hasTargets) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeader(theme, scheme, 'Input Data'),
+        if (widget.agent.instructions != null && widget.agent.instructions!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: SelectableText(
+                widget.agent.instructions!,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ),
+        if (hasTargets)
+          ...widget.agent.targetArtifactIds!.map((targetId) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: InkWell(
+                onTap: () {
+                  showArtifactViewerDialog(context, taskId: widget.taskId, artifactId: targetId);
+                },
+                borderRadius: BorderRadius.circular(4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.link, size: 14, color: scheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Target Artifact: ${targetId.substring(0, 8)}...',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.primary,
+                          decoration: TextDecoration.underline,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+      ],
+    );
+  }
 
   Widget _artifactRow(ThemeData theme, ColorScheme scheme, dynamic art) {
     return InkWell(

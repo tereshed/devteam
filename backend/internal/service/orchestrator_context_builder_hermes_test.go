@@ -41,7 +41,7 @@ func TestContextBuilder_Build_HermesAgent_PopulatesAgentSettings(t *testing.T) {
 	}
 	project := &models.Project{ID: projectID}
 
-	input, err := cb.Build(context.Background(), task, a, project)
+	input, err := cb.Build(context.Background(), task, a, project, nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestContextBuilder_Build_AgentWithoutCodeBackend_AgentSettingsNil(t *testin
 
 	a := &models.Agent{ID: uuid.New(), Name: "planner", Role: models.AgentRolePlanner}
 	input, err := cb.Build(context.Background(),
-		&models.Task{ID: uuid.New(), ProjectID: uuid.New()}, a, &models.Project{})
+		&models.Task{ID: uuid.New(), ProjectID: uuid.New()}, a, &models.Project{}, nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

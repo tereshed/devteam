@@ -50,6 +50,7 @@ type TaskFilter struct {
 	CreatedByType   *models.CreatedByType
 	CreatedByID     *uuid.UUID
 	ParentTaskID    *uuid.UUID
+	TeamID          *uuid.UUID
 	RootOnly        bool
 	BranchName      *string
 	Search          *string
@@ -147,6 +148,9 @@ func (r *taskRepository) applyFilters(db *gorm.DB, filter TaskFilter) *gorm.DB {
 	}
 	if filter.ParentTaskID != nil {
 		db = db.Where("parent_task_id = ?", *filter.ParentTaskID)
+	}
+	if filter.TeamID != nil {
+		db = db.Where("team_id = ?", *filter.TeamID)
 	}
 	if filter.RootOnly {
 		db = db.Where("parent_task_id IS NULL")

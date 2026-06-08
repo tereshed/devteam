@@ -14,6 +14,9 @@ type GitIntegrationInitRequest struct {
 	// ByoClientID / ByoClientSecret — только для self-hosted GitLab.
 	ByoClientID     string `json:"byo_client_id,omitempty"`
 	ByoClientSecret string `json:"byo_client_secret,omitempty"`
+	// Scopes — OAuth-scopes для self-hosted GitLab (через пробел). Должны быть подмножеством
+	// scope, включённых в OAuth-приложении на инстансе. Пусто → дефолт из конфига бэкенда.
+	Scopes string `json:"scopes,omitempty"`
 }
 
 // GitIntegrationInitResponse — ответ POST /integrations/{provider}/auth/init.
@@ -34,6 +37,7 @@ type GitIntegrationCallbackRequest struct {
 
 // GitIntegrationStatusResponse — публичный статус подключения.
 type GitIntegrationStatusResponse struct {
+	ID           string     `json:"id,omitempty"`
 	Provider     string     `json:"provider"`
 	Connected    bool       `json:"connected"`
 	Host         string     `json:"host,omitempty"`
@@ -61,4 +65,3 @@ type CreateRepositoryRequest struct {
 	Private     bool   `json:"private"`
 	Description string `json:"description"`
 }
-

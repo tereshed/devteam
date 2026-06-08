@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
+	"errors"
 	"github.com/devteam/backend/internal/domain/events"
+	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/devteam/backend/internal/handler/dto"
-	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/internal/repository"
-	"github.com/devteam/backend/internal/indexer"
+	"gorm.io/datatypes"
 	"log/slog"
 	"os"
-	"gorm.io/datatypes"
-	"errors"
 )
 
 type mockTaskIndexer struct {
@@ -199,6 +199,7 @@ func (m *mockTaskProjectService) Delete(ctx context.Context, userID uuid.UUID, u
 func (m *mockTaskProjectService) Reindex(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) error {
 	return m.Called(ctx, userID, userRole, projectID).Error(0)
 }
+
 // GetOwnerID — необязательная зависимость для большинства тестов
 // publishEventsWithTime (см. task_service.go §resolveProjectOwnerID). Если
 // expectation не задан — возвращаем uuid.Nil, чтобы fan-out просто
@@ -221,6 +222,22 @@ func (m *mockTaskProjectService) SearchCode(ctx context.Context, userID uuid.UUI
 }
 func (m *mockTaskProjectService) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
 	return "", nil
+}
+
+func (m *mockTaskProjectService) ListRepositories(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) ([]models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockTaskProjectService) AddRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.AddRepositoryRequest) (*models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockTaskProjectService) UpdateRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID, req dto.UpdateRepositoryRequest) (*models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockTaskProjectService) RemoveRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID) error {
+	return nil
 }
 
 type mockTaskTeamService struct{ mock.Mock }
@@ -736,8 +753,6 @@ func TestTaskUpdate_Forbidden(t *testing.T) {
 	assert.ErrorIs(t, err, ErrProjectForbidden)
 }
 
-
-
 func TestTaskUpdate_ReassignAgent(t *testing.T) {
 	tr, _, ps, ts, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
@@ -776,9 +791,6 @@ func TestTaskUpdate_Concurrent(t *testing.T) {
 	assert.ErrorIs(t, err, ErrTaskConcurrentUpdate)
 }
 
-
-
-
 func TestTaskTransition_TestingToCompleted(t *testing.T) {
 	tr, _, _, _, _, svc := newTaskServiceHarness()
 	ctx := context.Background()
@@ -805,7 +817,6 @@ func TestTaskTransition_ToFailed(t *testing.T) {
 	_, err := svc.Transition(ctx, tsTaskID, models.TaskStateFailed, TransitionOpts{ErrorMessage: &em})
 	require.NoError(t, err)
 }
-
 
 func TestTaskTransition_FromTerminal(t *testing.T) {
 	tr, _, _, _, _, svc := newTaskServiceHarness()
@@ -876,7 +887,6 @@ func TestTaskPause_Success(t *testing.T) {
 	_, err := svc.Pause(ctx, tsUserID, models.RoleUser, tsTaskID)
 	require.NoError(t, err)
 }
-
 
 func TestTaskPause_AlreadyPaused(t *testing.T) {
 	tr, _, ps, _, _, svc := newTaskServiceHarness()

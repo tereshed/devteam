@@ -3212,6 +3212,102 @@
                 }
             }
         },
+        "/integrations/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "git-integrations"
+                ],
+                "summary": "Список подключённых OAuth-аккаунтов",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.GitIntegrationStatusResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/integrations/accounts/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "git-integrations"
+                ],
+                "summary": "Отозвать подключённый OAuth-аккаунт по id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Credential ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.GitIntegrationRevokeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/integrations/github/auth/callback": {
             "post": {
                 "security": [
@@ -4839,6 +4935,299 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/repositories": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Возвращает git-репозитории проекта (мульти-репо).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Список репозиториев проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProjectRepositoryListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Добавляет git-репозиторий в проект (мульти-репо). Первый репозиторий становится primary.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Добавление репозитория в проект",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Данные репозитория",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.AddRepositoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProjectRepositoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/repositories/{repoId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Частичное обновление репозитория проекта (мульти-репо).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Обновление репозитория проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Repository ID",
+                        "name": "repoId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Поля для обновления",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateRepositoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProjectRepositoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OAuth2Password": []
+                    }
+                ],
+                "description": "Удаляет git-репозиторий из проекта. Primary нельзя удалить, пока есть другие репозитории.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Удаление репозитория проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Repository ID",
+                        "name": "repoId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/apierror.ErrorResponse"
                         }
@@ -7957,6 +8346,51 @@
                 }
             }
         },
+        "dto.AddRepositoryRequest": {
+            "type": "object",
+            "required": [
+                "display_name",
+                "git_url",
+                "slug"
+            ],
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1
+                },
+                "git_credential_id": {
+                    "type": "string"
+                },
+                "git_default_branch": {
+                    "type": "string"
+                },
+                "git_integration_credential_id": {
+                    "description": "GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера для этого репо (мульти-аккаунт).",
+                    "type": "string"
+                },
+                "git_provider": {
+                    "type": "string"
+                },
+                "git_url": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "role_description": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
+                },
+                "sort_order": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.AgentResponse": {
             "type": "object",
             "properties": {
@@ -8586,6 +9020,10 @@
                 "git_default_branch": {
                     "type": "string"
                 },
+                "git_integration_credential_id": {
+                    "description": "GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера (мульти-аккаунт).",
+                    "type": "string"
+                },
                 "git_provider": {
                     "type": "string"
                 },
@@ -9021,6 +9459,9 @@
                 "host": {
                     "type": "string"
                 },
+                "id": {
+                    "type": "string"
+                },
                 "provider": {
                     "type": "string"
                 },
@@ -9331,6 +9772,76 @@
                 }
             }
         },
+        "dto.ProjectRepositoryListResponse": {
+            "type": "object",
+            "properties": {
+                "repositories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ProjectRepositoryResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ProjectRepositoryResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "git_credential": {
+                    "$ref": "#/definitions/dto.GitCredentialSummary"
+                },
+                "git_default_branch": {
+                    "type": "string"
+                },
+                "git_integration_credential_id": {
+                    "type": "string"
+                },
+                "git_provider": {
+                    "type": "string"
+                },
+                "git_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "last_indexed_commit": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "role_description": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "vector_collection": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ProjectResponse": {
             "type": "object",
             "properties": {
@@ -9351,6 +9862,9 @@
                 "git_default_branch": {
                     "type": "string"
                 },
+                "git_integration_credential_id": {
+                    "type": "string"
+                },
                 "git_provider": {
                     "type": "string"
                 },
@@ -9362,6 +9876,13 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "repositories": {
+                    "description": "Repositories — git-репозитории проекта (мульти-репо). Пусто для legacy-проектов без репо.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ProjectRepositoryResponse"
+                    }
                 },
                 "settings": {
                     "type": "string"
@@ -9938,6 +10459,10 @@
                 "git_default_branch": {
                     "type": "string"
                 },
+                "git_integration_credential_id": {
+                    "description": "Выбор OAuth-аккаунта (мульти-аккаунт). RemoveGitIntegrationCredential=true — отвязать.",
+                    "type": "string"
+                },
                 "git_provider": {
                     "type": "string"
                 },
@@ -9948,6 +10473,9 @@
                     "type": "string"
                 },
                 "remove_git_credential": {
+                    "type": "boolean"
+                },
+                "remove_git_integration_credential": {
                     "type": "boolean"
                 },
                 "settings": {
@@ -9978,6 +10506,41 @@
                 },
                 "template": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.UpdateRepositoryRequest": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "git_credential_id": {
+                    "type": "string"
+                },
+                "git_default_branch": {
+                    "type": "string"
+                },
+                "git_integration_credential_id": {
+                    "type": "string"
+                },
+                "git_provider": {
+                    "type": "string"
+                },
+                "git_url": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "remove_git_integration_credential": {
+                    "type": "boolean"
+                },
+                "role_description": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
                 }
             }
         },
@@ -11231,6 +11794,10 @@
                 "git_default_branch": {
                     "type": "string"
                 },
+                "git_integration_credential_id": {
+                    "description": "GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера (мульти-аккаунт).\nNULL → фолбэк на первый аккаунт провайдера владельца (обратная совместимость).",
+                    "type": "string"
+                },
                 "git_provider": {
                     "$ref": "#/definitions/models.GitProvider"
                 },
@@ -11245,6 +11812,13 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "repositories": {
+                    "description": "Repositories — git-репозитории проекта (мульти-репо). Для существующих проектов\nмиграция 078 создаёт одну primary-строку slug='main' из полей git_* выше.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ProjectRepository"
+                    }
                 },
                 "settings": {
                     "type": "object"
@@ -11262,6 +11836,66 @@
                     "$ref": "#/definitions/models.User"
                 },
                 "user_id": {
+                    "type": "string"
+                },
+                "vector_collection": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProjectRepository": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "git_credential": {
+                    "$ref": "#/definitions/models.GitCredential"
+                },
+                "git_credentials_id": {
+                    "type": "string"
+                },
+                "git_default_branch": {
+                    "type": "string"
+                },
+                "git_integration_credential_id": {
+                    "description": "GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера для этого репо\n(мульти-аккаунт). NULL → наследует выбор проекта / фолбэк на первый аккаунт провайдера.",
+                    "type": "string"
+                },
+                "git_provider": {
+                    "$ref": "#/definitions/models.GitProvider"
+                },
+                "git_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "last_indexed_commit": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "role_description": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.ProjectStatus"
+                },
+                "updated_at": {
                     "type": "string"
                 },
                 "vector_collection": {

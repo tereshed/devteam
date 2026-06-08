@@ -7,6 +7,8 @@ import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/presentation/controllers/project_settings_controller.dart';
 import 'package:frontend/features/projects/presentation/utils/project_settings_update_patch.dart';
+import 'package:frontend/features/projects/presentation/widgets/project_git_account_section.dart';
+import 'package:frontend/features/projects/presentation/widgets/project_repositories_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_git_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_field_row.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_stack_section.dart';
@@ -445,12 +447,18 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                                   onFieldChanged: _markDirty,
                                 ),
                                 const SizedBox(height: 24),
+                                ProjectGitAccountSection(project: project),
+                                const SizedBox(height: 24),
                                 ProjectSettingsVectorSection(
                                   vectorController: _vectorCtrl,
                                   project: project,
                                   reindexDisabled: reindexDisabled,
                                   onVectorChanged: _markDirty,
                                   onReindex: _onReindex,
+                                ),
+                                const SizedBox(height: 24),
+                                ProjectRepositoriesSection(
+                                  projectId: widget.projectId,
                                 ),
                                 const SizedBox(height: 24),
                                 FilledButton(

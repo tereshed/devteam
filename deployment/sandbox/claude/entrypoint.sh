@@ -19,6 +19,9 @@
 #   ANTHROPIC_BASE_URL — опционально, переопределяет endpoint Anthropic API
 #                        (например api.deepseek.com/anthropic для DeepSeek).
 #   MAX_TURNS          — зарезервировано (CLI 0.2.37 не поддерживает --max-turns; игнорируется)
+#   SIBLING_REPOS      — мульти-репо: JSON-массив соседних репозиториев проекта
+#                        [{"slug","url","branch"}]; клонируются read-only в /workspace/siblings/<slug>
+#                        тем же GIT_TOKEN (host-scoped). Опционально, ошибки клона не фатальны.
 #
 # Артефакты (стабильные пути для оркестратора):
 #   /workspace/repo/       — клон
@@ -312,10 +315,14 @@ fi
 PHASE="prepare_repo_dir"
 rm -rf /workspace/repo
 
+# Username для инъекции токена в HTTPS-URL. GitHub принимает "x-access-token",
+# GitLab для OAuth2-токенов требует "oauth2". Передаётся бэкендом per-provider.
+GIT_TOKEN_USER="${GIT_TOKEN_USER:-x-access-token}"
+
 # Configure git credentials if token is present
 if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https?:// ]]; then
   repo_host="$(printf '%s' "$REPO_URL" | sed -E 's|^https?://([^/]+).*|\1|')"
-  echo "https://x-access-token:${GIT_TOKEN}@${repo_host}" > /tmp/git-credentials
+  echo "https://${GIT_TOKEN_USER}:${GIT_TOKEN}@${repo_host}" > /tmp/git-credentials
   git config --global credential.helper 'store --file=/tmp/git-credentials'
 fi
 
@@ -403,6 +410,48 @@ if [[ -f /workspace/.mcp.json ]]; then
     exit 1
   fi
   chmod 0600 "$REPO_DIR/.mcp.json"
+fi
+
+# --- siblings: read-only клоны соседних репозиториев (мульти-репо) ---
+# Доступны агенту для чтения контрактов/типов соседних репо. НЕ участвуют в diff/commit/push
+# (затрагивается только /workspace/repo). Ошибки клона не фатальны: логируем и продолжаем.
+# Аутентификация — тем же глобальным credential.helper (GIT_TOKEN, host-scoped): соседи на том
+# же хосте/провайдере клонируются прозрачно; на другом хосте — clone мягко падает.
+PHASE="siblings"
+if [[ -n "${SIBLING_REPOS:-}" ]]; then
+  mkdir -p /workspace/siblings
+  # Парсим JSON через node (jq в образе может не быть; node есть). Валидируем slug/branch
+  # белым списком символов (защита от path traversal и git flag injection).
+  SIBLINGS_TSV="$(SIBLING_REPOS="$SIBLING_REPOS" node -e '
+    try {
+      const arr = JSON.parse(process.env.SIBLING_REPOS || "[]");
+      if (!Array.isArray(arr)) process.exit(0);
+      for (const s of arr) {
+        if (!s || !s.slug || !s.url) continue;
+        if (!/^[a-zA-Z0-9._-]+$/.test(s.slug)) continue;
+        if (!/^https?:\/\//.test(s.url)) continue;
+        const branch = (s.branch && /^[a-zA-Z0-9._\/][a-zA-Z0-9._\/-]*$/.test(s.branch)) ? s.branch : "";
+        process.stdout.write(s.slug + "\t" + s.url + "\t" + branch + "\n");
+      }
+    } catch (e) { process.exit(0); }
+  ' 2>>"$AGENT_LOG")" || SIBLINGS_TSV=""
+
+  while IFS=$'\t' read -r sib_slug sib_url sib_branch; do
+    [[ -z "$sib_slug" || -z "$sib_url" ]] && continue
+    sib_dir="/workspace/siblings/${sib_slug}"
+    rm -rf "$sib_dir"
+    sib_branch_args=()
+    if [[ -n "$sib_branch" ]]; then
+      sib_branch_args=(--branch "$sib_branch")
+    fi
+    if git clone --depth=1 "${sib_branch_args[@]}" -- "$sib_url" "$sib_dir" >>"$AGENT_LOG" 2>&1; then
+      # read-only сигнал: снимаем write-бит. diff/commit/push соседей не касаются в любом случае.
+      chmod -R a-w "$sib_dir" 2>/dev/null || true
+      echo "entrypoint: sibling ${sib_slug} cloned read-only" >>"$AGENT_LOG"
+    else
+      echo "entrypoint: sibling ${sib_slug} clone failed (non-fatal): $(mask_url_for_log "$sib_url")" >>"$AGENT_LOG"
+    fi
+  done <<< "$SIBLINGS_TSV"
 fi
 
 # --- agent: stdin = prompt + разделитель + context; короткий -p (без больших argv) ---
@@ -523,9 +572,19 @@ COMMIT_HASH="$(git rev-parse HEAD)"
 PHASE="push"
 PUSHED=0
 PUSH_URL=""
+
+HAS_UNPUSHED=0
 if [[ "$COMMITTED" -eq 1 ]]; then
+  HAS_UNPUSHED=1
+elif ! git rev-parse --verify --quiet "origin/${BRANCH_NAME}" >/dev/null; then
+  HAS_UNPUSHED=1
+elif ! git diff --quiet HEAD "origin/${BRANCH_NAME}"; then
+  HAS_UNPUSHED=1
+fi
+
+if [[ "$HAS_UNPUSHED" -eq 1 ]]; then
   if [[ -n "${GIT_TOKEN:-}" && "${REPO_URL}" =~ ^https:// ]]; then
-    PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://x-access-token:${GIT_TOKEN}@|")"
+    PUSH_URL="$(printf '%s' "${REPO_URL}" | sed -E "s|^https://([^/]*@)?|https://${GIT_TOKEN_USER}:${GIT_TOKEN}@|")"
   elif [[ "${REPO_URL}" =~ ^file:// || "${REPO_URL}" =~ ^ssh:// || "${REPO_URL}" =~ ^git@ ]]; then
     PUSH_URL="$REPO_URL"
   fi
@@ -579,7 +638,8 @@ if [[ -n "$PUSH_URL" ]]; then
   
   set -e
   # Маскируем токен в логе перед добавлением в AGENT_LOG (на случай, если git напечатал часть URL).
-  sed -E "s|x-access-token:[^@]+@|x-access-token:***@|g" "$PUSH_LOG" >>"$AGENT_LOG"
+  # Generic для любого username (x-access-token, oauth2, ...): "user:secret@" → "user:***@".
+  sed -E "s|://([^/:@]+):[^@]+@|://\1:***@|g" "$PUSH_LOG" >>"$AGENT_LOG"
   rm -f "$PUSH_LOG"
   if [[ "$PUSH_EXIT" -ne 0 ]]; then
     echo "entrypoint: git push failed (exit=${PUSH_EXIT})" >&2

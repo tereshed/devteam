@@ -11,6 +11,13 @@ import (
 
 const stringLogTruncate = 256
 
+// SiblingRepo — соседний репозиторий проекта, монтируемый в sandbox read-only.
+type SiblingRepo struct {
+	Slug   string
+	GitURL string
+	Branch string
+}
+
 // ExecutionInput — данные, которые оркестратор собрал до вызова исполнителя.
 // Рекомендация: не передавать *gorm.DB и не передавать целые ORM-графы без необходимости;
 // копируйте строки/UUID в поля ввода, чтобы юнит-тесты исполнителя не тянули БД.
@@ -32,7 +39,7 @@ type ExecutionInput struct {
 	AgentName string
 	Role      string
 
-	Model        string
+	Model string
 	// Provider — kind LLM-провайдера (openai/anthropic/openrouter/...).
 	// Заполняется ContextBuilder'ом из agent.ProviderKind. Пустая строка →
 	// llmService.Generate упадёт на defaultProvider. Тип — string, чтобы
@@ -47,7 +54,6 @@ type ExecutionInput struct {
 	Temperature *float64
 	MaxTokens   *int
 
-
 	// GitURL, GitDefaultBranch, BranchName — строки из БД/пользователя/LLM.
 	// Реализации 6.2–6.3 обязаны валидировать формат; при вызове git и оболочки после фиксированных флагов
 	// использовать разделитель "--" перед пользовательскими ref/путями (например: git checkout -- <branch>),
@@ -56,6 +62,11 @@ type ExecutionInput struct {
 	GitURL           string
 	GitDefaultBranch string
 	BranchName       string
+
+	// SiblingRepos — соседние репозитории проекта (мульти-репо), которые монтируются
+	// в sandbox в режиме read-only (контракты/типы для согласования, напр. API↔UI).
+	// Целевой (writable) репозиторий подзадачи передаётся через GitURL/BranchName выше.
+	SiblingRepos []SiblingRepo
 
 	CodeBackend string
 

@@ -10,9 +10,9 @@ import (
 
 	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
-	"github.com/devteam/backend/internal/indexer"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -147,6 +147,22 @@ func (m *mockProjectSvc) SearchCode(ctx context.Context, userID uuid.UUID, userR
 }
 func (m *mockProjectSvc) GetProjectRepoPath(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (string, error) {
 	return "", nil
+}
+
+func (m *mockProjectSvc) ListRepositories(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) ([]models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockProjectSvc) AddRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.AddRepositoryRequest) (*models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockProjectSvc) UpdateRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID, req dto.UpdateRepositoryRequest) (*models.ProjectRepository, error) {
+	return nil, nil
+}
+
+func (m *mockProjectSvc) RemoveRepository(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, repoID uuid.UUID) error {
+	return nil
 }
 
 type mockTaskSvc struct{ mock.Mock }
@@ -646,15 +662,19 @@ func TestSendMessage(t *testing.T) {
 			tt.setupMocks(svc, deps)
 
 			msg, err := svc.SendMessage(context.Background(), userID, convID, tt.content, tt.clientMsgID)
-			
+
 			if tt.expectedErr != nil {
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.expectedErr)
-				if tt.expectedErr != ErrDuplicateMessage { require.Nil(t, msg) } else { require.NotNil(t, msg) }
+				if tt.expectedErr != ErrDuplicateMessage {
+					require.Nil(t, msg)
+				} else {
+					require.NotNil(t, msg)
+				}
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, msg)
-				
+
 				if tt.clientMsgID != uuid.Nil {
 					svc.processedMessagesMu.RLock()
 					_, ok := svc.processedMessages[tt.clientMsgID]
@@ -699,12 +719,12 @@ func TestSendMessage_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			
+
 			msgID := sameMsgID
 			if i%2 == 0 {
 				msgID = uuid.New()
 			}
-			
+
 			_, _ = svc.SendMessage(context.Background(), userID, convID, "Concurrent test", msgID)
 		}(i)
 	}
@@ -900,17 +920,17 @@ func TestRunOrchestrator(t *testing.T) {
 			tt.setupMocks(svc, deps)
 
 			svc.wg.Add(1)
-			
+
 			// Run synchronously to ensure panic is caught and wg is done
 			svc.runOrchestrator(context.Background(), userID, projectID, convID, content, msgID)
-			
+
 			// Wait to ensure wg.Done was called
 			done := make(chan struct{})
 			go func() {
 				svc.wg.Wait()
 				close(done)
 			}()
-			
+
 			select {
 			case <-done:
 				// Success
@@ -970,22 +990,22 @@ func TestCleanupLoop_RemovesOldMessages(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
 
 	svc, _ := newTestConversationHarness(t)
-	
+
 	oldID := uuid.New()
 	newID := uuid.New()
-	
+
 	svc.processedMessagesMu.Lock()
 	svc.processedMessages[oldID] = &models.ConversationMessage{CreatedAt: time.Now().Add(-11 * time.Minute)}
 	svc.processedMessages[newID] = &models.ConversationMessage{CreatedAt: time.Now()}
 	svc.processedMessagesMu.Unlock()
 
 	svc.cleanupOldMessages()
-	
+
 	svc.processedMessagesMu.RLock()
 	_, oldExists := svc.processedMessages[oldID]
 	_, newExists := svc.processedMessages[newID]
 	svc.processedMessagesMu.RUnlock()
-	
+
 	assert.False(t, oldExists, "old message should be removed")
 	assert.True(t, newExists, "new message should be kept")
 }
@@ -994,10 +1014,10 @@ func TestShutdown_StopsCleanupLoop(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
 
 	svc, _ := newTestConversationHarness(t)
-	
+
 	err := svc.Shutdown(context.Background())
 	require.NoError(t, err)
-	
+
 	// Wait a bit to ensure the loop actually stops
 	time.Sleep(50 * time.Millisecond)
 }
@@ -1006,18 +1026,18 @@ func TestShutdown_WaitsForOrchestrators(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
 
 	svc, _ := newTestConversationHarness(t)
-	
+
 	svc.wg.Add(1)
-	
+
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		svc.wg.Done()
 	}()
-	
+
 	start := time.Now()
 	err := svc.Shutdown(context.Background())
 	require.NoError(t, err)
-	
+
 	assert.True(t, time.Since(start) >= 100*time.Millisecond, "Shutdown should wait for wg")
 }
 
@@ -1025,16 +1045,16 @@ func TestShutdown_ContextTimeout(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
 
 	svc, _ := newTestConversationHarness(t)
-	
+
 	svc.wg.Add(1)
 	// We never call wg.Done() to simulate a hung orchestrator
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	
+
 	err := svc.Shutdown(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	
+
 	// Clean up the wg so the test can finish cleanly
 	svc.wg.Done()
 }

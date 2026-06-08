@@ -43,6 +43,9 @@ abstract class GitProviderConnection with _$GitProviderConnection {
   const factory GitProviderConnection({
     required GitIntegrationProvider provider,
     required GitProviderConnectionStatus status,
+    /// id credential-строки (мульти-аккаунт): используется для выбора аккаунта у
+    /// проекта/репо (git_integration_credential_id) и для disconnect by id.
+    String? id,
     String? host,
     String? accountLogin,
     String? scopes,

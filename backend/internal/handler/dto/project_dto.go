@@ -10,16 +10,18 @@ import (
 
 // CreateProjectRequest запрос на создание проекта
 type CreateProjectRequest struct {
-	Name             string         `json:"name" binding:"required,min=1,max=255"`
-	Description      string         `json:"description"`
-	GitProvider      string         `json:"git_provider"`
-	GitURL           string         `json:"git_url" binding:"omitempty,url"`
-	GitDefaultBranch string         `json:"git_default_branch"`
-	GitCredentialID  *uuid.UUID     `json:"git_credential_id"`
-	VectorCollection string         `json:"vector_collection"`
-	TechStack        datatypes.JSON `json:"tech_stack" swaggertype:"string"`
-	Status           string         `json:"status"`
-	Settings         datatypes.JSON `json:"settings" swaggertype:"string"`
+	Name             string     `json:"name" binding:"required,min=1,max=255"`
+	Description      string     `json:"description"`
+	GitProvider      string     `json:"git_provider"`
+	GitURL           string     `json:"git_url" binding:"omitempty,url"`
+	GitDefaultBranch string     `json:"git_default_branch"`
+	GitCredentialID  *uuid.UUID `json:"git_credential_id"`
+	// GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера (мульти-аккаунт).
+	GitIntegrationCredentialID *uuid.UUID     `json:"git_integration_credential_id"`
+	VectorCollection           string         `json:"vector_collection"`
+	TechStack                  datatypes.JSON `json:"tech_stack" swaggertype:"string"`
+	Status                     string         `json:"status"`
+	Settings                   datatypes.JSON `json:"settings" swaggertype:"string"`
 }
 
 // ListProjectsRequest фильтры и пагинация списка проектов
@@ -38,19 +40,22 @@ type ListProjectsRequest struct {
 // Отвязка git credential: JSON null и отсутствие поля дают nil в Go — используйте RemoveGitCredential=true.
 // Сброс jsonb tech_stack/settings до пустого объекта: ClearTechStack / ClearSettings (или TechStack/Settings как указатель).
 type UpdateProjectRequest struct {
-	Name                 *string         `json:"name"`
-	Description          *string         `json:"description"`
-	GitProvider          *string         `json:"git_provider"`
-	GitURL               *string         `json:"git_url"`
-	GitDefaultBranch     *string         `json:"git_default_branch"`
-	GitCredentialID      *uuid.UUID      `json:"git_credential_id"`
-	RemoveGitCredential  bool            `json:"remove_git_credential"`
-	VectorCollection     *string         `json:"vector_collection"`
-	TechStack            *datatypes.JSON `json:"tech_stack" swaggertype:"string"`
-	Settings             *datatypes.JSON `json:"settings" swaggertype:"string"`
-	ClearTechStack       bool            `json:"clear_tech_stack"`
-	ClearSettings        bool            `json:"clear_settings"`
-	Status               *string         `json:"status"`
+	Name                *string    `json:"name"`
+	Description         *string    `json:"description"`
+	GitProvider         *string    `json:"git_provider"`
+	GitURL              *string    `json:"git_url"`
+	GitDefaultBranch    *string    `json:"git_default_branch"`
+	GitCredentialID     *uuid.UUID `json:"git_credential_id"`
+	RemoveGitCredential bool       `json:"remove_git_credential"`
+	// Выбор OAuth-аккаунта (мульти-аккаунт). RemoveGitIntegrationCredential=true — отвязать.
+	GitIntegrationCredentialID     *uuid.UUID      `json:"git_integration_credential_id"`
+	RemoveGitIntegrationCredential bool            `json:"remove_git_integration_credential"`
+	VectorCollection               *string         `json:"vector_collection"`
+	TechStack                      *datatypes.JSON `json:"tech_stack" swaggertype:"string"`
+	Settings                       *datatypes.JSON `json:"settings" swaggertype:"string"`
+	ClearTechStack                 bool            `json:"clear_tech_stack"`
+	ClearSettings                  bool            `json:"clear_settings"`
+	Status                         *string         `json:"status"`
 }
 
 // GitCredentialSummary краткие данные credential без секретов.
@@ -71,19 +76,22 @@ type TeamSummaryResponse struct {
 
 // ProjectResponse ответ с данными проекта (GET /projects/:id).
 type ProjectResponse struct {
-	ID               string                `json:"id"`
-	Name             string                `json:"name"`
-	Description      string                `json:"description"`
-	GitProvider      string                `json:"git_provider"`
-	GitURL           string                `json:"git_url"`
-	GitDefaultBranch string                `json:"git_default_branch"`
-	GitCredential    *GitCredentialSummary `json:"git_credential,omitempty"` // nil — ключ в JSON не выводится
-	VectorCollection string                `json:"vector_collection"`
-	TechStack        datatypes.JSON        `json:"tech_stack" swaggertype:"string"`
-	Status           string                `json:"status"`
-	Settings         datatypes.JSON        `json:"settings" swaggertype:"string"`
-	CreatedAt        time.Time             `json:"created_at"`
-	UpdatedAt        time.Time             `json:"updated_at"`
+	ID                         string                `json:"id"`
+	Name                       string                `json:"name"`
+	Description                string                `json:"description"`
+	GitProvider                string                `json:"git_provider"`
+	GitURL                     string                `json:"git_url"`
+	GitDefaultBranch           string                `json:"git_default_branch"`
+	GitCredential              *GitCredentialSummary `json:"git_credential,omitempty"` // nil — ключ в JSON не выводится
+	GitIntegrationCredentialID *string               `json:"git_integration_credential_id,omitempty"`
+	VectorCollection           string                `json:"vector_collection"`
+	TechStack                  datatypes.JSON        `json:"tech_stack" swaggertype:"string"`
+	Status                     string                `json:"status"`
+	Settings                   datatypes.JSON        `json:"settings" swaggertype:"string"`
+	// Repositories — git-репозитории проекта (мульти-репо). Пусто для legacy-проектов без репо.
+	Repositories []ProjectRepositoryResponse `json:"repositories,omitempty"`
+	CreatedAt    time.Time                   `json:"created_at"`
+	UpdatedAt    time.Time                   `json:"updated_at"`
 }
 
 // ProjectListResponse пагинированный список проектов.
@@ -112,20 +120,34 @@ func ToProjectResponse(p *models.Project) ProjectResponse {
 	if p == nil {
 		return ProjectResponse{}
 	}
+	var repos []ProjectRepositoryResponse
+	if len(p.Repositories) > 0 {
+		repos = make([]ProjectRepositoryResponse, 0, len(p.Repositories))
+		for i := range p.Repositories {
+			repos = append(repos, ToProjectRepositoryResponse(&p.Repositories[i]))
+		}
+	}
+	var integID *string
+	if p.GitIntegrationCredentialID != nil {
+		s := p.GitIntegrationCredentialID.String()
+		integID = &s
+	}
 	return ProjectResponse{
-		ID:               p.ID.String(),
-		Name:             p.Name,
-		Description:      p.Description,
-		GitProvider:      string(p.GitProvider),
-		GitURL:           p.GitURL,
-		GitDefaultBranch: p.GitDefaultBranch,
-		GitCredential:    ToGitCredentialSummary(p.GitCredential),
-		VectorCollection: p.VectorCollection,
-		TechStack:        p.TechStack,
-		Status:           string(p.Status),
-		Settings:         p.Settings,
-		CreatedAt:        p.CreatedAt,
-		UpdatedAt:        p.UpdatedAt,
+		ID:                         p.ID.String(),
+		Name:                       p.Name,
+		Description:                p.Description,
+		GitProvider:                string(p.GitProvider),
+		GitURL:                     p.GitURL,
+		GitDefaultBranch:           p.GitDefaultBranch,
+		GitCredential:              ToGitCredentialSummary(p.GitCredential),
+		GitIntegrationCredentialID: integID,
+		VectorCollection:           p.VectorCollection,
+		TechStack:                  p.TechStack,
+		Status:                     string(p.Status),
+		Settings:                   p.Settings,
+		Repositories:               repos,
+		CreatedAt:                  p.CreatedAt,
+		UpdatedAt:                  p.UpdatedAt,
 	}
 }
 

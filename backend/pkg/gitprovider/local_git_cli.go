@@ -11,6 +11,14 @@ import (
 type LocalGitCLI struct {
 	creds  Credentials
 	runner GitCommandRunner // если nil — NewExecGitRunner() при первом использовании через effectiveRunner
+	// tokenUser — username в HTTPS-URL при инъекции токена. Пусто → "x-access-token" (GitHub).
+	// GitLab для OAuth2-токенов требует "oauth2".
+	tokenUser string
+}
+
+// injectAuth подставляет токен в HTTPS-URL с провайдер-специфичным username (см. tokenUser).
+func (c *LocalGitCLI) injectAuth(repoURL string) string {
+	return injectTokenInURLAs(repoURL, c.tokenUser, c.creds.Token)
 }
 
 func (c *LocalGitCLI) effectiveRunner() GitCommandRunner {
@@ -161,7 +169,7 @@ func (c *LocalGitCLI) GetLatestCommitSHA(ctx context.Context, repoURL string, br
 
 	cloneURL := repoURL
 	if c.creds.Token != "" && isHTTPURL(cloneURL) {
-		cloneURL = injectTokenInURL(cloneURL, c.creds.Token)
+		cloneURL = c.injectAuth(cloneURL)
 	}
 
 	args := []string{"ls-remote"}
@@ -208,4 +216,3 @@ func (c *LocalGitCLI) GetLatestCommitSHA(ctx context.Context, repoURL string, br
 
 	return parts[0], nil
 }
-

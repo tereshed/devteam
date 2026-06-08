@@ -54,6 +54,11 @@ func (m *mockGitIntegrationService) Revoke(ctx context.Context, userID uuid.UUID
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *mockGitIntegrationService) RevokeByID(ctx context.Context, userID, id uuid.UUID) (bool, error) {
+	args := m.Called(ctx, userID, id)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *mockGitIntegrationService) Status(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) (*service.GitIntegrationStatus, error) {
 	args := m.Called(ctx, userID, provider)
 	if args.Get(0) == nil {

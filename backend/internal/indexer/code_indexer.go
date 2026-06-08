@@ -24,13 +24,13 @@ import (
 )
 
 const (
-	MaxTokensPerChunk = 512
-	ChunkOverlap      = 50
-	BatchSize         = 50
-	MaxBatchBytes     = 4 * 1024 * 1024 // 4MB
-	MaxRecursionDepth = 10
-	FileTimeout       = 10 * time.Second
-	MaxLineLength     = 10240 // 10KB
+	MaxTokensPerChunk   = 512
+	ChunkOverlap        = 50
+	BatchSize           = 50
+	MaxBatchBytes       = 4 * 1024 * 1024 // 4MB
+	MaxRecursionDepth   = 10
+	FileTimeout         = 10 * time.Second
+	MaxLineLength       = 10240 // 10KB
 	MaxErrorsPerProject = 100
 	LargeFileThreshold  = 1024 * 1024 // 1MB
 	MaxSearchQueryLen   = 4096
@@ -42,7 +42,7 @@ const (
 var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(api[_-]?key|secret|password|token|auth|credential)\b\s*[:=]\s*['"][a-z0-9\-_]{8,128}['"]`),
 	regexp.MustCompile(`(?i)\bbearer\b\s+[a-z0-9\-\._]{20,256}`),
-	regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36}\b`), // GitHub Personal Access Token
+	regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36}\b`),            // GitHub Personal Access Token
 	regexp.MustCompile(`\bxox[baprs]-[a-zA-Z0-9-]{10,48}\b`), // Slack tokens
 }
 
@@ -67,7 +67,7 @@ func NewCodeIndexer(
 	if numWorkers <= 0 {
 		numWorkers = 4
 	}
-	
+
 	tkm, err := tiktoken.GetEncoding("cl100k_base")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tiktoken encoding: %w", err)
@@ -83,9 +83,9 @@ func NewCodeIndexer(
 	}
 
 	return &codeIndexer{
-		syncRepo:   syncRepo,
-		vectorRepo: vectorRepo,
-		parserPool: pool,
+		syncRepo:    syncRepo,
+		vectorRepo:  vectorRepo,
+		parserPool:  pool,
 		numWorkers:  numWorkers,
 		tokenizer:   tkm,
 		logger:      logger,
@@ -112,7 +112,7 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 	defer cancel()
 
 	filter := NewFileFilter(req.RepoPath)
-	
+
 	tasks := make(chan FileTask, idx.numWorkers*2)
 	results := make(chan FileResult, idx.numWorkers*2)
 	errChan := make(chan error, 1)
@@ -151,7 +151,7 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 			if err != nil {
 				return err
 			}
-			
+
 			// Пропускаем .git и другие скрытые папки
 			if info.IsDir() && (info.Name() == ".git" || info.Name() == "node_modules") {
 				return filepath.SkipDir
@@ -176,6 +176,8 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 			if err != nil {
 				return nil
 			}
+			// Мульти-репо: префиксуем путь slug'ом репозитория в пределах project-namespace.
+			relPath = applyPathPrefix(req.PathPrefix, relPath)
 
 			// Проверяем, в процессе ли уже этот файл
 			processedMu.Lock()
@@ -216,8 +218,10 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 	close(results)
 	<-done
 
-	// 4. Cleanup: удаление из VectorDB файлов, которых больше нет в репозитории
-	if err := idx.cleanupDeletedFiles(ctx, req.ProjectID, processedFiles); err != nil {
+	// 4. Cleanup: удаление из VectorDB файлов, которых больше нет в репозитории.
+	// При мульти-репо ограничиваем cleanup префиксом репо (req.PathPrefix), чтобы
+	// переиндексация одного репозитория не удаляла записи соседних.
+	if err := idx.cleanupDeletedFiles(ctx, req.ProjectID, processedFiles, req.PathPrefix); err != nil {
 		idx.logError(req.ProjectID, "Error during cleanup: %v", err)
 	}
 
@@ -235,13 +239,68 @@ func (idx *codeIndexer) IndexProject(ctx context.Context, req IndexingRequest) e
 	}
 }
 
-func (idx *codeIndexer) cleanupDeletedFiles(ctx context.Context, projectID uuid.UUID, processedFiles map[string]string) error {
+// applyPathPrefix префиксует относительный путь slug'ом репозитория (мульти-репо).
+// Пустой префикс возвращает путь без изменений (одно-репо/legacy).
+func applyPathPrefix(prefix, relPath string) string {
+	if prefix == "" {
+		return relPath
+	}
+	return prefix + "/" + relPath
+}
+
+// PruneToPrefixes удаляет записи проекта, не лежащие ни под одним из репо-префиксов.
+func (idx *codeIndexer) PruneToPrefixes(ctx context.Context, projectID uuid.UUID, prefixes []string) error {
+	// Защита: пустой список префиксов не должен снести весь индекс проекта.
+	scopes := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		if p != "" {
+			scopes = append(scopes, p+"/")
+		}
+	}
+	if len(scopes) == 0 {
+		return nil
+	}
+	states, err := idx.syncRepo.ListByProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	for _, state := range states {
+		keep := false
+		for _, sc := range scopes {
+			if strings.HasPrefix(state.FilePath, sc) {
+				keep = true
+				break
+			}
+		}
+		if keep {
+			continue
+		}
+		if err := idx.vectorRepo.DeleteByContentID(ctx, projectID.String(), state.ID.String()); err != nil {
+			idx.logError(projectID, "prune: vector delete %s: %v", state.FilePath, err)
+		}
+		if err := idx.syncRepo.Delete(ctx, projectID, state.FilePath); err != nil {
+			idx.logError(projectID, "prune: sync delete %s: %v", state.FilePath, err)
+		}
+	}
+	return nil
+}
+
+func (idx *codeIndexer) cleanupDeletedFiles(ctx context.Context, projectID uuid.UUID, processedFiles map[string]string, pathPrefix string) error {
 	states, err := idx.syncRepo.ListByProject(ctx, projectID)
 	if err != nil {
 		return err
 	}
 
+	scope := ""
+	if pathPrefix != "" {
+		scope = pathPrefix + "/"
+	}
 	for _, state := range states {
+		// При мульти-репо рассматриваем только файлы текущего репо (по префиксу),
+		// иначе удалили бы записи соседних репозиториев того же проекта.
+		if scope != "" && !strings.HasPrefix(state.FilePath, scope) {
+			continue
+		}
 		if _, ok := processedFiles[state.FilePath]; !ok {
 			// Файл удален
 			if err := idx.vectorRepo.DeleteByContentID(ctx, projectID.String(), state.ID.String()); err != nil {
@@ -290,7 +349,7 @@ func (idx *codeIndexer) resultCollector(
 ) {
 	var batch []*models.VectorDocument
 	var currentBatchBytes int
-	
+
 	// Список файлов, чьи чанки добавлены в текущий или прошлые батчи,
 	// и которые готовы к обновлению SyncState после успешного flush.
 	type pendingFile struct {
@@ -323,7 +382,7 @@ func (idx *codeIndexer) resultCollector(
 			}
 			onFileProcessed(f.relPath, f.hash)
 		}
-		
+
 		batch = nil
 		currentBatchBytes = 0
 		pendingFiles = nil
@@ -344,7 +403,7 @@ func (idx *codeIndexer) resultCollector(
 		}
 
 		if len(res.Chunks) == 0 {
-			// Файл пустой или ошибка, которую мы пропустили, 
+			// Файл пустой или ошибка, которую мы пропустили,
 			// но нам нужно пометить его обработанным, чтобы не удалить
 			onFileProcessed(res.RelativePath, res.ContentHash)
 			continue
@@ -378,7 +437,7 @@ func (idx *codeIndexer) resultCollector(
 
 			docBytes := len(chunk.Content) + len(chunk.FilePath) + 200
 
-			if (len(batch) + 1) > BatchSize || (currentBatchBytes+docBytes) > MaxBatchBytes {
+			if (len(batch)+1) > BatchSize || (currentBatchBytes+docBytes) > MaxBatchBytes {
 				if err := flush(); err != nil {
 					select {
 					case errChan <- err:
@@ -413,10 +472,10 @@ func (idx *codeIndexer) resultCollector(
 func (idx *codeIndexer) maskSecrets(ctx context.Context, r io.Reader) (string, error) {
 	var masked strings.Builder
 	scanner := bufio.NewScanner(r)
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// Проверка длины строки (OOM protection)
 		if len(line) > MaxLineLength {
 			return "", fmt.Errorf("file contains abnormally long line (>%d bytes)", MaxLineLength)
@@ -428,18 +487,18 @@ func (idx *codeIndexer) maskSecrets(ctx context.Context, r io.Reader) (string, e
 			masked.WriteString("\n")
 			continue
 		}
-		
+
 		for _, pattern := range secretPatterns {
 			line = pattern.ReplaceAllString(line, "[MASKED_SECRET]")
 		}
 		masked.WriteString(line)
 		masked.WriteString("\n")
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		return "", err
 	}
-	
+
 	return masked.String(), nil
 }
 
@@ -565,7 +624,7 @@ func (idx *codeIndexer) splitByTokens(ctx context.Context, p parser.CodeParser, 
 
 	var chunks []Chunk
 	currentStartLine := startLine
-	
+
 	for i := 0; i < len(tokens); i += (MaxTokensPerChunk - ChunkOverlap) {
 		end := i + MaxTokensPerChunk
 		if end > len(tokens) {
@@ -574,9 +633,9 @@ func (idx *codeIndexer) splitByTokens(ctx context.Context, p parser.CodeParser, 
 
 		chunkTokens := tokens[i:end]
 		chunkContent := idx.tokenizer.Decode(chunkTokens)
-		
+
 		numLines := strings.Count(chunkContent, "\n")
-		
+
 		hash := sha256.Sum256([]byte(chunkContent))
 		chunkHash := hex.EncodeToString(hash[:])
 
@@ -697,4 +756,3 @@ func (idx *codeIndexer) SearchContext(ctx context.Context, projectID uuid.UUID, 
 }
 
 // simpleTokenSplit больше не нужен
-

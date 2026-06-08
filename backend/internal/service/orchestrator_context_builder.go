@@ -12,11 +12,15 @@ import (
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/google/uuid"
 )
 
 // ContextBuilder собирает и фильтрует контекст для выполнения задачи агентом.
 type ContextBuilder interface {
-	Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project) (*agent.ExecutionInput, error)
+	// Build собирает ExecutionInput. targetRepo (мульти-репо) — целевой репозиторий подзадачи:
+	// из него берутся GitURL/ветка/креды; соседние репо проекта монтируются read-only. nil →
+	// фолбэк на git-поля проекта (одно-репо/legacy).
+	Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project, targetRepo *models.ProjectRepository) (*agent.ExecutionInput, error)
 	// WithCodeChunks добавляет найденные фрагменты кода в контекст (Задача 9.11).
 	WithCodeChunks(input *agent.ExecutionInput, chunks []indexer.Chunk) error
 }
@@ -46,6 +50,21 @@ type contextBuilder struct {
 	agentSettings      AgentSettingsService
 	artifactRepo       repository.ArtifactRepository
 	gitIntegrationRepo repository.GitIntegrationCredentialRepository
+	// tokenRefresher (опц.) рефрешит истёкшие OAuth-токены перед выдачей GIT_TOKEN в sandbox.
+	tokenRefresher GitTokenRefresher
+}
+
+// WithGitTokenRefresherOption — рефрешер OAuth-токенов для GIT_TOKEN в sandbox (self-hosted GitLab TTL ~2ч).
+func WithGitTokenRefresherOption(r GitTokenRefresher) ContextBuilderOption {
+	return func(b *contextBuilder) { b.tokenRefresher = r }
+}
+
+// SetContextBuilderTokenRefresher — post-construction внедрение рефрешера (gitIntegrationSvc
+// создаётся в app.go позже ContextBuilder).
+func SetContextBuilderTokenRefresher(cb ContextBuilder, r GitTokenRefresher) {
+	if b, ok := cb.(*contextBuilder); ok {
+		b.tokenRefresher = r
+	}
 }
 
 // NewContextBuilder создаёт сборщик контекста.
@@ -143,7 +162,96 @@ func WithSandboxAuthResolver(builder ContextBuilder, resolver SandboxAuthEnvReso
 	return cb
 }
 
-func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project) (*agent.ExecutionInput, error) {
+// resolveGitTokenSecrets выбирает git-креды для клонирования в sandbox.
+// Приоритет: (1) выбранный OAuth-аккаунт репо/проекта (git_integration_credential_id);
+// (2) PAT-credential репо/проекта (git_credentials); (3) фолбэк на первый OAuth-аккаунт
+// провайдера владельца. Мульти-аккаунт: репо/проект могут указывать разные аккаунты.
+func (b *contextBuilder) resolveGitTokenSecrets(ctx context.Context, project *models.Project, targetRepo *models.ProjectRepository) map[string]string {
+	out := map[string]string{}
+	if project == nil {
+		return out
+	}
+
+	// Эффективный провайдер (репо переопределяет проект) → username для инъекции токена в
+	// HTTPS-URL внутри sandbox. GitLab принимает OAuth2-токен только как "oauth2:<token>@",
+	// GitHub — "x-access-token:<token>@" (дефолт в entrypoint, не передаём). Ставим заранее,
+	// чтобы все ранние return-ветки ниже включали GIT_TOKEN_USER.
+	provider := project.GitProvider
+	if targetRepo != nil && targetRepo.GitProvider != "" {
+		provider = targetRepo.GitProvider
+	}
+	if provider == models.GitProviderGitLab {
+		out["GIT_TOKEN_USER"] = "oauth2"
+	}
+
+	// 1. Явно выбранный OAuth-аккаунт: сначала репо, затем проект.
+	var integID *uuid.UUID
+	if targetRepo != nil && targetRepo.GitIntegrationCredentialID != nil {
+		integID = targetRepo.GitIntegrationCredentialID
+	} else if project.GitIntegrationCredentialID != nil {
+		integID = project.GitIntegrationCredentialID
+	}
+	if integID != nil && b.gitIntegrationRepo != nil {
+		if cred, err := b.gitIntegrationRepo.GetByID(ctx, *integID); err == nil && cred != nil && len(cred.AccessTokenEnc) > 0 {
+			if token, ok := b.integrationToken(ctx, cred); ok {
+				out["GIT_TOKEN"] = token
+				return out
+			}
+			slog.Error("Failed to resolve selected git integration credential", "project_id", project.ID, "credential_id", *integID)
+		}
+	}
+
+	// 2. PAT-credential: сначала репо, затем проект.
+	gc := project.GitCredential
+	if targetRepo != nil && targetRepo.GitCredential != nil {
+		gc = targetRepo.GitCredential
+	}
+	if gc != nil {
+		if dec, derr := b.encryptor.Decrypt(gc.EncryptedValue, []byte(gc.ID.String())); derr == nil {
+			switch gc.AuthType {
+			case models.GitCredentialAuthToken:
+				out["GIT_TOKEN"] = string(dec)
+			case models.GitCredentialAuthSSHKey:
+				out["GIT_SSH_KEY"] = string(dec)
+			}
+			return out
+		} else {
+			slog.Error("Failed to decrypt git credential", "project_id", project.ID, "error", derr)
+		}
+	}
+
+	// 3. Фолбэк: первый OAuth-аккаунт провайдера владельца (эффективный провайдер — репо, иначе проект).
+	if b.gitIntegrationRepo != nil && provider != models.GitProviderLocal {
+		if integProvider, ok := mapGitProviderToIntegration(provider); ok {
+			if cred, err := b.gitIntegrationRepo.GetByUserAndProvider(ctx, project.UserID, integProvider); err == nil && cred != nil && len(cred.AccessTokenEnc) > 0 {
+				if token, tok := b.integrationToken(ctx, cred); tok {
+					out["GIT_TOKEN"] = token
+				} else {
+					slog.Error("Failed to resolve fallback git integration credential", "project_id", project.ID)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// integrationToken отдаёт живой access-token интеграционного аккаунта: рефрешит истёкший OAuth
+// через tokenRefresher (+ персист), иначе расшифровывает сохранённый. ok=false при ошибке.
+func (b *contextBuilder) integrationToken(ctx context.Context, cred *models.GitIntegrationCredential) (string, bool) {
+	if b.tokenRefresher != nil {
+		if token, err := b.tokenRefresher.FreshAccessToken(ctx, cred); err == nil && token != "" {
+			return token, true
+		}
+		// Рефреш не удался — пробуем сохранённый токен (может ещё жить).
+	}
+	aad := repository.GitIntegrationCredentialAAD(cred.ID)
+	if dec, derr := b.encryptor.Decrypt(cred.AccessTokenEnc, aad); derr == nil {
+		return string(dec), true
+	}
+	return "", false
+}
+
+func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project, targetRepo *models.ProjectRepository) (*agent.ExecutionInput, error) {
 	// Маскируем Title и Description как обычные строки
 	scrubbedTitle := b.scrub(task.Title)
 	scrubbedDescription := b.scrub(task.Description)
@@ -231,44 +339,52 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		}
 	}
 
-	// Git информация из проекта
-	if project.GitURL != "" {
-		input.GitURL = project.GitURL
+	// Git информация: мульти-репо — из целевого репо подзадачи, иначе из полей проекта.
+	gitURL := project.GitURL
+	gitBranch := project.GitDefaultBranch
+	if targetRepo != nil {
+		if targetRepo.GitURL != "" {
+			gitURL = targetRepo.GitURL
+		}
+		if targetRepo.GitDefaultBranch != "" {
+			gitBranch = targetRepo.GitDefaultBranch
+		}
 	}
-	if project.GitDefaultBranch != "" {
-		input.GitDefaultBranch = project.GitDefaultBranch
+	if gitURL != "" {
+		input.GitURL = gitURL
+	}
+	if gitBranch != "" {
+		input.GitDefaultBranch = gitBranch
 	}
 	if task.BranchName != nil {
 		input.BranchName = *task.BranchName
 	}
 
-	// Дешифровка Git-кредов если есть
-	if project.GitCredential != nil {
-		decrypted, err := b.encryptor.Decrypt(project.GitCredential.EncryptedValue, []byte(project.GitCredential.ID.String()))
-		if err != nil {
-			slog.Error("Failed to decrypt git credentials", "project_id", project.ID, "error", err)
-			return nil, fmt.Errorf("failed to decrypt git credentials: %w", err)
-		}
+	// Git-токен: выбранный OAuth-аккаунт (repo→project) → PAT-credential → фолбэк на первый
+	// аккаунт провайдера. Мульти-аккаунт: разные проекты/репо используют разные аккаунты.
+	for k, v := range b.resolveGitTokenSecrets(ctx, project, targetRepo) {
+		input.EnvSecrets[k] = v
+	}
 
-		// В зависимости от типа кредов кладем в EnvSecrets
-		switch project.GitCredential.AuthType {
-		case models.GitCredentialAuthToken:
-			input.EnvSecrets["GIT_TOKEN"] = string(decrypted)
-		case models.GitCredentialAuthSSHKey:
-			input.EnvSecrets["GIT_SSH_KEY"] = string(decrypted)
+	// Мульти-репо: соседние репозитории (read-only) + каталог репо в промпт.
+	if len(project.Repositories) > 1 {
+		targetSlug := ""
+		if targetRepo != nil {
+			targetSlug = targetRepo.Slug
 		}
-	} else if b.gitIntegrationRepo != nil && project.GitProvider != models.GitProviderLocal {
-		if integProvider, ok := mapGitProviderToIntegration(project.GitProvider); ok {
-			cred, err := b.gitIntegrationRepo.GetByUserAndProvider(ctx, project.UserID, integProvider)
-			if err == nil && cred != nil && len(cred.AccessTokenEnc) > 0 {
-				aad := repository.GitIntegrationCredentialAAD(cred.ID)
-				decrypted, decErr := b.encryptor.Decrypt(cred.AccessTokenEnc, aad)
-				if decErr == nil {
-					input.EnvSecrets["GIT_TOKEN"] = string(decrypted)
-				} else {
-					slog.Error("Failed to decrypt git integration credentials for fallback", "project_id", project.ID, "error", decErr)
-				}
+		for i := range project.Repositories {
+			sib := &project.Repositories[i]
+			if sib.Slug == targetSlug || sib.GitURL == "" {
+				continue
 			}
+			input.SiblingRepos = append(input.SiblingRepos, agent.SiblingRepo{
+				Slug:   sib.Slug,
+				GitURL: sib.GitURL,
+				Branch: sib.GitDefaultBranch,
+			})
+		}
+		if catalog := renderRepoCatalog(project.Repositories); catalog != "" {
+			input.PromptUser = catalog + input.PromptUser
 		}
 	}
 
@@ -422,11 +538,11 @@ func (b *contextBuilder) WithCodeChunks(input *agent.ExecutionInput, chunks []in
 		return nil
 	}
 
-	// Лимит контекста для чанков (аппроксимация). 
+	// Лимит контекста для чанков (аппроксимация).
 	// Допустим, мы хотим выделить под чанки не более 4000 токенов (~16000 символов).
 	const maxChars = 16000
 	const minScore = 0.7
-	
+
 	var sb strings.Builder
 	firstChunk := true
 
@@ -465,7 +581,7 @@ func (b *contextBuilder) WithCodeChunks(input *agent.ExecutionInput, chunks []in
 		sb.WriteString("\">\n")
 		sb.WriteString(chunk.Content)
 		sb.WriteString("\n</code_chunk>\n\n")
-		
+
 		currentChars = sb.Len()
 		addedCount++
 	}
@@ -476,5 +592,3 @@ func (b *contextBuilder) WithCodeChunks(input *agent.ExecutionInput, chunks []in
 
 	return nil
 }
-
-

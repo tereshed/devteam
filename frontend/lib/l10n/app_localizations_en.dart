@@ -207,6 +207,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'Stored encrypted with AES-256-GCM.';
 
   @override
+  String get integrationsGitlabHostFieldScopes => 'Scopes';
+
+  @override
+  String get integrationsGitlabHostFieldScopesHint =>
+      'Must match the scopes enabled in your OAuth Application. \'api\' covers everything; for granular apps use e.g. \'read_api read_repository write_repository\'.';
+
+  @override
+  String get integrationsGitlabHostValidationScopesRequired =>
+      'Enter at least one scope';
+
+  @override
   String get integrationsGitlabHostValidationHostRequired =>
       'Enter your GitLab host URL';
 
@@ -245,7 +256,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get integrationsGitlabHostInstructionsStep4 =>
-      'Mark Confidential. Scopes: api, read_user, read_repository, write_repository.';
+      'Mark Confidential. Scope: api (it covers cloning, pushing and merge requests).';
 
   @override
   String get integrationsGitlabHostInstructionsStep5 =>
@@ -1108,6 +1119,106 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get projectSettingsSectionGit => 'Git repository';
+
+  @override
+  String get repositoriesSectionTitle => 'Repositories';
+
+  @override
+  String get repositoriesSectionSubtitle =>
+      'Git repositories of the project. The decomposer routes subtasks per repository.';
+
+  @override
+  String get repositoriesAddButton => 'Add repository';
+
+  @override
+  String get repositoriesEmpty => 'No repositories yet';
+
+  @override
+  String get repositoryPrimaryBadge => 'primary';
+
+  @override
+  String get repositoryFieldSlug => 'Slug';
+
+  @override
+  String get repositoryFieldSlugHint => 'e.g. ui, core, infra';
+
+  @override
+  String get repositoryFieldDisplayName => 'Display name';
+
+  @override
+  String get repositoryFieldUrl => 'Git URL';
+
+  @override
+  String get repositoryFieldBranch => 'Default branch';
+
+  @override
+  String get repositoryFieldProvider => 'Git provider';
+
+  @override
+  String get repositoryFieldRole => 'Role (for the decomposer)';
+
+  @override
+  String get repositoryFieldRoleHint => 'e.g. Flutter UI, high-load Go backend';
+
+  @override
+  String get repositoryAddDialogTitle => 'Add repository';
+
+  @override
+  String get repositoryAddSubmit => 'Add';
+
+  @override
+  String get repositoryRemoveTooltip => 'Remove repository';
+
+  @override
+  String get repositoryRemoveConfirmTitle => 'Remove repository?';
+
+  @override
+  String repositoryRemoveConfirmBody(String slug) {
+    return 'Repository \"$slug\" will be detached from the project.';
+  }
+
+  @override
+  String get repositoryRemoveConfirmAction => 'Remove';
+
+  @override
+  String get repositoryLastIndexedLabel => 'Last indexed';
+
+  @override
+  String get gitAccountSectionTitle => 'Git account';
+
+  @override
+  String get gitAccountFieldLabel => 'Account';
+
+  @override
+  String get gitAccountHelper =>
+      'Which connected account to use for cloning and pull requests.';
+
+  @override
+  String get gitAccountNoneHint =>
+      'No connected accounts for this provider. Connect one in Git providers.';
+
+  @override
+  String get gitAccountDefaultOption => 'Default (first connected account)';
+
+  @override
+  String get integrationsGitConnectAnotherCta => 'Connect another account';
+
+  @override
+  String get integrationsGitAccountsSectionTitle => 'Connected accounts';
+
+  @override
+  String get integrationsGitDisconnectAccountTooltip =>
+      'Disconnect this account';
+
+  @override
+  String get createProjectAccountLabel => 'Git account';
+
+  @override
+  String get createProjectAccountLocal => 'Local (no git)';
+
+  @override
+  String get createProjectAccountNoneHint =>
+      'No connected accounts. Connect one in Git providers to pick repositories.';
 
   @override
   String get projectSettingsSectionVector => 'Vector index';

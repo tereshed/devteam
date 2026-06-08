@@ -15,8 +15,8 @@ import (
 
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/config"
-	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/database"
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/handler"
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/llm/agentloop"
@@ -145,6 +145,7 @@ func Run(role Role) {
 	apiKeyRepo := repository.NewApiKeyRepository(db)
 	promptRepo := repository.NewPromptRepository(db)
 	projectRepo := repository.NewProjectRepository(db)
+	projectRepoRepo := repository.NewProjectRepoRepository(db)
 	teamRepo := repository.NewTeamRepository(db)
 	toolDefRepo := repository.NewToolDefinitionRepository(db)
 	gitCredRepo := repository.NewGitCredentialRepository(db)
@@ -277,6 +278,7 @@ func Run(role Role) {
 	gitIntegrationRepo := repository.NewGitIntegrationCredentialRepository(db)
 	projectService := service.WithAgentService(service.NewProjectService(
 		projectRepo,
+		projectRepoRepo,
 		teamRepo,
 		gitCredRepo,
 		gitIntegrationRepo,
@@ -690,6 +692,13 @@ func Run(role Role) {
 		handler.NewGitIntegrationHandler(gitIntegrationSvc),
 		v2Logger,
 	)
+	// Рефреш истёкших OAuth-токенов перед клонированием: индексация (projectService) и
+	// sandbox-клон (contextBuilder). Без этого self-hosted GitLab (TTL ~2ч) валит clone на 401.
+	if refresher, ok := gitIntegrationSvc.(service.GitTokenRefresher); ok {
+		service.WithGitTokenRefresher(projectService, refresher)
+		service.SetContextBuilderTokenRefresher(orchestratorContextBuilder, refresher)
+		service.WithPRPublisherTokenRefresher(prPublisher, refresher)
+	}
 	if cfg.GitHubOAuth.ClientID == "" {
 		log.Println("GitHub OAuth: disabled (set GITHUB_OAUTH_CLIENT_ID to enable)")
 	}
@@ -921,6 +930,7 @@ func Run(role Role) {
 			artifactRepoV2,
 			routerDecisionRepoV2,
 			worktreeRepoV2,
+			taskEventRepoV2,
 			taskService,
 			v2WorktreeMgr,
 		),

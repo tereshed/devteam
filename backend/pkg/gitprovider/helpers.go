@@ -241,6 +241,12 @@ func executeCommit(ctx context.Context, runner GitCommandRunner, token, workDir 
 
 // injectTokenInURL подставляет x-access-token в HTTP/HTTPS URL через net/url (без strings.Replace).
 func injectTokenInURL(repoURL, token string) string {
+	return injectTokenInURLAs(repoURL, gitHTTPAccessTokenUser, token)
+}
+
+// injectTokenInURLAs — как injectTokenInURL, но с настраиваемым username. GitHub использует
+// "x-access-token", GitLab для OAuth2-токенов требует "oauth2".
+func injectTokenInURLAs(repoURL, user, token string) string {
 	if token == "" || !isHTTPURL(repoURL) {
 		return repoURL
 	}
@@ -248,7 +254,10 @@ func injectTokenInURL(repoURL, token string) string {
 	if err != nil {
 		return repoURL
 	}
-	u.User = url.UserPassword(gitHTTPAccessTokenUser, token)
+	if user == "" {
+		user = gitHTTPAccessTokenUser
+	}
+	u.User = url.UserPassword(user, token)
 	return u.String()
 }
 

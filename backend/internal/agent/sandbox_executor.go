@@ -108,14 +108,42 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 	if in.PromptName != "" {
 		envVars["DEVTEAM_AGENT_PROMPT_NAME"] = in.PromptName
 	}
+	// BASE_REF/база для diff = дефолтная ветка целевого репо (НЕ всегда "main": напр.
+	// bot-service использует "testing"). Без этого entrypoint фоллбэчил BASE_REF на "main"
+	// и git fetch/clone падал на репо с другим дефолтом ("couldn't find remote ref main").
+	if in.GitDefaultBranch != "" {
+		envVars[sandbox.EnvGitDefaultBranch] = in.GitDefaultBranch
+	}
+
 	// Reviewer/Tester должны стартовать с уже пушнутой Developer'ом ветки,
-	// а не с main, иначе они не увидят его коммита. Developer — наоборот:
-	// стартует с main (default — START_REF не выставляем, entrypoint падёт на BASE_REF).
+	// а не с дефолтной, иначе они не увидят его коммита. Developer — наоборот:
+	// стартует с дефолтной ветки (START_REF не выставляем, entrypoint берёт BASE_REF).
 	switch in.Role {
 	case "reviewer", "tester":
 		if in.BranchName != "" {
 			envVars[sandbox.EnvStartRef] = in.BranchName
 		}
+	}
+
+	// Мульти-репо: соседние репозитории (read-only). Валидируем каждый URL так же строго,
+	// как целевой, и отбрасываем невалидные (не роняем задачу из-за соседа).
+	var siblings []sandbox.SiblingRepoSpec
+	for _, sib := range in.SiblingRepos {
+		if sib.Slug == "" || sib.GitURL == "" {
+			continue
+		}
+		if err := sandbox.ValidateRepoURL(executeCtx, sib.GitURL); err != nil {
+			slog.Warn("SandboxAgentExecutor: skipping invalid sibling repo", "slug", sib.Slug, "error", err.Error())
+			continue
+		}
+		branch := sib.Branch
+		if branch != "" {
+			if err := sandbox.ValidateBranchName(branch); err != nil {
+				slog.Warn("SandboxAgentExecutor: sibling branch invalid, using default", "slug", sib.Slug, "error", err.Error())
+				branch = ""
+			}
+		}
+		siblings = append(siblings, sandbox.SiblingRepoSpec{Slug: sib.Slug, RepoURL: sib.GitURL, Branch: branch})
 	}
 
 	opts := sandbox.SandboxOptions{
@@ -131,6 +159,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		EnvVars:       envVars,
 		Timeout:       0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
 		AgentSettings: in.AgentSettings,
+		SiblingRepos:  siblings,
 	}
 
 	// 4. Запуск задачи
