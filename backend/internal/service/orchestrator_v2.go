@@ -1138,43 +1138,44 @@ func getProjectTeamID(db *gorm.DB, projectID uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, fmt.Errorf("no team found for project %s", projectID)
 }
 
-// detectCycle checks if the agent workflow has entered a loop (e.g. infinite developer <-> reviewer updates).
-// A loop is detected if:
-// 1. There are at least 3 review artifacts with decision='changes_requested'.
-// 2. There are at least 3 code_diff artifacts.
-// 3. The list of modified files in the last 3 code_diffs is identical.
-// 4. The Jaccard similarity of reviewer issues across the last 3 reviews is > 80%.
+// detectCycle ловит петлю «ревью → changes_requested → переделка → снова ТО ЖЕ замечание»
+// и в implement-фазе (developer↔reviewer по code_diff), и в decompose-фазе
+// (decomposer↔reviewer по subtask_description). Свежие changes_requested-ревью
+// группируются по ИДЕНТИЧНОСТИ цели, и внутри группы сравниваются комментарии: 3 подряд
+// почти одинаковых замечания (Jaccard > 0.8) на одну цель = задача не сходится → петля.
+//
+// Цель ревью определяется по его родительскому артефакту:
+//   - code_diff           → набор изменённых файлов (стабилен между ревизиями диффа);
+//   - subtask_description → стабильный id подзадачи из content (артефакты пересоздаются
+//     на каждой ревизии с новым UUID, но id подзадачи постоянен — это переживает
+//     interleaving нескольких подзадач, которое ломало старую логику «последние 3 ревью»);
+//   - иное                → UUID родителя.
+//
+// approved/escalate-ревью на цель «сбрасывает» её счётчик (цель сошлась — более ранние
+// отклонения не считаем; идём newest-first, поэтому первый же approve закрывает группу).
+// Порог сходства 0.8 отсекает ложные срабатывания: переделки с НОВЫМИ замечаниями (реальный
+// прогресс) имеют низкую схожесть и петлёй не считаются.
 func (o *Orchestrator) detectCycle(ctx context.Context, tx *gorm.DB, taskID uuid.UUID) (bool, string, error) {
-	// 1. Fetch last 3 ready/superseded reviews with decision = 'changes_requested'
+	const (
+		reviewWindow     = 12  // сколько последних ревью смотрим (запас на interleaving подзадач)
+		minRepeats       = 3   // одинаковых замечаний подряд на одну цель → петля
+		similarityThresh = 0.8 // порог Jaccard «то же самое замечание»
+	)
+
 	var reviews []models.Artifact
 	if err := tx.WithContext(ctx).
 		Where("task_id = ? AND kind = ?", taskID, models.ArtifactKindReview).
 		Order("created_at DESC").
-		Limit(3).
+		Limit(reviewWindow).
 		Find(&reviews).Error; err != nil {
 		return false, "", err
 	}
-
-	if len(reviews) < 3 {
+	if len(reviews) < minRepeats {
 		return false, "", nil
 	}
 
-	// 2. Fetch last 3 ready/superseded code_diff artifacts
-	var diffs []models.Artifact
-	if err := tx.WithContext(ctx).
-		Where("task_id = ? AND kind = ?", taskID, models.ArtifactKindCodeDiff).
-		Order("created_at DESC").
-		Limit(3).
-		Find(&diffs).Error; err != nil {
-		return false, "", err
-	}
-
-	if len(diffs) < 3 {
-		return false, "", nil
-	}
-
-	// Helper to extract reviewer comments and ensure all decisions are 'changes_requested'
-	extractCommentsAndValidate := func(art models.Artifact) ([]string, bool) {
+	// extractReview — decision + объединённый текст замечаний ревью.
+	extractReview := func(art models.Artifact) (decision, comment string) {
 		var rc struct {
 			Decision string `json:"decision"`
 			Issues   []struct {
@@ -1182,93 +1183,85 @@ func (o *Orchestrator) detectCycle(ctx context.Context, tx *gorm.DB, taskID uuid
 			} `json:"issues"`
 		}
 		if err := json.Unmarshal(art.Content, &rc); err != nil {
-			return nil, false
+			return "", ""
 		}
-		if rc.Decision != "changes_requested" {
-			return nil, false
-		}
-		var comments []string
+		var parts []string
 		for _, iss := range rc.Issues {
 			if c := strings.TrimSpace(iss.Comment); c != "" {
-				comments = append(comments, c)
+				parts = append(parts, c)
 			}
 		}
-		return comments, true
+		return rc.Decision, strings.Join(parts, " ")
 	}
 
-	// Validate reviews decisions and extract comments
-	var allComments [][]string
-	for _, rev := range reviews {
-		comments, ok := extractCommentsAndValidate(rev)
-		if !ok || len(comments) == 0 {
-			return false, "", nil
+	fileRe := regexp.MustCompile(`diff --git a/([^\s]+) b/`)
+	// targetKey — стабильный ключ цели ревью (см. doc функции).
+	targetKey := func(rev models.Artifact) string {
+		if rev.ParentID == nil {
+			return ""
 		}
-		allComments = append(allComments, comments)
-	}
-
-	// Helper to extract changed files from diff/raw_output inside artifact content
-	extractChangedFiles := func(art models.Artifact) []string {
-		var wrapper struct {
-			RawOutput string `json:"raw_output"`
-			Diff      string `json:"diff"`
+		var parent models.Artifact
+		if err := tx.WithContext(ctx).Where("id = ?", *rev.ParentID).First(&parent).Error; err != nil {
+			return ""
 		}
-		_ = json.Unmarshal(art.Content, &wrapper)
-		text := wrapper.Diff
-		if text == "" {
-			text = wrapper.RawOutput
-		}
-		re := regexp.MustCompile(`diff --git a/([^\s]+) b/`)
-		matches := re.FindAllStringSubmatch(text, -1)
-
-		var files []string
-		seen := make(map[string]bool)
-		for _, m := range matches {
-			if len(m) > 1 && !seen[m[1]] {
-				seen[m[1]] = true
-				files = append(files, m[1])
+		switch parent.Kind {
+		case models.ArtifactKindCodeDiff:
+			var w struct {
+				Diff      string `json:"diff"`
+				RawOutput string `json:"raw_output"`
 			}
-		}
-		return files
-	}
-
-	// Extract files and compare
-	files0 := extractChangedFiles(diffs[0])
-	files1 := extractChangedFiles(diffs[1])
-	files2 := extractChangedFiles(diffs[2])
-
-	equalStringSlices := func(a, b []string) bool {
-		if len(a) != len(b) {
-			return false
-		}
-		m := make(map[string]int)
-		for _, x := range a {
-			m[x]++
-		}
-		for _, x := range b {
-			m[x]--
-			if m[x] < 0 {
-				return false
+			_ = json.Unmarshal(parent.Content, &w)
+			text := w.Diff
+			if text == "" {
+				text = w.RawOutput
 			}
+			seen := make(map[string]bool)
+			var files []string
+			for _, m := range fileRe.FindAllStringSubmatch(text, -1) {
+				if len(m) > 1 && !seen[m[1]] {
+					seen[m[1]] = true
+					files = append(files, m[1])
+				}
+			}
+			if len(files) == 0 {
+				return "codediff:" + parent.ID.String()
+			}
+			sort.Strings(files)
+			return "files:" + strings.Join(files, ",")
+		case models.ArtifactKindSubtaskDescription:
+			var w struct {
+				ID string `json:"id"`
+			}
+			_ = json.Unmarshal(parent.Content, &w)
+			if strings.TrimSpace(w.ID) != "" {
+				return "subtask:" + w.ID
+			}
+			return "artifact:" + parent.ID.String()
+		default:
+			return "artifact:" + parent.ID.String()
 		}
-		return true
 	}
 
-	filesMatch := false
-	if len(files0) > 0 && len(files1) > 0 && len(files2) > 0 {
-		if equalStringSlices(files0, files1) && equalStringSlices(files1, files2) {
-			filesMatch = true
+	// Группируем комментарии отклонений по цели (newest-first). approved по цели → группа
+	// закрыта (converged): её более ранние отклонения уже не считаем.
+	grouped := make(map[string][]string)
+	converged := make(map[string]bool)
+	for _, rev := range reviews { // newest → oldest
+		key := targetKey(rev)
+		if key == "" {
+			continue
 		}
-	} else {
-		// Fallback: if we couldn't parse any git files (e.g. no git output captured),
-		// assume they match to rely solely on similarity of comments.
-		filesMatch = true
+		decision, comment := extractReview(rev)
+		if decision != "changes_requested" {
+			converged[key] = true
+			continue
+		}
+		if converged[key] || comment == "" {
+			continue
+		}
+		grouped[key] = append(grouped[key], comment)
 	}
 
-	if !filesMatch {
-		return false, "", nil
-	}
-
-	// Jaccard similarity helpers
 	getWords := func(s string) map[string]bool {
 		words := make(map[string]bool)
 		f := func(c rune) bool {
@@ -1304,20 +1297,27 @@ func (o *Orchestrator) detectCycle(ctx context.Context, tx *gorm.DB, taskID uuid
 		return float64(intersection) / float64(union)
 	}
 
-	str0 := strings.Join(allComments[0], " ")
-	str1 := strings.Join(allComments[1], " ")
-	str2 := strings.Join(allComments[2], " ")
+	// Детерминированный порядок обхода групп (стабильный reason при нескольких застрявших целях).
+	keys := make([]string, 0, len(grouped))
+	for k := range grouped {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 
-	sim1 := jaccardSimilarity(str0, str1)
-	sim2 := jaccardSimilarity(str1, str2)
-
-	if sim1 > 0.8 && sim2 > 0.8 {
-		filesStr := strings.Join(files0, ", ")
-		if filesStr == "" {
-			filesStr = "unknown files"
+	for _, key := range keys {
+		comments := grouped[key]
+		if len(comments) < minRepeats {
+			continue
 		}
-		reason := fmt.Sprintf("repeated reviewer comments (similarity %.1f%% and %.1f%%) on same files [%s]", sim1*100, sim2*100, filesStr)
-		return true, reason, nil
+		// 3 самых свежих отклонения (comments[0..2], newest-first).
+		sim1 := jaccardSimilarity(comments[0], comments[1])
+		sim2 := jaccardSimilarity(comments[1], comments[2])
+		if sim1 > similarityThresh && sim2 > similarityThresh {
+			reason := fmt.Sprintf(
+				"router stuck: reviewer raised the same changes_requested %d× on target [%s] (similarity %.0f%%/%.0f%%) without convergence",
+				minRepeats, key, sim1*100, sim2*100)
+			return true, reason, nil
+		}
 	}
 
 	return false, "", nil

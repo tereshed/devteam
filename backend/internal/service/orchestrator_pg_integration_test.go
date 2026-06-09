@@ -1153,29 +1153,11 @@ func TestPGIntegration_OrchestratorStep_LoopDetector(t *testing.T) {
 	ctx := context.Background()
 	taskID := h.createMinimalActiveTask(t)
 
-	// 1. Создаем 3 review-артефакта с decision = changes_requested
-	// У нас одинаковые замечания: "missing auth import"
-	reviewContent := `{"decision": "changes_requested", "issues": [{"severity": "major", "comment": "missing auth import in main.go"}]}`
-	for i := 0; i < 3; i++ {
-		rev := &models.Artifact{
-			ID:            uuid.New(),
-			TaskID:        taskID,
-			ProducerAgent: "reviewer",
-			Kind:          models.ArtifactKindReview,
-			Summary:       "review changes requested",
-			Content:       []byte(reviewContent),
-			Status:        models.ArtifactStatusReady,
-			Iteration:     i,
-			CreatedAt:     time.Now().Add(time.Duration(i) * time.Minute),
-		}
-		if err := h.gormDB.Create(rev).Error; err != nil {
-			t.Fatalf("create review artifact: %v", err)
-		}
-	}
-
-	// 2. Создаем 3 code_diff артефакта, содержащих одинаковые измененные файлы
-	// Измененный файл в diff: main.go
+	// implement-фаза: 3 раунда code_diff(main.go) → review(changes_requested) с почти
+	// одинаковым замечанием. Каждое ревью ссылается на свой code_diff (parent_id) — как в
+	// проде; detectCycle группирует по изменённым файлам цели (key=files:main.go).
 	diffContent := `{"raw_output": "diff --git a/main.go b/main.go\n+ import _ \"github.com/golang-jwt/jwt/v5\""}`
+	reviewContent := `{"decision": "changes_requested", "issues": [{"severity": "major", "comment": "missing auth import in main.go"}]}`
 	for i := 0; i < 3; i++ {
 		cd := &models.Artifact{
 			ID:            uuid.New(),
@@ -1191,9 +1173,24 @@ func TestPGIntegration_OrchestratorStep_LoopDetector(t *testing.T) {
 		if err := h.gormDB.Create(cd).Error; err != nil {
 			t.Fatalf("create code_diff artifact: %v", err)
 		}
+		rev := &models.Artifact{
+			ID:            uuid.New(),
+			TaskID:        taskID,
+			ParentID:      &cd.ID,
+			ProducerAgent: "reviewer",
+			Kind:          models.ArtifactKindReview,
+			Summary:       "review changes requested",
+			Content:       []byte(reviewContent),
+			Status:        models.ArtifactStatusReady,
+			Iteration:     i,
+			CreatedAt:     time.Now().Add(time.Duration(i)*time.Minute + 45*time.Second),
+		}
+		if err := h.gormDB.Create(rev).Error; err != nil {
+			t.Fatalf("create review artifact: %v", err)
+		}
 	}
 
-	// 3. Вызываем Step
+	// Вызываем Step — должен сработать loop-detector ДО Router.Decide.
 	if err := h.orchestrator.Step(ctx, taskID); err != nil {
 		t.Fatalf("Step: %v", err)
 	}
@@ -1214,5 +1211,70 @@ func TestPGIntegration_OrchestratorStep_LoopDetector(t *testing.T) {
 	}
 	if got.ErrorMessage == nil || !strings.Contains(*got.ErrorMessage, "loop detected") {
 		t.Errorf("expected error_message to mention loop detected, got %v", got.ErrorMessage)
+	}
+}
+
+// Decompose-фаза: decomposer↔reviewer крутят ОДНУ подзадачу (id=6) — ревью ссылаются на
+// пересоздаваемые subtask_description с одинаковым content.id. Раньше detectCycle это не
+// ловил (требовал 3 code_diff), и задача жгла шаги до MaxStepsPerTask. Теперь группировка
+// по subtask:id ловит петлю. Interleaving другой подзадачи (id=5) не должен мешать.
+func TestPGIntegration_OrchestratorStep_LoopDetector_DecomposePhase(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	h := startPgHarness(t, nil)
+	defer h.Close()
+
+	ctx := context.Background()
+	taskID := h.createMinimalActiveTask(t)
+
+	mk := func(kind models.ArtifactKind, parent *uuid.UUID, content string, at time.Time) *models.Artifact {
+		a := &models.Artifact{
+			ID: uuid.New(), TaskID: taskID, ParentID: parent,
+			ProducerAgent: "x", Kind: kind, Summary: "s",
+			Content: []byte(content), Status: models.ArtifactStatusReady, CreatedAt: at,
+		}
+		if err := h.gormDB.Create(a).Error; err != nil {
+			t.Fatalf("create %s: %v", kind, err)
+		}
+		return a
+	}
+
+	base := time.Now()
+	stuckComment := `{"decision":"changes_requested","issues":[{"severity":"major","comment":"описание подзадачи всё ещё пропускает три пути записи relayUpdateChannel в chats-service: status, vacancy, hh-roles"}]}`
+	// Подзадача 5 каждый раунд получает РАЗНЫЕ (непересекающиеся по словам) замечания —
+	// это прогресс, а не петля: Jaccard низкий, detectCycle её игнорирует.
+	progressComments := []string{
+		`{"decision":"changes_requested","issues":[{"severity":"minor","comment":"frontend uses wrong import alias here"}]}`,
+		`{"decision":"changes_requested","issues":[{"severity":"minor","comment":"missing null guard before pointer dereference"}]}`,
+		`{"decision":"changes_requested","issues":[{"severity":"minor","comment":"rename variable improve readability documentation"}]}`,
+	}
+	for i := 0; i < 3; i++ {
+		t0 := base.Add(time.Duration(i) * time.Minute)
+		// Подзадача 6 (frontend) — пересоздаётся, content.id стабилен = "6", замечание то же.
+		st6 := mk(models.ArtifactKindSubtaskDescription, nil,
+			fmt.Sprintf(`{"id":"6","title":"Frontend","description":"v%c"}`, rune('a'+i)), t0)
+		mk(models.ArtifactKindReview, &st6.ID, stuckComment, t0.Add(30*time.Second))
+		// Interleaving подзадачи 5 не должно создавать ложную петлю.
+		st5 := mk(models.ArtifactKindSubtaskDescription, nil, `{"id":"5","title":"Backend"}`, t0.Add(10*time.Second))
+		mk(models.ArtifactKindReview, &st5.ID, progressComments[i], t0.Add(40*time.Second))
+	}
+
+	if err := h.orchestrator.Step(ctx, taskID); err != nil {
+		t.Fatalf("Step: %v", err)
+	}
+
+	var got struct {
+		State        string
+		ErrorMessage *string `gorm:"column:error_message"`
+	}
+	if err := h.gormDB.Raw(`SELECT state, error_message FROM tasks WHERE id = ?`, taskID).Scan(&got).Error; err != nil {
+		t.Fatalf("read task: %v", err)
+	}
+	if got.State != "needs_human" {
+		t.Errorf("expected state=needs_human (subtask:6 loop), got %q", got.State)
+	}
+	if got.ErrorMessage == nil || !strings.Contains(*got.ErrorMessage, "subtask:6") {
+		t.Errorf("expected error_message to point at subtask:6, got %v", got.ErrorMessage)
 	}
 }
