@@ -767,6 +767,60 @@ func TestPGIntegration_MaxStepsPerTask_NeedsHuman(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TestPGIntegration_FailTaskExhausted
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Проверяет, что застрявшая в active задача (мёртвый step_req — Router исчерпал ретраи)
+// переводится в failed с error_message и completed_at, а повторный вызов идемпотентен.
+func TestPGIntegration_FailTaskExhausted_StuckActiveToFailed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	h := startPgHarness(t, nil) // Router не вызывается — scripted outputs не нужны.
+	defer h.Close()
+
+	ctx := context.Background()
+	taskID := h.createMinimalActiveTask(t)
+
+	reason := "router step exhausted retries: llm generate failed: api error (status 403): key limit exceeded"
+	if err := h.orchestrator.FailTaskExhausted(ctx, taskID, reason); err != nil {
+		t.Fatalf("FailTaskExhausted: %v", err)
+	}
+
+	var got struct {
+		State        string
+		ErrorMessage *string    `gorm:"column:error_message"`
+		CompletedAt  *time.Time `gorm:"column:completed_at"`
+	}
+	if err := h.gormDB.Raw(
+		`SELECT state, error_message, completed_at FROM tasks WHERE id = ?`, taskID,
+	).Scan(&got).Error; err != nil {
+		t.Fatalf("read task: %v", err)
+	}
+	if got.State != "failed" {
+		t.Errorf("expected state=failed, got %q", got.State)
+	}
+	if got.ErrorMessage == nil || !strings.Contains(*got.ErrorMessage, "exhausted retries") {
+		t.Errorf("expected error_message to mention exhausted retries, got %v", got.ErrorMessage)
+	}
+	if got.CompletedAt == nil {
+		t.Errorf("expected completed_at to be set on failed task")
+	}
+
+	// Идемпотентность: задача уже не active → повторный вызов no-op, state не меняется.
+	if err := h.orchestrator.FailTaskExhausted(ctx, taskID, "second call must be ignored"); err != nil {
+		t.Fatalf("FailTaskExhausted (idempotent call): %v", err)
+	}
+	var stateAfter string
+	if err := h.gormDB.Raw(`SELECT state FROM tasks WHERE id = ?`, taskID).Scan(&stateAfter).Error; err != nil {
+		t.Fatalf("read task state: %v", err)
+	}
+	if stateAfter != "failed" {
+		t.Errorf("idempotent call changed state: %q", stateAfter)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TestPGIntegration_FollowupStepReqCoalesces
 // ─────────────────────────────────────────────────────────────────────────────
 

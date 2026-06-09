@@ -194,6 +194,22 @@ func (w *StepWorker) processOne(ctx context.Context, ev *models.TaskEvent) {
 			w.logger.ErrorContext(ctx, "mark step_req as failed",
 				"task_event_id", ev.ID, "error", ferr.Error())
 		}
+
+		// Последняя попытка — step_req окончательно «умер» (idx_task_events_pollable его
+		// больше не вернёт). В отличие от agent_job (там failEvent пингует follow-up
+		// step_req для переоценки Router'ом), здесь будить нечем: упал сам Router. Без
+		// явного перевода задача навсегда залипнет в active. Финализируем в failed —
+		// видимо в UI и resumable после устранения причины (обычно внешняя: LLM-лимит/5xx).
+		if ev.Attempts+1 >= ev.MaxAttempts {
+			w.logger.WarnContext(ctx, "step_req exhausted retries (dead), failing task",
+				"worker_id", w.cfg.WorkerID, "task_event_id", ev.ID,
+				"task_id", ev.TaskID, "attempts", ev.Attempts+1, "max_attempts", ev.MaxAttempts)
+			reason := truncate("router step exhausted retries: "+err.Error(), 512)
+			if ferr := w.orchestrator.FailTaskExhausted(ctx, ev.TaskID, reason); ferr != nil {
+				w.logger.ErrorContext(ctx, "fail task after step_req exhaustion",
+					"task_id", ev.TaskID, "error", ferr.Error())
+			}
+		}
 		return
 	}
 

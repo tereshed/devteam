@@ -1043,6 +1043,48 @@ func (o *Orchestrator) finalizeTaskInTx(ctx context.Context, tx *gorm.DB, task *
 	return nil
 }
 
+// FailTaskExhausted переводит задачу в failed, когда её step_req окончательно умер
+// (StepWorker исчерпал retry-бюджет на Orchestrator.Step — обычно инфра/внешняя ошибка:
+// LLM 5xx, лимит ключа, серия 40001). Без этого мёртвый step_req никем не будит
+// Orchestrator.Step, и задача навсегда залипает в active: штатный Resume её не берёт
+// (он работает из failed/needs_human/paused). Перевод в failed делает ситуацию видимой
+// в UI и resumable после устранения причины.
+//
+// Идемпотентно и безопасно к гонкам: берёт тот же per-task lock, что и Step (NOWAIT).
+// Если задачу держит другой воркер (значит она не «застряла») или она уже не active
+// (финализирована/приостановлена) — no-op. Worktree-release — post-commit, как в Step.
+func (o *Orchestrator) FailTaskExhausted(ctx context.Context, taskID uuid.UUID, reason string) error {
+	if taskID == uuid.Nil {
+		return fmt.Errorf("orchestrator.FailTaskExhausted: taskID is required")
+	}
+
+	var postCommit []func(context.Context)
+	err := o.db.Transaction(func(tx *gorm.DB) error {
+		if err := TryLockTaskForStep(ctx, tx, taskID); err != nil {
+			if errors.Is(err, ErrTaskLockBusy) || errors.Is(err, ErrTaskNotFoundForLock) {
+				return nil
+			}
+			return err
+		}
+		var task models.Task
+		if err := tx.WithContext(ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+			return fmt.Errorf("load task %s: %w", taskID, err)
+		}
+		if task.State != models.TaskStateActive {
+			return nil
+		}
+		postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID))
+		return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateFailed, reason)
+	})
+	if err != nil {
+		return err
+	}
+	for _, hook := range postCommit {
+		hook(ctx)
+	}
+	return nil
+}
+
 func (o *Orchestrator) releaseAllWorktreesForTask(ctx context.Context, taskID uuid.UUID) {
 	wts, err := o.worktreeMgr.ListByTaskID(ctx, taskID)
 	if err != nil {
