@@ -225,6 +225,35 @@ func TestParseAgentEnvelope_DirectTestResult(t *testing.T) {
 	}
 }
 
+// TestParseAgentEnvelope_DirectTestResultBlocked — вердикт blocked (миграция 082:
+// суть задачи непроверяема в sandbox) распознаётся как test_result наравне с passed/failed.
+func TestParseAgentEnvelope_DirectTestResultBlocked(t *testing.T) {
+	target := &models.Artifact{
+		ID:            uuid.New(),
+		ProducerAgent: "developer",
+		Kind:          models.ArtifactKindCodeDiff,
+	}
+
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output:  `{"decision": "blocked", "summary": "blocked: integration layer requires Postgres, not available in sandbox"}`,
+	}
+
+	env, ok := parseAgentEnvelope(result, "tester", target)
+	if !ok {
+		t.Fatal("expected successful parse of blocked test result JSON")
+	}
+	if env.Kind != "test_result" {
+		t.Errorf("Kind = %q, want test_result", env.Kind)
+	}
+	if env.Summary != "blocked: integration layer requires Postgres, not available in sandbox" {
+		t.Errorf("Summary = %q, want blocked summary", env.Summary)
+	}
+	if env.ParentArtifactID == nil || *env.ParentArtifactID != target.ID {
+		t.Errorf("ParentArtifactID mismatch")
+	}
+}
+
 // TestParseAgentEnvelope_WithPreambleAndDirectReview — парсинг прямого JSON ревью с не-JSON преамбулой без markdown fences.
 func TestParseAgentEnvelope_WithPreambleAndDirectReview(t *testing.T) {
 	target := &models.Artifact{

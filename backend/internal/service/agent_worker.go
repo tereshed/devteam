@@ -1110,7 +1110,7 @@ func parseAgentEnvelope(result *agent.ExecutionResult, agentName string, targetA
 				if trVal, ok := rawMap["test_result"]; ok {
 					if trStr, ok := trVal.(string); ok {
 						trStr = strings.TrimSpace(strings.ToLower(trStr))
-						if trStr == "pass" || trStr == "fail" || trStr == "passed" || trStr == "failed" {
+						if trStr == "pass" || trStr == "fail" || trStr == "passed" || trStr == "failed" || trStr == "blocked" {
 							isTestResult = true
 						}
 					}
@@ -1119,7 +1119,7 @@ func parseAgentEnvelope(result *agent.ExecutionResult, agentName string, targetA
 					if decVal, ok := rawMap["decision"]; ok {
 						if decStr, ok := decVal.(string); ok {
 							decStr = strings.TrimSpace(strings.ToLower(decStr))
-							if decStr == "passed" || decStr == "failed" {
+							if decStr == "passed" || decStr == "failed" || decStr == "blocked" {
 								isTestResult = true
 							}
 						}
