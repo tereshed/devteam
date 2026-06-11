@@ -777,6 +777,25 @@ WsServerEvent _parseUserScopedEnvelope({
   }
 }
 
+/// Транспортный keepalive-кадр сервера (`{"type":"heartbeat","v":1,"ts":...}`,
+/// см. backend/internal/ws/client.go: heartbeatPeriod). Кадр без project/user
+/// scope, поэтому через [parseWsServerEnvelope] не проходит (упал бы на проверке
+/// project_id) — [WebSocketService] гасит его ДО парсинга: перевооружает
+/// idle-таймер и не доставляет контроллерам.
+bool isWsHeartbeatFrame(String text) {
+  // Быстрый отсев: кадр крошечный и содержит литерал типа.
+  if (text.length > 256 || !text.contains('"heartbeat"')) {
+    return false;
+  }
+  final dynamic decoded;
+  try {
+    decoded = jsonDecode(text);
+  } catch (_) {
+    return false;
+  }
+  return decoded is Map<String, dynamic> && decoded['type'] == 'heartbeat';
+}
+
 /// Декодирование одного текстового кадра → [WsServerEvent] или бросок [FormatException]/[WsParseError].
 WsServerEvent parseWsServerEnvelope(String text) {
   var t = text;

@@ -117,6 +117,35 @@ func (h *AgentMyHandler) Get(c *gin.Context) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetAssistant — GET /api/v1/me/assistant
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GetAssistant возвращает user-агента ассистента, провижен при отсутствии.
+// Нужен вкладке настроек «Ассистент»: она может открыться раньше первого чата,
+// когда per-user агент ещё не создан. Редактирование — PUT /me/agents/{id}.
+// @Summary Get my assistant agent (provision if missing)
+// @Tags my-agents
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} models.Agent
+// @Failure 401 {object} apierror.ErrorResponse
+// @Failure 500 {object} apierror.ErrorResponse
+// @Router /me/assistant [get]
+func (h *AgentMyHandler) GetAssistant(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrUnauthorized, "missing user context")
+		return
+	}
+	agent, err := h.svc.EnsureAssistantAgent(c.Request.Context(), userID)
+	if err != nil {
+		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, agent)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Update — PUT /api/v1/me/agents/:id
 // ─────────────────────────────────────────────────────────────────────────────
 

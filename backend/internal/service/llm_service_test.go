@@ -4,10 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/devteam/backend/internal/config"
+	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/llm"
+	"github.com/devteam/backend/pkg/llm/factory"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/devteam/backend/internal/models"
-	"github.com/devteam/backend/pkg/llm"
 )
 
 // MockProvider is a mock implementation of llm.Provider
@@ -136,5 +140,79 @@ func TestLLMService_Generate(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "provider unknown not configured")
+	})
+}
+
+// fakeUserKeyReader — стаб userLLMKeyReader для resolveProvider-тестов.
+type fakeUserKeyReader struct {
+	keys map[string]string // provider → plaintext key
+	err  error             // не-nil → возвращается для любого провайдера
+}
+
+func (f *fakeUserKeyReader) GetPlaintext(_ context.Context, _ uuid.UUID, p models.UserLLMProvider) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	key, ok := f.keys[string(p)]
+	if !ok {
+		return "", repository.ErrUserLlmCredentialNotFound
+	}
+	return key, nil
+}
+
+func TestLLMService_ResolveProvider_UserKeys(t *testing.T) {
+	envProvider := new(MockProvider)
+	owner := uuid.New().String()
+	ctx := context.Background()
+
+	newSvc := func(reader userLLMKeyReader) *llmService {
+		return &llmService{
+			providers: map[llm.ProviderType]llm.Provider{
+				llm.ProviderOpenRouter: envProvider,
+			},
+			factory:       factory.New(),
+			cfg:           config.LLMConfig{OpenRouter: config.ProviderConfig{BaseURL: "https://openrouter.ai/api/v1"}},
+			userKeys:      reader,
+			userProviders: make(map[string]llm.Provider),
+		}
+	}
+
+	t.Run("ключ пользователя приоритетнее env", func(t *testing.T) {
+		svc := newSvc(&fakeUserKeyReader{keys: map[string]string{"openrouter": "sk-or-user-key"}})
+		p, err := svc.resolveProvider(ctx, llm.ProviderOpenRouter, owner)
+		assert.NoError(t, err)
+		assert.NotNil(t, p)
+		assert.NotEqual(t, llm.Provider(envProvider), p, "должен вернуться user-scoped провайдер, не env")
+
+		// Повторный вызов с тем же ключом → тот же кэшированный инстанс.
+		p2, err := svc.resolveProvider(ctx, llm.ProviderOpenRouter, owner)
+		assert.NoError(t, err)
+		assert.Same(t, p, p2)
+	})
+
+	t.Run("ключа у пользователя нет → fallback на env", func(t *testing.T) {
+		svc := newSvc(&fakeUserKeyReader{keys: map[string]string{}})
+		p, err := svc.resolveProvider(ctx, llm.ProviderOpenRouter, owner)
+		assert.NoError(t, err)
+		assert.Equal(t, llm.Provider(envProvider), p)
+	})
+
+	t.Run("ошибка чтения ключа → ошибка, БЕЗ тихого отката на env", func(t *testing.T) {
+		svc := newSvc(&fakeUserKeyReader{err: assert.AnError})
+		_, err := svc.resolveProvider(ctx, llm.ProviderOpenRouter, owner)
+		assert.Error(t, err)
+	})
+
+	t.Run("пустой owner → env-путь", func(t *testing.T) {
+		svc := newSvc(&fakeUserKeyReader{keys: map[string]string{"openrouter": "sk-or-user-key"}})
+		p, err := svc.resolveProvider(ctx, llm.ProviderOpenRouter, "")
+		assert.NoError(t, err)
+		assert.Equal(t, llm.Provider(envProvider), p)
+	})
+
+	t.Run("провайдер не настроен нигде → ошибка", func(t *testing.T) {
+		svc := newSvc(&fakeUserKeyReader{keys: map[string]string{}})
+		_, err := svc.resolveProvider(ctx, llm.ProviderGemini, owner)
+		assert.ErrorContains(t, err, "not configured")
 	})
 }

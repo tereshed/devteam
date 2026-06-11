@@ -1846,6 +1846,54 @@ class AppLocalizationsEn extends AppLocalizations {
   String get globalSettingsTabDevTeam => 'PolyMaths';
 
   @override
+  String get assistantScopeGlobal => 'Global chat';
+
+  @override
+  String assistantScopeProject(String name) {
+    return 'Project: $name';
+  }
+
+  @override
+  String get assistantPromptUserTabTitle => 'Assistant';
+
+  @override
+  String get assistantPromptUserHeading => 'Assistant prompt (user level)';
+
+  @override
+  String get assistantPromptUserHint =>
+      'Base system prompt for your assistant. New projects inherit a copy at creation time — later edits here do not affect already-created projects.';
+
+  @override
+  String get assistantPromptProjectTabTitle => 'Assistant';
+
+  @override
+  String get assistantPromptProjectHeading =>
+      'Assistant prompt (project level)';
+
+  @override
+  String get assistantPromptProjectHint =>
+      'System prompt for the assistant in this project. This is an independent copy that overrides the user prompt. Empty field falls back to the user prompt.';
+
+  @override
+  String get assistantPromptInherited =>
+      'This project has no own prompt yet — the user prompt is used. Save to create a project copy.';
+
+  @override
+  String get assistantPromptSave => 'Save prompt';
+
+  @override
+  String get assistantPromptReset => 'Reset to user prompt';
+
+  @override
+  String get assistantPromptSaved => 'Assistant prompt saved';
+
+  @override
+  String get assistantPromptSaveError => 'Failed to save assistant prompt';
+
+  @override
+  String get assistantPromptLoadError => 'Failed to load assistant prompt';
+
+  @override
   String get llmProvidersSectionTitle => 'LLM providers';
 
   @override

@@ -49,6 +49,28 @@ func RegisterAgentMyTools(server *mcp.Server, agentSvc *service.AgentService) {
 		Name:        "agent_update_my",
 		Description: "Обновить user-level агента (с ABAC: только свои). Запрещено менять role/execution_kind.",
 	}, makeAgentUpdateMyHandler(agentSvc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "assistant_get_my",
+		Description: "Мой агент-ассистент (провижен при отсутствии). Зеркало GET /me/assistant; редактирование — agent_update_my.",
+	}, makeAssistantGetMyHandler(agentSvc))
+}
+
+type AssistantGetMyParams struct {
+}
+
+func makeAssistantGetMyHandler(svc *service.AgentService) func(context.Context, *mcp.CallToolRequest, AssistantGetMyParams) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, _ AssistantGetMyParams) (*mcp.CallToolResult, any, error) {
+		userID, ok := UserIDFromContext(ctx)
+		if !ok {
+			return Err("missing user context", fmt.Errorf("no userID in context"))
+		}
+		agent, err := svc.EnsureAssistantAgent(ctx, userID)
+		if err != nil {
+			return Err("failed to ensure assistant agent", err)
+		}
+		return OK("Assistant agent", agent)
+	}
 }
 
 func makeAgentListMyHandler(svc *service.AgentService) func(context.Context, *mcp.CallToolRequest, AgentListMyParams) (*mcp.CallToolResult, any, error) {

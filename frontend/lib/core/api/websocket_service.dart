@@ -549,6 +549,16 @@ class WebSocketService {
       return;
     }
     _armIdleTimer(session, projectId);
+    if (isWsHeartbeatFrame(data)) {
+      // Keepalive: idle-таймер уже перевооружён выше. Кадр считается успешным
+      // конвертом (сбрасывает backoff), но контроллерам не доставляется.
+      if (!_hasSuccessfulEnvelopeThisOpen) {
+        _hasSuccessfulEnvelopeThisOpen = true;
+        _backoffAttempt = 0;
+        _tooManyConns4429Closes = 0;
+      }
+      return;
+    }
     try {
       final ev = parseWsServerEnvelope(data);
       if (!_hasSuccessfulEnvelopeThisOpen) {

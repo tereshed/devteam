@@ -106,6 +106,7 @@ func (e *Executor) Run(ctx context.Context, req RunRequest) (Result, error) {
 			SystemPrompt: req.SystemPrompt,
 			Messages:     buildLLMMessages(history, e.cfg),
 			Tools:        descriptorsFor(req.Tools),
+			ServerTools:  req.ServerTools,
 			Temperature:  req.Temperature,
 			MaxTokens:    req.MaxTokens,
 		}

@@ -158,8 +158,17 @@ class AssistantChatController extends _$AssistantChatController {
   ///
   /// Возвращает sessionId или бросает [AssistantRepositoryException].
   Future<String> ensureSession() async {
+    final activeProjectId = ref.read(activeProjectIdProvider);
     final current = state.currentSessionId;
-    if (current != null) return current;
+    // Reuse только если scope текущей сессии совпадает с активным проектом.
+    // Контроллер keepAlive: если он не пересоздался при входе в проект (или
+    // глобальная сессия осталась с прошлого экрана), early-return без проверки
+    // scope «приклеивал» бы глобальный чат внутри проекта (инцидент: tasks →
+    // Дашборд проекта → ассистент глобальный). При mismatch проваливаемся в
+    // переподбор сессии правильного scope ниже.
+    if (current != null && state.session?.projectId == activeProjectId) {
+      return current;
+    }
 
     if (state.creatingSession) {
       // Ждём завершения уже идущего create — не плодим параллельных запросов.
@@ -173,7 +182,7 @@ class AssistantChatController extends _$AssistantChatController {
     state = state.copyWith(creatingSession: true, error: null);
     try {
       final repo = ref.read(assistantRepositoryProvider);
-      final projectId = ref.read(activeProjectIdProvider);
+      final projectId = activeProjectId;
       final sessions = await repo.listSessions(limit: 1, projectId: projectId);
       AssistantSessionModel session;
       if (sessions.sessions.isNotEmpty &&
@@ -244,6 +253,25 @@ class AssistantChatController extends _$AssistantChatController {
   }
 
   Future<void> _selectSession(AssistantSessionModel session) async {
+    // Гард scope: сессия чужого scope (глобальная внутри проекта, чужой проект,
+    // проектная на глобальном экране) не может стать текущей — ассистент молча
+    // терял бы PROJECT CONTEXT и вёл себя «глобально» внутри проекта (инцидент:
+    // «о чём у нас проект» → project_list + вопрос «какой проект?»). Mismatch →
+    // подменяем на свежую сессию правильного scope (или создаём).
+    final activeProjectId = ref.read(activeProjectIdProvider);
+    if (session.projectId != activeProjectId) {
+      final repo = ref.read(assistantRepositoryProvider);
+      final sessions =
+          await repo.listSessions(limit: 1, projectId: activeProjectId);
+      if (sessions.sessions.isNotEmpty &&
+          sessions.sessions.first.status == assistantSessionStatusActive) {
+        session = sessions.sessions.first;
+      } else {
+        session = await repo.createSession(projectId: activeProjectId);
+        ref.invalidate(assistantSessionsListProvider);
+      }
+    }
+
     // Сбрасываем всё, что было от предыдущей сессии (включая pendingConfirm —
     // иначе при switch'е остался бы зависший диалог).
     _pollingTimer?.cancel();

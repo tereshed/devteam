@@ -9,6 +9,9 @@
 #   отладки при маленьком объёме допустимы TASK_INSTRUCTION / TASK_CONTEXT — см. prepare_files.
 #   BASE_REF           — база для diff (ветка на origin), по умолчанию GIT_DEFAULT_BRANCH или main
 #   GIT_DEFAULT_BRANCH — fallback, если BASE_REF не задан
+#   CLAUDE_ALLOWED_TOOLS — список --allowedTools CLI через запятую; по умолчанию
+#                          Bash,Edit,Read,Write,Glob,NotebookEdit,WebFetch (WebFetch —
+#                          чтобы reviewer/developer сверяли контракты внешних API с докой)
 #   BACKEND            — ожидается claude-code (по умолчанию claude-code)
 #   Аутентификация Claude Code (Sprint 15.14 + Sprint 15.e2e): обязателен ровно один из вариантов —
 #     1) ANTHROPIC_API_KEY        — классический API-ключ Anthropic (kind=anthropic)
@@ -498,7 +501,7 @@ esac
   } | claude -p \
     "${CLAUDE_PERMS_ARGS[@]}" \
     "${CLAUDE_MODEL_ARGS[@]}" \
-    --allowedTools "Bash,Edit,Read,Write,Glob,NotebookEdit" \
+    --allowedTools "${CLAUDE_ALLOWED_TOOLS:-Bash,Edit,Read,Write,Glob,NotebookEdit,WebFetch}" \
     >>"$AGENT_LOG" 2>&1
 ) &
 CLAUDE_PID=$!

@@ -3,7 +3,10 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/routing/app_route_paths.dart';
 import 'package:frontend/core/utils/responsive.dart';
 import 'package:frontend/core/widgets/adaptive_layout.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/auth/presentation/widgets/logout_button.dart';
+import 'package:frontend/features/onboarding/data/my_agents_providers.dart';
+import 'package:frontend/features/settings/presentation/widgets/assistant_prompt_editor.dart';
 import 'package:frontend/features/settings/domain/global_settings_backend_gate.dart';
 import 'package:frontend/features/settings/presentation/widgets/claude_code_auth_section.dart';
 import 'package:frontend/features/settings/presentation/widgets/llm_providers_section.dart';
@@ -27,7 +30,7 @@ class GlobalSettingsScreen extends StatelessWidget {
     );
     final appL10n = AppLocalizations.of(context)!;
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: Text(l10n.globalSettingsScreenTitle),
@@ -37,6 +40,7 @@ class GlobalSettingsScreen extends StatelessWidget {
               Tab(text: l10n.globalSettingsTabLLMProviders),
               Tab(text: l10n.globalSettingsTabClaudeCode),
               Tab(text: l10n.globalSettingsTabDevTeam),
+              Tab(text: appL10n.assistantPromptUserTabTitle),
               Tab(text: appL10n.webhooksTitle),
             ],
           ),
@@ -48,6 +52,7 @@ class GlobalSettingsScreen extends StatelessWidget {
                 _LLMProvidersTab(),
                 _ClaudeCodeTab(),
                 _PolyMathsLegacyTab(),
+                _AssistantPromptTab(),
                 _WebhooksTab(),
               ],
             ),
@@ -57,7 +62,6 @@ class GlobalSettingsScreen extends StatelessWidget {
     );
   }
 }
-
 
 class _WebhooksTab extends StatelessWidget {
   const _WebhooksTab();
@@ -147,6 +151,36 @@ class _PolyMathsLegacyTab extends StatelessWidget {
             label: Text(l10n.globalSettingsOpenDevTeamApiKeys),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Вкладка «Ассистент» — редактор user-level промпта ассистента (GET /me/assistant,
+/// PUT /me/agents/{id}). Промпт наследуется копией в новые проекты при создании.
+class _AssistantPromptTab extends ConsumerWidget {
+  const _AssistantPromptTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final async = ref.watch(myAssistantProvider);
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text(l10n.assistantPromptLoadError)),
+      data: (agent) => SingleChildScrollView(
+        padding: Spacing.cardPadding(context),
+        child: AssistantPromptEditor(
+          heading: l10n.assistantPromptUserHeading,
+          hint: l10n.assistantPromptUserHint,
+          initialValue: agent.systemPrompt ?? '',
+          onSave: (value) async {
+            await ref
+                .read(myAgentsRepositoryProvider)
+                .update(agent.id, systemPrompt: value);
+            ref.invalidate(myAssistantProvider);
+          },
+        ),
       ),
     );
   }

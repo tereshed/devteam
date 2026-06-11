@@ -156,8 +156,8 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	if agent.Prompt != nil && strings.TrimSpace(agent.Prompt.Template) != "" {
 		promptParts = append(promptParts, agent.Prompt.Template)
 	}
-	if agent.SystemPrompt != nil && strings.TrimSpace(*agent.SystemPrompt) != "" {
-		promptParts = append(promptParts, *agent.SystemPrompt)
+	if base := resolveAssistantBasePrompt(agent.SystemPrompt, project); base != "" {
+		promptParts = append(promptParts, base)
 	}
 	sysPrompt := strings.Join(promptParts, "\n\n")
 	if project != nil {
@@ -186,10 +186,11 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 						if a.IsActive {
 							isActiveStr = "active"
 						}
+						// system_prompt агентов сюда НЕ инлайнится: после миграции 082 промпты
+						// ролей выросли до 1.5-3.3КБ, и полный их текст раздувал контекст
+						// ассистента на ~15-25КБ КАЖДОЕ сообщение чужими инструкциями
+						// (severity-калибровка ревьюера и т.п. ассистенту бесполезны).
 						pb.WriteString(fmt.Sprintf("  - Agent %q (Role: %s, Status: %s, ID: %s)\n", a.Name, a.Role, isActiveStr, a.ID.String()))
-						if a.SystemPrompt != nil && *a.SystemPrompt != "" {
-							pb.WriteString(fmt.Sprintf("    Instructions: %s\n", *a.SystemPrompt))
-						}
 					}
 				} else {
 					pb.WriteString("  No agents configured in this team.\n")
@@ -223,6 +224,7 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		MaxTokens:    agent.MaxTokens,
 		History:      history,
 		Tools:        s.deps.ToolCatalog.Catalog(),
+		ServerTools:  assistantServerTools(providerKind),
 		Auth: agentloop.AuthContext{
 			UserID:    userID.String(),
 			ProjectID: projectIDStr,
@@ -611,7 +613,7 @@ func (s *assistantService) autoGenerateSessionTitleIfNeeded(bgCtx context.Contex
 				},
 			},
 			Temperature: ptrFloat64(0.5),
-			MaxTokens:    ptrInt(30),
+			MaxTokens:   ptrInt(30),
 		}
 
 		resp, err := client.Chat(ctx, llmReq)
@@ -657,3 +659,30 @@ func (s *assistantService) autoGenerateSessionTitleIfNeeded(bgCtx context.Contex
 
 func ptrFloat64(f float64) *float64 { return &f }
 func ptrInt(i int) *int             { return &i }
+
+// assistantServerTools — server-side тулы провайдера для ассистента. OpenRouter
+// исполняет web_search сам и встраивает результаты в ответ (аннотации-источники
+// дописывает oaicompat-клиент); ~$0.005/поиск, модель ищет только когда сочтёт
+// нужным. Другие провайдеры падают на неизвестном type — для них пусто.
+func assistantServerTools(providerKind string) []map[string]any {
+	if providerKind != string(llm.ProviderOpenRouter) {
+		return nil
+	}
+	return []map[string]any{{"type": "openrouter:web_search"}}
+}
+
+// resolveAssistantBasePrompt — выбор базового промпта ассистента: per-project
+// промпт (снапшот при создании проекта, правится в настройках проекта) целиком
+// ЗАМЕЩАЕТ user-промпт; NULL/пустой — fallback на user-промпт (legacy-проекты
+// и сброс). Наследование копией: правка любого уровня не трогает источник.
+func resolveAssistantBasePrompt(agentPrompt *string, project *models.Project) string {
+	if project != nil && project.AssistantPrompt != nil {
+		if p := strings.TrimSpace(*project.AssistantPrompt); p != "" {
+			return p
+		}
+	}
+	if agentPrompt != nil {
+		return strings.TrimSpace(*agentPrompt)
+	}
+	return ""
+}

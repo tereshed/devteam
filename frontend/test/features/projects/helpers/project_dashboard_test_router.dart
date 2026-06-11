@@ -27,11 +27,13 @@ final GlobalKey<NavigatorState> kTestShellSettingsKey =
 GoRouter buildProjectDashboardTestRouter({
   required String initialLocation,
   List<RouteBase> routesBeforeProjects = const [],
+  GoRouterRedirect? redirect,
 }) {
   return GoRouter(
     initialLocation: initialLocation,
-    redirect: (_, GoRouterState state) =>
-        projectDashboardUnknownShellBranchRedirect(state),
+    redirect: redirect ??
+        (_, GoRouterState state) =>
+            projectDashboardUnknownShellBranchRedirect(state),
     routes: [
       ...routesBeforeProjects,
       GoRoute(

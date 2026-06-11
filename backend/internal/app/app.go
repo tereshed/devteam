@@ -340,9 +340,12 @@ func Run(role Role) {
 		}
 	})
 
-	// LLM
+	// LLM. Per-user ключи (блок «Ключи» в UI, user_llm_credentials) приоритетнее
+	// env-ключей процесса для всех LLM-вызовов — llmService получает llmCredSvc.
+	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
+	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
 	llmFactory := factory.New()
-	llmService := service.NewLLMService(llmFactory, cfg.LLM, llmRepo, llmModelRepo)
+	llmService := service.NewLLMService(llmFactory, cfg.LLM, llmRepo, llmModelRepo, llmCredSvc)
 
 	// Workflow Engine
 	workflowEngine := service.NewWorkflowEngine(workflowRepo, agentRepo, llmService)
@@ -433,10 +436,7 @@ func Run(role Role) {
 	}
 	antigravityAuthSvc = service.WithAntigravityEventBus(antigravityAuthSvc, eventBus)
 
-	// User-per-credential service (нужен резолверу аутентификации sandbox).
-	llmCredRepo := repository.NewUserLlmCredentialRepository(db)
-	llmCredSvc := service.NewUserLlmCredentialService(llmCredRepo, txManager, encryptor, slog.Default())
-
+	// User-per-credential service создан выше (вместе с llmService).
 	llmHandler := handler.NewLLMHandler(llmService, llmCredSvc, claudeCodeAuthSvc, antigravityAuthSvc, cfg)
 
 	// Phase 4 §4.3 — wire llmCredRepo for provider validation.

@@ -624,6 +624,39 @@ func newBaseAgent(name string, role models.AgentRole, kind models.AgentExecution
 // CreateDefaultAssistant creates a per-user assistant with system prompt from
 // agent_role_prompts and a scoped MCP API key. LLM settings (provider_kind,
 // model) are left NULL — user configures them via UI.
+// EnsureAssistantAgent — user-агент ассистента текущего пользователя; при
+// отсутствии провиженится из дефолтного role-промпта (та же логика, что в
+// чате ассистента) — нужен вкладке настроек, открытой до первого чата.
+func (s *AgentService) EnsureAssistantAgent(ctx context.Context, userID uuid.UUID) (*models.Agent, error) {
+	agent, err := s.agentRepo.GetByUserAndRole(ctx, userID, string(models.AgentRoleAssistant))
+	if err == nil {
+		return agent, nil
+	}
+	if !errors.Is(err, repository.ErrAgentNotFound) {
+		return nil, err
+	}
+	if err := s.CreateDefaultAssistant(ctx, userID); err != nil {
+		return nil, err
+	}
+	return s.agentRepo.GetByUserAndRole(ctx, userID, string(models.AgentRoleAssistant))
+}
+
+// ResolveAssistantPromptForUser — действующий промпт ассистента пользователя
+// для наследования копией (copy-on-create проекта): user-агент → дефолт роли.
+// Пустая строка — только если нет ни того, ни другого (вызывающий не наследует).
+func (s *AgentService) ResolveAssistantPromptForUser(ctx context.Context, userID uuid.UUID) string {
+	if agent, err := s.agentRepo.GetByUserAndRole(ctx, userID, string(models.AgentRoleAssistant)); err == nil &&
+		agent.SystemPrompt != nil && strings.TrimSpace(*agent.SystemPrompt) != "" {
+		return *agent.SystemPrompt
+	}
+	if s.rolePromptRepo != nil {
+		if prompt, err := s.rolePromptRepo.GetByRole(ctx, string(models.AgentRoleAssistant)); err == nil {
+			return prompt.Content
+		}
+	}
+	return ""
+}
+
 func (s *AgentService) CreateDefaultAssistant(ctx context.Context, userID uuid.UUID) error {
 	if s.rolePromptRepo == nil {
 		return fmt.Errorf("AgentService: rolePromptRepo is required for CreateDefaultAssistant")

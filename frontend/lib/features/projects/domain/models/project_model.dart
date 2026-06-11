@@ -61,6 +61,12 @@ abstract class ProjectModel with _$ProjectModel {
     @Default(<ProjectRepositoryModel>[])
     List<ProjectRepositoryModel> repositories,
 
+    /// Промпт ассистента уровня проекта (снапшот при создании проекта,
+    /// редактируется независимо). null — legacy/сброшен → используется
+    /// user-промпт ассистента.
+    @JsonKey(name: 'assistant_prompt')
+    String? assistantPrompt,
+
     /// Дата создания
     @JsonKey(name: 'created_at')
     required DateTime createdAt,

@@ -525,6 +525,15 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 		UserID:                     userID,
 	}
 
+	// Наследование промпта ассистента копией (role → user → project): снапшот
+	// действующего промпта владельца на момент создания. Дальше правится только
+	// на уровне проекта, исходные копии не затрагиваются.
+	if s.agentService != nil {
+		if inherited := s.agentService.ResolveAssistantPromptForUser(ctx, userID); inherited != "" {
+			project.AssistantPrompt = &inherited
+		}
+	}
+
 	if provider != nil && s.importDir != "" {
 		project.Status = models.ProjectStatusIndexing
 	}
@@ -937,6 +946,16 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 	}
 	if req.Description != nil {
 		project.Description = *req.Description
+	}
+	if req.AssistantPrompt != nil {
+		// Пустая строка = сброс per-project промпта → рантайм вернётся к
+		// user-промпту ассистента (NULL в БД).
+		if trimmed := strings.TrimSpace(*req.AssistantPrompt); trimmed == "" {
+			project.AssistantPrompt = nil
+		} else {
+			v := *req.AssistantPrompt
+			project.AssistantPrompt = &v
+		}
 	}
 	if req.GitProvider != nil {
 		gp := models.GitProvider(*req.GitProvider)

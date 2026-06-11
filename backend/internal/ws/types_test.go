@@ -198,3 +198,22 @@ func BenchmarkMarshal(b *testing.B) {
 		_, _ = MarshalAgentLog(projectID, data)
 	}
 }
+
+func TestMarshalHeartbeat_Shape(t *testing.T) {
+	raw, err := MarshalHeartbeat()
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(raw, &m))
+
+	assert.Equal(t, string(MessageTypeHeartbeat), m["type"])
+	assert.EqualValues(t, SchemaVersion, m["v"])
+	// ts обязателен и парсится как RFC3339 — контракт фронта (websocket_events.dart).
+	tsStr, ok := m["ts"].(string)
+	require.True(t, ok, "ts must be a string")
+	assert.NotEmpty(t, tsStr)
+	// Никакого scope: кадр транспортный, контроллерам не доставляется.
+	assert.NotContains(t, m, "project_id")
+	assert.NotContains(t, m, "user_id")
+	assert.NotContains(t, m, "data")
+}

@@ -521,6 +521,14 @@ func (m *mockAgentRepository) GetByName(ctx context.Context, name string) (*mode
 	return args.Get(0).(*models.Agent), args.Error(1)
 }
 
+func (m *mockAgentRepository) GetByUserAndRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
+	args := m.Called(ctx, userID, role)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
 func (m *mockAgentRepository) List(ctx context.Context, filter repository.AgentFilter) ([]models.Agent, int64, error) {
 	args := m.Called(ctx, filter)
 	var list []models.Agent

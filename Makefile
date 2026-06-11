@@ -291,18 +291,21 @@ frontend-test-ws:
 	flutter test --platform chrome test/core/api/websocket_service_test.dart test/core/api/websocket_events_test.dart test/core/api/websocket_service_web_test.dart
 
 # === Миграции Базы Данных (YugabyteDB) ===
+# --no-deps обязателен: иначе `run app` поднимает зависимость migrate (one-shot
+# goose.Up из ЗАПЕЧЁННЫХ в образ миграций), которая вклинивается между ручными
+# down/up и перетирает их результат версией из устаревшего образа.
 migrate-create:
 	@read -p "Enter migration name: " name; \
-	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" create $$name sql
+	docker-compose -f $(COMPOSE_FILE) run --rm --no-deps app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" create $$name sql
 
 migrate-up:
-	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" up
+	docker-compose -f $(COMPOSE_FILE) run --rm --no-deps app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" up
 
 migrate-down:
-	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" down
+	docker-compose -f $(COMPOSE_FILE) run --rm --no-deps app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" down
 
 migrate-status:
-	docker-compose -f $(COMPOSE_FILE) run --rm app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" status
+	docker-compose -f $(COMPOSE_FILE) run --rm --no-deps app goose -dir /root/db/migrations postgres "host=yugabytedb port=5433 user=yugabyte password=yugabyte dbname=yugabyte sslmode=disable" status
 
 # === Frontend: Подготовка окружения ===
 frontend-setup:

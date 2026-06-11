@@ -6,10 +6,12 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/assistant/presentation/controllers/assistant_chat_controller.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_confirm_dialog.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_message_bubble.dart';
+import 'package:frontend/features/assistant/presentation/widgets/assistant_scope_badge.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_session_picker.dart';
 import 'package:frontend/features/assistant/presentation/widgets/assistant_tool_call_card.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_input.dart';
 import 'package:frontend/features/onboarding/data/my_agents_providers.dart';
+import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:go_router/go_router.dart';
 
 /// Главная панель чата с ассистентом (Sprint 21 §10 frontend).
@@ -171,6 +173,27 @@ class _AssistantChatPanelState extends ConsumerState<AssistantChatPanel> {
       },
     );
 
+    // Смена активного проекта (вход/выход/переключение) → ревалидируем scope
+    // сессии. Контроллер keepAlive может не пересоздаться, поэтому полагаться
+    // только на сброс currentSessionId нельзя: ensureSession сам проверит scope
+    // текущей сессии и при mismatch переподберёт правильную (инцидент: чат
+    // оставался глобальным внутри проекта).
+    ref.listen(
+      activeProjectIdProvider,
+      (prev, next) {
+        if (prev == next) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(
+            ref
+                .read(assistantChatControllerProvider.notifier)
+                .ensureSession()
+                .catchError((Object _) => ''),
+          );
+        });
+      },
+    );
+
     final groups = groupAssistantMessages(state.messages);
 
     return Column(
@@ -191,6 +214,15 @@ class _AssistantChatPanelState extends ConsumerState<AssistantChatPanel> {
                 icon: const Icon(Icons.add_comment_outlined),
               ),
             ],
+          ),
+        ),
+        // Scope-бейдж: глобальный чат или имя проекта — переключение scope
+        // при навигации видно явно, а не выглядит потерей контекста.
+        const Padding(
+          padding: EdgeInsets.fromLTRB(12, 4, 12, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: AssistantScopeBadge(),
           ),
         ),
         if (state.isBusy)

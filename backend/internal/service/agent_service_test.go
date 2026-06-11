@@ -109,6 +109,17 @@ func (r *memAgentRepo) GetByName(_ context.Context, name string) (*models.Agent,
 	cp := *a
 	return &cp, nil
 }
+func (r *memAgentRepo) GetByUserAndRole(_ context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, a := range r.byID {
+		if a.UserID != nil && *a.UserID == userID && string(a.Role) == role {
+			cp := *a
+			return &cp, nil
+		}
+	}
+	return nil, repository.ErrAgentNotFound
+}
 func (r *memAgentRepo) List(_ context.Context, _ repository.AgentFilter) ([]models.Agent, int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

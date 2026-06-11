@@ -320,8 +320,15 @@ class ChatController extends _$ChatController {
         return;
       case WsClientEventSubprotocolMismatch():
       case WsClientEventParseError():
+        _clearRealtimeTransientFailure();
+        return;
       case WsClientEventConnected():
         _clearRealtimeTransientFailure();
+        // (Ре)коннект = возможное окно потерянных событий (Hub без replay) —
+        // реконсилируем историю REST'ом; до начальной загрузки рефетч избыточен.
+        if (state.hasValue) {
+          _requestWsOverflowRefresh();
+        }
         return;
       case WsClientEventServer(:final event):
         _clearRealtimeTransientFailure();

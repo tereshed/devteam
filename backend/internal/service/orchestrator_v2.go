@@ -694,6 +694,17 @@ func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *m
 		return RouterState{}, fmt.Errorf("load project repositories: %w", err)
 	}
 
+	// Владелец проекта — его per-user ключи LLM (user_llm_credentials)
+	// приоритетнее env при вызове Router-LLM.
+	var owner struct{ UserID uuid.UUID }
+	if err := tx.WithContext(ctx).
+		Model(&models.Project{}).
+		Select("user_id").
+		Where("id = ?", task.ProjectID).
+		Take(&owner).Error; err != nil {
+		return RouterState{}, fmt.Errorf("load project owner: %w", err)
+	}
+
 	// Недавние Router-решения — память о прошлых шагах (кого уже запускали). Грузим последние
 	// recentDecisionsLimit (DESC), затем разворачиваем в ASC для хронологичного рендера. Тот же
 	// срез использует backstop повторных назначений (см. detectRepeatedDispatch).
@@ -720,6 +731,7 @@ func (o *Orchestrator) loadRouterState(ctx context.Context, tx *gorm.DB, task *m
 		MaxSteps:        o.cfg.MaxStepsPerTask,
 		Repositories:    repos,
 		RecentDecisions: recent,
+		OwnerUserID:     owner.UserID.String(),
 	}, nil
 }
 

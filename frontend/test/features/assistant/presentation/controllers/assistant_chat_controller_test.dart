@@ -16,6 +16,7 @@ import 'package:frontend/features/assistant/data/assistant_repository.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/assistant/domain/assistant_session_model.dart';
 import 'package:frontend/features/assistant/presentation/controllers/assistant_chat_controller.dart';
+import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:fake_async/fake_async.dart';
@@ -37,10 +38,11 @@ void main() {
   late StreamController<WsClientEvent> wsEvents;
   late ProviderContainer container;
 
-  AssistantSessionModel session({String? id, bool busy = false}) {
+  AssistantSessionModel session({String? id, bool busy = false, String? projectId}) {
     return AssistantSessionModel(
       id: id ?? sessionId,
       userId: userId,
+      projectId: projectId,
       status: 'active',
       busy: busy,
       createdAt: DateTime.utc(2026, 1, 1),
@@ -686,6 +688,135 @@ void main() {
         expect(st().pendingConfirm!.arguments, const {'projectId': 'p1'});
         expect(st().pendingConfirm!.summary, 'I need to delete the project.');
       });
+    });
+  });
+  group('AssistantChatController scope guard', () {
+    const projectId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+
+    void stubMessagesEmpty() {
+      when(mockRepo.getMessages(
+        any,
+        limit: anyNamed('limit'),
+        beforeCreatedAt: anyNamed('beforeCreatedAt'),
+        beforeId: anyNamed('beforeId'),
+        cancelToken: anyNamed('cancelToken'),
+      )).thenAnswer((_) async => const AssistantMessageListResponse(
+            messages: [],
+            limit: 30,
+            hasMore: false,
+          ));
+    }
+
+    test(
+        'глобальная сессия не становится текущей внутри проекта — '
+        'подменяется свежей проектной (инцидент «о чём у нас проект»)',
+        () async {
+      container.read(activeProjectIdProvider.notifier).set(projectId);
+      stubMessagesEmpty();
+      // Пользователь (или восстановление состояния) выбирает ГЛОБАЛЬНУЮ сессию.
+      when(mockRepo.getSession(otherSessionId,
+              cancelToken: anyNamed('cancelToken')))
+          .thenAnswer((_) async => session(id: otherSessionId));
+      // Гард перечитает список сессий активного scope.
+      when(mockRepo.listSessions(
+        limit: anyNamed('limit'),
+        projectId: projectId,
+        includeArchived: anyNamed('includeArchived'),
+        cancelToken: anyNamed('cancelToken'),
+      )).thenAnswer((_) async => AssistantSessionListResponse(
+            sessions: [session(projectId: projectId)],
+          ));
+
+      await ctrl().selectSession(otherSessionId);
+
+      expect(st().currentSessionId, sessionId,
+          reason: 'глобальная сессия должна быть подменена проектной');
+      expect(st().session?.projectId, projectId);
+    });
+
+    test('сессия правильного scope выбирается без подмены', () async {
+      container.read(activeProjectIdProvider.notifier).set(projectId);
+      stubMessagesEmpty();
+      when(mockRepo.getSession(otherSessionId,
+              cancelToken: anyNamed('cancelToken')))
+          .thenAnswer(
+              (_) async => session(id: otherSessionId, projectId: projectId));
+
+      await ctrl().selectSession(otherSessionId);
+
+      expect(st().currentSessionId, otherSessionId);
+      verifyNever(mockRepo.createSession(
+        projectId: anyNamed('projectId'),
+        cancelToken: anyNamed('cancelToken'),
+      ));
+    });
+
+    test(
+        'ensureSession при активном проекте переподбирает scope, если текущая '
+        'сессия глобальная (keepAlive контроллер не пересоздался)',
+        () async {
+      container.read(activeProjectIdProvider.notifier).set(projectId);
+      stubMessagesEmpty();
+      // Сначала «приклеиваем» глобальную сессию как текущую (как будто осталась
+      // с глобального экрана и контроллер не сбросился).
+      when(mockRepo.getSession(otherSessionId,
+              cancelToken: anyNamed('cancelToken')))
+          .thenAnswer((_) async => session(id: otherSessionId)); // projectId null
+      // selectSession сам сработает guard'ом — поэтому стабим listSessions так,
+      // чтобы он НЕ нашёл проектной (создаст новую с тем же id), затем проверим
+      // ensureSession отдельно: сэмулируем «приклеенную» глобальную напрямую.
+      // Проще: выставим состояние через ensureSession при projectId=null, затем
+      // меняем активный проект и зовём ensureSession снова.
+      container.read(activeProjectIdProvider.notifier).set(null);
+      when(mockRepo.listSessions(
+        limit: anyNamed('limit'),
+        projectId: null,
+        includeArchived: anyNamed('includeArchived'),
+        cancelToken: anyNamed('cancelToken'),
+      )).thenAnswer((_) async =>
+          AssistantSessionListResponse(sessions: [session(id: otherSessionId)]));
+      final globalId = await ctrl().ensureSession();
+      expect(globalId, otherSessionId);
+      expect(st().session?.projectId, isNull);
+
+      // Теперь активный проект — :id. ensureSession должен НЕ переиспользовать
+      // глобальную (early-return), а переподобрать проектную.
+      container.read(activeProjectIdProvider.notifier).set(projectId);
+      when(mockRepo.listSessions(
+        limit: anyNamed('limit'),
+        projectId: projectId,
+        includeArchived: anyNamed('includeArchived'),
+        cancelToken: anyNamed('cancelToken'),
+      )).thenAnswer((_) async =>
+          AssistantSessionListResponse(sessions: [session(projectId: projectId)]));
+
+      final scopedId = await ctrl().ensureSession();
+      expect(scopedId, sessionId,
+          reason: 'глобальная сессия не должна reuse-иться внутри проекта');
+      expect(st().session?.projectId, projectId);
+    });
+
+    test('внутри проекта без проектных сессий гард создаёт новую', () async {
+      container.read(activeProjectIdProvider.notifier).set(projectId);
+      stubMessagesEmpty();
+      when(mockRepo.getSession(otherSessionId,
+              cancelToken: anyNamed('cancelToken')))
+          .thenAnswer((_) async => session(id: otherSessionId));
+      when(mockRepo.listSessions(
+        limit: anyNamed('limit'),
+        projectId: projectId,
+        includeArchived: anyNamed('includeArchived'),
+        cancelToken: anyNamed('cancelToken'),
+      )).thenAnswer((_) async => const AssistantSessionListResponse());
+      when(mockRepo.createSession(
+        projectId: projectId,
+        cancelToken: anyNamed('cancelToken'),
+      )).thenAnswer((_) async => session(projectId: projectId));
+
+      await ctrl().selectSession(otherSessionId);
+
+      expect(st().currentSessionId, sessionId);
+      expect(st().session?.projectId, projectId);
     });
   });
 }

@@ -160,6 +160,14 @@ func (m *MockAgentRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID
 	return args.Get(0).(*models.Agent), args.Error(1)
 }
 
+func (m *MockAgentRepository) GetByUserAndRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
+	args := m.Called(ctx, userID, role)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Agent), args.Error(1)
+}
+
 func (m *MockAgentRepository) GetByName(ctx context.Context, name string) (*models.Agent, error) {
 	args := m.Called(ctx, name)
 	if args.Get(0) == nil {

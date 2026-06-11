@@ -732,6 +732,11 @@ definitions:
           RedirectURI — куда провайдер вернёт пользователя после consent. Должен совпадать
           с client_secret-конфигом OAuth App у провайдера.
         type: string
+      scopes:
+        description: |-
+          Scopes — OAuth-scopes для self-hosted GitLab (через пробел). Должны быть подмножеством
+          scope, включённых в OAuth-приложении на инстансе. Пусто → дефолт из конфига бэкенда.
+        type: string
     required:
     - redirect_uri
     type: object
@@ -1019,6 +1024,11 @@ definitions:
     type: object
   dto.ProjectResponse:
     properties:
+      assistant_prompt:
+        description: |-
+          AssistantPrompt — per-project промпт ассистента (наследуется копией при
+          создании проекта; nil — legacy/сброшен → используется user-промпт).
+        type: string
       created_at:
         type: string
       description:
@@ -1416,6 +1426,11 @@ definitions:
     type: object
   dto.UpdateProjectRequest:
     properties:
+      assistant_prompt:
+        description: |-
+          AssistantPrompt — per-project промпт ассистента (см. models.Project).
+          Пустая строка → сброс в NULL (рантайм вернётся к user-промпту).
+        type: string
       clear_settings:
         type: boolean
       clear_tech_stack:
@@ -1519,6 +1534,8 @@ definitions:
       priority:
         type: string
       status:
+        type: string
+      team_id:
         type: string
       title:
         type: string
@@ -1936,6 +1953,19 @@ definitions:
         type: string
       provider:
         $ref: '#/definitions/llm.ProviderType'
+      server_tools:
+        description: |-
+          ServerTools — провайдер-специфичные server-side тулы, исполняемые самим
+          провайдером (например {"type": "openrouter:web_search"} — OpenRouter сам
+          выполняет поиск и интегрирует результаты в ответ). Сериализуются в массив
+          tools как есть, в дополнение к function-тулам из Tools; tool_call для них
+          НЕ приходит — результат уже в тексте ответа (+ annotations/url_citation).
+          Поддерживается только oaicompat-провайдерами, понимающими нестандартный
+          type; для остальных оставляй пустым.
+        items:
+          additionalProperties: {}
+          type: object
+        type: array
       structured_output_schema:
         description: JSON Schema for structured output
         type: object
@@ -2350,6 +2380,13 @@ definitions:
     - MCPTransportSSE
   models.Project:
     properties:
+      assistant_prompt:
+        description: |-
+          AssistantPrompt — per-project промпт ассистента: снапшот промпта ассистента
+          владельца на момент создания проекта (наследование role → user → project,
+          копии редактируются независимо). NULL — legacy/сброшен → рантайм использует
+          user-промпт ассистента.
+        type: string
       created_at:
         type: string
       description:
@@ -5237,6 +5274,28 @@ paths:
       summary: Update my agent
       tags:
       - my-agents
+  /me/assistant:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get my assistant agent (provision if missing)
+      tags:
+      - my-agents
   /me/llm-credentials:
     get:
       description: Возвращает masked_preview по каждому провайдеру (без has_key, без
@@ -7173,6 +7232,40 @@ paths:
       summary: Коррекция задачи
       tags:
       - tasks
+  /tasks/{id}/events:
+    get:
+      description: Все события (включая payload).
+      parameters:
+      - description: Task UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: no access to task
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List task events (debug/UI)
+      tags:
+      - orchestration-v2
   /tasks/{id}/messages:
     get:
       description: Возвращает пагинированный список сообщений задачи с фильтрацией

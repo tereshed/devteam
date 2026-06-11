@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/api/websocket_events.dart';
 import 'package:frontend/core/api/websocket_providers.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
+import 'package:frontend/core/routing/root_router_redirect.dart';
+import 'package:frontend/features/auth/domain/models/user_model.dart';
+import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/chat/data/chat_providers.dart';
 import 'package:frontend/features/chat/domain/models.dart';
 import 'package:frontend/features/chat/domain/requests.dart';
@@ -31,6 +34,13 @@ class _StubTaskListForRedirect extends TaskListController {
 
   @override
   FutureOr<TaskListState> build({required String projectId}) => _seed;
+}
+
+/// Залогиненный auth-стаб для тестов с [rootRouterRedirect] (authGuard внутри).
+class _LoggedInAuthForRouting extends AuthController {
+  @override
+  Future<UserModel?> build() async =>
+      const UserModel(id: 'u1', email: 'a@b.c', role: 'user');
 }
 
 /// UUID беседы для smoke-маршрута `/projects/:id/chat/:conversationId`.
@@ -451,6 +461,76 @@ void main() {
         '/projects/$kTestProjectUuid/tasks',
       );
       expect(router.state.uri.queryParameters['q'], 'y');
+    },
+  );
+  testWidgets(
+    'goBranch «Дашборд» из tasks сохраняет project scope: URL и activeProjectId '
+    '(инцидент: чат ассистента переключался на глобальный)',
+    (tester) async {
+      final ws = MockWebSocketService();
+      final wsEvents = StreamController<WsClientEvent>.broadcast();
+      when(ws.events).thenAnswer((_) => wsEvents.stream);
+      when(ws.connect(any)).thenAnswer((_) => wsEvents.stream);
+      addTearDown(() async {
+        await wsEvents.close();
+      });
+
+      final seed = makeTaskListStateFixture(
+        isLoadingInitial: false,
+        items: [],
+        total: 0,
+      );
+
+      final router = buildProjectDashboardTestRouter(
+        initialLocation: '/projects/$kTestProjectUuid/tasks',
+        redirect: rootRouterRedirect,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith(_LoggedInAuthForRouting.new),
+            projectProvider(kTestProjectUuid).overrideWith(
+              (ref) async => makeProject(id: kTestProjectUuid, name: 'Q'),
+            ),
+            taskListControllerProvider.overrideWith(
+              () => _StubTaskListForRedirect(seed),
+            ),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+          ),
+        ),
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+      );
+      await container.read(authControllerProvider.future);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(router.state.uri.path, '/projects/$kTestProjectUuid/tasks');
+      expect(container.read(activeProjectIdProvider), kTestProjectUuid,
+          reason: 'на вкладке tasks scope должен быть проектным');
+
+      // Клик по «Дашборд» в рейке проекта (goBranch(0)).
+      await tester.tap(find.byIcon(Icons.dashboard_outlined));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(router.state.uri.path, '/projects/$kTestProjectUuid/chat',
+          reason: 'Дашборд проекта живёт под /projects/:id/chat');
+      expect(container.read(activeProjectIdProvider), kTestProjectUuid,
+          reason:
+              'переход на Дашборд НЕ должен сбрасывать project scope в null — '
+              'иначе чат ассистента переключается на глобальную сессию');
     },
   );
 }

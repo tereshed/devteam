@@ -1430,6 +1430,31 @@ void main() {
         expect(getTaskCalls, 3);
       });
 
+      test('T6b connected после начальной загрузки → REST reconcile (окно реконнекта)', () async {
+        stubList();
+        var getTaskCalls = 0;
+        when(mockRepo.getTask(tid, cancelToken: anyNamed('cancelToken')))
+            .thenAnswer((_) async {
+          getTaskCalls++;
+          return task();
+        });
+        stubMessages(
+          const TaskMessageListResponse(messages: [], total: 0, limit: 50, offset: 0),
+        );
+
+        listenDetailAlive();
+        container.read(taskDetailControllerProvider(projectId: pid, taskId: tid).notifier);
+        await waitDetail();
+        expect(getTaskCalls, 1);
+
+        // Реконнект: Hub не делает replay, события окна могли потеряться —
+        // контроллер обязан реконсилироваться REST'ом.
+        wsEvents.add(const WsClientEvent.connected());
+        await Future<void>.delayed(Duration.zero);
+        await waitDetail();
+        expect(getTaskCalls, 2);
+      });
+
       test('T7 after dispose: stream subscription cancelled, getTask not called again', () async {
         stubList();
         var getTaskCalls = 0;

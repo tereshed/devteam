@@ -5,6 +5,8 @@ import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
+import 'package:frontend/features/projects/domain/requests.dart';
+import 'package:frontend/features/settings/presentation/widgets/assistant_prompt_editor.dart';
 import 'package:frontend/features/projects/presentation/controllers/project_settings_controller.dart';
 import 'package:frontend/features/projects/presentation/utils/project_settings_update_patch.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_git_account_section.dart';
@@ -400,7 +402,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
           ),
         Expanded(
           child: DefaultTabController(
-            length: 3,
+            length: 4,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -410,6 +412,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                     Tab(text: l10n.projectSettingsTabGeneral),
                     Tab(text: l10n.projectSettingsTabVariables),
                     Tab(text: AppLocalizations.of(context)!.webhooksTitle),
+                    Tab(text: AppLocalizations.of(context)!.assistantPromptProjectTabTitle),
                   ],
                 ),
                 Expanded(
@@ -505,6 +508,45 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         child: WebhooksListSection(projectId: widget.projectId),
+                      ),
+                      SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        child: AssistantPromptEditor(
+                          // key по наличию снапшота: после сохранения/сброса
+                          // editor пересоздаётся с актуальным initialValue.
+                          key: ValueKey(
+                            'assistant-prompt-${project.assistantPrompt != null}-'
+                            '${project.assistantPrompt?.length ?? 0}',
+                          ),
+                          heading: l10n.assistantPromptProjectHeading,
+                          hint: l10n.assistantPromptProjectHint,
+                          initialValue: project.assistantPrompt ?? '',
+                          inheritedNotice: project.assistantPrompt == null
+                              ? l10n.assistantPromptInherited
+                              : null,
+                          onSave: (value) async {
+                            await ref
+                                .read(projectSettingsControllerProvider(
+                                        widget.projectId)
+                                    .notifier)
+                                .save(UpdateProjectRequest(
+                                    assistantPrompt: value));
+                            ref.invalidate(projectProvider(widget.projectId));
+                          },
+                          onReset: project.assistantPrompt == null
+                              ? null
+                              : () async {
+                                  await ref
+                                      .read(projectSettingsControllerProvider(
+                                              widget.projectId)
+                                          .notifier)
+                                      .save(const UpdateProjectRequest(
+                                          assistantPrompt: ''));
+                                  ref.invalidate(
+                                      projectProvider(widget.projectId));
+                                },
+                        ),
                       ),
                     ],
                   ),

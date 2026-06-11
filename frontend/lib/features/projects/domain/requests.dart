@@ -110,6 +110,10 @@ abstract class UpdateProjectRequest with _$UpdateProjectRequest {
     bool? clearTechStack,
     @JsonKey(name: 'clear_settings')
     bool? clearSettings,
+    /// Промпт ассистента проекта. null (includeIfNull:false) — не менять;
+    /// пустая строка "" — сброс к user-промпту.
+    @JsonKey(name: 'assistant_prompt')
+    String? assistantPrompt,
   }) = _UpdateProjectRequest;
 
   const UpdateProjectRequest._();

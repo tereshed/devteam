@@ -39,6 +39,11 @@ type ExecutionInput struct {
 	AgentName string
 	Role      string
 
+	// OwnerUserID — владелец проекта (uuid-строка). LLM-executor пробрасывает его
+	// в llm.Request: ключи провайдеров из блока пользователя (user_llm_credentials)
+	// приоритетнее env-ключей процесса. Пусто → поведение как раньше (env).
+	OwnerUserID string
+
 	Model string
 	// Provider — kind LLM-провайдера (openai/anthropic/openrouter/...).
 	// Заполняется ContextBuilder'ом из agent.ProviderKind. Пустая строка →

@@ -197,6 +197,9 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				meAgents.GET("/:id", deps.AgentMyHandler.Get)
 				meAgents.PUT("/:id", deps.AgentMyHandler.Update)
 			}
+			// Вкладка настроек «Ассистент»: получить (и при отсутствии спровижить)
+			// своего ассистента без знания его id.
+			api.GET("/me/assistant", authMW, deps.AgentMyHandler.GetAssistant)
 		}
 
 		// Каталог tool_definitions (тот же auth, что у /projects)

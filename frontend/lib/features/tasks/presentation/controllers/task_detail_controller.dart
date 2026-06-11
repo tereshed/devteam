@@ -273,8 +273,16 @@ class TaskDetailController extends _$TaskDetailController {
         return;
       case WsClientEventSubprotocolMismatch():
       case WsClientEventParseError():
+        _clearRealtimeTransientFailure();
+        return;
       case WsClientEventConnected():
         _clearRealtimeTransientFailure();
+        // (Ре)коннект = возможное окно потерянных событий: Hub не делает replay,
+        // а состояние живёт на WS-патчах — реконсилируемся REST'ом. До завершения
+        // начальной загрузки (state без value) рефетч избыточен.
+        if (state.hasValue) {
+          requestRestRefetch();
+        }
         return;
       case WsClientEventServer(:final event):
         // Как [ChatController]: server-кадр сбрасывает transient до фильтра projectId

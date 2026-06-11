@@ -286,7 +286,7 @@ func TestExecutor_ToolCallWithEmptyCatalog_Failed(t *testing.T) {
 	}}}
 	exec := NewExecutor(Config{MaxIterations: 3}, nil)
 	res, err := exec.Run(context.Background(), RunRequest{
-		Client: client,
+		Client:  client,
 		History: []Message{{Role: llm.RoleUser, Content: "?"}},
 	})
 	if err != nil {

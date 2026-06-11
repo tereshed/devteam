@@ -1,8 +1,6 @@
 import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/routing/auth_guard.dart';
 import 'package:frontend/core/routing/project_dashboard_routes.dart';
-import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:go_router/go_router.dart';
 
 /// Композиция корневого [GoRouter.redirect] (единый слот [GoRouter.redirect]):
@@ -11,27 +9,11 @@ import 'package:go_router/go_router.dart';
 /// 2) нормализация неизвестного сегмента дашборда;
 /// 3) далее — другие глобальные правила через явную цепочку (`??` / последовательные `if`).
 String? rootRouterRedirect(BuildContext context, GoRouterState state) {
-  // Синхронизируем activeProjectIdProvider с текущим маршрутом.
-  final segments = state.uri.pathSegments;
-  String? projectId;
-  if (segments.length >= 2 && segments[0] == 'projects' && segments[1] != 'new') {
-    projectId = segments[1];
-  }
-
-  final container = ProviderScope.containerOf(context);
-  if (container.read(activeProjectIdProvider) != projectId) {
-    // Используем microtask, чтобы не вызывать обновление провайдера прямо во время построения роутера,
-    // если redirect вызывается в рамках сборки дерева.
-    Future.microtask(() {
-      try {
-        if (container.read(activeProjectIdProvider) != projectId) {
-          container.read(activeProjectIdProvider.notifier).set(projectId);
-        }
-      } catch (_) {
-        // Игнорируем, если контейнер уже уничтожен (например, в конце тестов)
-      }
-    });
-  }
+  // activeProjectId НЕ синхронизируем здесь: разбор URL у дефолтной ветки
+  // StatefulShellRoute (Дашборд = chat) теряет :id (matchedLocation/uri = /projects),
+  // из-за чего scope ошибочно обнулялся (ассистент уходил в глобальный чат).
+  // Единственный авторитетный владелец — ProjectDashboardScreen: он знает id из
+  // pathParameters, ставит при mount/смене и сбрасывает при dispose (уход из проекта).
 
   // Сравнение префикса регистрозависимо (RFC 3986 / go_router); `/Projects/...` не матчится.
   final path = state.uri.path;

@@ -218,6 +218,13 @@ type RunRequest struct {
 	// LLM в этом случае трактуется как ошибка модели — Executor вернёт Failed.
 	Tools []Tool
 
+	// ServerTools — провайдер-специфичные server-side тулы (например
+	// {"type": "openrouter:web_search"}): исполняются самим провайдером,
+	// tool_call не приходит, результат уже в тексте ответа. Прокидываются
+	// в llm.Request.ServerTools как есть. Только для провайдеров, понимающих
+	// нестандартный type (OpenRouter); для остальных оставлять nil.
+	ServerTools []map[string]any
+
 	// Auth — пробрасывается в каждый ToolHandler.Invoke (§3.3).
 	Auth AuthContext
 

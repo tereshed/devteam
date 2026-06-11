@@ -48,8 +48,10 @@ func (e *LLMAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (*Exe
 		// llmService.Generate уходил в defaultProvider (openai) независимо
 		// от того, что записано у агента в БД. Пустая строка остаётся
 		// «не задано» — backward-compat для тестов без явного provider'а.
-		Provider:     llm.ProviderType(in.Provider),
-		Model:        in.Model,
+		Provider: llm.ProviderType(in.Provider),
+		Model:    in.Model,
+		// Ключ владельца проекта (user_llm_credentials) приоритетнее env-ключа.
+		OwnerUserID:  in.OwnerUserID,
 		SystemPrompt: in.PromptSystem,
 		Messages: []llm.Message{
 			{

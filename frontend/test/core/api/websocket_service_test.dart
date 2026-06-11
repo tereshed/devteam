@@ -300,6 +300,57 @@ void main() {
       });
     });
 
+    test('heartbeat-кадры перевооружают idle: 3 минуты тишины БЕЗ reconnect', () {
+      FakeAsync().run((async) {
+        var factories = 0;
+        late _FakeWebSocket fake;
+        final svc = WebSocketService(
+          baseUrl: 'http://localhost:8080/api/v1',
+          channelFactory: (uri, {protocols}) {
+            factories++;
+            fake = _FakeWebSocket(protocol: '');
+            return AdapterWebSocketChannel(Future.value(fake));
+          },
+          authProvider: () async => const WsAuth.none(),
+        );
+        final buf = <WsClientEvent>[];
+        svc.events.listen(buf.add);
+        svc.connect(_pid);
+        async.flushMicrotasks();
+        // Сервер шлёт heartbeat каждые 25s (client.go: heartbeatPeriod) —
+        // эмулируем 7 кадров за ~3 минуты данных-тишины.
+        for (var i = 0; i < 7; i++) {
+          async.elapse(const Duration(seconds: 25));
+          fake.pushText(
+            '{"type":"heartbeat","v":1,"ts":"2026-01-01T00:00:00.000Z"}',
+          );
+          async.flushMicrotasks();
+        }
+        final idleHit = buf.any(
+          (e) => e.maybeWhen(
+            serviceFailure: (f) => f.maybeWhen(
+              transient: (x) => '$x'.contains('idleTimeout'),
+              orElse: () => false,
+            ),
+            orElse: () => false,
+          ),
+        );
+        expect(idleHit, isFalse, reason: 'idle не должен рвать живой сокет');
+        expect(factories, 1, reason: 'reconnect не должен происходить');
+        // Heartbeat — транспортный кадр: контроллерам не доставляется.
+        final serverFrames = buf.where(
+          (e) => e.maybeWhen(server: (_) => true, orElse: () => false),
+        );
+        expect(serverFrames, isEmpty);
+        // И не считается parse-ошибкой.
+        final parseErrors = buf.where(
+          (e) => e.maybeWhen(parseError: (_) => true, orElse: () => false),
+        );
+        expect(parseErrors, isEmpty);
+        svc.dispose();
+      });
+    });
+
     test('disconnect отменяет backoff (FakeAsync)', () {
       FakeAsync().run((async) {
         var factories = 0;

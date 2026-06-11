@@ -18,3 +18,14 @@ Future<AgentV2Page> myAgentsList(Ref ref) {
   ref.onDispose(cancelToken.cancel);
   return ref.watch(myAgentsRepositoryProvider).list(cancelToken: cancelToken);
 }
+
+/// Мой агент-ассистент (провижится при отсутствии). Источник для вкладки
+/// настроек «Ассистент» (user-level промпт).
+@riverpod
+Future<AgentV2> myAssistant(Ref ref) {
+  final cancelToken = CancelToken();
+  ref.onDispose(cancelToken.cancel);
+  return ref
+      .watch(myAgentsRepositoryProvider)
+      .getAssistant(cancelToken: cancelToken);
+}

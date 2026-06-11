@@ -672,6 +672,8 @@ func (e *AuthorizedExecutor) projectUpdate(ctx context.Context, auth agentloop.A
 		ProjectID   string  `json:"project_id,omitempty"`
 		Name        *string `json:"name,omitempty"`
 		Description *string `json:"description,omitempty"`
+		// AssistantPrompt — per-project промпт ассистента; "" = сброс к user-промпту.
+		AssistantPrompt *string `json:"assistant_prompt,omitempty"`
 	}
 	if err := parseArgs(args, &a); err != nil {
 		return businessErr("validation", err.Error())
@@ -685,8 +687,9 @@ func (e *AuthorizedExecutor) projectUpdate(ctx context.Context, auth agentloop.A
 		return businessErr("forbidden", "доступ к другим проектам запрещён")
 	}
 	req := dto.UpdateProjectRequest{
-		Name:        a.Name,
-		Description: a.Description,
+		Name:            a.Name,
+		Description:     a.Description,
+		AssistantPrompt: a.AssistantPrompt,
 	}
 	p, err := e.projectSvc.Update(ctx, uid, models.RoleUser, pid, req)
 	if err != nil {

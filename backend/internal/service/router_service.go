@@ -75,16 +75,16 @@ func (a AgentRequest) RawTargetArtifactIDs() ([]string, bool) {
 	if a.Input == nil {
 		return nil, false
 	}
-	
+
 	// Support both singular and plural forms for backward compatibility
 	var rawIDs []string
-	
+
 	if rawSingular, ok := a.Input["target_artifact_id"]; ok {
 		if s, ok := rawSingular.(string); ok && s != "" {
 			rawIDs = append(rawIDs, s)
 		}
 	}
-	
+
 	if rawPlural, ok := a.Input["target_artifact_ids"]; ok {
 		if arr, ok := rawPlural.([]interface{}); ok {
 			for _, item := range arr {
@@ -94,11 +94,11 @@ func (a AgentRequest) RawTargetArtifactIDs() ([]string, bool) {
 			}
 		}
 	}
-	
+
 	if len(rawIDs) == 0 {
 		return nil, false
 	}
-	
+
 	return rawIDs, true
 }
 
@@ -123,6 +123,9 @@ type RouterState struct {
 	// и заново вызвать того же агента (инцидент SupportAggent). Рендерятся секцией
 	// `# Recent routing history`. Пусто на первом шаге.
 	RecentDecisions []models.RouterDecision
+	// OwnerUserID — владелец проекта задачи (uuid-строка): его ключи из
+	// user_llm_credentials приоритетнее env при LLM-вызове Router'а.
+	OwnerUserID string
 }
 
 // RouterConfig — настройки сервиса.
@@ -215,6 +218,7 @@ func (r *RouterService) Decide(ctx context.Context, state RouterState) (Decision
 		in := agent.ExecutionInput{
 			TaskID:       state.Task.ID.String(),
 			ProjectID:    state.Task.ProjectID.String(),
+			OwnerUserID:  state.OwnerUserID,
 			Title:        state.Task.Title,
 			Description:  state.Task.Description,
 			AgentID:      a.ID.String(),
@@ -420,7 +424,7 @@ func parseAndValidateDecision(raw []byte, enabledAgents []*models.Agent, existin
 		if !hasTarget {
 			continue
 		}
-		
+
 		for _, raw := range rawIDs {
 			id, err := uuid.Parse(raw)
 			if err != nil {

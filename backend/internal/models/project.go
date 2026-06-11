@@ -56,6 +56,11 @@ type Project struct {
 	ID                uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Name              string         `gorm:"type:varchar(255);not null" json:"name"`
 	Description       string         `gorm:"type:text" json:"description"`
+	// AssistantPrompt — per-project промпт ассистента: снапшот промпта ассистента
+	// владельца на момент создания проекта (наследование role → user → project,
+	// копии редактируются независимо). NULL — legacy/сброшен → рантайм использует
+	// user-промпт ассистента.
+	AssistantPrompt *string `gorm:"type:text" json:"assistant_prompt,omitempty"`
 	GitProvider       GitProvider    `gorm:"type:varchar(50);not null;default:'local'" json:"git_provider"`
 	GitURL            string         `gorm:"type:varchar(1024)" json:"git_url"`
 	GitDefaultBranch  string         `gorm:"type:varchar(255);not null;default:'main'" json:"git_default_branch"`

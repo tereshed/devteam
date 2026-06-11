@@ -11,6 +11,12 @@ const (
 	pongWait = 60 * time.Second
 	// PingPeriod is the interval between ping messages sent to peer.
 	pingPeriod = 54 * time.Second
+	// heartbeatPeriod — период data-level keepalive-кадра {"type":"heartbeat"}.
+	// Обязан быть заметно меньше клиентского idleTimeout (65s,
+	// websocket_service.dart): протокольные ping/pong браузерному JS/Dart-клиенту
+	// не видны, и без data-кадров его idle-таймер рвёт здоровое соединение
+	// каждую минуту тишины (реконнект-цикл + потеря событий в окне).
+	heartbeatPeriod = 25 * time.Second
 )
 
 // Client represents a WebSocket client connected to the Hub.
@@ -34,11 +40,13 @@ func NewClient(id, userID string, conn *websocket.Conn, hub *Hub) *Client {
 }
 
 // WritePump pumps messages from the hub to the websocket connection.
-// It runs in a goroutine and handles ping messages for keep-alive.
+// It runs in a goroutine and handles ping/heartbeat messages for keep-alive.
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
+	heartbeat := time.NewTicker(heartbeatPeriod)
 	defer func() {
 		ticker.Stop()
+		heartbeat.Stop()
 		c.Conn.Close()
 		c.Hub.Unregister(c)
 	}()
@@ -56,6 +64,14 @@ func (c *Client) WritePump() {
 			}
 		case <-ticker.C:
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		case <-heartbeat.C:
+			msg, err := MarshalHeartbeat()
+			if err != nil {
+				continue
+			}
+			if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 				return
 			}
 		}

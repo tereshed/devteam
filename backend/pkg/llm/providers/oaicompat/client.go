@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/devteam/backend/pkg/llm"
@@ -182,9 +183,12 @@ func (c *Client) applyHeaders(req *http.Request) {
 // === wire types (минимально необходимый OpenAI-совместимый набор) ===
 
 type chatCompletionRequest struct {
-	Model          string          `json:"model"`
-	Messages       []message       `json:"messages"`
-	Tools          []tool          `json:"tools,omitempty"`
+	Model    string    `json:"model"`
+	Messages []message `json:"messages"`
+	// Tools — []any: function-тулы (wire-тип tool) + провайдер-специфичные
+	// server-side тулы из Request.ServerTools (сырые map, например
+	// {"type": "openrouter:web_search"}), сериализуемые как есть.
+	Tools          []any           `json:"tools,omitempty"`
 	ResponseFormat *responseFormat `json:"response_format,omitempty"`
 	Temperature    *float64        `json:"temperature,omitempty"`
 	MaxTokens      *int            `json:"max_tokens,omitempty"`
@@ -196,6 +200,8 @@ type message struct {
 	Name       string     `json:"name,omitempty"`
 	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+	// Annotations — только в ответах (server-side web search); в запросы не сериализуем.
+	Annotations []annotation `json:"annotations,omitempty"`
 }
 
 type tool struct {
@@ -241,6 +247,16 @@ type choice struct {
 	FinishReason string  `json:"finish_reason"`
 }
 
+// annotation — цитата источника при server-side web search (OpenRouter:
+// annotations[].type="url_citation"). Парсим только нужные поля.
+type annotation struct {
+	Type        string `json:"type"`
+	URLCitation struct {
+		URL   string `json:"url"`
+		Title string `json:"title"`
+	} `json:"url_citation"`
+}
+
 type usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
@@ -275,19 +291,20 @@ func (c *Client) mapRequest(req llm.Request) chatCompletionRequest {
 		messages = append(messages, m)
 	}
 
-	var tools []tool
-	if len(req.Tools) > 0 {
-		tools = make([]tool, len(req.Tools))
-		for i, t := range req.Tools {
-			tools[i] = tool{
-				Type: "function",
-				Function: function{
-					Name:        t.Name,
-					Description: t.Description,
-					Parameters:  t.InputSchema,
-				},
-			}
-		}
+	var tools []any
+	for _, t := range req.Tools {
+		tools = append(tools, tool{
+			Type: "function",
+			Function: function{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.InputSchema,
+			},
+		})
+	}
+	// Server-side тулы провайдера (например openrouter:web_search) — как есть.
+	for _, st := range req.ServerTools {
+		tools = append(tools, st)
 	}
 
 	var rf *responseFormat
@@ -336,7 +353,7 @@ func (c *Client) mapResponse(resp chatCompletionResponse) *llm.Response {
 	}
 
 	return &llm.Response{
-		Content:   choice.Message.Content,
+		Content:   appendCitations(choice.Message.Content, choice.Message.Annotations),
 		ToolCalls: toolCalls,
 		Usage: llm.Usage{
 			PromptTokens:     resp.Usage.PromptTokens,
@@ -344,4 +361,31 @@ func (c *Client) mapResponse(resp chatCompletionResponse) *llm.Response {
 			TotalTokens:      resp.Usage.TotalTokens,
 		},
 	}
+}
+
+// appendCitations — дописывает к ответу источники server-side web search
+// (annotations/url_citation): без этого ссылки терялись бы, ведь tool_call
+// для серверных тулов не приходит. Дубли URL схлопываются.
+func appendCitations(content string, anns []annotation) string {
+	if len(anns) == 0 {
+		return content
+	}
+	seen := make(map[string]bool, len(anns))
+	var b strings.Builder
+	for _, a := range anns {
+		u := a.URLCitation.URL
+		if a.Type != "url_citation" || u == "" || seen[u] {
+			continue
+		}
+		seen[u] = true
+		title := a.URLCitation.Title
+		if title == "" {
+			title = u
+		}
+		fmt.Fprintf(&b, "\n- [%s](%s)", title, u)
+	}
+	if b.Len() == 0 {
+		return content
+	}
+	return content + "\n\nИсточники:" + b.String()
 }

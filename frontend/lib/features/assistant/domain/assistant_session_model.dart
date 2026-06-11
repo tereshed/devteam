@@ -14,7 +14,9 @@ const assistantSessionStatusArchived = 'archived';
 
 /// Сессия глобального ассистента (Sprint 21 §2).
 ///
-/// scope=user — нет `project_id`. Поля `busy`, `busySince`, `pendingToolCallId`
+/// `projectId` — scope сессии: null = глобальная (sidebar вне проекта), иначе
+/// сессия привязана к проекту и получает PROJECT CONTEXT в промпт. Поля `busy`,
+/// `busySince`, `pendingToolCallId`
 /// нужны UI для дизейбла input до прихода `assistant.session_updated busy=false`
 /// (план §3.1, §4.1).
 @freezed
@@ -24,6 +26,10 @@ abstract class AssistantSessionModel with _$AssistantSessionModel {
 
     @JsonKey(name: 'user_id')
     required String userId,
+
+    /// Scope: null — глобальная сессия, иначе id проекта.
+    @JsonKey(name: 'project_id')
+    String? projectId,
 
     String? title,
 

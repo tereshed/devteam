@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 
 void _goProjectsList(BuildContext context) => context.go('/projects');
 
-class ProjectDashboardScreen extends ConsumerWidget {
+class ProjectDashboardScreen extends ConsumerStatefulWidget {
   const ProjectDashboardScreen({
     super.key,
     required this.projectId,
@@ -21,8 +21,61 @@ class ProjectDashboardScreen extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProjectDashboardScreen> createState() =>
+      _ProjectDashboardScreenState();
+}
+
+class _ProjectDashboardScreenState
+    extends ConsumerState<ProjectDashboardScreen> {
+  // Шелл проекта — ЕДИНСТВЕННЫЙ авторитетный источник activeProjectId: он знает
+  // id из pathParameters, один на все ветки и переживает их переключение. Разбор
+  // URL в rootRouterRedirect ненадёжен — у дефолтной ветки StatefulShellRoute
+  // (Дашборд = chat) matchedLocation/uri теряют :id (видно по хлебным крошкам:
+  // на Дашборде «Проекты», на Задачах «Проекты > id > tasks»), из-за чего
+  // activeProjectId обнулялся и ассистент уходил в глобальный scope.
+  void _syncActiveProject() {
+    final notifier = ref.read(activeProjectIdProvider.notifier);
+    if (ref.read(activeProjectIdProvider) != widget.projectId) {
+      notifier.set(widget.projectId);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncActiveProject();
+    });
+  }
+
+  @override
+  void didUpdateWidget(ProjectDashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.projectId != widget.projectId) {
+      _syncActiveProject();
+    }
+  }
+
+  @override
+  void dispose() {
+    // Уход из проекта (шелл размонтирован) → сбрасываем scope в глобальный.
+    // Сбрасываем только если всё ещё «наш» id — иначе затёрли бы scope проекта,
+    // в который пользователь уже перешёл. try/catch: при teardown контейнер
+    // провайдеров может быть уничтожен раньше виджета.
+    try {
+      if (ref.read(activeProjectIdProvider) == widget.projectId) {
+        ref.read(activeProjectIdProvider.notifier).set(null);
+      }
+    } catch (_) {
+      // контейнер уже уничтожен — нечего сбрасывать
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final projectId = widget.projectId;
     final asyncProject = ref.watch(projectProvider(projectId));
 
     if (asyncProject.hasError &&
@@ -73,7 +126,7 @@ class ProjectDashboardScreen extends ConsumerWidget {
         ],
       ),
       body: ProjectDashboardShell(
-        navigationShell: navigationShell,
+        navigationShell: widget.navigationShell,
         overlay: overlay,
       ),
     );

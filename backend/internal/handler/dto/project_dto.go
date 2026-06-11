@@ -56,6 +56,9 @@ type UpdateProjectRequest struct {
 	ClearTechStack                 bool            `json:"clear_tech_stack"`
 	ClearSettings                  bool            `json:"clear_settings"`
 	Status                         *string         `json:"status"`
+	// AssistantPrompt — per-project промпт ассистента (см. models.Project).
+	// Пустая строка → сброс в NULL (рантайм вернётся к user-промпту).
+	AssistantPrompt *string `json:"assistant_prompt"`
 }
 
 // GitCredentialSummary краткие данные credential без секретов.
@@ -90,8 +93,11 @@ type ProjectResponse struct {
 	Settings                   datatypes.JSON        `json:"settings" swaggertype:"string"`
 	// Repositories — git-репозитории проекта (мульти-репо). Пусто для legacy-проектов без репо.
 	Repositories []ProjectRepositoryResponse `json:"repositories,omitempty"`
-	CreatedAt    time.Time                   `json:"created_at"`
-	UpdatedAt    time.Time                   `json:"updated_at"`
+	// AssistantPrompt — per-project промпт ассистента (наследуется копией при
+	// создании проекта; nil — legacy/сброшен → используется user-промпт).
+	AssistantPrompt *string   `json:"assistant_prompt,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // ProjectListResponse пагинированный список проектов.
@@ -146,6 +152,7 @@ func ToProjectResponse(p *models.Project) ProjectResponse {
 		Status:                     string(p.Status),
 		Settings:                   p.Settings,
 		Repositories:               repos,
+		AssistantPrompt:            p.AssistantPrompt,
 		CreatedAt:                  p.CreatedAt,
 		UpdatedAt:                  p.UpdatedAt,
 	}

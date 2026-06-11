@@ -1867,6 +1867,57 @@ class AppLocalizationsRu extends AppLocalizations {
   String get globalSettingsTabDevTeam => 'PolyMaths';
 
   @override
+  String get assistantScopeGlobal => 'Глобальный чат';
+
+  @override
+  String assistantScopeProject(String name) {
+    return 'Проект: $name';
+  }
+
+  @override
+  String get assistantPromptUserTabTitle => 'Ассистент';
+
+  @override
+  String get assistantPromptUserHeading =>
+      'Промпт ассистента (уровень пользователя)';
+
+  @override
+  String get assistantPromptUserHint =>
+      'Базовый системный промпт вашего ассистента. Новые проекты наследуют его копию на момент создания — последующие правки здесь на уже созданные проекты не влияют.';
+
+  @override
+  String get assistantPromptProjectTabTitle => 'Ассистент';
+
+  @override
+  String get assistantPromptProjectHeading =>
+      'Промпт ассистента (уровень проекта)';
+
+  @override
+  String get assistantPromptProjectHint =>
+      'Системный промпт ассистента в этом проекте. Это независимая копия — она замещает пользовательский промпт. Пустое поле возвращает пользовательский промпт.';
+
+  @override
+  String get assistantPromptInherited =>
+      'Этот проект ещё не имеет собственного промпта — используется пользовательский. Сохраните, чтобы создать копию проекта.';
+
+  @override
+  String get assistantPromptSave => 'Сохранить промпт';
+
+  @override
+  String get assistantPromptReset => 'Сбросить к пользовательскому';
+
+  @override
+  String get assistantPromptSaved => 'Промпт ассистента сохранён';
+
+  @override
+  String get assistantPromptSaveError =>
+      'Не удалось сохранить промпт ассистента';
+
+  @override
+  String get assistantPromptLoadError =>
+      'Не удалось загрузить промпт ассистента';
+
+  @override
   String get llmProvidersSectionTitle => 'LLM-провайдеры';
 
   @override

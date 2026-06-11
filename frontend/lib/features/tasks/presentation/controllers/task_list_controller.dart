@@ -205,8 +205,15 @@ class TaskListController extends _$TaskListController {
         return;
       case WsClientEventSubprotocolMismatch():
       case WsClientEventParseError():
+        _clearRealtimeTransientFailure();
+        return;
       case WsClientEventConnected():
         _clearRealtimeTransientFailure();
+        // (Ре)коннект = возможное окно потерянных событий (Hub без replay) —
+        // реконсилируем список REST'ом; до начальной загрузки рефетч избыточен.
+        if (state.hasValue) {
+          requestRestRefetch();
+        }
         return;
       case WsClientEventServer(:final event):
         // Как [ChatController]: любой server-кадр сбрасывает transient до фильтра

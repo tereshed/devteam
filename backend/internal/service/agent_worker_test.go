@@ -349,7 +349,7 @@ func TestSaveArtifact_HappyPath(t *testing.T) {
 		Output:  `{"kind": "plan", "summary": "test plan", "content": {"steps": []}}`,
 	}
 	taskID := uuid.New()
-	if err := w.saveArtifact(context.Background(), taskID, agentRec, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), taskID, agentRec, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -386,7 +386,7 @@ func TestSaveArtifact_FallbackOnInvalidEnvelope(t *testing.T) {
 		Success: true,
 		Output:  "Я сделал то-то и то-то, без JSON-обёртки, прости.",
 	}
-	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -414,7 +414,7 @@ func TestSaveArtifact_FallbackWithMappedAgent(t *testing.T) {
 		Success: true,
 		Output:  "Я сделал то-то и то-то, без JSON-обёртки, прости.",
 	}
-	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -444,7 +444,7 @@ func TestSaveArtifact_SupersedePreviousReview(t *testing.T) {
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
 
-	if err := w.saveArtifact(context.Background(), taskID, &models.Agent{Name: "reviewer"}, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), taskID, &models.Agent{Name: "reviewer"}, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.superseded) != 1 {
@@ -475,7 +475,7 @@ func TestSaveArtifact_NoSupersedeForPlan(t *testing.T) {
 	}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.superseded) != 0 {
@@ -492,7 +492,7 @@ func TestSaveArtifact_LongSummaryTruncated(t *testing.T) {
 	envelope := AgentResponseEnvelope{Kind: "plan", Summary: long}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	got := repo.created[0]
@@ -509,7 +509,7 @@ func TestSaveArtifact_EmptyContentBecomesEmptyJSON(t *testing.T) {
 	envelope := AgentResponseEnvelope{Kind: "plan", Summary: "no content"}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	got := repo.created[0]
@@ -561,7 +561,7 @@ func TestSaveArtifact_LeakCanaryNotLogged(t *testing.T) {
 	canary := "AGENT_OUTPUT_CANARY_xyz_no_envelope"
 	// Output не-JSON, чтобы попасть в fallback path с SafeRawAttr-логом.
 	result := &agent.ExecutionResult{Success: true, Output: "Plain text: " + canary}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "developer"}, result, nil); err != nil {
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "developer"}, result, nil, ""); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 
@@ -821,6 +821,39 @@ func TestInferRepoSlugFromText(t *testing.T) {
 	}
 }
 
+// TestInferRepoSlugFromProject — матч по slug, display_name и basename git_url
+// (инцидент 82150066: прямой developer-диспатч с инструкцией «в репозитории
+// mcp-servers» молча ушёл в primary bot-service, slug которого «main»).
+func TestInferRepoSlugFromProject(t *testing.T) {
+	project := &models.Project{
+		Repositories: []models.ProjectRepository{
+			{Slug: "main", DisplayName: "Bot Service", GitURL: "https://prodavai.gitlab.yandexcloud.net/pai/bot-service.git", IsPrimary: true},
+			{Slug: "self-service", DisplayName: "Self Service", GitURL: "https://prodavai.gitlab.yandexcloud.net/pai/self-service.git"},
+			{Slug: "mcp-servers", DisplayName: "MCP Servers", GitURL: "https://prodavai.gitlab.yandexcloud.net/pai/mcp-servers.git"},
+		},
+	}
+	cases := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"by slug", "В репозитории mcp-servers доработай MCP-сервер yandex_tracker", "mcp-servers"},
+		{"by url basename for primary", "поправь обработчик вебхуков в bot-service", "main"},
+		{"by display name", "обнови Bot Service до новой схемы", "main"},
+		{"ambiguous two repos", "перенеси код из bot-service в mcp-servers", ""},
+		{"no mention", "добавь метод поиска задач по фильтрам", ""},
+		{"substring not matched", "this is the domain logic", ""},
+		{"empty text", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := inferRepoSlugFromProject(c.text, project); got != c.want {
+				t.Errorf("inferRepoSlugFromProject(%q) = %q, want %q", c.text, got, c.want)
+			}
+		})
+	}
+}
+
 func TestSandboxRealDiff(t *testing.T) {
 	realDiff := "diff --git a/x.go b/x.go\n@@ -1,1 +1,2 @@\n a\n+b\n"
 	cases := []struct {
@@ -853,4 +886,65 @@ func mustJSON(v any) []byte {
 		panic(err)
 	}
 	return b
+}
+
+// TestStampRepoSlugIntoArtifact — слаг штампуется в code-артефакты без repo_slug
+// (инцидент f1d9549e: прямой диспатч → code_diff без repo_slug → PR-гейт открыл
+// пустой MR в primary bot-service вместо mcp-servers).
+func TestStampRepoSlugIntoArtifact(t *testing.T) {
+	mk := func(kind models.ArtifactKind, content string) *models.Artifact {
+		return &models.Artifact{Kind: kind, Content: datatypes.JSON([]byte(content))}
+	}
+	readSlug := func(a *models.Artifact) string {
+		var m map[string]any
+		_ = json.Unmarshal(a.Content, &m)
+		s, _ := m["repo_slug"].(string)
+		return s
+	}
+
+	t.Run("штампует code_diff без слага", func(t *testing.T) {
+		a := mk(models.ArtifactKindCodeDiff, `{"branch_name":"task/x","changed_files":["a.py"]}`)
+		stampRepoSlugIntoArtifact(a, "mcp-servers")
+		if got := readSlug(a); got != "mcp-servers" {
+			t.Errorf("repo_slug = %q, want mcp-servers", got)
+		}
+		// Прежние поля не потеряны.
+		var m map[string]any
+		_ = json.Unmarshal(a.Content, &m)
+		if m["branch_name"] != "task/x" {
+			t.Errorf("branch_name lost: %v", m)
+		}
+	})
+
+	t.Run("не перетирает существующий слаг", func(t *testing.T) {
+		a := mk(models.ArtifactKindMergedCode, `{"repo_slug":"self-service"}`)
+		stampRepoSlugIntoArtifact(a, "mcp-servers")
+		if got := readSlug(a); got != "self-service" {
+			t.Errorf("repo_slug = %q, want self-service (existing must win)", got)
+		}
+	})
+
+	t.Run("не трогает не-code артефакты", func(t *testing.T) {
+		a := mk(models.ArtifactKindReview, `{"decision":"approved"}`)
+		stampRepoSlugIntoArtifact(a, "mcp-servers")
+		if got := readSlug(a); got != "" {
+			t.Errorf("review must not be stamped, got %q", got)
+		}
+	})
+
+	t.Run("пустой слаг — no-op", func(t *testing.T) {
+		a := mk(models.ArtifactKindCodeDiff, `{"x":1}`)
+		stampRepoSlugIntoArtifact(a, "")
+		if got := readSlug(a); got != "" {
+			t.Errorf("empty slug must be no-op, got %q", got)
+		}
+	})
+
+	t.Run("кривой content → создаёт объект со слагом", func(t *testing.T) {
+		a := mk(models.ArtifactKindCodeDiff, `not-json`)
+		stampRepoSlugIntoArtifact(a, "mcp-servers")
+		if got := readSlug(a); got != "mcp-servers" {
+			t.Errorf("repo_slug = %q, want mcp-servers", got)
+		}
+	})
 }

@@ -3404,6 +3404,90 @@ abstract class AppLocalizations {
   /// **'PolyMaths'**
   String get globalSettingsTabDevTeam;
 
+  /// Бейдж scope панели ассистента вне проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Глобальный чат'**
+  String get assistantScopeGlobal;
+
+  /// Бейдж scope панели ассистента внутри проекта
+  ///
+  /// In ru, this message translates to:
+  /// **'Проект: {name}'**
+  String assistantScopeProject(String name);
+
+  /// Вкладка настроек пользователя: промпт ассистента
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент'**
+  String get assistantPromptUserTabTitle;
+
+  /// No description provided for @assistantPromptUserHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпт ассистента (уровень пользователя)'**
+  String get assistantPromptUserHeading;
+
+  /// No description provided for @assistantPromptUserHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Базовый системный промпт вашего ассистента. Новые проекты наследуют его копию на момент создания — последующие правки здесь на уже созданные проекты не влияют.'**
+  String get assistantPromptUserHint;
+
+  /// Вкладка настроек проекта: промпт ассистента
+  ///
+  /// In ru, this message translates to:
+  /// **'Ассистент'**
+  String get assistantPromptProjectTabTitle;
+
+  /// No description provided for @assistantPromptProjectHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпт ассистента (уровень проекта)'**
+  String get assistantPromptProjectHeading;
+
+  /// No description provided for @assistantPromptProjectHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Системный промпт ассистента в этом проекте. Это независимая копия — она замещает пользовательский промпт. Пустое поле возвращает пользовательский промпт.'**
+  String get assistantPromptProjectHint;
+
+  /// No description provided for @assistantPromptInherited.
+  ///
+  /// In ru, this message translates to:
+  /// **'Этот проект ещё не имеет собственного промпта — используется пользовательский. Сохраните, чтобы создать копию проекта.'**
+  String get assistantPromptInherited;
+
+  /// No description provided for @assistantPromptSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить промпт'**
+  String get assistantPromptSave;
+
+  /// No description provided for @assistantPromptReset.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сбросить к пользовательскому'**
+  String get assistantPromptReset;
+
+  /// No description provided for @assistantPromptSaved.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпт ассистента сохранён'**
+  String get assistantPromptSaved;
+
+  /// No description provided for @assistantPromptSaveError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить промпт ассистента'**
+  String get assistantPromptSaveError;
+
+  /// No description provided for @assistantPromptLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить промпт ассистента'**
+  String get assistantPromptLoadError;
+
   /// No description provided for @llmProvidersSectionTitle.
   ///
   /// In ru, this message translates to:

@@ -72,6 +72,9 @@ type AgentRepository interface {
 	// Lost-Update в Read-Modify-Write цикле.
 	GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Agent, error)
 	GetByName(ctx context.Context, name string) (*models.Agent, error)
+	// GetByUserAndRole — user-scoped агент роли (например, per-user ассистент).
+	// ErrAgentNotFound, если у пользователя такой агент ещё не спровижен.
+	GetByUserAndRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error)
 	List(ctx context.Context, filter AgentFilter) ([]models.Agent, int64, error)
 	// Update — optimistic concurrency: WHERE id=? AND updated_at=expectedUpdatedAt.
 	// Sprint 5 review fix #2: возвращает ErrAgentConcurrentUpdate если другой
@@ -154,6 +157,19 @@ func (r *agentRepository) GetByName(ctx context.Context, name string) (*models.A
 			return nil, ErrAgentNotFound
 		}
 		return nil, fmt.Errorf("failed to get agent by name %q: %w", name, err)
+	}
+	return &a, nil
+}
+
+func (r *agentRepository) GetByUserAndRole(ctx context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
+	db := gormDB(ctx, r.db)
+	var a models.Agent
+	err := db.WithContext(ctx).Where("user_id = ? AND role = ?", userID, role).First(&a).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAgentNotFound
+		}
+		return nil, fmt.Errorf("failed to get agent by user %s role %q: %w", userID, role, err)
 	}
 	return &a, nil
 }

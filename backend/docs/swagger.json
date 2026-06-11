@@ -4246,6 +4246,42 @@
                 }
             }
         },
+        "/me/assistant": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "my-agents"
+                ],
+                "summary": "Get my assistant agent (provision if missing)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Agent"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/me/llm-credentials": {
             "get": {
                 "security": [
@@ -7342,6 +7378,59 @@
                 }
             }
         },
+        "/tasks/{id}/events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Все события (включая payload).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orchestration-v2"
+                ],
+                "summary": "List task events (debug/UI)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "no access to task",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/tasks/{id}/messages": {
             "get": {
                 "security": [
@@ -9416,6 +9505,10 @@
                 "redirect_uri": {
                     "description": "RedirectURI — куда провайдер вернёт пользователя после consent. Должен совпадать\nс client_secret-конфигом OAuth App у провайдера.",
                     "type": "string"
+                },
+                "scopes": {
+                    "description": "Scopes — OAuth-scopes для self-hosted GitLab (через пробел). Должны быть подмножеством\nscope, включённых в OAuth-приложении на инстансе. Пусто → дефолт из конфига бэкенда.",
+                    "type": "string"
                 }
             }
         },
@@ -9845,6 +9938,10 @@
         "dto.ProjectResponse": {
             "type": "object",
             "properties": {
+                "assistant_prompt": {
+                    "description": "AssistantPrompt — per-project промпт ассистента (наследуется копией при\nсоздании проекта; nil — legacy/сброшен → используется user-промпт).",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -10444,6 +10541,10 @@
         "dto.UpdateProjectRequest": {
             "type": "object",
             "properties": {
+                "assistant_prompt": {
+                    "description": "AssistantPrompt — per-project промпт ассистента (см. models.Project).\nПустая строка → сброс в NULL (рантайм вернётся к user-промпту).",
+                    "type": "string"
+                },
                 "clear_settings": {
                     "type": "boolean"
                 },
@@ -10593,6 +10694,9 @@
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                },
+                "team_id": {
                     "type": "string"
                 },
                 "title": {
@@ -11212,6 +11316,14 @@
                 "provider": {
                     "$ref": "#/definitions/llm.ProviderType"
                 },
+                "server_tools": {
+                    "description": "ServerTools — провайдер-специфичные server-side тулы, исполняемые самим\nпровайдером (например {\"type\": \"openrouter:web_search\"} — OpenRouter сам\nвыполняет поиск и интегрирует результаты в ответ). Сериализуются в массив\ntools как есть, в дополнение к function-тулам из Tools; tool_call для них\nНЕ приходит — результат уже в тексте ответа (+ annotations/url_citation).\nПоддерживается только oaicompat-провайдерами, понимающими нестандартный\ntype; для остальных оставляй пустым.",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                },
                 "structured_output_schema": {
                     "description": "JSON Schema for structured output",
                     "type": "object"
@@ -11779,6 +11891,10 @@
         "models.Project": {
             "type": "object",
             "properties": {
+                "assistant_prompt": {
+                    "description": "AssistantPrompt — per-project промпт ассистента: снапшот промпта ассистента\nвладельца на момент создания проекта (наследование role → user → project,\nкопии редактируются независимо). NULL — legacy/сброшен → рантайм использует\nuser-промпт ассистента.",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },

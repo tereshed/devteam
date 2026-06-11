@@ -2,17 +2,21 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/devteam/backend/internal/config"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/llm"
 	"github.com/devteam/backend/pkg/llm/factory"
+	"github.com/google/uuid"
 )
 
 // LLMService defines the interface for LLM operations
@@ -21,28 +25,48 @@ type LLMService interface {
 	ListLogs(ctx context.Context, limit, offset int) ([]models.LLMLog, int64, error)
 }
 
+// userLLMKeyReader — минимальный срез UserLlmCredentialService для per-user
+// ключей провайдеров (блок «Ключи» в UI). nil → поведение как раньше (env-only).
+type userLLMKeyReader interface {
+	GetPlaintext(ctx context.Context, userID uuid.UUID, provider models.UserLLMProvider) (string, error)
+}
+
 type llmService struct {
 	providers       map[llm.ProviderType]llm.Provider
 	defaultProvider llm.ProviderType
 	defaultModels   map[llm.ProviderType]string
 	repo            repository.LLMRepository
 	modelRepo       repository.LLMModelRepository
+
+	// Per-user ключи (user_llm_credentials) приоритетнее env: ключ из блока
+	// пользователя в UI должен действовать на ВСЕ LLM-вызовы его проектов
+	// (router/planner/decomposer/...), а не только на sandbox-агентов.
+	factory  *factory.Factory
+	cfg      config.LLMConfig
+	userKeys userLLMKeyReader
+	// userProviders — кэш per-user провайдеров, ключ = "<kind>:<sha256(key)[:8]>".
+	// Ротация ключа в UI меняет hash → новый инстанс; старые записи ограничены
+	// числом ротаций, eviction не нужен.
+	mu            sync.RWMutex
+	userProviders map[string]llm.Provider
 }
 
-func NewLLMService(factory *factory.Factory, cfg config.LLMConfig, repo repository.LLMRepository, modelRepo repository.LLMModelRepository) LLMService {
+func NewLLMService(llmFactory *factory.Factory, cfg config.LLMConfig, repo repository.LLMRepository, modelRepo repository.LLMModelRepository, userKeys userLLMKeyReader) LLMService {
 	providers := make(map[llm.ProviderType]llm.Provider)
 	defaultModels := make(map[llm.ProviderType]string)
 
 	// Helper to create and register provider
 	createProvider := func(pType llm.ProviderType, pCfg config.ProviderConfig) {
+		// Дефолтная модель нужна и без env-ключа: провайдер может быть собран
+		// per-user из user_llm_credentials, а модель у агента не задана.
+		defaultModels[pType] = pCfg.Model
 		if pCfg.APIKey != "" {
-			provider, err := factory.CreateProvider(pType, llm.Config{
+			provider, err := llmFactory.CreateProvider(pType, llm.Config{
 				APIKey:  pCfg.APIKey,
 				BaseURL: pCfg.BaseURL,
 			})
 			if err == nil {
 				providers[pType] = provider
-				defaultModels[pType] = pCfg.Model
 			}
 		}
 	}
@@ -65,6 +89,85 @@ func NewLLMService(factory *factory.Factory, cfg config.LLMConfig, repo reposito
 		defaultModels:   defaultModels,
 		repo:            repo,
 		modelRepo:       modelRepo,
+		factory:         llmFactory,
+		cfg:             cfg,
+		userKeys:        userKeys,
+		userProviders:   make(map[string]llm.Provider),
+	}
+}
+
+// resolveProvider — выбор backend'а для запроса: ключ владельца проекта из
+// user_llm_credentials приоритетнее env-провайдера. Семантика ошибок:
+//   - ключа у пользователя нет (ErrUserLlmCredentialNotFound) → штатный fallback на env;
+//   - ключ есть, но не читается (decrypt/db) → ошибка, БЕЗ тихого отката на env:
+//     откат маскировал бы проблему ключа пользователя (см. постмортем e3c06668 про fail-silent).
+func (s *llmService) resolveProvider(ctx context.Context, pt llm.ProviderType, ownerUserID string) (llm.Provider, error) {
+	if ownerUserID != "" && s.userKeys != nil && models.IsValidUserLLMProvider(string(pt)) {
+		uid, parseErr := uuid.Parse(ownerUserID)
+		if parseErr == nil {
+			key, kerr := s.userKeys.GetPlaintext(ctx, uid, models.UserLLMProvider(pt))
+			switch {
+			case kerr == nil && key != "":
+				return s.userScopedProvider(pt, key)
+			case kerr != nil && !errors.Is(kerr, repository.ErrUserLlmCredentialNotFound):
+				return nil, fmt.Errorf("user llm credential (%s, user=%s): %w", pt, uid, kerr)
+			}
+		}
+	}
+	provider, ok := s.providers[pt]
+	if !ok {
+		return nil, fmt.Errorf("provider %s not configured", pt)
+	}
+	return provider, nil
+}
+
+func (s *llmService) userScopedProvider(pt llm.ProviderType, key string) (llm.Provider, error) {
+	sum := sha256.Sum256([]byte(key))
+	cacheKey := string(pt) + ":" + hex.EncodeToString(sum[:8])
+
+	s.mu.RLock()
+	cached := s.userProviders[cacheKey]
+	s.mu.RUnlock()
+	if cached != nil {
+		return cached, nil
+	}
+
+	created, err := s.factory.CreateProvider(pt, llm.Config{
+		APIKey:  key,
+		BaseURL: s.baseURLFor(pt),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create user-scoped provider %s: %w", pt, err)
+	}
+
+	s.mu.Lock()
+	s.userProviders[cacheKey] = created
+	s.mu.Unlock()
+	return created, nil
+}
+
+// baseURLFor — BaseURL провайдера из конфига процесса: per-user меняется только
+// ключ, эндпоинт остаётся общим (включая локальные override'ы вроде staging-прокси).
+func (s *llmService) baseURLFor(pt llm.ProviderType) string {
+	switch pt {
+	case llm.ProviderOpenAI:
+		return s.cfg.OpenAI.BaseURL
+	case llm.ProviderAnthropic:
+		return s.cfg.Anthropic.BaseURL
+	case llm.ProviderGemini:
+		return s.cfg.Gemini.BaseURL
+	case llm.ProviderDeepseek:
+		return s.cfg.Deepseek.BaseURL
+	case llm.ProviderQwen:
+		return s.cfg.Qwen.BaseURL
+	case llm.ProviderOpenRouter:
+		return s.cfg.OpenRouter.BaseURL
+	case llm.ProviderZhipu:
+		return s.cfg.Zhipu.BaseURL
+	case llm.ProviderAntigravity:
+		return s.cfg.Antigravity.BaseURL
+	default:
+		return ""
 	}
 }
 
@@ -84,9 +187,9 @@ func (s *llmService) Generate(ctx context.Context, req llm.Request) (*llm.Respon
 		modelUsed = s.defaultModels[providerType]
 	}
 
-	provider, ok := s.providers[providerType]
-	if !ok {
-		return nil, fmt.Errorf("provider %s not configured", providerType)
+	provider, err := s.resolveProvider(ctx, providerType, req.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
 
 	req.Provider = providerType
@@ -103,10 +206,10 @@ func (s *llmService) Generate(ctx context.Context, req llm.Request) (*llm.Respon
 		defer cancel()
 
 		logEntry := &models.LLMLog{
-			Provider:    string(providerType),
-			Model:       modelUsed,
-			DurationMs:  int(duration.Milliseconds()),
-			CreatedAt:   startTime,
+			Provider:   string(providerType),
+			Model:      modelUsed,
+			DurationMs: int(duration.Milliseconds()),
+			CreatedAt:  startTime,
 		}
 
 		// Extract metadata

@@ -169,3 +169,98 @@ func TestClient_Generate_GivesUpAfterMaxRetries(t *testing.T) {
 		t.Fatalf("expected status 429 after retries, got %v", err)
 	}
 }
+
+// TestClient_Generate_ServerToolsAndCitations — server-side тулы (openrouter:web_search)
+// сериализуются в tools как есть рядом с function-тулами, а annotations/url_citation
+// из ответа дописываются к контенту блоком «Источники» (дубли URL схлопываются).
+func TestClient_Generate_ServerToolsAndCitations(t *testing.T) {
+	var capturedTools []any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			t.Fatalf("body parse: %v", err)
+		}
+		capturedTools, _ = parsed["tools"].([]any)
+		_, _ = w.Write([]byte(`{
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "ответ с учётом поиска",
+                    "annotations": [
+                        {"type":"url_citation","url_citation":{"url":"https://a.example/doc","title":"Doc A"}},
+                        {"type":"url_citation","url_citation":{"url":"https://a.example/doc","title":"Doc A dup"}},
+                        {"type":"url_citation","url_citation":{"url":"https://b.example","title":""}}
+                    ]
+                },
+                "finish_reason": "stop"
+            }],
+            "usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}
+        }`))
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Config{APIKey: "k", BaseURL: srv.URL, DefaultModel: "m"})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	resp, err := c.Generate(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "q"}},
+		Tools: []llm.Tool{
+			{Name: "task_create", Description: "create task", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+		ServerTools: []map[string]any{{"type": "openrouter:web_search"}},
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if len(capturedTools) != 2 {
+		t.Fatalf("expected 2 tools (function + server), got %d: %v", len(capturedTools), capturedTools)
+	}
+	first, _ := capturedTools[0].(map[string]any)
+	second, _ := capturedTools[1].(map[string]any)
+	if first["type"] != "function" {
+		t.Fatalf("first tool must be function, got %v", first["type"])
+	}
+	if second["type"] != "openrouter:web_search" {
+		t.Fatalf("server tool must pass through as-is, got %v", second["type"])
+	}
+	if _, hasFn := second["function"]; hasFn {
+		t.Fatalf("server tool must not gain a function wrapper: %v", second)
+	}
+
+	if !strings.Contains(resp.Content, "Источники:") {
+		t.Fatalf("citations block missing: %q", resp.Content)
+	}
+	if strings.Count(resp.Content, "https://a.example/doc") != 1 {
+		t.Fatalf("duplicate URL must be collapsed: %q", resp.Content)
+	}
+	if !strings.Contains(resp.Content, "[https://b.example](https://b.example)") {
+		t.Fatalf("empty title must fall back to URL: %q", resp.Content)
+	}
+}
+
+// TestClient_Generate_NoAnnotations_NoSourcesBlock — без аннотаций контент не трогаем.
+func TestClient_Generate_NoAnnotations_NoSourcesBlock(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+            "choices": [{"message": {"role":"assistant","content":"plain"}, "finish_reason":"stop"}],
+            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+        }`))
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Config{APIKey: "k", BaseURL: srv.URL, DefaultModel: "m"})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	resp, err := c.Generate(context.Background(), llm.Request{Messages: []llm.Message{{Role: llm.RoleUser, Content: "q"}}})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if resp.Content != "plain" {
+		t.Fatalf("content must be untouched, got %q", resp.Content)
+	}
+}

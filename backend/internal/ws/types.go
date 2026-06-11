@@ -49,6 +49,13 @@ const (
 	// панели ассистента (Sprint 21 §7). Эмитится HubBridge'м параллельно
 	// с project-scoped MessageTypeTaskStatus при смене task.state.
 	MessageTypeAssistantTaskUpdate MessageType = "assistant.task_update"
+
+	// MessageTypeHeartbeat — транспортный keepalive уровня данных. Протокольные
+	// ping/pong-фреймы невидимы браузерному/Dart-клиенту, поэтому без data-кадров
+	// его idle-таймер (websocket_service.dart: idleTimeout=65s) рвёт здоровое
+	// соединение каждую минуту тишины. Кадр без project/user scope; клиент гасит
+	// его на уровне WebSocketService, до маршрутизации в контроллеры.
+	MessageTypeHeartbeat MessageType = "heartbeat"
 )
 
 // ErrorCode — тип для кодов ошибок.
@@ -343,6 +350,24 @@ func MarshalEnvelope[T any](msgType MessageType, projectID uuid.UUID, data T) ([
 		Timestamp: time.Now().UTC(),
 		ProjectID: projectID,
 		Data:      data,
+	})
+}
+
+// heartbeatEnvelope — конверт keepalive без project/user scope: кадр обслуживает
+// транспорт и не несёт данных, поэтому generic Envelope/UserEnvelope не подходят
+// (оба требуют непустой scope-ID).
+type heartbeatEnvelope struct {
+	Type      MessageType `json:"type"`
+	Version   int         `json:"v"`
+	Timestamp time.Time   `json:"ts"`
+}
+
+// MarshalHeartbeat — keepalive-кадр для Client.WritePump.
+func MarshalHeartbeat() ([]byte, error) {
+	return json.Marshal(&heartbeatEnvelope{
+		Type:      MessageTypeHeartbeat,
+		Version:   SchemaVersion,
+		Timestamp: time.Now().UTC(),
 	})
 }
 

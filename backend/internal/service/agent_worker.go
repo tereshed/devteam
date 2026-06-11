@@ -511,34 +511,76 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		}
 	}
 
-	// Fix 2 (multi-repo guard, defence-in-depth): developer, работающий над КОНКРЕТНОЙ
-	// подзадачей (есть target-артефакт), не должен запускаться против primary-репо вслепую.
-	// Если orchestrator не проставил _repo_slug (decomposer не дал repo_slug подзадаче),
-	// пробуем вывести его из текста целевого артефакта; не вышло — фейлим job (retry →
-	// router → needs_human), чтобы не редактировать чужой репозиторий. Тривиальный developer
-	// без target-артефакта (orchestrator целит во весь проект) не трогаем — для него primary
-	// остаётся валидным дефолтом.
+	// Fix 2 (multi-repo guard, defence-in-depth): developer в multi-repo проекте не должен
+	// запускаться против primary-репо вслепую. Покрывает ОБА пути диспатча:
+	//   - подзадача декомпозиции (есть target-артефакт): _repo_slug обязан прийти от
+	//     decomposer/orchestrator, иначе выводим из текста артефакта;
+	//   - прямой запуск router-правилом (7) без target-артефакта (инцидент 82150066:
+	//     «MCP Yandex Tracker» с инструкцией «в репозитории mcp-servers» молча ушла в
+	//     primary bot-service): выводим из instructions/title/description задачи.
+	// Инференс матчит slug, display_name и basename git_url (slug primary — «main», но в
+	// тексте задачи пишут «bot-service»). Не вышло однозначно — фейлим job (retry → router
+	// → needs_human): тихий primary-дефолт превращает ошибку маршрутизации в PR не в том репо.
 	if agentRec.ExecutionKind == models.AgentExecutionKindSandbox &&
-		agentRec.Role == models.AgentRoleDeveloper && task.Project != nil &&
-		len(targetArtifacts) > 0 {
+		agentRec.Role == models.AgentRoleDeveloper && task.Project != nil {
 		if slugs := projectRepoSlugs(task.Project); len(slugs) >= 2 {
 			slug := stringFromAny(payload.Input["_repo_slug"])
 			if slug == "" || task.Project.RepoBySlug(slug) == nil {
-				if inf := inferRepoSlugFromText(repoInferTextFromArtifacts(targetArtifacts), slugs); inf != "" {
+				inferText := repoInferTextFromArtifacts(targetArtifacts) + "\n" +
+					stringFromAny(payload.Input["instructions"]) + "\n" +
+					task.Title + "\n" + task.Description
+				if inf := inferRepoSlugFromProject(inferText, task.Project); inf != "" {
 					if payload.Input == nil {
 						payload.Input = map[string]any{}
 					}
 					payload.Input["_repo_slug"] = inf
-					w.logger.WarnContext(execCtx, "developer repo_slug missing; inferred from target artifact",
+					w.logger.WarnContext(execCtx, "developer repo_slug missing; inferred from job context",
 						"task_id", ev.TaskID, "inferred_repo_slug", inf)
 					slug = inf
 				}
 			}
 			if slug == "" || task.Project.RepoBySlug(slug) == nil {
 				w.failEvent(parentCtx, ev, fmt.Errorf(
-					"multi-repo project but developer subtask has no resolvable repo_slug (repos: %v); refusing to run against primary repo to avoid wrong-repo edits", slugs))
+					"multi-repo project but developer job has no resolvable repo_slug (repos: %v); refusing to run against primary repo to avoid wrong-repo edits", slugs))
 				return
 			}
+		}
+	}
+
+	// Reviewer/Tester/Merger в multi-repo: рабочее репо обязано совпадать с репо
+	// проверяемого артефакта — иначе sandbox клонирует primary, ревью/тесты идут не
+	// в том дереве, а entrypoint пушит пустую мусорную ветку в primary (инцидент
+	// e7f807ba: reviewer работал в bot-service при коде в mcp-servers). Слаг
+	// наследуется от target-артефакта (code_diff штампуется при сохранении), затем
+	// инференс по текстам; не определилось — primary как прежде (роли читающие,
+	// fail-loud тут избыточен: ревью по diff-артефакту валидно и из primary).
+	if agentRec.ExecutionKind == models.AgentExecutionKindSandbox &&
+		(agentRec.Role == models.AgentRoleReviewer || agentRec.Role == models.AgentRoleTester || agentRec.Role == models.AgentRoleMerger) &&
+		task.Project != nil && len(projectRepoSlugs(task.Project)) >= 2 &&
+		stringFromAny(payload.Input["_repo_slug"]) == "" {
+		slug := ""
+		for _, ta := range targetArtifacts {
+			if ta == nil {
+				continue
+			}
+			if s := extractRepoSlug(ta.Content); s != "" && task.Project.RepoBySlug(s) != nil {
+				slug = s
+				break
+			}
+		}
+		if slug == "" {
+			inferText := repoInferTextFromArtifacts(targetArtifacts) + "\n" + task.Title + "\n" + task.Description
+			if s := inferRepoSlugFromProject(inferText, task.Project); s != "" && task.Project.RepoBySlug(s) != nil {
+				slug = s
+			}
+		}
+		if slug != "" {
+			if payload.Input == nil {
+				payload.Input = map[string]any{}
+			}
+			payload.Input["_repo_slug"] = slug
+			w.logger.InfoContext(execCtx, "repo_slug inherited from target artifact/context",
+				"task_id", ev.TaskID, "role", string(agentRec.Role), "repo_slug", slug)
 		}
 	}
 
@@ -575,6 +617,12 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		}
 	} else {
 		in = w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
+	}
+
+	// Ключи владельца проекта (user_llm_credentials) приоритетнее env при
+	// LLM-вызовах (planner/decomposer/...); пусто → fallback на env-ключ.
+	if task.Project != nil {
+		in.OwnerUserID = task.Project.UserID.String()
 	}
 
 	// Finalize branch name for sandbox agent execution
@@ -648,8 +696,9 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 		return
 	}
 
-	// Сохраняем артефакт.
-	if err := w.saveArtifact(parentCtx, ev.TaskID, &agentRec, result, wtRec, targetArtifact); err != nil {
+	// Сохраняем артефакт. Слаг (после multi-repo guard — всегда разрешённый)
+	// штампуется в code-артефакты, чтобы PR-гейт открыл MR в правильном репо.
+	if err := w.saveArtifact(parentCtx, ev.TaskID, &agentRec, result, wtRec, stringFromAny(payload.Input["_repo_slug"]), targetArtifact); err != nil {
 		w.failEvent(parentCtx, ev, fmt.Errorf("save artifact: %w", err))
 		return
 	}
@@ -809,7 +858,7 @@ func (w *AgentWorker) handleNonActiveSkip(ctx context.Context, ev *models.TaskEv
 // получилось — делает fallback-артефакт kind='raw_output' с truncated summary.
 // Дополнительно: для review-артефактов вызывает SupersedePrevious чтобы прошлые
 // итерации перевести в superseded.
-func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentRec *models.Agent, result *agent.ExecutionResult, wtRec *models.Worktree, targetArtifacts ...*models.Artifact) error {
+func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentRec *models.Agent, result *agent.ExecutionResult, wtRec *models.Worktree, repoSlug string, targetArtifacts ...*models.Artifact) error {
 	var targetArtifact *models.Artifact
 	if len(targetArtifacts) > 0 {
 		targetArtifact = targetArtifacts[0]
@@ -820,6 +869,7 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		w.logger.InfoContext(ctx, "extracted multiple artifacts from agent output",
 			"agent", agentRec.Name, "task_id", taskID, "count", len(arts))
 		for _, art := range arts {
+			stampRepoSlugIntoArtifact(art, repoSlug)
 			err := retryOnConflict(ctx, w.logger, func() error {
 				return w.artifactRepo.Create(ctx, art)
 			})
@@ -947,12 +997,37 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		Content:       datatypes.JSON(content),
 		Status:        models.ArtifactStatusReady,
 	}
+	stampRepoSlugIntoArtifact(art, repoSlug)
 	if err := retryOnConflict(ctx, w.logger, func() error {
 		return w.artifactRepo.Create(ctx, art)
 	}); err != nil {
 		return err
 	}
 	return nil
+}
+
+// stampRepoSlugIntoArtifact — проставляет repo_slug в content code-артефакта, если его
+// там ещё нет. Без этого прямой developer-диспатч (router-правило 7, без декомпозиции)
+// производит code_diff БЕЗ repo_slug в цепочке артефактов, и PR-гейт
+// (resolveTouchedRepos) молча относит его к primary-репо — инцидент f1d9549e: код уехал
+// в mcp-servers, а пустой MR открылся в bot-service. Слаг берётся из job payload
+// (_repo_slug), который к этому моменту уже разрешён multi-repo guard'ом.
+func stampRepoSlugIntoArtifact(art *models.Artifact, slug string) {
+	if slug == "" || art == nil ||
+		(art.Kind != models.ArtifactKindCodeDiff && art.Kind != models.ArtifactKindMergedCode) {
+		return
+	}
+	var m map[string]any
+	if len(art.Content) == 0 || json.Unmarshal(art.Content, &m) != nil || m == nil {
+		m = map[string]any{}
+	}
+	if s, _ := m["repo_slug"].(string); s != "" {
+		return // уже проставлен (например, decomposer-цепочкой)
+	}
+	m["repo_slug"] = slug
+	if b, err := json.Marshal(m); err == nil {
+		art.Content = datatypes.JSON(b)
+	}
 }
 
 // resolveBranchNameForArtifact traverses up the artifact parent chain to find the git branch
@@ -1355,6 +1430,53 @@ func inferRepoSlugFromText(text string, slugs []string) string {
 		}
 	}
 	return found
+}
+
+// inferRepoSlugFromProject — как inferRepoSlugFromText, но матчит не только slug,
+// а ещё display_name и basename git_url: slug primary-репо обычно «main», тогда как
+// в тексте задачи пишут имя репозитория («bot-service»). Совпадение с двумя разными
+// репозиториями → "" (неоднозначно).
+func inferRepoSlugFromProject(text string, project *models.Project) string {
+	if text == "" || project == nil {
+		return ""
+	}
+	lower := strings.ToLower(text)
+	found := ""
+	for i := range project.Repositories {
+		repo := &project.Repositories[i]
+		if strings.TrimSpace(repo.Slug) == "" || !repoMatchesText(lower, repo) {
+			continue
+		}
+		if found != "" && found != repo.Slug {
+			return "" // неоднозначно
+		}
+		found = repo.Slug
+	}
+	return found
+}
+
+// repoMatchesText — упоминается ли репозиторий в тексте (по slug, display_name
+// или basename git_url). lowerText ожидается в нижнем регистре.
+func repoMatchesText(lowerText string, repo *models.ProjectRepository) bool {
+	for _, tok := range []string{repo.Slug, repo.DisplayName, gitURLBasename(repo.GitURL)} {
+		lt := strings.ToLower(strings.TrimSpace(tok))
+		if lt == "" {
+			continue
+		}
+		if containsWholeToken(lowerText, lt) {
+			return true
+		}
+	}
+	return false
+}
+
+// gitURLBasename — последний сегмент git URL без .git: «.../pai/bot-service.git» → «bot-service».
+func gitURLBasename(u string) string {
+	u = strings.TrimSuffix(strings.TrimSpace(u), ".git")
+	if i := strings.LastIndexAny(u, "/:"); i >= 0 {
+		u = u[i+1:]
+	}
+	return u
 }
 
 // containsWholeToken — есть ли needle в haystack как целый токен (границы — не [a-z0-9_-]).

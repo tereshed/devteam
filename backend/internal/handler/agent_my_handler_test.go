@@ -69,6 +69,16 @@ func (r *handlerMemAgentRepo) GetByIDForUpdate(_ context.Context, id uuid.UUID) 
 	cp := *a
 	return &cp, nil
 }
+func (r *handlerMemAgentRepo) GetByUserAndRole(_ context.Context, userID uuid.UUID, role string) (*models.Agent, error) {
+	for _, a := range r.byID {
+		if a.UserID != nil && *a.UserID == userID && string(a.Role) == role {
+			cp := *a
+			return &cp, nil
+		}
+	}
+	return nil, repository.ErrAgentNotFound
+}
+
 func (r *handlerMemAgentRepo) GetByName(_ context.Context, name string) (*models.Agent, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
