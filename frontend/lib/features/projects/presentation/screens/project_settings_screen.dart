@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
+import 'package:frontend/features/enhancer/presentation/widgets/enhancer_settings_tab.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/domain/requests.dart';
-import 'package:frontend/features/settings/presentation/widgets/assistant_prompt_editor.dart';
 import 'package:frontend/features/projects/presentation/controllers/project_settings_controller.dart';
 import 'package:frontend/features/projects/presentation/utils/project_settings_update_patch.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_git_account_section.dart';
@@ -15,6 +15,7 @@ import 'package:frontend/features/projects/presentation/widgets/project_settings
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_field_row.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_stack_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_vector_section.dart';
+import 'package:frontend/features/settings/presentation/widgets/assistant_prompt_editor.dart';
 import 'package:frontend/features/team/presentation/widgets/project_variables_section.dart';
 import 'package:frontend/features/webhooks/presentation/widgets/webhooks_list_section.dart';
 import 'package:frontend/l10n/app_localizations.dart';
@@ -402,7 +403,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
           ),
         Expanded(
           child: DefaultTabController(
-            length: 4,
+            length: 5,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -413,6 +414,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                     Tab(text: l10n.projectSettingsTabVariables),
                     Tab(text: AppLocalizations.of(context)!.webhooksTitle),
                     Tab(text: AppLocalizations.of(context)!.assistantPromptProjectTabTitle),
+                    Tab(text: AppLocalizations.of(context)!.enhancerTabTitle),
                   ],
                 ),
                 Expanded(
@@ -548,6 +550,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                                 },
                         ),
                       ),
+                      EnhancerSettingsTab(projectId: widget.projectId),
                     ],
                   ),
                 ),

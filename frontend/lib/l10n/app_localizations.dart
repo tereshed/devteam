@@ -6085,6 +6085,246 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Вс'**
   String get weekdayShortSun;
+
+  /// No description provided for @enhancerTabTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Улучшение'**
+  String get enhancerTabTitle;
+
+  /// No description provided for @enhancerHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Энхансер проекта'**
+  String get enhancerHeading;
+
+  /// No description provided for @enhancerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Мета-агент анализирует историю выполнения задач (петли роутера, круги ревью, фидбек) и предлагает точечные улучшения: добавки к промптам агентов проекта и правки описания проекта. Все предложения попадают на ревью — ничего не применяется автоматически.'**
+  String get enhancerDescription;
+
+  /// No description provided for @enhancerEnabledLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Включён'**
+  String get enhancerEnabledLabel;
+
+  /// No description provided for @enhancerAutonomyLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Режим применения'**
+  String get enhancerAutonomyLabel;
+
+  /// No description provided for @enhancerAutonomyPropose.
+  ///
+  /// In ru, this message translates to:
+  /// **'Предлагать изменения (ревью человеком)'**
+  String get enhancerAutonomyPropose;
+
+  /// No description provided for @enhancerAutonomyAutoApply.
+  ///
+  /// In ru, this message translates to:
+  /// **'Применять автоматически'**
+  String get enhancerAutonomyAutoApply;
+
+  /// No description provided for @enhancerAutonomyAutoApplySoon.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скоро: автоприменение с замером эффекта и автооткатом'**
+  String get enhancerAutonomyAutoApplySoon;
+
+  /// No description provided for @enhancerCronLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Расписание автозапуска (cron)'**
+  String get enhancerCronLabel;
+
+  /// No description provided for @enhancerCronHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Например: 0 9 * * 1 — каждый понедельник в 9:00. Пусто — только ручной запуск.'**
+  String get enhancerCronHint;
+
+  /// No description provided for @enhancerWindowLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Окно анализа, дней'**
+  String get enhancerWindowLabel;
+
+  /// No description provided for @enhancerMaxChangesLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Лимит предложений за прогон'**
+  String get enhancerMaxChangesLabel;
+
+  /// No description provided for @enhancerSaveButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get enhancerSaveButton;
+
+  /// No description provided for @enhancerSavedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки энхансера сохранены'**
+  String get enhancerSavedSnack;
+
+  /// No description provided for @enhancerRunNowButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Запустить анализ'**
+  String get enhancerRunNowButton;
+
+  /// No description provided for @enhancerRunStartedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Анализ запущен — отчёт появится в списке прогонов'**
+  String get enhancerRunStartedSnack;
+
+  /// No description provided for @enhancerRunInProgressSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Прогон уже выполняется, дождитесь завершения'**
+  String get enhancerRunInProgressSnack;
+
+  /// No description provided for @enhancerRunsTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Прогоны'**
+  String get enhancerRunsTitle;
+
+  /// No description provided for @enhancerRunsEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Прогонов ещё не было. Запустите анализ вручную или настройте расписание.'**
+  String get enhancerRunsEmpty;
+
+  /// No description provided for @enhancerRunStatusRunning.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выполняется'**
+  String get enhancerRunStatusRunning;
+
+  /// No description provided for @enhancerRunStatusDone.
+  ///
+  /// In ru, this message translates to:
+  /// **'Завершён'**
+  String get enhancerRunStatusDone;
+
+  /// No description provided for @enhancerRunStatusFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get enhancerRunStatusFailed;
+
+  /// No description provided for @enhancerTriggerManual.
+  ///
+  /// In ru, this message translates to:
+  /// **'вручную'**
+  String get enhancerTriggerManual;
+
+  /// No description provided for @enhancerTriggerCron.
+  ///
+  /// In ru, this message translates to:
+  /// **'по расписанию'**
+  String get enhancerTriggerCron;
+
+  /// No description provided for @enhancerReportTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отчёт'**
+  String get enhancerReportTitle;
+
+  /// No description provided for @enhancerReportEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отчёт пуст'**
+  String get enhancerReportEmpty;
+
+  /// No description provided for @enhancerChangesTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Предложения изменений'**
+  String get enhancerChangesTitle;
+
+  /// No description provided for @enhancerChangesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Предложений в этом прогоне нет'**
+  String get enhancerChangesEmpty;
+
+  /// No description provided for @enhancerChangeReasonLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обоснование'**
+  String get enhancerChangeReasonLabel;
+
+  /// No description provided for @enhancerChangeEffectLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ожидаемый эффект'**
+  String get enhancerChangeEffectLabel;
+
+  /// No description provided for @enhancerChangePayloadLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменение'**
+  String get enhancerChangePayloadLabel;
+
+  /// No description provided for @enhancerChangeStatusProposed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Предложено'**
+  String get enhancerChangeStatusProposed;
+
+  /// No description provided for @enhancerChangeStatusApproved.
+  ///
+  /// In ru, this message translates to:
+  /// **'Одобрено'**
+  String get enhancerChangeStatusApproved;
+
+  /// No description provided for @enhancerChangeStatusApplied.
+  ///
+  /// In ru, this message translates to:
+  /// **'Применено'**
+  String get enhancerChangeStatusApplied;
+
+  /// No description provided for @enhancerChangeStatusRejected.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отклонено'**
+  String get enhancerChangeStatusRejected;
+
+  /// No description provided for @enhancerChangeStatusRolledBack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Откатано'**
+  String get enhancerChangeStatusRolledBack;
+
+  /// No description provided for @enhancerTargetAgentOverride.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпт/настройки агента'**
+  String get enhancerTargetAgentOverride;
+
+  /// No description provided for @enhancerTargetProjectDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание проекта'**
+  String get enhancerTargetProjectDescription;
+
+  /// No description provided for @enhancerTargetProjectSettings.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки проекта'**
+  String get enhancerTargetProjectSettings;
+
+  /// No description provided for @enhancerLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить данные энхансера'**
+  String get enhancerLoadError;
 }
 
 class _AppLocalizationsDelegate

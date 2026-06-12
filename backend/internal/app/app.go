@@ -832,6 +832,7 @@ func Run(role Role) {
 		OrchestratorService: orchestratorService,
 	})
 	assistantSessionRepo := repository.NewAssistantSessionRepository(db)
+	assistantLLMResolver := service.NewAssistantLLMClientAdapter(llmCredSvc, llmFactory, cfg.LLM, llmRepo, llmModelRepo)
 	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{
 		Repo:         assistantSessionRepo,
 		TaskRepo:     taskRepo,
@@ -839,7 +840,7 @@ func Run(role Role) {
 		TeamRepo:     teamRepo,
 		AgentLoader:  service.NewDBAgentLoader(db),
 		AgentCreator: agentSvcV2,
-		LLMResolver:  service.NewAssistantLLMClientAdapter(llmCredSvc, llmFactory, cfg.LLM, llmRepo, llmModelRepo),
+		LLMResolver:  assistantLLMResolver,
 		UserCreds:    llmCredSvc,
 		ToolCatalog:  assistantToolCatalog,
 		Hub:          hub,
@@ -851,6 +852,34 @@ func Run(role Role) {
 	}
 	// Stale-recovery ассистент-сессий — задача-синглтон (только лидер): чистка, одного хватает.
 	leaderElector.OnLeader("assistant-stale-recovery", assistantSvc.StartStaleRecovery)
+
+	// Энхансер проекта — мета-агент улучшения работы агентов: анализирует историю
+	// задач и копит предложения изменений (propose-режим). Переиспользует
+	// agentloop-Executor, каталог ассистента (whitelist read-инструментов) и
+	// LLM-резолвер с пользовательскими ключами.
+	enhancerRepo := repository.NewEnhancerRepository(db)
+	enhancerSvc, err := service.NewEnhancerService(service.EnhancerServiceDeps{
+		Repo:        enhancerRepo,
+		ProjectSvc:  projectService,
+		TeamRepo:    teamRepo,
+		UserRepo:    userRepo,
+		TaskRepo:    taskRepo,
+		TaskMsgRepo: taskMsgRepo,
+		AgentSvc:    agentSvcV2,
+		LLMResolver: assistantLLMResolver,
+		ToolCatalog: assistantToolCatalog,
+		Executor:    assistantExecutor,
+		Logger:      v2Logger,
+	})
+	if err != nil {
+		log.Fatalf("Failed to construct EnhancerService: %v", err)
+	}
+	// Раннер энхансера — задача-синглтон (только лидер): тикает раз в минуту,
+	// выбирает созревшие конфиги (is_active && next_run_at<=now) и запускает прогоны.
+	leaderElector.OnLeader("enhancer-runs", func(ctx context.Context) {
+		runner := service.NewEnhancerRunner(enhancerSvc, time.Minute, slog.Default())
+		runner.Run(ctx)
+	})
 
 	// Все задачи-синглтоны зарегистрированы. Выбор лидера запускаем только на ролях
 	// scheduler/all — иначе синглтоны (cron/refreshers/retention/workflow/model-sync) не
@@ -892,6 +921,7 @@ func Run(role Role) {
 		ToolDefinitionHandler: toolDefinitionHandler,
 		TaskHandler:           taskHandler,
 		ScheduledTaskHandler:  scheduledTaskHandler,
+		EnhancerHandler:       handler.NewEnhancerHandler(enhancerSvc),
 		WorkflowHandler:       workflowHandler,
 		WebhookHandler:        webhookHandler,
 		ConversationHandler:   conversationHandler,
@@ -962,6 +992,7 @@ func Run(role Role) {
 			TeamService:            teamService,
 			TaskService:            taskService,
 			ScheduledTaskService:   scheduledTaskService,
+			EnhancerService:        enhancerSvc,
 			ToolDefinitionService:  toolDefinitionService,
 			OrchestratorSvc:        orchestratorService,
 			ApiKeyService:          apiKeyService,

@@ -657,6 +657,34 @@ func (s *AgentService) ResolveAssistantPromptForUser(ctx context.Context, userID
 	return ""
 }
 
+// EnsureEnhancerAgent — user-агент энхансера текущего пользователя; при
+// отсутствии провижинится из дефолтного role-промпта (agent_role_prompts),
+// как assistant. MCP-ключ не выпускается: энхансер работает in-process через
+// agentloop, внешний MCP HTTP ему не нужен. LLM-настройки (provider_kind,
+// model) остаются NULL — наследуются логикой резолвера/пользователем через UI.
+func (s *AgentService) EnsureEnhancerAgent(ctx context.Context, userID uuid.UUID) (*models.Agent, error) {
+	agent, err := s.agentRepo.GetByUserAndRole(ctx, userID, string(models.AgentRoleEnhancer))
+	if err == nil {
+		return agent, nil
+	}
+	if !errors.Is(err, repository.ErrAgentNotFound) {
+		return nil, err
+	}
+	if s.rolePromptRepo == nil {
+		return nil, fmt.Errorf("AgentService: rolePromptRepo is required for EnsureEnhancerAgent")
+	}
+	prompt, err := s.rolePromptRepo.GetByRole(ctx, string(models.AgentRoleEnhancer))
+	if err != nil {
+		return nil, fmt.Errorf("default prompt for enhancer: %w", err)
+	}
+	created := newBaseAgent("enhancer", models.AgentRoleEnhancer, models.AgentExecutionKindLLM, &prompt.Content)
+	created.UserID = &userID
+	if err := s.agentRepo.Create(ctx, created); err != nil {
+		return nil, fmt.Errorf("create enhancer agent: %w", err)
+	}
+	return s.agentRepo.GetByUserAndRole(ctx, userID, string(models.AgentRoleEnhancer))
+}
+
 func (s *AgentService) CreateDefaultAssistant(ctx context.Context, userID uuid.UUID) error {
 	if s.rolePromptRepo == nil {
 		return fmt.Errorf("AgentService: rolePromptRepo is required for CreateDefaultAssistant")

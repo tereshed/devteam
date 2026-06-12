@@ -46,6 +46,7 @@ type Dependencies struct {
 	ToolDefinitionHandler *handler.ToolDefinitionHandler
 	TaskHandler           *handler.TaskHandler
 	ScheduledTaskHandler  *handler.ScheduledTaskHandler
+	EnhancerHandler       *handler.EnhancerHandler
 	WorkflowHandler       *handler.WorkflowHandler
 	WebhookHandler        *handler.WebhookHandler
 	ConversationHandler   *handler.ConversationHandler
@@ -346,6 +347,15 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				projects.GET("/:id/scheduled-tasks", deps.ScheduledTaskHandler.List)
 				projects.PUT("/:id/scheduled-tasks/:scheduleId", deps.ScheduledTaskHandler.Update)
 				projects.DELETE("/:id/scheduled-tasks/:scheduleId", deps.ScheduledTaskHandler.Delete)
+			}
+
+			// Энхансер проекта: конфиг, прогоны анализа, предложения изменений.
+			if deps.EnhancerHandler != nil {
+				projects.GET("/:id/enhancer", deps.EnhancerHandler.GetConfig)
+				projects.PUT("/:id/enhancer", deps.EnhancerHandler.UpdateConfig)
+				projects.POST("/:id/enhancer/run", deps.EnhancerHandler.RunNow)
+				projects.GET("/:id/enhancer/runs", deps.EnhancerHandler.ListRuns)
+				projects.GET("/:id/enhancer/runs/:runId/changes", deps.EnhancerHandler.ListRunChanges)
 			}
 
 			// Мульти-репо: управление git-репозиториями проекта.

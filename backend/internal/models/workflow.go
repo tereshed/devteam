@@ -27,6 +27,12 @@ const (
 	// Sprint 21 — глобальный ассистент пользователя (правая боковая панель).
 	// Один на инсталляцию: seed-функция гарантирует наличие записи name='assistant'.
 	AgentRoleAssistant AgentRole = "assistant"
+
+	// AgentRoleEnhancer — per-user мета-агент «улучшайзер»: анализирует историю
+	// выполнения задач проекта и предлагает изменения промптов/настроек агентов
+	// проекта и описания проекта (enhancer_changes). Провижинится лениво из
+	// agent_role_prompts, как assistant; в командах проектов не участвует.
+	AgentRoleEnhancer AgentRole = "enhancer"
 )
 
 // roleNameRE — допустимый формат кастомной роли: snake_case, как у системных
@@ -42,7 +48,7 @@ func (r AgentRole) IsSystem() bool {
 		AgentRolePlanner, AgentRoleDeveloper, AgentRoleReviewer,
 		AgentRoleTester, AgentRoleDevOps,
 		AgentRoleRouter, AgentRoleDecomposer, AgentRoleMerger,
-		AgentRoleAssistant:
+		AgentRoleAssistant, AgentRoleEnhancer:
 		return true
 	default:
 		return false
@@ -64,7 +70,7 @@ func (r AgentRole) IsValid() bool {
 // Для таких ролей смена через update запрещена (docs/agents-rework-plan.md §5.3).
 func (r AgentRole) IsAutoCreated() bool {
 	switch r {
-	case AgentRoleAssistant, AgentRoleOrchestrator, AgentRoleRouter:
+	case AgentRoleAssistant, AgentRoleOrchestrator, AgentRoleRouter, AgentRoleEnhancer:
 		return true
 	default:
 		return false

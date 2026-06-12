@@ -4896,6 +4896,340 @@
                 }
             }
         },
+        "/projects/{id}/enhancer": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Возвращает настройки энхансера; если проект ещё не настраивался — дефолт (выключен, propose).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "enhancer"
+                ],
+                "summary": "Конфиг энхансера проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.EnhancerConfigResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Частично обновляет настройки энхансера (тумблер, cron, окно анализа, лимит предложений). В фазе 1 autonomy принимает только 'propose'.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "enhancer"
+                ],
+                "summary": "Обновление конфига энхансера",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Изменения",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateEnhancerConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.EnhancerConfigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный JSON / cron / autonomy / лимиты",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/enhancer/run": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Запускает анализ проекта немедленно (работает и при выключенном расписании). 409 — прогон уже идёт.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "enhancer"
+                ],
+                "summary": "Ручной запуск прогона энхансера",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/dto.EnhancerRunResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Прогон уже выполняется",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/enhancer/runs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Возвращает последние прогоны энхансера проекта (новые сверху).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "enhancer"
+                ],
+                "summary": "Список прогонов энхансера",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.EnhancerRunListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/enhancer/runs/{runId}/changes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Возвращает предложения (enhancer_changes) указанного прогона энхансера.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "enhancer"
+                ],
+                "summary": "Предложения изменений прогона",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Enhancer Run ID",
+                        "name": "runId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.EnhancerChangeListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Прогон / проект не найдены",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/projects/{id}/reindex": {
             "post": {
                 "security": [
@@ -9360,6 +9694,127 @@
                 }
             }
         },
+        "dto.EnhancerChangeListResponse": {
+            "type": "object",
+            "properties": {
+                "changes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.EnhancerChangeResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.EnhancerChangeResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "expected_effect": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "payload": {
+                    "type": "object"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "run_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "target_agent_id": {
+                    "type": "string"
+                },
+                "target_kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.EnhancerConfigResponse": {
+            "type": "object",
+            "properties": {
+                "analysis_window_days": {
+                    "type": "integer"
+                },
+                "autonomy": {
+                    "type": "string"
+                },
+                "cron_expression": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "last_run_at": {
+                    "type": "string"
+                },
+                "max_changes_per_run": {
+                    "type": "integer"
+                },
+                "next_run_at": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.EnhancerRunListResponse": {
+            "type": "object",
+            "properties": {
+                "runs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.EnhancerRunResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.EnhancerRunResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "report": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "trigger_kind": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ExecutionListResponse": {
             "type": "object",
             "properties": {
@@ -10508,6 +10963,28 @@
                 }
             }
         },
+        "dto.UpdateEnhancerConfigRequest": {
+            "type": "object",
+            "properties": {
+                "analysis_window_days": {
+                    "type": "integer"
+                },
+                "autonomy": {
+                    "description": "Autonomy — в фазе 1 принимается только 'propose'; 'auto_apply'\nзарезервирован и отклоняется валидацией сервиса.",
+                    "type": "string"
+                },
+                "cron_expression": {
+                    "description": "CronExpression — 5-польный cron; \"\" = убрать расписание (только ручной запуск).",
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "max_changes_per_run": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.UpdateLLMProviderRequest": {
             "type": "object",
             "required": [
@@ -11601,7 +12078,8 @@
                 "router",
                 "decomposer",
                 "merger",
-                "assistant"
+                "assistant",
+                "enhancer"
             ],
             "x-enum-varnames": [
                 "AgentRoleWorker",
@@ -11615,7 +12093,8 @@
                 "AgentRoleRouter",
                 "AgentRoleDecomposer",
                 "AgentRoleMerger",
-                "AgentRoleAssistant"
+                "AgentRoleAssistant",
+                "AgentRoleEnhancer"
             ]
         },
         "models.AgentSkill": {

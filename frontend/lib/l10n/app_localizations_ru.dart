@@ -3301,4 +3301,131 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get weekdayShortSun => 'Вс';
+
+  @override
+  String get enhancerTabTitle => 'Улучшение';
+
+  @override
+  String get enhancerHeading => 'Энхансер проекта';
+
+  @override
+  String get enhancerDescription =>
+      'Мета-агент анализирует историю выполнения задач (петли роутера, круги ревью, фидбек) и предлагает точечные улучшения: добавки к промптам агентов проекта и правки описания проекта. Все предложения попадают на ревью — ничего не применяется автоматически.';
+
+  @override
+  String get enhancerEnabledLabel => 'Включён';
+
+  @override
+  String get enhancerAutonomyLabel => 'Режим применения';
+
+  @override
+  String get enhancerAutonomyPropose =>
+      'Предлагать изменения (ревью человеком)';
+
+  @override
+  String get enhancerAutonomyAutoApply => 'Применять автоматически';
+
+  @override
+  String get enhancerAutonomyAutoApplySoon =>
+      'Скоро: автоприменение с замером эффекта и автооткатом';
+
+  @override
+  String get enhancerCronLabel => 'Расписание автозапуска (cron)';
+
+  @override
+  String get enhancerCronHint =>
+      'Например: 0 9 * * 1 — каждый понедельник в 9:00. Пусто — только ручной запуск.';
+
+  @override
+  String get enhancerWindowLabel => 'Окно анализа, дней';
+
+  @override
+  String get enhancerMaxChangesLabel => 'Лимит предложений за прогон';
+
+  @override
+  String get enhancerSaveButton => 'Сохранить';
+
+  @override
+  String get enhancerSavedSnack => 'Настройки энхансера сохранены';
+
+  @override
+  String get enhancerRunNowButton => 'Запустить анализ';
+
+  @override
+  String get enhancerRunStartedSnack =>
+      'Анализ запущен — отчёт появится в списке прогонов';
+
+  @override
+  String get enhancerRunInProgressSnack =>
+      'Прогон уже выполняется, дождитесь завершения';
+
+  @override
+  String get enhancerRunsTitle => 'Прогоны';
+
+  @override
+  String get enhancerRunsEmpty =>
+      'Прогонов ещё не было. Запустите анализ вручную или настройте расписание.';
+
+  @override
+  String get enhancerRunStatusRunning => 'Выполняется';
+
+  @override
+  String get enhancerRunStatusDone => 'Завершён';
+
+  @override
+  String get enhancerRunStatusFailed => 'Ошибка';
+
+  @override
+  String get enhancerTriggerManual => 'вручную';
+
+  @override
+  String get enhancerTriggerCron => 'по расписанию';
+
+  @override
+  String get enhancerReportTitle => 'Отчёт';
+
+  @override
+  String get enhancerReportEmpty => 'Отчёт пуст';
+
+  @override
+  String get enhancerChangesTitle => 'Предложения изменений';
+
+  @override
+  String get enhancerChangesEmpty => 'Предложений в этом прогоне нет';
+
+  @override
+  String get enhancerChangeReasonLabel => 'Обоснование';
+
+  @override
+  String get enhancerChangeEffectLabel => 'Ожидаемый эффект';
+
+  @override
+  String get enhancerChangePayloadLabel => 'Изменение';
+
+  @override
+  String get enhancerChangeStatusProposed => 'Предложено';
+
+  @override
+  String get enhancerChangeStatusApproved => 'Одобрено';
+
+  @override
+  String get enhancerChangeStatusApplied => 'Применено';
+
+  @override
+  String get enhancerChangeStatusRejected => 'Отклонено';
+
+  @override
+  String get enhancerChangeStatusRolledBack => 'Откатано';
+
+  @override
+  String get enhancerTargetAgentOverride => 'Промпт/настройки агента';
+
+  @override
+  String get enhancerTargetProjectDescription => 'Описание проекта';
+
+  @override
+  String get enhancerTargetProjectSettings => 'Настройки проекта';
+
+  @override
+  String get enhancerLoadError => 'Не удалось загрузить данные энхансера';
 }

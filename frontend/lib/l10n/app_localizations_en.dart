@@ -3273,4 +3273,130 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get weekdayShortSun => 'Sun';
+
+  @override
+  String get enhancerTabTitle => 'Enhancement';
+
+  @override
+  String get enhancerHeading => 'Project Enhancer';
+
+  @override
+  String get enhancerDescription =>
+      'A meta-agent analyzes task execution history (router loops, review cycles, feedback) and proposes targeted improvements: addenda to project agent prompts and project description edits. Every proposal goes through human review — nothing is applied automatically.';
+
+  @override
+  String get enhancerEnabledLabel => 'Enabled';
+
+  @override
+  String get enhancerAutonomyLabel => 'Apply mode';
+
+  @override
+  String get enhancerAutonomyPropose => 'Propose changes (human review)';
+
+  @override
+  String get enhancerAutonomyAutoApply => 'Apply automatically';
+
+  @override
+  String get enhancerAutonomyAutoApplySoon =>
+      'Coming soon: auto-apply with effect measurement and rollback';
+
+  @override
+  String get enhancerCronLabel => 'Auto-run schedule (cron)';
+
+  @override
+  String get enhancerCronHint =>
+      'E.g.: 0 9 * * 1 — every Monday at 9:00. Empty — manual runs only.';
+
+  @override
+  String get enhancerWindowLabel => 'Analysis window, days';
+
+  @override
+  String get enhancerMaxChangesLabel => 'Proposals limit per run';
+
+  @override
+  String get enhancerSaveButton => 'Save';
+
+  @override
+  String get enhancerSavedSnack => 'Enhancer settings saved';
+
+  @override
+  String get enhancerRunNowButton => 'Run analysis';
+
+  @override
+  String get enhancerRunStartedSnack =>
+      'Analysis started — the report will appear in the runs list';
+
+  @override
+  String get enhancerRunInProgressSnack =>
+      'A run is already in progress, please wait';
+
+  @override
+  String get enhancerRunsTitle => 'Runs';
+
+  @override
+  String get enhancerRunsEmpty =>
+      'No runs yet. Start an analysis manually or set up a schedule.';
+
+  @override
+  String get enhancerRunStatusRunning => 'Running';
+
+  @override
+  String get enhancerRunStatusDone => 'Done';
+
+  @override
+  String get enhancerRunStatusFailed => 'Failed';
+
+  @override
+  String get enhancerTriggerManual => 'manual';
+
+  @override
+  String get enhancerTriggerCron => 'scheduled';
+
+  @override
+  String get enhancerReportTitle => 'Report';
+
+  @override
+  String get enhancerReportEmpty => 'Report is empty';
+
+  @override
+  String get enhancerChangesTitle => 'Proposed changes';
+
+  @override
+  String get enhancerChangesEmpty => 'No proposals in this run';
+
+  @override
+  String get enhancerChangeReasonLabel => 'Reasoning';
+
+  @override
+  String get enhancerChangeEffectLabel => 'Expected effect';
+
+  @override
+  String get enhancerChangePayloadLabel => 'Change';
+
+  @override
+  String get enhancerChangeStatusProposed => 'Proposed';
+
+  @override
+  String get enhancerChangeStatusApproved => 'Approved';
+
+  @override
+  String get enhancerChangeStatusApplied => 'Applied';
+
+  @override
+  String get enhancerChangeStatusRejected => 'Rejected';
+
+  @override
+  String get enhancerChangeStatusRolledBack => 'Rolled back';
+
+  @override
+  String get enhancerTargetAgentOverride => 'Agent prompt/settings';
+
+  @override
+  String get enhancerTargetProjectDescription => 'Project description';
+
+  @override
+  String get enhancerTargetProjectSettings => 'Project settings';
+
+  @override
+  String get enhancerLoadError => 'Failed to load enhancer data';
 }

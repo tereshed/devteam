@@ -635,6 +635,85 @@ definitions:
     required:
     - name
     type: object
+  dto.EnhancerChangeListResponse:
+    properties:
+      changes:
+        items:
+          $ref: '#/definitions/dto.EnhancerChangeResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.EnhancerChangeResponse:
+    properties:
+      created_at:
+        type: string
+      expected_effect:
+        type: string
+      id:
+        type: string
+      payload:
+        type: object
+      project_id:
+        type: string
+      reason:
+        type: string
+      run_id:
+        type: string
+      status:
+        type: string
+      target_agent_id:
+        type: string
+      target_kind:
+        type: string
+    type: object
+  dto.EnhancerConfigResponse:
+    properties:
+      analysis_window_days:
+        type: integer
+      autonomy:
+        type: string
+      cron_expression:
+        type: string
+      is_active:
+        type: boolean
+      last_run_at:
+        type: string
+      max_changes_per_run:
+        type: integer
+      next_run_at:
+        type: string
+      project_id:
+        type: string
+    type: object
+  dto.EnhancerRunListResponse:
+    properties:
+      runs:
+        items:
+          $ref: '#/definitions/dto.EnhancerRunResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.EnhancerRunResponse:
+    properties:
+      error:
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      project_id:
+        type: string
+      report:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      trigger_kind:
+        type: string
+    type: object
   dto.ExecutionListResponse:
     properties:
       executions:
@@ -1404,6 +1483,24 @@ definitions:
       sandbox_permissions:
         type: object
     type: object
+  dto.UpdateEnhancerConfigRequest:
+    properties:
+      analysis_window_days:
+        type: integer
+      autonomy:
+        description: |-
+          Autonomy — в фазе 1 принимается только 'propose'; 'auto_apply'
+          зарезервирован и отклоняется валидацией сервиса.
+        type: string
+      cron_expression:
+        description: CronExpression — 5-польный cron; "" = убрать расписание (только
+          ручной запуск).
+        type: string
+      is_active:
+        type: boolean
+      max_changes_per_run:
+        type: integer
+    type: object
   dto.UpdateLLMProviderRequest:
     properties:
       auth_type:
@@ -2170,6 +2267,7 @@ definitions:
     - decomposer
     - merger
     - assistant
+    - enhancer
     type: string
     x-enum-varnames:
     - AgentRoleWorker
@@ -2184,6 +2282,7 @@ definitions:
     - AgentRoleDecomposer
     - AgentRoleMerger
     - AgentRoleAssistant
+    - AgentRoleEnhancer
   models.AgentSkill:
     properties:
       agent_id:
@@ -5684,6 +5783,219 @@ paths:
       summary: Обновление проекта
       tags:
       - projects
+  /projects/{id}/enhancer:
+    get:
+      description: Возвращает настройки энхансера; если проект ещё не настраивался
+        — дефолт (выключен, propose).
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EnhancerConfigResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Конфиг энхансера проекта
+      tags:
+      - enhancer
+    put:
+      consumes:
+      - application/json
+      description: Частично обновляет настройки энхансера (тумблер, cron, окно анализа,
+        лимит предложений). В фазе 1 autonomy принимает только 'propose'.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Изменения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateEnhancerConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EnhancerConfigResponse'
+        "400":
+          description: Невалидный JSON / cron / autonomy / лимиты
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Обновление конфига энхансера
+      tags:
+      - enhancer
+  /projects/{id}/enhancer/run:
+    post:
+      description: Запускает анализ проекта немедленно (работает и при выключенном
+        расписании). 409 — прогон уже идёт.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/dto.EnhancerRunResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Прогон уже выполняется
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Ручной запуск прогона энхансера
+      tags:
+      - enhancer
+  /projects/{id}/enhancer/runs:
+    get:
+      description: Возвращает последние прогоны энхансера проекта (новые сверху).
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EnhancerRunListResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Список прогонов энхансера
+      tags:
+      - enhancer
+  /projects/{id}/enhancer/runs/{runId}/changes:
+    get:
+      description: Возвращает предложения (enhancer_changes) указанного прогона энхансера.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Enhancer Run ID
+        in: path
+        name: runId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EnhancerChangeListResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Прогон / проект не найдены
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Предложения изменений прогона
+      tags:
+      - enhancer
   /projects/{id}/reindex:
     post:
       consumes:
