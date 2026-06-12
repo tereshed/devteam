@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/devteam/backend/internal/models"
 	"github.com/google/uuid"
@@ -25,6 +26,9 @@ type ProjectRepoRepository interface {
 	// (передай uuid.Nil чтобы снять со всех). Нужно перед назначением нового primary,
 	// т.к. частичный уникальный индекс uq_project_primary_repo допускает один primary на проект.
 	ClearPrimary(ctx context.Context, projectID, exceptID uuid.UUID) error
+	// ReleaseStuckIndexing сбрасывает осиротевшие status='indexing' старше cutoff в
+	// 'indexing_failed' (по updated_at: UpdateIndexStatus освежает его при переходе в indexing).
+	ReleaseStuckIndexing(ctx context.Context, cutoff time.Time) (int64, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -131,6 +135,20 @@ func (r *projectRepoRepository) ClearPrimary(ctx context.Context, projectID, exc
 		return fmt.Errorf("failed to clear primary repository: %w", err)
 	}
 	return nil
+}
+
+// ReleaseStuckIndexing сбрасывает осиротевшие status='indexing' старше cutoff в
+// 'indexing_failed'. Маркер давности — updated_at: репо-строку в indexing переводит
+// только UpdateIndexStatus (что освежает updated_at), а ручное редактирование
+// настроек репо лишь отодвигает recovery, не давая ложных срабатываний.
+func (r *projectRepoRepository) ReleaseStuckIndexing(ctx context.Context, cutoff time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).Model(&models.ProjectRepository{}).
+		Where("status = ? AND updated_at < ?", models.ProjectStatusIndexing, cutoff).
+		Update("status", models.ProjectStatusIndexingFailed)
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to release stuck indexing repositories: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 func (r *projectRepoRepository) Delete(ctx context.Context, id uuid.UUID) error {

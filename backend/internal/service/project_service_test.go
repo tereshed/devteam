@@ -94,6 +94,11 @@ func (m *MockProjectRepository) UpdateStatusAndCommit(ctx context.Context, id uu
 	return nil
 }
 
+func (m *MockProjectRepository) ReleaseStuckIndexing(ctx context.Context, cutoff time.Time) (int64, error) {
+	args := m.Called(ctx, cutoff)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 func (m *MockProjectRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)

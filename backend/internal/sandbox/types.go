@@ -175,6 +175,12 @@ type AgentSettingsBundle struct {
 	// их в SandboxOptions.EnvVars; в .mcp.json остаётся ссылка ${VAR}, которую Claude
 	// Code раскрывает из env в рантайме. Ключи проходят ValidateEnvKeys (префикс MCP_).
 	MCPEnv map[string]string
+	// SkillsFiles — дерево файлов skills claude-семейства: относительный путь
+	// "skill-name/rel-path" → содержимое. Runner копирует его ДО старта контейнера
+	// в ~/.claude/skills/ (claude-code) или ~/.gemini/antigravity/skills/
+	// (antigravity) — см. buildClaudeSkillsTar. Пути проверены на traversal в
+	// builder'е (service); runner повторяет проверку defense-in-depth.
+	SkillsFiles map[string][]byte
 
 	// HermesConfigYAML — содержимое /home/sandbox/.hermes/config.yaml.
 	HermesConfigYAML []byte

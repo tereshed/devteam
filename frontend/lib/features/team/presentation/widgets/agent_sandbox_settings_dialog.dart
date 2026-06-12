@@ -89,15 +89,24 @@ class _BodyState extends ConsumerState<_Body>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   late String? _codeBackend = widget.current.codeBackend;
+  // Sprint 22: для hermes Skills/MCP живут в code_backend_settings.hermes.*
+  // (builder читает только их); для остальных backend'ов — верхнеуровневые ключи.
+  static List<dynamic> _initialList(AgentSettingsModel current, String key) {
+    if (current.codeBackend == 'hermes') {
+      final hermes =
+          current.codeBackendSettings['hermes'] as Map<String, dynamic>?;
+      return (hermes?[key] as List<dynamic>?) ?? <dynamic>[];
+    }
+    return (current.codeBackendSettings[key] as List<dynamic>?) ?? <dynamic>[];
+  }
+
   late final TextEditingController _mcpJSON = TextEditingController(
-    text: const JsonEncoder.withIndent('  ').convert(
-      widget.current.codeBackendSettings['mcp_servers'] ?? <dynamic>[],
-    ),
+    text: const JsonEncoder.withIndent('  ')
+        .convert(_initialList(widget.current, 'mcp_servers')),
   );
   late final TextEditingController _skillsJSON = TextEditingController(
-    text: const JsonEncoder.withIndent('  ').convert(
-      widget.current.codeBackendSettings['skills'] ?? <dynamic>[],
-    ),
+    text: const JsonEncoder.withIndent('  ')
+        .convert(_initialList(widget.current, 'skills')),
   );
   late final _PermissionsForm _permissionsForm =
       _PermissionsForm.fromMap(widget.current.sandboxPermissions);
@@ -135,17 +144,22 @@ class _BodyState extends ConsumerState<_Body>
 
     Map<String, dynamic> codeBackendSettings;
     try {
-      codeBackendSettings = {
-        ...widget.current.codeBackendSettings,
-        'mcp_servers': jsonDecode(_mcpJSON.text.trim().isEmpty
-            ? '[]'
-            : _mcpJSON.text),
-        'skills': jsonDecode(_skillsJSON.text.trim().isEmpty
-            ? '[]'
-            : _skillsJSON.text),
-      };
+      final mcpServers = jsonDecode(
+          _mcpJSON.text.trim().isEmpty ? '[]' : _mcpJSON.text);
+      final skills = jsonDecode(
+          _skillsJSON.text.trim().isEmpty ? '[]' : _skillsJSON.text);
+      codeBackendSettings = {...widget.current.codeBackendSettings};
       if (_isHermes) {
-        codeBackendSettings['hermes'] = _hermesForm.toMap();
+        // Sprint 22: hermes-builder читает hermes.skills / hermes.mcp_servers —
+        // кладём содержимое JSON-вкладок туда; верхнеуровневые ключи не трогаем.
+        codeBackendSettings['hermes'] = {
+          ..._hermesForm.toMap(),
+          'mcp_servers': mcpServers,
+          'skills': skills,
+        };
+      } else {
+        codeBackendSettings['mcp_servers'] = mcpServers;
+        codeBackendSettings['skills'] = skills;
       }
     } catch (e) {
       setState(() {

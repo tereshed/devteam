@@ -2076,7 +2076,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentSandboxSettingsSkillsHelper =>
-      'JSON-массив Skills (Claude Code) — см. документацию.';
+      'JSON-массив Skills (Claude Code / Antigravity / Hermes). Поля: name, source (builtin/plugin/path; hermes: builtin/agentskills/path), config.files — карта относительных путей (SKILL.md обязателен, плюс scripts и т.д.) к содержимому файлов. Файлы копируются в sandbox до старта; скрипты агент запускает через bash/python.';
 
   @override
   String get agentSandboxSettingsDefaultMode => 'Режим по умолчанию';

@@ -68,6 +68,40 @@ func TestValidateCodeBackendSettingsStrict_RejectsBadSkillName(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// Sprint 22 — skills[].config.files (дерево файлов skill'а).
+func TestValidateCodeBackendSettingsStrict_AllowsSkillWithFiles(t *testing.T) {
+	err := validateCodeBackendSettingsStrict([]byte(`{
+        "skills":[{"name":"deploy-check","source":"path","config":{"files":{
+            "SKILL.md":"---\nname: deploy-check\n---\n",
+            "scripts/check.py":"print('ok')"
+        }}}]
+    }`))
+	assert.NoError(t, err)
+}
+
+func TestValidateCodeBackendSettingsStrict_RejectsSkillFilesWithoutSkillMD(t *testing.T) {
+	err := validateCodeBackendSettingsStrict([]byte(`{
+        "skills":[{"name":"x","source":"path","config":{"files":{"scripts/a.sh":"echo"}}}]
+    }`))
+	assert.Error(t, err, "config.files без SKILL.md должен отклоняться")
+}
+
+func TestValidateCodeBackendSettingsStrict_RejectsSkillFileTraversal(t *testing.T) {
+	for _, rel := range []string{"../evil", "/abs", "a/../../b", ".hidden"} {
+		payload := `{"skills":[{"name":"x","source":"path","config":{"files":{` +
+			`"SKILL.md":"ok","` + rel + `":"evil"}}}]}`
+		err := validateCodeBackendSettingsStrict([]byte(payload))
+		assert.Error(t, err, "путь %q должен отклоняться", rel)
+	}
+}
+
+func TestValidateCodeBackendSettingsStrict_RejectsSkillFilesNonObject(t *testing.T) {
+	err := validateCodeBackendSettingsStrict([]byte(`{
+        "skills":[{"name":"x","source":"path","config":{"files":"not-an-object"}}]
+    }`))
+	assert.Error(t, err)
+}
+
 func TestValidateCodeBackendSettingsStrict_AllowsCompleteValidPayload(t *testing.T) {
 	payload := `{
         "model":"anthropic/claude-3.5-sonnet",

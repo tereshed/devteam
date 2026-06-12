@@ -793,9 +793,10 @@ func Run(role Role) {
 			log.Printf("role=%s: orchestrator worker pools not started (only worker/all run them)", role)
 		}
 
-		// Retention: 30 дней router_decisions + 1 сутки released worktrees. Раз в час.
+		// Retention: 30 дней router_decisions + 1 сутки released worktrees + recovery
+		// осиротевшего status='indexing' (projects/project_repositories). Раз в час.
 		// Задача-синглтон (только лидер): глобальная чистка, одного исполнителя достаточно.
-		v2Retention := service.NewRetentionService(routerDecisionRepoV2, taskEventRepoV2, v2WorktreeMgr, v2Logger, service.DefaultRetentionConfig())
+		v2Retention := service.NewRetentionService(routerDecisionRepoV2, taskEventRepoV2, v2WorktreeMgr, projectRepo, projectRepoRepo, v2Logger, service.DefaultRetentionConfig())
 		leaderElector.OnLeader("retention", func(ctx context.Context) {
 			if err := v2Retention.Run(ctx); err != nil {
 				log.Printf("retention service exited with error: %v", err)

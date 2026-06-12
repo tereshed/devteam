@@ -36,6 +36,12 @@ type RetentionConfig struct {
 	// Default 15 минут.
 	TaskEventsStuckAge time.Duration
 
+	// IndexingStuckAge — осиротевшие status='indexing' (процесс умер посреди индексации)
+	// старше этого возраста сбрасываются в 'indexing_failed'. Default 30 минут —
+	// двойной indexingTimeout: живой пайплайн сам завершает CAS не позже таймаута,
+	// так что более старый indexing гарантированно ничейный.
+	IndexingStuckAge time.Duration
+
 	// Interval — частота прогона полного цикла. Default 1 час.
 	Interval time.Duration
 }
@@ -46,8 +52,15 @@ func DefaultRetentionConfig() RetentionConfig {
 		RouterDecisionsAge:   30 * 24 * time.Hour,
 		WorktreesReleasedAge: 24 * time.Hour,
 		TaskEventsStuckAge:   15 * time.Minute,
+		IndexingStuckAge:     2 * indexingTimeout,
 		Interval:             1 * time.Hour,
 	}
+}
+
+// StuckIndexingReleaser — сброс осиротевших status='indexing' → 'indexing_failed'.
+// Реализуют repository.ProjectRepository и repository.ProjectRepoRepository.
+type StuckIndexingReleaser interface {
+	ReleaseStuckIndexing(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // RetentionService — координатор фоновых retention-операций.
@@ -55,16 +68,22 @@ type RetentionService struct {
 	decisionRepo repository.RouterDecisionRepository
 	eventRepo    repository.TaskEventRepository
 	worktreeMgr  *WorktreeManager // опционально; если nil — worktree cleanup пропускается
+	// projectStuck/repoStuck — recovery осиротевшего status='indexing' на уровне
+	// проектов и их репозиториев; опциональны (nil — шаг пропускается).
+	projectStuck StuckIndexingReleaser
+	repoStuck    StuckIndexingReleaser
 	logger       *slog.Logger
 	cfg          RetentionConfig
 }
 
-// NewRetentionService — конструктор. WorktreeManager может быть nil
-// (например, для процесса который занимается ТОЛЬКО router_decisions retention).
+// NewRetentionService — конструктор. WorktreeManager, projectStuck и repoStuck могут
+// быть nil (например, для процесса который занимается ТОЛЬКО router_decisions retention).
 func NewRetentionService(
 	decisionRepo repository.RouterDecisionRepository,
 	eventRepo repository.TaskEventRepository,
 	worktreeMgr *WorktreeManager,
+	projectStuck StuckIndexingReleaser,
+	repoStuck StuckIndexingReleaser,
 	logger *slog.Logger,
 	cfg RetentionConfig,
 ) *RetentionService {
@@ -80,11 +99,15 @@ func NewRetentionService(
 	if cfg.TaskEventsStuckAge <= 0 {
 		cfg.TaskEventsStuckAge = 15 * time.Minute
 	}
+	if cfg.IndexingStuckAge <= 0 {
+		cfg.IndexingStuckAge = 2 * indexingTimeout
+	}
 	if cfg.Interval <= 0 {
 		cfg.Interval = 1 * time.Hour
 	}
 	return &RetentionService{
 		decisionRepo: decisionRepo, eventRepo: eventRepo, worktreeMgr: worktreeMgr,
+		projectStuck: projectStuck, repoStuck: repoStuck,
 		logger: logger, cfg: cfg,
 	}
 }
@@ -122,6 +145,41 @@ func (s *RetentionService) RunOnceStuckLocks(ctx context.Context) (int64, error)
 	return n, nil
 }
 
+// RunOnceStuckIndexing — синхронный сброс осиротевших status='indexing' →
+// 'indexing_failed' (процесс умер посреди индексации, финальный CAS не выполнился).
+// Без этого зависший проект невидим: RunBackgroundReindexing его молча скипает,
+// а ручной Reindex отвечает 409. Возвращает суммарное число освобождённых строк
+// (projects + project_repositories).
+func (s *RetentionService) RunOnceStuckIndexing(ctx context.Context) (int64, error) {
+	cutoff := time.Now().Add(-s.cfg.IndexingStuckAge)
+	var total int64
+	var firstErr error
+	for _, t := range []struct {
+		name     string
+		releaser StuckIndexingReleaser
+	}{
+		{"projects", s.projectStuck},
+		{"project_repositories", s.repoStuck},
+	} {
+		if t.releaser == nil {
+			continue
+		}
+		n, err := t.releaser.ReleaseStuckIndexing(ctx, cutoff)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("%s stuck indexing retention: %w", t.name, err)
+			}
+			continue
+		}
+		if n > 0 {
+			s.logger.WarnContext(ctx, "stuck indexing released",
+				"table", t.name, "released_count", n, "older_than", cutoff)
+		}
+		total += n
+	}
+	return total, firstErr
+}
+
 // RunOnceWorktrees — синхронный прогон очистки worktrees. No-op если worktreeMgr=nil.
 // Возвращает количество физически удалённых worktree'ев.
 func (s *RetentionService) RunOnceWorktrees(ctx context.Context) (int, error) {
@@ -150,6 +208,12 @@ func (s *RetentionService) RunOnce(ctx context.Context) error {
 		}
 		s.logger.ErrorContext(ctx, "stuck locks cleanup failed", "error", err.Error())
 	}
+	if _, err := s.RunOnceStuckIndexing(ctx); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+		s.logger.ErrorContext(ctx, "stuck indexing cleanup failed", "error", err.Error())
+	}
 	if _, err := s.RunOnceWorktrees(ctx); err != nil {
 		if firstErr == nil {
 			firstErr = err
@@ -166,6 +230,7 @@ func (s *RetentionService) Run(ctx context.Context) error {
 		"interval", s.cfg.Interval,
 		"router_decisions_age", s.cfg.RouterDecisionsAge,
 		"task_events_stuck_age", s.cfg.TaskEventsStuckAge,
+		"indexing_stuck_age", s.cfg.IndexingStuckAge,
 		"worktrees_released_age", s.cfg.WorktreesReleasedAge,
 	)
 

@@ -536,6 +536,10 @@ func (s *projectService) Create(ctx context.Context, userID uuid.UUID, req dto.C
 
 	if provider != nil && s.importDir != "" {
 		project.Status = models.ProjectStatusIndexing
+		// Маркер для recovery осиротевшего indexing (ReleaseStuckIndexing): здесь
+		// статус ставится insert'ом, минуя UpdateStatus, который ставит маркер сам.
+		now := time.Now()
+		project.IndexingStartedAt = &now
 	}
 
 	err = s.transactions.WithTransaction(ctx, func(txCtx context.Context) error {
@@ -820,6 +824,7 @@ func (s *projectService) runProjectIndexing(projectID, ownerID uuid.UUID) {
 
 	multi := len(repos) > 1
 	anyFailed := false
+	primarySHA := ""
 	prefixes := make([]string, 0, len(repos))
 
 	for i := range repos {
@@ -861,6 +866,9 @@ func (s *projectService) runProjectIndexing(projectID, ownerID uuid.UUID) {
 			continue
 		}
 		_ = s.projectRepoRepo.UpdateIndexStatus(ctx, repo.ID, models.ProjectStatusReady, commitSHA)
+		if repo.IsPrimary {
+			primarySHA = commitSHA
+		}
 		slog.Info("project indexing: repo done", slog.String("project_id", projectID.String()), slog.String("repo", repo.Slug))
 	}
 
@@ -872,11 +880,27 @@ func (s *projectService) runProjectIndexing(projectID, ownerID uuid.UUID) {
 		}
 	}
 
+	s.finalizeProjectIndexing(projectID, anyFailed, primarySHA)
+}
+
+// finalizeProjectIndexing завершает мульти-репо индексацию: CAS indexing→ready/failed.
+// При полном успехе обязан записать SHA primary-репо в projects.last_indexed_commit —
+// именно по нему RunBackgroundReindexing детектит изменения, и без записи фоновый
+// change-detect вечно видит «новые коммиты» и перезапускает индексацию каждый тик.
+// context.Background(): пайплайновый ctx к этому моменту может быть уже истёкшим
+// (indexingTimeout), а финальный CAS обязан выполниться, иначе проект зависает в indexing.
+func (s *projectService) finalizeProjectIndexing(projectID uuid.UUID, anyFailed bool, primarySHA string) {
 	final := models.ProjectStatusReady
 	if anyFailed {
 		final = models.ProjectStatusIndexingFailed
 	}
-	if uerr := s.projectRepo.UpdateStatus(ctx, projectID, models.ProjectStatusIndexing, final); uerr != nil {
+	var uerr error
+	if !anyFailed && primarySHA != "" {
+		uerr = s.projectRepo.UpdateStatusAndCommit(context.Background(), projectID, models.ProjectStatusIndexing, final, primarySHA)
+	} else {
+		uerr = s.projectRepo.UpdateStatus(context.Background(), projectID, models.ProjectStatusIndexing, final)
+	}
+	if uerr != nil {
 		slog.Error("project indexing: final project status update failed", slog.String("project_id", projectID.String()), slog.String("error", uerr.Error()))
 	}
 }
@@ -1217,6 +1241,14 @@ func (s *projectService) RunBackgroundReindexing(ctx context.Context) error {
 		if project.Status != models.ProjectStatusReady &&
 			project.Status != models.ProjectStatusActive &&
 			project.Status != models.ProjectStatusIndexingFailed {
+			// indexing — единственный из скипаемых статусов, который обязан быть
+			// краткоживущим: лог оставляет след, по которому видно зависание
+			// (осиротевший indexing снимает RetentionService.RunOnceStuckIndexing).
+			if project.Status == models.ProjectStatusIndexing {
+				slog.Info("background reindexing: project already indexing, skipping",
+					slog.String("project_id", project.ID.String()),
+				)
+			}
 			continue
 		}
 

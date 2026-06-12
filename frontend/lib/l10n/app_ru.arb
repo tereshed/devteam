@@ -1397,7 +1397,7 @@
   "agentSandboxSettingsProviderNone": "— нет —",
   "agentSandboxSettingsCodeBackendLabel": "Code backend",
   "agentSandboxSettingsMCPHelper": "JSON-массив MCP-серверов. Поля инлайн-сервера: name, type (sse/http/stdio), url, headers. В значении заголовка можно сослаться на переменную проекта через префикс secret:NAME — она подставляется в рантайме и не пишется в файл.",
-  "agentSandboxSettingsSkillsHelper": "JSON-массив Skills (Claude Code) — см. документацию.",
+  "agentSandboxSettingsSkillsHelper": "JSON-массив Skills (Claude Code / Antigravity / Hermes). Поля: name, source (builtin/plugin/path; hermes: builtin/agentskills/path), config.files — карта относительных путей (SKILL.md обязателен, плюс scripts и т.д.) к содержимому файлов. Файлы копируются в sandbox до старта; скрипты агент запускает через bash/python.",
   "agentSandboxSettingsDefaultMode": "Режим по умолчанию",
   "agentSandboxSettingsAllow": "Allow",
   "agentSandboxSettingsDeny": "Deny",

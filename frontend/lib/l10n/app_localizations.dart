@@ -3785,7 +3785,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentSandboxSettingsSkillsHelper.
   ///
   /// In ru, this message translates to:
-  /// **'JSON-массив Skills (Claude Code) — см. документацию.'**
+  /// **'JSON-массив Skills (Claude Code / Antigravity / Hermes). Поля: name, source (builtin/plugin/path; hermes: builtin/agentskills/path), config.files — карта относительных путей (SKILL.md обязателен, плюс scripts и т.д.) к содержимому файлов. Файлы копируются в sandbox до старта; скрипты агент запускает через bash/python.'**
   String get agentSandboxSettingsSkillsHelper;
 
   /// No description provided for @agentSandboxSettingsDefaultMode.

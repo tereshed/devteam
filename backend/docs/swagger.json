@@ -11923,6 +11923,10 @@
                 "id": {
                     "type": "string"
                 },
+                "indexing_started_at": {
+                    "description": "IndexingStartedAt — момент последнего перехода в status=indexing; маркер давности\nдля recovery осиротевшей индексации (RetentionService.RunOnceStuckIndexing).\nupdated_at для этого непригоден — его освежает любой full-row Update настроек.\nNULL — legacy-строка, переход был до миграции 084.",
+                    "type": "string"
+                },
                 "last_indexed_commit": {
                     "type": "string"
                 },

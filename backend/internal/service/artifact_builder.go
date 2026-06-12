@@ -24,9 +24,14 @@ import (
 // проще и безопаснее, чем type-switch по интерфейсу.
 type BackendArtifacts struct {
 	// --- Claude Code (Sprint 15.22) ---
-	SettingsJSON   []byte
-	MCPJSON        []byte
-	Skills         []AgentSkillArtifact
+	SettingsJSON []byte
+	MCPJSON      []byte
+	Skills       []AgentSkillArtifact
+	// SkillsFiles — дерево файлов skills для claude-семейства (claude-code,
+	// antigravity): ключ "skill-name/rel-path" → содержимое. Собирается
+	// buildCodeBackendSkillsFiles из skills[].config.files; runner копирует в
+	// ~/.claude/skills/ или ~/.gemini/antigravity/skills/ по opts.Backend.
+	SkillsFiles    map[string][]byte
 	PermissionMode string
 	// MCPEnv — env-переменные sandbox с резолвленными секретами MCP (MCP_*).
 	// В .mcp.json остаётся ссылка ${VAR}; runner вливает MCPEnv в EnvVars контейнера,

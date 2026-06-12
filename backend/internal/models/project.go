@@ -65,6 +65,11 @@ type Project struct {
 	GitURL            string         `gorm:"type:varchar(1024)" json:"git_url"`
 	GitDefaultBranch  string         `gorm:"type:varchar(255);not null;default:'main'" json:"git_default_branch"`
 	LastIndexedCommit string         `gorm:"type:varchar(255);not null;default:''" json:"last_indexed_commit"`
+	// IndexingStartedAt — момент последнего перехода в status=indexing; маркер давности
+	// для recovery осиротевшей индексации (RetentionService.RunOnceStuckIndexing).
+	// updated_at для этого непригоден — его освежает любой full-row Update настроек.
+	// NULL — legacy-строка, переход был до миграции 084.
+	IndexingStartedAt *time.Time `gorm:"type:timestamp with time zone" json:"indexing_started_at,omitempty"`
 	GitCredentialsID  *uuid.UUID     `gorm:"type:uuid" json:"git_credentials_id"`
 	GitCredential     *GitCredential `gorm:"foreignKey:GitCredentialsID" json:"git_credential,omitempty"`
 	// GitIntegrationCredentialID — выбранный OAuth-аккаунт провайдера (мульти-аккаунт).

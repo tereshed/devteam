@@ -417,6 +417,8 @@ mkdir -p .git/info
 cat << 'EOF' >> .git/info/exclude
 .antigravity*
 .antigravitycli*
+.agents/
+.agent/
 plan_*.json
 review_*.json
 subtask_*.json
@@ -426,6 +428,29 @@ plan_revised.json
 plan_revised_v2.json
 review_output.json
 EOF
+
+# --- skills (Sprint 22) ---
+# Runner кладёт per-agent skills в глобальный каталог ~/.gemini/antigravity/skills
+# ДО старта контейнера. Antigravity ищет skills и в workspace (.agents/skills) —
+# зеркалим туда для надёжности обнаружения. Каталог в .git/info/exclude (выше),
+# поэтому в diff/commit/push не попадает.
+PHASE="prepare_skills"
+GLOBAL_SKILLS_DIR="$HOME/.gemini/antigravity/skills"
+if [[ -d "$GLOBAL_SKILLS_DIR" ]] && [[ -n "$(ls -A "$GLOBAL_SKILLS_DIR" 2>/dev/null)" ]]; then
+  if ! mkdir -p "$REPO_DIR/.agents/skills"; then
+    echo "entrypoint: mkdir -p .agents/skills failed" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="prepare_skills: mkdir failed"
+    exit 1
+  fi
+  if ! cp -R "$GLOBAL_SKILLS_DIR/." "$REPO_DIR/.agents/skills/"; then
+    echo "entrypoint: cp skills to workspace failed" >&2
+    LAST_EXIT_CODE=1
+    MESSAGE="prepare_skills: cp failed"
+    exit 1
+  fi
+  echo "entrypoint: skills mirrored to .agents/skills: $(ls "$REPO_DIR/.agents/skills" | tr '\n' ' ')" >>"$AGENT_LOG"
+fi
 
 # Copy .mcp.json to repo root just in case
 if [[ -f /workspace/.mcp.json ]]; then

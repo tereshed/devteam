@@ -2408,6 +2408,13 @@ definitions:
         type: string
       id:
         type: string
+      indexing_started_at:
+        description: |-
+          IndexingStartedAt — момент последнего перехода в status=indexing; маркер давности
+          для recovery осиротевшей индексации (RetentionService.RunOnceStuckIndexing).
+          updated_at для этого непригоден — его освежает любой full-row Update настроек.
+          NULL — legacy-строка, переход был до миграции 084.
+        type: string
       last_indexed_commit:
         type: string
       name:

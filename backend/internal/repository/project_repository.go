@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/devteam/backend/internal/models"
 	"github.com/google/uuid"
@@ -55,6 +56,10 @@ type ProjectRepository interface {
 	Update(ctx context.Context, project *models.Project) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error
 	UpdateStatusAndCommit(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus, commitSHA string) error
+	// ReleaseStuckIndexing сбрасывает осиротевшие status='indexing' старше cutoff в
+	// 'indexing_failed' (процесс умер посреди индексации — финальный CAS не выполнился).
+	// Возвращает количество освобождённых проектов.
+	ReleaseStuckIndexing(ctx context.Context, cutoff time.Time) (int64, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -174,11 +179,17 @@ func (r *projectRepository) Update(ctx context.Context, project *models.Project)
 }
 
 // UpdateStatus безопасно обновляет статус проекта с проверкой текущего статуса (CAS).
+// Переход в indexing дополнительно ставит indexing_started_at — маркер давности для
+// ReleaseStuckIndexing (updated_at непригоден: его освежает любой full-row Update).
 func (r *projectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus models.ProjectStatus) error {
 	db := gormDB(ctx, r.db)
+	updates := map[string]interface{}{"status": newStatus}
+	if newStatus == models.ProjectStatusIndexing {
+		updates["indexing_started_at"] = time.Now()
+	}
 	result := db.WithContext(ctx).Model(&models.Project{}).
 		Where("id = ? AND status = ?", id, oldStatus).
-		Update("status", newStatus)
+		Updates(updates)
 
 	if result.Error != nil {
 		return fmt.Errorf("failed to update project status: %w", result.Error)
@@ -187,6 +198,21 @@ func (r *projectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldS
 		return fmt.Errorf("project status update failed: project not found or status changed (expected %s)", oldStatus)
 	}
 	return nil
+}
+
+// ReleaseStuckIndexing сбрасывает осиротевшие status='indexing' старше cutoff в
+// 'indexing_failed'. Дальше проект подбирает фоновый change-detect
+// (RunBackgroundReindexing) либо ручной Reindex (который при 'indexing' отвечает 409).
+// Для legacy-строк с NULL indexing_started_at давность меряется по updated_at.
+func (r *projectRepository) ReleaseStuckIndexing(ctx context.Context, cutoff time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).Model(&models.Project{}).
+		Where("status = ?", models.ProjectStatusIndexing).
+		Where("(indexing_started_at IS NOT NULL AND indexing_started_at < ?) OR (indexing_started_at IS NULL AND updated_at < ?)", cutoff, cutoff).
+		Update("status", models.ProjectStatusIndexingFailed)
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to release stuck indexing projects: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 // UpdateStatusAndCommit безопасно обновляет статус проекта и хэш последнего коммита.

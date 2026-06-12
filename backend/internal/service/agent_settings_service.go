@@ -194,9 +194,15 @@ type HermesAgentSettings struct {
 }
 
 // HermesSkillRef — ссылка на skill для Hermes (Sprint 16.C).
+//
+// Sprint 22: добавлен Config — тот же контракт, что у claude-семейства:
+// config.files (map rel-path → content) задаёт реальное дерево файлов skill'а
+// (SKILL.md + scripts/ + references/...). Hermes ищет skills в ~/.hermes/skills/ —
+// runner копирует дерево туда же, куда раньше клались placeholder'ы.
 type HermesSkillRef struct {
 	Name   string `json:"name"`
 	Source string `json:"source"` // builtin | agentskills | path
+	Config map[string]any `json:"config,omitempty"`
 }
 
 // HermesMCPServerSpec — MCP-сервер в формате ~/.hermes/mcp.json.
@@ -372,7 +378,7 @@ func BackendArtifactsToSandboxBundle(a *BackendArtifacts) *sandbox.AgentSettings
 		return nil
 	}
 	if len(a.SettingsJSON) == 0 && len(a.MCPJSON) == 0 && a.PermissionMode == "" &&
-		len(a.MCPEnv) == 0 &&
+		len(a.MCPEnv) == 0 && len(a.SkillsFiles) == 0 &&
 		len(a.HermesConfigYAML) == 0 && len(a.HermesMCPJSON) == 0 && len(a.HermesSkills) == 0 {
 		return nil
 	}
@@ -381,6 +387,7 @@ func BackendArtifactsToSandboxBundle(a *BackendArtifacts) *sandbox.AgentSettings
 		MCPJSON:          a.MCPJSON,
 		PermissionMode:   a.PermissionMode,
 		MCPEnv:           a.MCPEnv,
+		SkillsFiles:      a.SkillsFiles,
 		HermesConfigYAML: a.HermesConfigYAML,
 		HermesMCPJSON:    a.HermesMCPJSON,
 		HermesSkills:     a.HermesSkills,

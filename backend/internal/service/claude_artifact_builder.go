@@ -76,11 +76,17 @@ func (b *ClaudeArtifactBuilder) Build(ctx context.Context, agent *models.Agent, 
 		})
 	}
 
+	skillsFiles, err := buildCodeBackendSkillsFiles(codeSettings.Skills)
+	if err != nil {
+		return nil, fmt.Errorf("claude builder: skills: %w", err)
+	}
+
 	return &BackendArtifacts{
 		SettingsJSON:   settingsJSON,
 		MCPJSON:        mcpJSON,
 		MCPEnv:         mcpEnv,
 		Skills:         skills,
+		SkillsFiles:    skillsFiles,
 		PermissionMode: perms.DefaultMode,
 	}, nil
 }

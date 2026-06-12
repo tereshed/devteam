@@ -64,11 +64,17 @@ func (b *AntigravityArtifactBuilder) Build(ctx context.Context, agent *models.Ag
 		})
 	}
 
+	skillsFiles, err := buildCodeBackendSkillsFiles(codeSettings.Skills)
+	if err != nil {
+		return nil, fmt.Errorf("antigravity builder: skills: %w", err)
+	}
+
 	return &BackendArtifacts{
 		SettingsJSON:   settingsJSON,
 		MCPJSON:        mcpJSON,
 		MCPEnv:         mcpEnv,
 		Skills:         skills,
+		SkillsFiles:    skillsFiles,
 		PermissionMode: perms.DefaultMode,
 	}, nil
 }

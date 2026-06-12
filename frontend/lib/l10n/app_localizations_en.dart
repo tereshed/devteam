@@ -2051,7 +2051,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentSandboxSettingsSkillsHelper =>
-      'JSON array of Claude Code skill refs: see docs.';
+      'JSON array of skills (Claude Code / Antigravity / Hermes). Fields: name, source (builtin/plugin/path; hermes: builtin/agentskills/path), config.files — a map of relative paths (SKILL.md required, plus scripts etc.) to file contents. Files are copied into the sandbox before start; scripts are run by the agent via bash/python.';
 
   @override
   String get agentSandboxSettingsDefaultMode => 'Default mode';

@@ -697,12 +697,23 @@ func validateCodeBackendSettingsStrict(raw []byte) error {
 			}
 		}
 	}
+	skillsTotalBytes := 0
 	for i, sk := range parsed.Skills {
 		if !codeBackendSkillNameRE.MatchString(sk.Name) {
 			return fmt.Errorf("skills[%d].name must match [a-zA-Z][a-zA-Z0-9_-]*, got %q", i, sk.Name)
 		}
 		if !sk.Source.IsValid() {
 			return fmt.Errorf("skills[%d].source invalid: %q", i, sk.Source)
+		}
+		// Sprint 22 — skills с контентом (config.files): валидируем форму и пути
+		// на сохранении, чтобы агент не падал на сборке артефактов в рантайме.
+		n, err := validateSkillConfigFiles(sk.Config)
+		if err != nil {
+			return fmt.Errorf("skills[%d] (%s): %w", i, sk.Name, err)
+		}
+		skillsTotalBytes += n
+		if skillsTotalBytes > maxSkillsTotalBytes {
+			return fmt.Errorf("skills: total content size exceeds %d bytes", maxSkillsTotalBytes)
 		}
 	}
 	for k, v := range parsed.Env {
@@ -774,6 +785,7 @@ func validateHermesSection(h *HermesAgentSettings) error {
 			return fmt.Errorf("toolsets[%d]: invalid name %q (must match [a-zA-Z][a-zA-Z0-9_-]*)", i, ts)
 		}
 	}
+	hermesSkillsTotalBytes := 0
 	for i, sk := range h.Skills {
 		if !codeBackendSkillNameRE.MatchString(sk.Name) {
 			return fmt.Errorf("skills[%d].name: invalid %q", i, sk.Name)
@@ -783,6 +795,16 @@ func validateHermesSection(h *HermesAgentSettings) error {
 			// ok
 		default:
 			return fmt.Errorf("skills[%d].source: invalid %q (allowed: builtin|agentskills|path)", i, sk.Source)
+		}
+		// Sprint 22 — config.files: тот же контракт, что у claude-семейства
+		// (дерево файлов skill'а, копируется в ~/.hermes/skills/<name>/).
+		n, err := validateSkillConfigFiles(sk.Config)
+		if err != nil {
+			return fmt.Errorf("skills[%d] (%s): %w", i, sk.Name, err)
+		}
+		hermesSkillsTotalBytes += n
+		if hermesSkillsTotalBytes > maxSkillsTotalBytes {
+			return fmt.Errorf("skills: total content size exceeds %d bytes", maxSkillsTotalBytes)
 		}
 	}
 	for i, m := range h.MCPServers {

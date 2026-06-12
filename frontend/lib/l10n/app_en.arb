@@ -1076,9 +1076,9 @@
   "@agentSandboxSettingsMCPHelper": {
     "description": "Helper text for MCP servers tab. JSON example removed to avoid ARB ICU lexer interpreting braces as placeholders (Sprint 15.C2)."
   },
-  "agentSandboxSettingsSkillsHelper": "JSON array of Claude Code skill refs: see docs.",
+  "agentSandboxSettingsSkillsHelper": "JSON array of skills (Claude Code / Antigravity / Hermes). Fields: name, source (builtin/plugin/path; hermes: builtin/agentskills/path), config.files — a map of relative paths (SKILL.md required, plus scripts etc.) to file contents. Files are copied into the sandbox before start; scripts are run by the agent via bash/python.",
   "@agentSandboxSettingsSkillsHelper": {
-    "description": "Helper text for Skills tab. JSON example removed for the same reason as MCP helper."
+    "description": "Helper text for Skills tab. JSON example removed for the same reason as MCP helper (ICU braces)."
   },
   "agentSandboxSettingsDefaultMode": "Default mode",
   "agentSandboxSettingsAllow": "Allow",

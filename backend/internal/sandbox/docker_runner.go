@@ -499,6 +499,113 @@ func buildHermesHomeTar(b *AgentSettingsBundle) (io.ReadCloser, error) {
 	return pr, nil
 }
 
+// claudeSkillsHomeBase — каталог skills внутри контейнера (relative to /) для
+// claude-семейства backend'ов. Возвращает "" для backend'ов без поддержки skills —
+// caller обязан трактовать это как «не копировать».
+//
+//	claude-code → ~/.claude/skills (personal skills, CLI находит сам);
+//	antigravity → ~/.gemini/antigravity/skills (глобальный каталог Antigravity;
+//	              entrypoint дополнительно зеркалит в $REPO_DIR/.agents/skills).
+func claudeSkillsHomeBase(backend CodeBackendType) string {
+	switch backend {
+	case CodeBackendClaudeCode:
+		return "home/sandbox/.claude/skills"
+	case CodeBackendAntigravity:
+		return "home/sandbox/.gemini/antigravity/skills"
+	default:
+		return ""
+	}
+}
+
+// buildClaudeSkillsTar — упаковывает AgentSettingsBundle.SkillsFiles в tar для
+// CopyToContainer dst="/" (home-каталог лежит вне /workspace — тот же приём,
+// что buildHermesHomeTar).
+//
+// Возвращает (nil, nil), если skills нет или backend их не поддерживает
+// (последнее — программная ошибка конфигурации бандла; молча не копируем,
+// предупреждение логирует caller).
+//
+// Permissions: директории — 0755, файлы — 0644 (exec-бит скриптам не нужен:
+// CLI запускает их через bash/python3). Владелец — sandbox (uid/gid 1001).
+func buildClaudeSkillsTar(b *AgentSettingsBundle, backend CodeBackendType) (io.ReadCloser, error) {
+	if b == nil || len(b.SkillsFiles) == 0 {
+		return nil, nil
+	}
+	base := claudeSkillsHomeBase(backend)
+	if base == "" {
+		return nil, fmt.Errorf("backend %q does not support skills files", backend)
+	}
+	type entry struct {
+		name    string
+		content []byte
+		mode    int64
+		isDir   bool
+	}
+	// Родительские каталоги до base: tar требует, чтобы они существовали с
+	// правильным владельцем (иначе docker создаст их root:root).
+	entries := make([]entry, 0, len(b.SkillsFiles)*2+4)
+	parts := strings.Split(base, "/")
+	for i := 2; i <= len(parts); i++ { // home/sandbox уже существует в образе
+		entries = append(entries, entry{name: strings.Join(parts[:i], "/"), mode: 0o755, isDir: true})
+	}
+	keys := make([]string, 0, len(b.SkillsFiles))
+	for k := range b.SkillsFiles {
+		keys = append(keys, k)
+	}
+	sortStrings(keys)
+	seenDirs := map[string]bool{}
+	for _, rel := range keys {
+		if err := assertHermesSkillRelPath(rel); err != nil {
+			return nil, fmt.Errorf("skill file %q: %w", rel, err)
+		}
+		// Промежуточные директории skill'а (skill-name/, skill-name/scripts/, ...).
+		segs := strings.Split(rel, "/")
+		for i := 1; i < len(segs); i++ {
+			dir := base + "/" + strings.Join(segs[:i], "/")
+			if !seenDirs[dir] {
+				seenDirs[dir] = true
+				entries = append(entries, entry{name: dir, mode: 0o755, isDir: true})
+			}
+		}
+		entries = append(entries, entry{name: base + "/" + rel, content: b.SkillsFiles[rel], mode: 0o644})
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		var err error
+		tw := tar.NewWriter(pw)
+		defer func() {
+			_ = tw.Close()
+			_ = pw.CloseWithError(err)
+		}()
+		now := time.Now()
+		for _, f := range entries {
+			hdr := &tar.Header{
+				Name:    f.name,
+				Mode:    f.mode,
+				Uid:     1001,
+				Gid:     1001,
+				ModTime: now,
+			}
+			if f.isDir {
+				hdr.Typeflag = tar.TypeDir
+			} else {
+				hdr.Typeflag = tar.TypeReg
+				hdr.Size = int64(len(f.content))
+			}
+			if err = tw.WriteHeader(hdr); err != nil {
+				return
+			}
+			if !f.isDir {
+				if _, err = io.Copy(tw, strings.NewReader(string(f.content))); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	return pr, nil
+}
+
 // assertHermesSkillRelPath — defense-in-depth path-traversal проверка для tar-ключей.
 // Дублирует логику service.assertSafeRelativePath (в sandbox-пакете не зависим
 // от service/, поэтому повторяем), чтобы быть последней линией защиты до WriteHeader.
@@ -763,6 +870,19 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		if cpErr := r.cli.CopyToContainer(ctx, containerID, "/", hermesRC, containertypes.CopyToContainerOptions{}); cpErr != nil {
 			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "copy_hermes_failed")
 			return nil, fmt.Errorf("copy hermes to container: %w", errors.Join(ErrSandboxDocker, cpErr))
+		}
+	}
+
+	// Skills claude-семейства (claude-code/antigravity) — тоже в "/", в home-каталог
+	// (~/.claude/skills или ~/.gemini/antigravity/skills по opts.Backend).
+	if skillsRC, serr := buildClaudeSkillsTar(opts.AgentSettings, opts.Backend); serr != nil {
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "skills_tar_build")
+		return nil, fmt.Errorf("build skills tar: %w", serr)
+	} else if skillsRC != nil {
+		defer skillsRC.Close()
+		if cpErr := r.cli.CopyToContainer(ctx, containerID, "/", skillsRC, containertypes.CopyToContainerOptions{}); cpErr != nil {
+			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "copy_skills_failed")
+			return nil, fmt.Errorf("copy skills to container: %w", errors.Join(ErrSandboxDocker, cpErr))
 		}
 	}
 

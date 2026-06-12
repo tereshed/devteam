@@ -317,33 +317,28 @@ func toEnvSafe(s string) string {
 	return string(out)
 }
 
-// buildHermesSkillsFiles — пока MVP: для каждого skill оставляем плейсхолдер
-// SKILL.md с метаданными (имя/source). Реальная подгрузка содержимого из
-// AgentSkillRepository / agentskills.io — отдельная задача (16.C.2);
-// здесь главное — корректно работать с путями (path traversal) и стабильно
-// генерировать карту key→content для runner'а.
+// buildHermesSkillsFiles — Sprint 22: реальное дерево файлов skill'а из
+// config.files (SKILL.md + scripts/ + ...), тот же контракт, что у
+// claude-семейства — делегируем общему buildCodeBackendSkillsFiles.
+// Skill без config.files получает placeholder SKILL.md с frontmatter
+// (hermes требует frontmatter в SKILL.md). Подгрузка контента из
+// AgentSkillRepository / agentskills.io по source — по-прежнему отдельная
+// задача (16.C.2).
 func buildHermesSkillsFiles(skills []HermesSkillRef) (map[string][]byte, error) {
 	if len(skills) == 0 {
 		return nil, nil
 	}
-	out := map[string][]byte{}
-	const baseDir = "/home/sandbox/.hermes/skills"
+	refs := make([]AgentSkillRef, 0, len(skills))
 	for _, sk := range skills {
-		if sk.Name == "" {
-			return nil, errors.New("skill: empty name")
-		}
-		// Сначала валидируем по «безопасному» алфавиту имени, потом — путь.
-		if !codeBackendSkillNameRE.MatchString(sk.Name) {
-			return nil, fmt.Errorf("skill %q: invalid name", sk.Name)
-		}
-		rel := path.Join(sk.Name, "SKILL.md")
-		if err := assertSafeRelativePath(baseDir, rel); err != nil {
-			return nil, fmt.Errorf("skill %q: %w", sk.Name, err)
-		}
-		body := fmt.Sprintf("# Skill: %s\nsource: %s\n", sk.Name, sk.Source)
-		out[rel] = []byte(body)
+		refs = append(refs, AgentSkillRef{
+			Name: sk.Name,
+			// Source у hermes — свой словарь (builtin|agentskills|path); в общем
+			// хелпере он попадает только в текст placeholder'а, не валидируется.
+			Source: models.AgentSkillSource(sk.Source),
+			Config: sk.Config,
+		})
 	}
-	return out, nil
+	return buildCodeBackendSkillsFiles(refs)
 }
 
 // assertSafeRelativePath — Sprint 16.C path-traversal guard.
