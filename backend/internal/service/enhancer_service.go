@@ -59,6 +59,22 @@ const (
 	// EnhancerMaxTextChars — лимит reason / expected_effect / report от модели.
 	EnhancerMaxTextChars = 8000
 
+	// EnhancerMaxIterations — лимит LLM-итераций одного прогона. У ассистента
+	// чатовый бюджет (12) — аудиту истории задач его не хватает: живой прогон
+	// на 34 задачах упёрся в лимит, успев сделать 2 предложения без отчёта.
+	// Executor исполняет все tool-вызовы одной итерации, так что 40 — это
+	// до ~40 LLM-раундов: обзор → глубокое чтение проблемных задач →
+	// предложения → отчёт.
+	EnhancerMaxIterations = 40
+	// EnhancerPerLLMCallTimeout — таймаут одного LLM-вызова прогона: история
+	// аудита длиннее чатовой, ответы модели дольше.
+	EnhancerPerLLMCallTimeout = 120 * time.Second
+	// EnhancerMaxToolResultBytes / EnhancerMaxHistoryBytes / EnhancerHistoryTailKeep —
+	// конфиг agentloop-executor'а энхансера (см. app.go).
+	EnhancerMaxToolResultBytes = 16 * 1024
+	EnhancerMaxHistoryBytes    = 600 * 1024
+	EnhancerHistoryTailKeep    = 8
+
 	enhancerDefaultWindowDays = 7
 	enhancerDefaultMaxChanges = 5
 	enhancerRunsListLimit     = 20
@@ -818,6 +834,7 @@ func (s *enhancerService) buildSystemPrompt(agent *models.Agent, project *models
 	fmt.Fprintf(&sb, "Окно анализа: последние %d дней (%s — %s). Задачи старше окна игнорируй.\n",
 		windowDays, from.Format("2006-01-02"), now.Format("2006-01-02"))
 	fmt.Fprintf(&sb, "Лимит предложений за прогон: %d (enforced системой).\n", maxChanges)
+	fmt.Fprintf(&sb, "Бюджет шагов: ~%d LLM-итераций на весь прогон. Распределяй: краткий обзор task_list → глубокое чтение 3-5 самых проблемных задач → предложения → ОБЯЗАТЕЛЬНЫЙ enhancer_finish_run с отчётом. Не закапывайся в одну задачу; зови независимые инструменты пачкой в одной итерации; оставь запас шагов на отчёт.\n", EnhancerMaxIterations)
 	sb.WriteString("Режим: propose — каждое предложение попадёт на ревью человеку, ничего не применяется автоматически.\n")
 	return sb.String()
 }

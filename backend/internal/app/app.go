@@ -860,10 +860,18 @@ func Run(role Role) {
 	leaderElector.OnLeader("assistant-stale-recovery", assistantSvc.StartStaleRecovery)
 
 	// Энхансер проекта — мета-агент улучшения работы агентов: анализирует историю
-	// задач и копит предложения изменений (propose-режим). Переиспользует
-	// agentloop-Executor, каталог ассистента (whitelist read-инструментов) и
-	// LLM-резолвер с пользовательскими ключами. enhancerRepo создан выше
-	// (его же читает ContextBuilder для оверрайдов промптов).
+	// задач и копит предложения изменений (propose-режим). Каталог ассистента
+	// (whitelist read-инструментов) и LLM-резолвер с пользовательскими ключами —
+	// общие; executor СВОЙ: чатовый бюджет ассистента (12 итераций) аудиту
+	// истории задач не хватает. enhancerRepo создан выше (его же читает
+	// ContextBuilder для оверрайдов промптов).
+	enhancerExecutor := agentloop.NewExecutor(agentloop.Config{
+		MaxIterations:      service.EnhancerMaxIterations,
+		MaxToolResultBytes: service.EnhancerMaxToolResultBytes,
+		MaxHistoryBytes:    service.EnhancerMaxHistoryBytes,
+		HistoryTailKeep:    service.EnhancerHistoryTailKeep,
+		PerLLMCallTimeout:  service.EnhancerPerLLMCallTimeout,
+	}, v2Logger)
 	enhancerSvc, err := service.NewEnhancerService(service.EnhancerServiceDeps{
 		Repo:        enhancerRepo,
 		ProjectSvc:  projectService,
@@ -874,7 +882,7 @@ func Run(role Role) {
 		AgentSvc:    agentSvcV2,
 		LLMResolver: assistantLLMResolver,
 		ToolCatalog: assistantToolCatalog,
-		Executor:    assistantExecutor,
+		Executor:    enhancerExecutor,
 		Logger:      v2Logger,
 	})
 	if err != nil {
