@@ -3399,4 +3399,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get enhancerLoadError => 'Failed to load enhancer data';
+
+  @override
+  String get enhancerChangeApplyButton => 'Apply';
+
+  @override
+  String get enhancerChangeRejectButton => 'Reject';
+
+  @override
+  String get enhancerChangeRollbackButton => 'Roll back';
+
+  @override
+  String get enhancerChangeAppliedSnack => 'Change applied';
+
+  @override
+  String get enhancerChangeRejectedSnack => 'Change rejected';
+
+  @override
+  String get enhancerChangeRolledBackSnack => 'Change rolled back';
+
+  @override
+  String get enhancerChangeConflictSnack =>
+      'Failed: the target changed after the proposal was created — refresh the list and verify manually';
 }

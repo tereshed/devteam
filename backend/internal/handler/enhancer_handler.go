@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/devteam/backend/internal/handler/dto"
+	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/gin-gonic/gin"
@@ -35,6 +37,13 @@ func writeEnhancerServiceError(c *gin.Context, err error) {
 		errors.Is(err, service.ErrEnhancerInvalidLimit):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrEnhancerRunInProgress):
+		apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, err.Error())
+	case errors.Is(err, service.ErrEnhancerChangeNotFound):
+		apierror.JSON(c, http.StatusNotFound, apierror.ErrNotFound, err.Error())
+	case errors.Is(err, service.ErrEnhancerChangeBadState),
+		errors.Is(err, service.ErrEnhancerChangeInvalidPayload):
+		apierror.JSON(c, http.StatusUnprocessableEntity, apierror.ErrUnprocessable, err.Error())
+	case errors.Is(err, service.ErrEnhancerChangeConflict):
 		apierror.JSON(c, http.StatusConflict, apierror.ErrConflict, err.Error())
 	default:
 		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "Request failed")
@@ -176,6 +185,95 @@ func (h *EnhancerHandler) ListRuns(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, dto.ToEnhancerRunListResponse(runs))
+}
+
+// ApplyChange применяет предложение изменения.
+// @Summary Применить предложение энхансера
+// @Description Применяет proposed-предложение: оверрайд промпта агента (project_agent_overrides) или правку описания/настроек проекта. 409 — целевое значение изменилось с момента предложения.
+// @Tags enhancer
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Produce json
+// @Param id path string true "Project ID"
+// @Param changeId path string true "Enhancer Change ID"
+// @Success 200 {object} dto.EnhancerChangeResponse
+// @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
+// @Failure 403 {object} apierror.ErrorResponse "Нет доступа к проекту"
+// @Failure 404 {object} apierror.ErrorResponse "Предложение / проект не найдены"
+// @Failure 409 {object} apierror.ErrorResponse "Конфликт: цель изменилась с момента предложения"
+// @Failure 422 {object} apierror.ErrorResponse "Неподходящий статус или невалидный payload"
+// @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
+// @Router /projects/{id}/enhancer/changes/{changeId}/apply [post]
+func (h *EnhancerHandler) ApplyChange(c *gin.Context) {
+	h.decideChange(c, h.service.ApplyChange)
+}
+
+// RejectChange отклоняет предложение изменения.
+// @Summary Отклонить предложение энхансера
+// @Description Переводит proposed-предложение в rejected. Ничего не применяется.
+// @Tags enhancer
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Produce json
+// @Param id path string true "Project ID"
+// @Param changeId path string true "Enhancer Change ID"
+// @Success 200 {object} dto.EnhancerChangeResponse
+// @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
+// @Failure 403 {object} apierror.ErrorResponse "Нет доступа к проекту"
+// @Failure 404 {object} apierror.ErrorResponse "Предложение / проект не найдены"
+// @Failure 422 {object} apierror.ErrorResponse "Неподходящий статус"
+// @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
+// @Router /projects/{id}/enhancer/changes/{changeId}/reject [post]
+func (h *EnhancerHandler) RejectChange(c *gin.Context) {
+	h.decideChange(c, h.service.RejectChange)
+}
+
+// RollbackChange откатывает применённое предложение.
+// @Summary Откатить применённое предложение энхансера
+// @Description Откатывает applied-предложение: пересборка оверрайда агента без него или возврат старого значения описания/настроек. 409 — текущее значение уже не то, что применялось.
+// @Tags enhancer
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Produce json
+// @Param id path string true "Project ID"
+// @Param changeId path string true "Enhancer Change ID"
+// @Success 200 {object} dto.EnhancerChangeResponse
+// @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
+// @Failure 403 {object} apierror.ErrorResponse "Нет доступа к проекту"
+// @Failure 404 {object} apierror.ErrorResponse "Предложение / проект не найдены"
+// @Failure 409 {object} apierror.ErrorResponse "Конфликт: цель менялась после применения"
+// @Failure 422 {object} apierror.ErrorResponse "Неподходящий статус"
+// @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
+// @Router /projects/{id}/enhancer/changes/{changeId}/rollback [post]
+func (h *EnhancerHandler) RollbackChange(c *gin.Context) {
+	h.decideChange(c, h.service.RollbackChange)
+}
+
+// decideChange — общий каркас apply/reject/rollback.
+func (h *EnhancerHandler) decideChange(
+	c *gin.Context,
+	action func(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.EnhancerChange, error),
+) {
+	userID, userRole, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid project ID format")
+		return
+	}
+	changeID, err := uuid.Parse(c.Param("changeId"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid change ID format")
+		return
+	}
+	ch, err := action(c.Request.Context(), userID, userRole, projectID, changeID)
+	if err != nil {
+		writeEnhancerServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.ToEnhancerChangeResponse(ch))
 }
 
 // ListRunChanges возвращает предложения изменений одного прогона.

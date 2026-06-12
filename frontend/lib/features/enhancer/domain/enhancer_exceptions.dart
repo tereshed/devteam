@@ -51,12 +51,13 @@ class EnhancerValidationException extends EnhancerException
   }) : super('Validation error: $detail', originalError: originalError);
 }
 
-/// 409 — прогон уже выполняется.
+/// 409 — конфликт: прогон уже выполняется (run) либо цель предложения
+/// изменилась с момента его формирования (apply/rollback OCC-гард).
 @immutable
-class EnhancerRunInProgressException extends EnhancerException
+class EnhancerConflictException extends EnhancerException
     with MessageOnlyEquality {
-  EnhancerRunInProgressException(String detail, {Object? originalError})
-      : super('Run in progress: $detail', originalError: originalError);
+  EnhancerConflictException(String detail, {Object? originalError})
+      : super('Conflict: $detail', originalError: originalError);
 }
 
 @immutable

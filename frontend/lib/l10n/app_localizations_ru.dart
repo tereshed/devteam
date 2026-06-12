@@ -3428,4 +3428,26 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get enhancerLoadError => 'Не удалось загрузить данные энхансера';
+
+  @override
+  String get enhancerChangeApplyButton => 'Применить';
+
+  @override
+  String get enhancerChangeRejectButton => 'Отклонить';
+
+  @override
+  String get enhancerChangeRollbackButton => 'Откатить';
+
+  @override
+  String get enhancerChangeAppliedSnack => 'Предложение применено';
+
+  @override
+  String get enhancerChangeRejectedSnack => 'Предложение отклонено';
+
+  @override
+  String get enhancerChangeRolledBackSnack => 'Изменение откачено';
+
+  @override
+  String get enhancerChangeConflictSnack =>
+      'Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную';
 }

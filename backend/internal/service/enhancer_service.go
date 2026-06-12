@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -28,6 +29,18 @@ var (
 	ErrEnhancerInvalidLimit    = errors.New("max_changes_per_run must be between 1 and 20")
 	ErrEnhancerRunInProgress   = errors.New("enhancer run is already in progress")
 	ErrEnhancerRunNotFound     = errors.New("enhancer run not found")
+	// ErrEnhancerChangeNotFound — предложение не найдено (или чужого проекта).
+	ErrEnhancerChangeNotFound = errors.New("enhancer change not found")
+	// ErrEnhancerChangeBadState — операция не совместима с текущим статусом
+	// (apply/reject требуют proposed, rollback — applied).
+	ErrEnhancerChangeBadState = errors.New("enhancer change is not in a valid state for this operation")
+	// ErrEnhancerChangeConflict — OCC-гард: целевое значение изменилось с момента
+	// формирования предложения (description/settings разъехались с payload.old)
+	// или агент покинул проект. Слепое применение затёрло бы чужие правки.
+	ErrEnhancerChangeConflict = errors.New("enhancer change conflicts with current state")
+	// ErrEnhancerChangeInvalidPayload — payload предложения не соответствует
+	// контракту target_kind.
+	ErrEnhancerChangeInvalidPayload = errors.New("enhancer change payload is invalid")
 )
 
 const (
@@ -76,6 +89,14 @@ type EnhancerService interface {
 	RunNow(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.EnhancerRun, error)
 	ListRuns(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) ([]models.EnhancerRun, error)
 	ListRunChanges(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, runID uuid.UUID) ([]models.EnhancerChange, error)
+	// ApplyChange применяет proposed-предложение: agent_override — пересборка
+	// project_agent_overrides, description/settings — через projectSvc.Update
+	// с OCC-гардом по payload.old.
+	ApplyChange(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.EnhancerChange, error)
+	// RejectChange отклоняет proposed-предложение.
+	RejectChange(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.EnhancerChange, error)
+	// RollbackChange откатывает applied-предложение (обратный OCC-гард по payload.new).
+	RollbackChange(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.EnhancerChange, error)
 	// RunDue — вызывается leader-gated раннером: запускает прогоны по всем
 	// созревшим конфигам и пересчитывает их next_run_at.
 	RunDue(ctx context.Context, now time.Time) (int, error)
@@ -379,6 +400,254 @@ func (s *enhancerService) ListRunChanges(ctx context.Context, userID uuid.UUID, 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Применение предложений (фаза 2): apply / reject / rollback.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type enhancerAgentOverridePayload struct {
+	PromptAddendum string `json:"prompt_addendum"`
+}
+
+type enhancerOldNewStringPayload struct {
+	Old string `json:"old"`
+	New string `json:"new"`
+}
+
+type enhancerOldNewJSONPayload struct {
+	Old json.RawMessage `json:"old"`
+	New json.RawMessage `json:"new"`
+}
+
+// loadProjectChange — ABAC + загрузка предложения с проверкой принадлежности проекту.
+func (s *enhancerService) loadProjectChange(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.Project, *models.EnhancerChange, error) {
+	project, err := s.deps.ProjectSvc.GetByID(ctx, userID, userRole, projectID)
+	if err != nil {
+		return nil, nil, err
+	}
+	ch, err := s.deps.Repo.GetChangeByID(ctx, changeID)
+	if err != nil {
+		if errors.Is(err, repository.ErrEnhancerChangeNotFound) {
+			return nil, nil, ErrEnhancerChangeNotFound
+		}
+		return nil, nil, err
+	}
+	if ch.ProjectID != projectID {
+		return nil, nil, ErrEnhancerChangeNotFound
+	}
+	return project, ch, nil
+}
+
+// markChange фиксирует решение по предложению.
+func (s *enhancerService) markChange(ctx context.Context, ch *models.EnhancerChange, status models.EnhancerChangeStatus, decidedBy uuid.UUID, stampApplied bool) error {
+	now := time.Now()
+	ch.Status = status
+	ch.DecidedBy = &decidedBy
+	ch.DecidedAt = &now
+	if stampApplied {
+		ch.AppliedAt = &now
+	}
+	return s.deps.Repo.UpdateChange(ctx, ch)
+}
+
+// rebuildAgentOverride пересобирает материализованный оверрайд пары
+// (проект, агент) из ВСЕХ applied-предложений в порядке применения.
+// Единая точка правды для apply и rollback: откат = пересборка без
+// отозванного предложения, пустая свёртка удаляет строку оверрайда.
+func (s *enhancerService) rebuildAgentOverride(ctx context.Context, projectID, agentID, updatedBy uuid.UUID) error {
+	applied, err := s.deps.Repo.ListAppliedAgentChanges(ctx, projectID, agentID)
+	if err != nil {
+		return err
+	}
+	parts := make([]string, 0, len(applied))
+	for i := range applied {
+		var p enhancerAgentOverridePayload
+		if err := json.Unmarshal(applied[i].Payload, &p); err != nil {
+			continue
+		}
+		if a := strings.TrimSpace(p.PromptAddendum); a != "" {
+			parts = append(parts, a)
+		}
+	}
+	return s.deps.Repo.UpsertOverride(ctx, projectID, agentID, strings.Join(parts, "\n\n"), updatedBy)
+}
+
+// jsonObjectsEqual — нормализованное сравнение двух JSON-значений; пустые/
+// null трактуются как пустой объект (дефолт jsonb-колонок).
+func jsonObjectsEqual(a, b []byte) bool {
+	norm := func(raw []byte) any {
+		trimmed := strings.TrimSpace(string(raw))
+		if trimmed == "" || trimmed == "null" {
+			trimmed = "{}"
+		}
+		var v any
+		if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
+			return string(raw)
+		}
+		return v
+	}
+	return reflect.DeepEqual(norm(a), norm(b))
+}
+
+func (s *enhancerService) ApplyChange(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.EnhancerChange, error) {
+	project, ch, err := s.loadProjectChange(ctx, userID, userRole, projectID, changeID)
+	if err != nil {
+		return nil, err
+	}
+	if ch.Status != models.EnhancerChangeStatusProposed {
+		return nil, ErrEnhancerChangeBadState
+	}
+
+	switch ch.TargetKind {
+	case models.EnhancerChangeKindAgentOverride:
+		var p enhancerAgentOverridePayload
+		if err := json.Unmarshal(ch.Payload, &p); err != nil || strings.TrimSpace(p.PromptAddendum) == "" || ch.TargetAgentID == nil {
+			return nil, ErrEnhancerChangeInvalidPayload
+		}
+		ok, err := s.agentBelongsToProject(ctx, projectID, *ch.TargetAgentID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			// Агент удалён из команд проекта после формирования предложения.
+			return nil, ErrEnhancerChangeConflict
+		}
+		// Сначала статус, затем пересборка: rebuild читает applied-список из БД.
+		if err := s.markChange(ctx, ch, models.EnhancerChangeStatusApplied, userID, true); err != nil {
+			return nil, err
+		}
+		if err := s.rebuildAgentOverride(ctx, projectID, *ch.TargetAgentID, userID); err != nil {
+			// Возврат в proposed (best effort), чтобы apply можно было повторить.
+			ch.AppliedAt = nil
+			if rerr := s.markChange(ctx, ch, models.EnhancerChangeStatusProposed, userID, false); rerr != nil {
+				s.deps.Logger.Error("enhancer: revert change status failed", "change_id", ch.ID, "error", rerr)
+			}
+			return nil, err
+		}
+
+	case models.EnhancerChangeKindProjectDescription:
+		var p enhancerOldNewStringPayload
+		if err := json.Unmarshal(ch.Payload, &p); err != nil || strings.TrimSpace(p.New) == "" {
+			return nil, ErrEnhancerChangeInvalidPayload
+		}
+		// OCC: описание не должно было разъехаться с моментом предложения.
+		if project.Description != p.Old {
+			return nil, ErrEnhancerChangeConflict
+		}
+		if _, err := s.deps.ProjectSvc.Update(ctx, userID, userRole, projectID, dto.UpdateProjectRequest{Description: &p.New}); err != nil {
+			return nil, err
+		}
+		if err := s.markChange(ctx, ch, models.EnhancerChangeStatusApplied, userID, true); err != nil {
+			return nil, err
+		}
+
+	case models.EnhancerChangeKindProjectSettings:
+		var p enhancerOldNewJSONPayload
+		if err := json.Unmarshal(ch.Payload, &p); err != nil || len(p.New) == 0 || string(p.New) == "null" {
+			return nil, ErrEnhancerChangeInvalidPayload
+		}
+		if !jsonObjectsEqual(project.Settings, p.Old) {
+			return nil, ErrEnhancerChangeConflict
+		}
+		newSettings := datatypes.JSON(p.New)
+		if _, err := s.deps.ProjectSvc.Update(ctx, userID, userRole, projectID, dto.UpdateProjectRequest{Settings: &newSettings}); err != nil {
+			return nil, err
+		}
+		if err := s.markChange(ctx, ch, models.EnhancerChangeStatusApplied, userID, true); err != nil {
+			return nil, err
+		}
+
+	default:
+		return nil, ErrEnhancerChangeInvalidPayload
+	}
+
+	s.deps.Logger.Info("enhancer: change applied", "change_id", ch.ID, "project_id", projectID, "target_kind", ch.TargetKind)
+	return ch, nil
+}
+
+func (s *enhancerService) RejectChange(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.EnhancerChange, error) {
+	_, ch, err := s.loadProjectChange(ctx, userID, userRole, projectID, changeID)
+	if err != nil {
+		return nil, err
+	}
+	if ch.Status != models.EnhancerChangeStatusProposed {
+		return nil, ErrEnhancerChangeBadState
+	}
+	if err := s.markChange(ctx, ch, models.EnhancerChangeStatusRejected, userID, false); err != nil {
+		return nil, err
+	}
+	return ch, nil
+}
+
+func (s *enhancerService) RollbackChange(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID, changeID uuid.UUID) (*models.EnhancerChange, error) {
+	project, ch, err := s.loadProjectChange(ctx, userID, userRole, projectID, changeID)
+	if err != nil {
+		return nil, err
+	}
+	if ch.Status != models.EnhancerChangeStatusApplied {
+		return nil, ErrEnhancerChangeBadState
+	}
+
+	switch ch.TargetKind {
+	case models.EnhancerChangeKindAgentOverride:
+		if ch.TargetAgentID == nil {
+			return nil, ErrEnhancerChangeInvalidPayload
+		}
+		// Сначала статус, затем пересборка уже без этого предложения.
+		if err := s.markChange(ctx, ch, models.EnhancerChangeStatusRolledBack, userID, false); err != nil {
+			return nil, err
+		}
+		if err := s.rebuildAgentOverride(ctx, projectID, *ch.TargetAgentID, userID); err != nil {
+			if rerr := s.markChange(ctx, ch, models.EnhancerChangeStatusApplied, userID, true); rerr != nil {
+				s.deps.Logger.Error("enhancer: revert change status failed", "change_id", ch.ID, "error", rerr)
+			}
+			return nil, err
+		}
+
+	case models.EnhancerChangeKindProjectDescription:
+		var p enhancerOldNewStringPayload
+		if err := json.Unmarshal(ch.Payload, &p); err != nil {
+			return nil, ErrEnhancerChangeInvalidPayload
+		}
+		// Обратный OCC: откатываем только если текущее значение — то, что мы
+		// применяли; иначе затёрли бы более поздние правки пользователя.
+		if project.Description != p.New {
+			return nil, ErrEnhancerChangeConflict
+		}
+		if _, err := s.deps.ProjectSvc.Update(ctx, userID, userRole, projectID, dto.UpdateProjectRequest{Description: &p.Old}); err != nil {
+			return nil, err
+		}
+		if err := s.markChange(ctx, ch, models.EnhancerChangeStatusRolledBack, userID, false); err != nil {
+			return nil, err
+		}
+
+	case models.EnhancerChangeKindProjectSettings:
+		var p enhancerOldNewJSONPayload
+		if err := json.Unmarshal(ch.Payload, &p); err != nil {
+			return nil, ErrEnhancerChangeInvalidPayload
+		}
+		if !jsonObjectsEqual(project.Settings, p.New) {
+			return nil, ErrEnhancerChangeConflict
+		}
+		oldRaw := strings.TrimSpace(string(p.Old))
+		if oldRaw == "" || oldRaw == "null" {
+			oldRaw = "{}"
+		}
+		oldSettings := datatypes.JSON(oldRaw)
+		if _, err := s.deps.ProjectSvc.Update(ctx, userID, userRole, projectID, dto.UpdateProjectRequest{Settings: &oldSettings}); err != nil {
+			return nil, err
+		}
+		if err := s.markChange(ctx, ch, models.EnhancerChangeStatusRolledBack, userID, false); err != nil {
+			return nil, err
+		}
+
+	default:
+		return nil, ErrEnhancerChangeInvalidPayload
+	}
+
+	s.deps.Logger.Info("enhancer: change rolled back", "change_id", ch.ID, "project_id", projectID, "target_kind", ch.TargetKind)
+	return ch, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Исполнение прогона: agentloop с read-каталогом + propose/finish инструментами.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -571,7 +840,7 @@ var schemaEnhancerProposeChange = json.RawMessage(`{
 		},
 		"payload": {
 			"type": "object",
-			"description": "Самодостаточный дифф. agent_override: {\"prompt_addendum\": \"...\"} и/или {\"settings\": {...}}. project_description / project_settings: {\"old\": ..., \"new\": ...}."
+			"description": "Самодостаточный дифф. agent_override: строго {\"prompt_addendum\": \"<точечная добавка к промпту>\"}. project_description / project_settings: {\"old\": <текущее значение>, \"new\": <новое значение>} — old обязателен, по нему проверяется конфликт при применении."
 		},
 		"reason": {"type": "string", "description": "На каких наблюдениях основано (конкретные task_id и что в них пошло не так)."},
 		"expected_effect": {"type": "string", "description": "Ожидаемый измеримый эффект (меньше итераций ревью / needs_human / шагов роутера)."}
@@ -682,7 +951,8 @@ func (s *enhancerService) makeProposeChangeHandler(run *models.EnhancerRun, maxC
 		}
 
 		var targetAgentID *uuid.UUID
-		if kind == models.EnhancerChangeKindAgentOverride {
+		switch kind {
+		case models.EnhancerChangeKindAgentOverride:
 			if strings.TrimSpace(a.TargetAgentID) == "" {
 				return enhancerToolErr("validation", "target_agent_id обязателен для agent_override")
 			}
@@ -697,16 +967,32 @@ func (s *enhancerService) makeProposeChangeHandler(run *models.EnhancerRun, maxC
 			if !ok {
 				return enhancerToolErr("forbidden", "агент не принадлежит командам этого проекта — глобальные агенты менять запрещено")
 			}
-			// Гардрейл размера аддендума — enforced в Go, не в промпте.
-			var payloadFields struct {
-				PromptAddendum string `json:"prompt_addendum"`
+			// Контракт payload: ровно {"prompt_addendum": "..."} — другие ключи
+			// рантайм не применяет, молча принять их = silent no-op при apply.
+			var payloadFields enhancerAgentOverridePayload
+			dec := json.NewDecoder(strings.NewReader(string(a.Payload)))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&payloadFields); err != nil {
+				return enhancerToolErr("validation", "payload agent_override должен быть строго {\"prompt_addendum\": \"...\"}: "+err.Error())
 			}
-			if err := json.Unmarshal(a.Payload, &payloadFields); err == nil {
-				if len([]rune(payloadFields.PromptAddendum)) > EnhancerMaxAddendumChars {
-					return enhancerToolErr("validation", fmt.Sprintf("prompt_addendum превышает лимит %d символов — добавка к промпту должна быть точечной", EnhancerMaxAddendumChars))
-				}
+			if strings.TrimSpace(payloadFields.PromptAddendum) == "" {
+				return enhancerToolErr("validation", "prompt_addendum обязателен и не может быть пустым")
+			}
+			// Гардрейл размера аддендума — enforced в Go, не в промпте.
+			if len([]rune(payloadFields.PromptAddendum)) > EnhancerMaxAddendumChars {
+				return enhancerToolErr("validation", fmt.Sprintf("prompt_addendum превышает лимит %d символов — добавка к промпту должна быть точечной", EnhancerMaxAddendumChars))
 			}
 			targetAgentID = &id
+		case models.EnhancerChangeKindProjectDescription:
+			var p enhancerOldNewStringPayload
+			if err := json.Unmarshal(a.Payload, &p); err != nil || strings.TrimSpace(p.New) == "" {
+				return enhancerToolErr("validation", "payload project_description должен содержать {\"old\": \"<текущее>\", \"new\": \"<новое>\"} с непустым new")
+			}
+		case models.EnhancerChangeKindProjectSettings:
+			var p enhancerOldNewJSONPayload
+			if err := json.Unmarshal(a.Payload, &p); err != nil || len(p.New) == 0 || string(p.New) == "null" {
+				return enhancerToolErr("validation", "payload project_settings должен содержать {\"old\": {...}, \"new\": {...}} с непустым new")
+			}
 		}
 
 		count, err := s.deps.Repo.CountChangesByRunID(ctx, run.ID)

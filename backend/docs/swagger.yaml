@@ -5872,6 +5872,159 @@ paths:
       summary: Обновление конфига энхансера
       tags:
       - enhancer
+  /projects/{id}/enhancer/changes/{changeId}/apply:
+    post:
+      description: 'Применяет proposed-предложение: оверрайд промпта агента (project_agent_overrides)
+        или правку описания/настроек проекта. 409 — целевое значение изменилось с
+        момента предложения.'
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Enhancer Change ID
+        in: path
+        name: changeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EnhancerChangeResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Предложение / проект не найдены
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: 'Конфликт: цель изменилась с момента предложения'
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Неподходящий статус или невалидный payload
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Применить предложение энхансера
+      tags:
+      - enhancer
+  /projects/{id}/enhancer/changes/{changeId}/reject:
+    post:
+      description: Переводит proposed-предложение в rejected. Ничего не применяется.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Enhancer Change ID
+        in: path
+        name: changeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EnhancerChangeResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Предложение / проект не найдены
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Неподходящий статус
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Отклонить предложение энхансера
+      tags:
+      - enhancer
+  /projects/{id}/enhancer/changes/{changeId}/rollback:
+    post:
+      description: 'Откатывает applied-предложение: пересборка оверрайда агента без
+        него или возврат старого значения описания/настроек. 409 — текущее значение
+        уже не то, что применялось.'
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Enhancer Change ID
+        in: path
+        name: changeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EnhancerChangeResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Предложение / проект не найдены
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: 'Конфликт: цель менялась после применения'
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Неподходящий статус
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Откатить применённое предложение энхансера
+      tags:
+      - enhancer
   /projects/{id}/enhancer/run:
     post:
       description: Запускает анализ проекта немедленно (работает и при выключенном

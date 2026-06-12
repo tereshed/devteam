@@ -6325,6 +6325,48 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось загрузить данные энхансера'**
   String get enhancerLoadError;
+
+  /// No description provided for @enhancerChangeApplyButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Применить'**
+  String get enhancerChangeApplyButton;
+
+  /// No description provided for @enhancerChangeRejectButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отклонить'**
+  String get enhancerChangeRejectButton;
+
+  /// No description provided for @enhancerChangeRollbackButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Откатить'**
+  String get enhancerChangeRollbackButton;
+
+  /// No description provided for @enhancerChangeAppliedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Предложение применено'**
+  String get enhancerChangeAppliedSnack;
+
+  /// No description provided for @enhancerChangeRejectedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Предложение отклонено'**
+  String get enhancerChangeRejectedSnack;
+
+  /// No description provided for @enhancerChangeRolledBackSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменение откачено'**
+  String get enhancerChangeRolledBackSnack;
+
+  /// No description provided for @enhancerChangeConflictSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную'**
+  String get enhancerChangeConflictSnack;
 }
 
 class _AppLocalizationsDelegate

@@ -162,3 +162,69 @@ func TestEnhancerRepository_StaleRunningRecovered(t *testing.T) {
 	require.Equal(t, models.EnhancerRunStatusFailed, got.Status)
 	require.NotNil(t, got.FinishedAt)
 }
+
+func TestEnhancerRepository_OverridesUpsertAndRebuildSource(t *testing.T) {
+	db := setupTestDB(t)
+	user, project := setupEnhancerFixture(t, db)
+	repo := NewEnhancerRepository(db)
+	ctx := context.Background()
+
+	// Агент в команде проекта (нужен валидный FK agents.id).
+	team := &models.Team{ProjectID: project.ID, Name: "enh-team", Type: "development"}
+	require.NoError(t, db.WithContext(ctx).Create(team).Error)
+	agent := &models.Agent{
+		Name:          "enh-dev-" + uuid.NewString()[:8],
+		Role:          models.AgentRoleDeveloper,
+		ExecutionKind: models.AgentExecutionKindLLM,
+		TeamID:        &team.ID,
+		IsActive:      true,
+		Skills:        []byte(`[]`),
+		Settings:      []byte(`{}`),
+		ModelConfig:   []byte(`{}`),
+	}
+	require.NoError(t, db.WithContext(ctx).Create(agent).Error)
+	t.Cleanup(func() {
+		_ = db.Exec(`DELETE FROM agents WHERE id = ?`, agent.ID).Error
+		_ = db.Exec(`DELETE FROM teams WHERE id = ?`, team.ID).Error
+	})
+
+	_, err := repo.GetActiveOverride(ctx, project.ID, agent.ID)
+	require.ErrorIs(t, err, ErrProjectAgentOverrideNotFound)
+
+	// Upsert: создание → обновление → удаление пустой свёрткой.
+	require.NoError(t, repo.UpsertOverride(ctx, project.ID, agent.ID, "правило один", user.ID))
+	o, err := repo.GetActiveOverride(ctx, project.ID, agent.ID)
+	require.NoError(t, err)
+	require.Equal(t, "правило один", o.PromptAddendum)
+
+	require.NoError(t, repo.UpsertOverride(ctx, project.ID, agent.ID, "правило один\n\nправило два", user.ID))
+	o, err = repo.GetActiveOverride(ctx, project.ID, agent.ID)
+	require.NoError(t, err)
+	require.Contains(t, o.PromptAddendum, "правило два")
+
+	require.NoError(t, repo.UpsertOverride(ctx, project.ID, agent.ID, "", user.ID))
+	_, err = repo.GetActiveOverride(ctx, project.ID, agent.ID)
+	require.ErrorIs(t, err, ErrProjectAgentOverrideNotFound)
+
+	// ListAppliedAgentChanges — источник пересборки: только applied и только agent_override.
+	run := &models.EnhancerRun{ProjectID: project.ID, TriggerKind: models.EnhancerRunTriggerManual, Status: models.EnhancerRunStatusDone, StartedAt: time.Now()}
+	require.NoError(t, repo.CreateRun(ctx, run))
+	now := time.Now()
+	mk := func(status models.EnhancerChangeStatus, appliedAt *time.Time) *models.EnhancerChange {
+		ch := &models.EnhancerChange{
+			RunID: run.ID, ProjectID: project.ID,
+			TargetKind: models.EnhancerChangeKindAgentOverride, TargetAgentID: &agent.ID,
+			Payload: []byte(`{"prompt_addendum":"a"}`), Status: status, AppliedAt: appliedAt,
+		}
+		require.NoError(t, repo.CreateChange(ctx, ch))
+		return ch
+	}
+	mk(models.EnhancerChangeStatusApplied, &now)
+	mk(models.EnhancerChangeStatusProposed, nil)
+	mk(models.EnhancerChangeStatusRolledBack, &now)
+
+	applied, err := repo.ListAppliedAgentChanges(ctx, project.ID, agent.ID)
+	require.NoError(t, err)
+	require.Len(t, applied, 1)
+	require.Equal(t, models.EnhancerChangeStatusApplied, applied[0].Status)
+}

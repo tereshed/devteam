@@ -56,7 +56,7 @@ class _EnhancerSettingsTabState extends ConsumerState<EnhancerSettingsTab> {
       messenger.showSnackBar(
         SnackBar(content: Text(l10n.enhancerRunStartedSnack)),
       );
-    } on EnhancerRunInProgressException {
+    } on EnhancerConflictException {
       messenger.showSnackBar(
         SnackBar(content: Text(l10n.enhancerRunInProgressSnack)),
       );

@@ -148,6 +148,37 @@ func (r *EnhancerRun) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// ProjectAgentOverride — проектный оверрайд промпта агента: материализованная
+// свёртка всех применённых enhancer_changes вида agent_override для пары
+// (проект, агент). Apply/rollback пересобирают prompt_addendum из
+// applied-предложений (конкатенация по applied_at), ContextBuilder дописывает
+// активный addendum к системному промпту агента при исполнении задач проекта.
+type ProjectAgentOverride struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	ProjectID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_project_agent_override" json:"project_id"`
+	AgentID   uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_project_agent_override" json:"agent_id"`
+
+	PromptAddendum string     `gorm:"type:text;not null;default:''" json:"prompt_addendum"`
+	IsActive       bool       `gorm:"type:boolean;not null;default:true" json:"is_active"`
+	UpdatedBy      *uuid.UUID `gorm:"type:uuid" json:"updated_by,omitempty"`
+
+	CreatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
+	UpdatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
+}
+
+// TableName возвращает имя таблицы.
+func (ProjectAgentOverride) TableName() string {
+	return "project_agent_overrides"
+}
+
+// BeforeCreate генерирует UUID если не задан.
+func (o *ProjectAgentOverride) BeforeCreate(tx *gorm.DB) error {
+	if o.ID == uuid.Nil {
+		o.ID = uuid.New()
+	}
+	return nil
+}
+
 // EnhancerChange — предложение изменения, рождённое прогоном. payload —
 // самодостаточный дифф {old, new, ...}, формат зависит от target_kind.
 type EnhancerChange struct {

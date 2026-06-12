@@ -1912,5 +1912,12 @@
   "enhancerTargetAgentOverride": "Промпт/настройки агента",
   "enhancerTargetProjectDescription": "Описание проекта",
   "enhancerTargetProjectSettings": "Настройки проекта",
-  "enhancerLoadError": "Не удалось загрузить данные энхансера"
+  "enhancerLoadError": "Не удалось загрузить данные энхансера",
+  "enhancerChangeApplyButton": "Применить",
+  "enhancerChangeRejectButton": "Отклонить",
+  "enhancerChangeRollbackButton": "Откатить",
+  "enhancerChangeAppliedSnack": "Предложение применено",
+  "enhancerChangeRejectedSnack": "Предложение отклонено",
+  "enhancerChangeRolledBackSnack": "Изменение откачено",
+  "enhancerChangeConflictSnack": "Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную"
 }

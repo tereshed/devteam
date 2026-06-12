@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -31,6 +32,13 @@ type PipelinePromptComposer interface {
 	UserTemplate(role string) (string, error)
 }
 
+// ProjectAgentOverrideReader — активный проектный оверрайд промпта агента
+// (фаза 2 энхансера). Реализуется repository.EnhancerRepository; узкий
+// интерфейс, чтобы ContextBuilder не тянул весь репозиторий.
+type ProjectAgentOverrideReader interface {
+	GetActiveOverride(ctx context.Context, projectID, agentID uuid.UUID) (*models.ProjectAgentOverride, error)
+}
+
 // previousStepMessagesLimit — сколько последних agent-сообщений из task_messages
 // показывать следующему агенту pipeline (developer→reviewer и т.п.). Слишком много
 // раздуют prompt и токен-бюджет; слишком мало — reviewer/tester не увидят diff.
@@ -52,6 +60,16 @@ type contextBuilder struct {
 	gitIntegrationRepo repository.GitIntegrationCredentialRepository
 	// tokenRefresher (опц.) рефрешит истёкшие OAuth-токены перед выдачей GIT_TOKEN в sandbox.
 	tokenRefresher GitTokenRefresher
+	// enhancerOverrides (опц.) — применённые энхансером проектные добавки к
+	// промптам агентов; nil — оверрайды не подмешиваются.
+	enhancerOverrides ProjectAgentOverrideReader
+}
+
+// WithEnhancerOverridesOption — подключает чтение проектных оверрайдов промптов
+// агентов (фаза 2 энхансера): активный prompt_addendum дописывается к
+// системному промпту агента при исполнении задач проекта.
+func WithEnhancerOverridesOption(r ProjectAgentOverrideReader) ContextBuilderOption {
+	return func(b *contextBuilder) { b.enhancerOverrides = r }
 }
 
 // WithGitTokenRefresherOption — рефрешер OAuth-токенов для GIT_TOKEN в sandbox (self-hosted GitLab TTL ~2ч).
@@ -319,6 +337,24 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 			} else {
 				input.PromptUser = ut
 			}
+		}
+	}
+
+	// Проектный оверрайд промпта (фаза 2 энхансера): применённые предложения
+	// дописываются к системному промпту ПОСЛЕ базового/ролевого — действуют
+	// только в этом проекте, глобальный промпт агента не меняется.
+	if b.enhancerOverrides != nil && project != nil {
+		if o, err := b.enhancerOverrides.GetActiveOverride(ctx, project.ID, assignedAgent.ID); err == nil {
+			if addendum := strings.TrimSpace(o.PromptAddendum); addendum != "" {
+				block := "=== PROJECT RULES (enhancer) ===\n" + addendum
+				if input.PromptSystem != "" {
+					input.PromptSystem += "\n\n" + block
+				} else {
+					input.PromptSystem = block
+				}
+			}
+		} else if !errors.Is(err, repository.ErrProjectAgentOverrideNotFound) {
+			slog.Warn("ContextBuilder: failed to load enhancer override", "project_id", project.ID, "agent_id", assignedAgent.ID, "error", err)
 		}
 	}
 

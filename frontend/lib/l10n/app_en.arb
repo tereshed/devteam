@@ -1740,6 +1740,13 @@
   "enhancerTargetAgentOverride": "Agent prompt/settings",
   "enhancerTargetProjectDescription": "Project description",
   "enhancerTargetProjectSettings": "Project settings",
-  "enhancerLoadError": "Failed to load enhancer data"
+  "enhancerLoadError": "Failed to load enhancer data",
+  "enhancerChangeApplyButton": "Apply",
+  "enhancerChangeRejectButton": "Reject",
+  "enhancerChangeRollbackButton": "Roll back",
+  "enhancerChangeAppliedSnack": "Change applied",
+  "enhancerChangeRejectedSnack": "Change rejected",
+  "enhancerChangeRolledBackSnack": "Change rolled back",
+  "enhancerChangeConflictSnack": "Failed: the target changed after the proposal was created — refresh the list and verify manually"
 }
 

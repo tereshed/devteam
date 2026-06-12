@@ -16,6 +16,10 @@ var (
 	ErrEnhancerConfigNotFound = errors.New("enhancer config not found")
 	// ErrEnhancerRunNotFound — прогон энхансера не найден.
 	ErrEnhancerRunNotFound = errors.New("enhancer run not found")
+	// ErrEnhancerChangeNotFound — предложение изменения не найдено.
+	ErrEnhancerChangeNotFound = errors.New("enhancer change not found")
+	// ErrProjectAgentOverrideNotFound — оверрайд агента не найден.
+	ErrProjectAgentOverrideNotFound = errors.New("project agent override not found")
 )
 
 // EnhancerRepository — доступ к enhancer_configs / enhancer_runs / enhancer_changes.
@@ -40,8 +44,19 @@ type EnhancerRepository interface {
 
 	// Предложения.
 	CreateChange(ctx context.Context, change *models.EnhancerChange) error
+	GetChangeByID(ctx context.Context, id uuid.UUID) (*models.EnhancerChange, error)
+	UpdateChange(ctx context.Context, change *models.EnhancerChange) error
 	CountChangesByRunID(ctx context.Context, runID uuid.UUID) (int64, error)
 	ListChangesByRunID(ctx context.Context, runID uuid.UUID) ([]models.EnhancerChange, error)
+	// ListAppliedAgentChanges — applied-предложения вида agent_override для пары
+	// (проект, агент) в порядке применения. Источник пересборки оверрайда.
+	ListAppliedAgentChanges(ctx context.Context, projectID, agentID uuid.UUID) ([]models.EnhancerChange, error)
+
+	// Оверрайды агентов (материализованная свёртка applied-предложений).
+	GetActiveOverride(ctx context.Context, projectID, agentID uuid.UUID) (*models.ProjectAgentOverride, error)
+	// UpsertOverride создаёт/обновляет оверрайд пары (проект, агент); пустой
+	// addendum удаляет строку (нет применённых предложений — нет оверрайда).
+	UpsertOverride(ctx context.Context, projectID, agentID uuid.UUID, promptAddendum string, updatedBy uuid.UUID) error
 }
 
 type enhancerRepository struct {
@@ -239,4 +254,109 @@ func (r *enhancerRepository) ListChangesByRunID(ctx context.Context, runID uuid.
 		return nil, fmt.Errorf("failed to list enhancer changes: %w", err)
 	}
 	return items, nil
+}
+
+func (r *enhancerRepository) GetChangeByID(ctx context.Context, id uuid.UUID) (*models.EnhancerChange, error) {
+	db := gormDB(ctx, r.db)
+	var ch models.EnhancerChange
+	if err := db.WithContext(ctx).Where("id = ?", id).First(&ch).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrEnhancerChangeNotFound
+		}
+		return nil, fmt.Errorf("failed to get enhancer change: %w", err)
+	}
+	return &ch, nil
+}
+
+func (r *enhancerRepository) UpdateChange(ctx context.Context, change *models.EnhancerChange) error {
+	db := gormDB(ctx, r.db)
+	res := db.WithContext(ctx).
+		Model(&models.EnhancerChange{}).
+		Where("id = ?", change.ID).
+		Updates(map[string]any{
+			"status":     change.Status,
+			"decided_by": change.DecidedBy,
+			"decided_at": change.DecidedAt,
+			"applied_at": change.AppliedAt,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("failed to update enhancer change: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrEnhancerChangeNotFound
+	}
+	return nil
+}
+
+func (r *enhancerRepository) ListAppliedAgentChanges(ctx context.Context, projectID, agentID uuid.UUID) ([]models.EnhancerChange, error) {
+	db := gormDB(ctx, r.db)
+	var items []models.EnhancerChange
+	if err := db.WithContext(ctx).
+		Where("project_id = ? AND target_agent_id = ? AND target_kind = ? AND status = ?",
+			projectID, agentID, models.EnhancerChangeKindAgentOverride, models.EnhancerChangeStatusApplied).
+		Order("applied_at ASC").
+		Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("failed to list applied agent changes: %w", err)
+	}
+	return items, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Оверрайды агентов.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func (r *enhancerRepository) GetActiveOverride(ctx context.Context, projectID, agentID uuid.UUID) (*models.ProjectAgentOverride, error) {
+	db := gormDB(ctx, r.db)
+	var o models.ProjectAgentOverride
+	if err := db.WithContext(ctx).
+		Where("project_id = ? AND agent_id = ? AND is_active = ?", projectID, agentID, true).
+		First(&o).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrProjectAgentOverrideNotFound
+		}
+		return nil, fmt.Errorf("failed to get project agent override: %w", err)
+	}
+	return &o, nil
+}
+
+func (r *enhancerRepository) UpsertOverride(ctx context.Context, projectID, agentID uuid.UUID, promptAddendum string, updatedBy uuid.UUID) error {
+	db := gormDB(ctx, r.db)
+	// Пустая свёртка — оверрайд больше не нужен (все предложения отозваны).
+	if promptAddendum == "" {
+		if err := db.WithContext(ctx).
+			Where("project_id = ? AND agent_id = ?", projectID, agentID).
+			Delete(&models.ProjectAgentOverride{}).Error; err != nil {
+			return fmt.Errorf("failed to delete project agent override: %w", err)
+		}
+		return nil
+	}
+
+	res := db.WithContext(ctx).
+		Model(&models.ProjectAgentOverride{}).
+		Where("project_id = ? AND agent_id = ?", projectID, agentID).
+		Updates(map[string]any{
+			"prompt_addendum": promptAddendum,
+			"is_active":       true,
+			"updated_by":      updatedBy,
+			"updated_at":      time.Now(),
+		})
+	if res.Error != nil {
+		return fmt.Errorf("failed to update project agent override: %w", res.Error)
+	}
+	if res.RowsAffected > 0 {
+		return nil
+	}
+
+	o := &models.ProjectAgentOverride{
+		ID:             uuid.New(),
+		ProjectID:      projectID,
+		AgentID:        agentID,
+		PromptAddendum: promptAddendum,
+		IsActive:       true,
+		UpdatedBy:      &updatedBy,
+	}
+	if err := db.WithContext(ctx).Create(o).Error; err != nil {
+		return fmt.Errorf("failed to create project agent override: %w", err)
+	}
+	return nil
 }

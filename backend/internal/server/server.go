@@ -356,6 +356,9 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				projects.POST("/:id/enhancer/run", deps.EnhancerHandler.RunNow)
 				projects.GET("/:id/enhancer/runs", deps.EnhancerHandler.ListRuns)
 				projects.GET("/:id/enhancer/runs/:runId/changes", deps.EnhancerHandler.ListRunChanges)
+				projects.POST("/:id/enhancer/changes/:changeId/apply", deps.EnhancerHandler.ApplyChange)
+				projects.POST("/:id/enhancer/changes/:changeId/reject", deps.EnhancerHandler.RejectChange)
+				projects.POST("/:id/enhancer/changes/:changeId/rollback", deps.EnhancerHandler.RollbackChange)
 			}
 
 			// Мульти-репо: управление git-репозиториями проекта.

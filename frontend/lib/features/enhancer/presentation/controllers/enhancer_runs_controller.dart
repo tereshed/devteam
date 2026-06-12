@@ -35,6 +35,28 @@ class EnhancerRunsController extends _$EnhancerRunsController {
   /// Есть ли незавершённый прогон (для авто-обновления списка в UI).
   bool get hasRunningRun =>
       state.value?.any((r) => r.status == 'running') ?? false;
+
+  /// Применяет предложение и перечитывает список предложений прогона.
+  Future<void> applyChange(String runId, String changeId) async {
+    await ref.read(enhancerRepositoryProvider).applyChange(projectId, changeId);
+    ref.invalidate(enhancerRunChangesProvider(projectId, runId));
+  }
+
+  /// Отклоняет предложение и перечитывает список.
+  Future<void> rejectChange(String runId, String changeId) async {
+    await ref
+        .read(enhancerRepositoryProvider)
+        .rejectChange(projectId, changeId);
+    ref.invalidate(enhancerRunChangesProvider(projectId, runId));
+  }
+
+  /// Откатывает применённое предложение и перечитывает список.
+  Future<void> rollbackChange(String runId, String changeId) async {
+    await ref
+        .read(enhancerRepositoryProvider)
+        .rollbackChange(projectId, changeId);
+    ref.invalidate(enhancerRunChangesProvider(projectId, runId));
+  }
 }
 
 /// Предложения изменений одного прогона (грузятся лениво при раскрытии).

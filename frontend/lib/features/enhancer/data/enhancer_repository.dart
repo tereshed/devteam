@@ -114,6 +114,50 @@ class EnhancerRepository {
     }
   }
 
+  /// Применяет предложение. 409 → конфликт (цель изменилась), 422 → bad state.
+  Future<EnhancerChangeModel> applyChange(
+    String projectId,
+    String changeId, {
+    CancelToken? cancelToken,
+  }) =>
+      _changeAction(projectId, changeId, 'apply', cancelToken: cancelToken);
+
+  /// Отклоняет предложение.
+  Future<EnhancerChangeModel> rejectChange(
+    String projectId,
+    String changeId, {
+    CancelToken? cancelToken,
+  }) =>
+      _changeAction(projectId, changeId, 'reject', cancelToken: cancelToken);
+
+  /// Откатывает применённое предложение.
+  Future<EnhancerChangeModel> rollbackChange(
+    String projectId,
+    String changeId, {
+    CancelToken? cancelToken,
+  }) =>
+      _changeAction(projectId, changeId, 'rollback', cancelToken: cancelToken);
+
+  Future<EnhancerChangeModel> _changeAction(
+    String projectId,
+    String changeId,
+    String action, {
+    CancelToken? cancelToken,
+  }) async {
+    if (projectId.isEmpty || changeId.isEmpty) {
+      throw ArgumentError('projectId and changeId are required');
+    }
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/enhancer/changes/$changeId/$action',
+        cancelToken: cancelToken,
+      );
+      return EnhancerChangeModel.fromJson(_jsonBody(response));
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   /// Предложения изменений одного прогона.
   Future<List<EnhancerChangeModel>> listRunChanges(
     String projectId,
@@ -160,7 +204,7 @@ class EnhancerRepository {
         originalError: err,
         apiErrorCode: code,
       ),
-      on409: (msg, err, code) => EnhancerRunInProgressException(
+      on409: (msg, err, code) => EnhancerConflictException(
         msg,
         originalError: err,
       ),

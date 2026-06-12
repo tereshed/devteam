@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -24,18 +25,24 @@ import (
 // fakeEnhancerRepo — in-memory EnhancerRepository. Мьютекс обязателен:
 // executeRun пишет результат прогона из горутины.
 type fakeEnhancerRepo struct {
-	mu      sync.Mutex
-	configs map[uuid.UUID]*models.EnhancerConfig // key: project_id
-	runs    map[uuid.UUID]*models.EnhancerRun
-	changes map[uuid.UUID]*models.EnhancerChange
+	mu        sync.Mutex
+	configs   map[uuid.UUID]*models.EnhancerConfig // key: project_id
+	runs      map[uuid.UUID]*models.EnhancerRun
+	changes   map[uuid.UUID]*models.EnhancerChange
+	overrides map[string]*models.ProjectAgentOverride // key: project_id+agent_id
 }
 
 func newFakeEnhancerRepo() *fakeEnhancerRepo {
 	return &fakeEnhancerRepo{
-		configs: map[uuid.UUID]*models.EnhancerConfig{},
-		runs:    map[uuid.UUID]*models.EnhancerRun{},
-		changes: map[uuid.UUID]*models.EnhancerChange{},
+		configs:   map[uuid.UUID]*models.EnhancerConfig{},
+		runs:      map[uuid.UUID]*models.EnhancerRun{},
+		changes:   map[uuid.UUID]*models.EnhancerChange{},
+		overrides: map[string]*models.ProjectAgentOverride{},
 	}
+}
+
+func overrideKey(projectID, agentID uuid.UUID) string {
+	return projectID.String() + "/" + agentID.String()
 }
 
 func (f *fakeEnhancerRepo) GetConfigByProjectID(ctx context.Context, projectID uuid.UUID) (*models.EnhancerConfig, error) {
@@ -169,6 +176,78 @@ func (f *fakeEnhancerRepo) ListChangesByRunID(ctx context.Context, runID uuid.UU
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeEnhancerRepo) GetChangeByID(ctx context.Context, id uuid.UUID) (*models.EnhancerChange, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ch, ok := f.changes[id]
+	if !ok {
+		return nil, repository.ErrEnhancerChangeNotFound
+	}
+	cp := *ch
+	return &cp, nil
+}
+
+func (f *fakeEnhancerRepo) UpdateChange(ctx context.Context, change *models.EnhancerChange) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.changes[change.ID]; !ok {
+		return repository.ErrEnhancerChangeNotFound
+	}
+	cp := *change
+	f.changes[change.ID] = &cp
+	return nil
+}
+
+func (f *fakeEnhancerRepo) ListAppliedAgentChanges(ctx context.Context, projectID, agentID uuid.UUID) ([]models.EnhancerChange, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []models.EnhancerChange
+	for _, ch := range f.changes {
+		if ch.ProjectID == projectID && ch.TargetAgentID != nil && *ch.TargetAgentID == agentID &&
+			ch.TargetKind == models.EnhancerChangeKindAgentOverride && ch.Status == models.EnhancerChangeStatusApplied {
+			out = append(out, *ch)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		ai, aj := out[i].AppliedAt, out[j].AppliedAt
+		if ai == nil || aj == nil {
+			return out[i].CreatedAt.Before(out[j].CreatedAt)
+		}
+		return ai.Before(*aj)
+	})
+	return out, nil
+}
+
+func (f *fakeEnhancerRepo) GetActiveOverride(ctx context.Context, projectID, agentID uuid.UUID) (*models.ProjectAgentOverride, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	o, ok := f.overrides[overrideKey(projectID, agentID)]
+	if !ok || !o.IsActive {
+		return nil, repository.ErrProjectAgentOverrideNotFound
+	}
+	cp := *o
+	return &cp, nil
+}
+
+func (f *fakeEnhancerRepo) UpsertOverride(ctx context.Context, projectID, agentID uuid.UUID, promptAddendum string, updatedBy uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := overrideKey(projectID, agentID)
+	if promptAddendum == "" {
+		delete(f.overrides, key)
+		return nil
+	}
+	f.overrides[key] = &models.ProjectAgentOverride{
+		ID:             uuid.New(),
+		ProjectID:      projectID,
+		AgentID:        agentID,
+		PromptAddendum: promptAddendum,
+		IsActive:       true,
+		UpdatedBy:      &updatedBy,
+	}
+	return nil
 }
 
 // fakeEnhancerTeamRepo — заглушка TeamRepository: реализован только
@@ -506,6 +585,214 @@ func TestEnhancerFinishRun_Handler(t *testing.T) {
 	status, _ = proposeToolResult(t, res)
 	require.Equal(t, "ok", status)
 	require.Contains(t, sink.report, "Итог")
+}
+
+// --- apply / reject / rollback (фаза 2) ---
+
+// stubEnhancerProjectSvc — ProjectService с управляемым проектом: GetByID
+// отдаёт его, Update реально мутирует description/settings (для OCC-сценариев).
+// Остальные методы — через embedded nil-интерфейс (паника при случайном вызове).
+type stubEnhancerProjectSvc struct {
+	ProjectService
+	mu      sync.Mutex
+	project *models.Project
+	updates []dto.UpdateProjectRequest
+}
+
+func (s *stubEnhancerProjectSvc) GetByID(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID) (*models.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *s.project
+	return &cp, nil
+}
+
+func (s *stubEnhancerProjectSvc) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.UpdateProjectRequest) (*models.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.updates = append(s.updates, req)
+	if req.Description != nil {
+		s.project.Description = *req.Description
+	}
+	if req.Settings != nil {
+		s.project.Settings = *req.Settings
+	}
+	cp := *s.project
+	return &cp, nil
+}
+
+func newApplyFixture(t *testing.T, project *models.Project, knownAgents ...uuid.UUID) (*enhancerService, *fakeEnhancerRepo, *stubEnhancerProjectSvc) {
+	t.Helper()
+	repo := newFakeEnhancerRepo()
+	agents := map[uuid.UUID]bool{}
+	for _, id := range knownAgents {
+		agents[id] = true
+	}
+	projSvc := &stubEnhancerProjectSvc{project: project}
+	svc := &enhancerService{deps: EnhancerServiceDeps{
+		Repo:       repo,
+		ProjectSvc: projSvc,
+		TeamRepo:   &fakeEnhancerTeamRepo{agentInProject: agents},
+		Logger:     slog.Default(),
+	}}
+	return svc, repo, projSvc
+}
+
+func seedChange(t *testing.T, repo *fakeEnhancerRepo, projectID uuid.UUID, kind models.EnhancerChangeKind, agentID *uuid.UUID, payload string) *models.EnhancerChange {
+	t.Helper()
+	ch := &models.EnhancerChange{
+		ID:             uuid.New(),
+		RunID:          uuid.New(),
+		ProjectID:      projectID,
+		TargetKind:     kind,
+		TargetAgentID:  agentID,
+		Payload:        []byte(payload),
+		Reason:         "r",
+		ExpectedEffect: "e",
+		Status:         models.EnhancerChangeStatusProposed,
+		CreatedAt:      time.Now(),
+	}
+	require.NoError(t, repo.CreateChange(context.Background(), ch))
+	return ch
+}
+
+func TestEnhancerApplyRollback_AgentOverrideRebuild(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	userID := uuid.New()
+	project := &models.Project{ID: projectID}
+	svc, repo, _ := newApplyFixture(t, project, agentID)
+	ctx := context.Background()
+
+	ch1 := seedChange(t, repo, projectID, models.EnhancerChangeKindAgentOverride, &agentID, `{"prompt_addendum":"правило один"}`)
+	ch2 := seedChange(t, repo, projectID, models.EnhancerChangeKindAgentOverride, &agentID, `{"prompt_addendum":"правило два"}`)
+
+	// Применяем оба — оверрайд = свёртка обоих addendum'ов.
+	applied, err := svc.ApplyChange(ctx, userID, models.RoleUser, projectID, ch1.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.EnhancerChangeStatusApplied, applied.Status)
+	require.NotNil(t, applied.AppliedAt)
+
+	_, err = svc.ApplyChange(ctx, userID, models.RoleUser, projectID, ch2.ID)
+	require.NoError(t, err)
+
+	o, err := repo.GetActiveOverride(ctx, projectID, agentID)
+	require.NoError(t, err)
+	require.Contains(t, o.PromptAddendum, "правило один")
+	require.Contains(t, o.PromptAddendum, "правило два")
+
+	// Повторный apply — bad state.
+	_, err = svc.ApplyChange(ctx, userID, models.RoleUser, projectID, ch1.ID)
+	require.ErrorIs(t, err, ErrEnhancerChangeBadState)
+
+	// Откат первого — пересборка без него.
+	rolled, err := svc.RollbackChange(ctx, userID, models.RoleUser, projectID, ch1.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.EnhancerChangeStatusRolledBack, rolled.Status)
+	o, err = repo.GetActiveOverride(ctx, projectID, agentID)
+	require.NoError(t, err)
+	require.NotContains(t, o.PromptAddendum, "правило один")
+	require.Contains(t, o.PromptAddendum, "правило два")
+
+	// Откат второго — оверрайд исчезает целиком.
+	_, err = svc.RollbackChange(ctx, userID, models.RoleUser, projectID, ch2.ID)
+	require.NoError(t, err)
+	_, err = repo.GetActiveOverride(ctx, projectID, agentID)
+	require.ErrorIs(t, err, repository.ErrProjectAgentOverrideNotFound)
+}
+
+func TestEnhancerApply_AgentLeftProject(t *testing.T) {
+	projectID := uuid.New()
+	foreignAgent := uuid.New()
+	project := &models.Project{ID: projectID}
+	svc, repo, _ := newApplyFixture(t, project) // агент НЕ в командах проекта
+	ch := seedChange(t, repo, projectID, models.EnhancerChangeKindAgentOverride, &foreignAgent, `{"prompt_addendum":"x"}`)
+
+	_, err := svc.ApplyChange(context.Background(), uuid.New(), models.RoleUser, projectID, ch.ID)
+	require.ErrorIs(t, err, ErrEnhancerChangeConflict)
+}
+
+func TestEnhancerApplyRollback_ProjectDescriptionOCC(t *testing.T) {
+	projectID := uuid.New()
+	userID := uuid.New()
+	project := &models.Project{ID: projectID, Description: "старое описание"}
+	svc, repo, projSvc := newApplyFixture(t, project)
+	ctx := context.Background()
+
+	ch := seedChange(t, repo, projectID, models.EnhancerChangeKindProjectDescription, nil,
+		`{"old":"старое описание","new":"новое описание"}`)
+
+	applied, err := svc.ApplyChange(ctx, userID, models.RoleUser, projectID, ch.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.EnhancerChangeStatusApplied, applied.Status)
+	require.Equal(t, "новое описание", projSvc.project.Description)
+	require.Len(t, projSvc.updates, 1)
+
+	// Пользователь правит описание после применения → откат конфликтует.
+	projSvc.project.Description = "правка пользователя"
+	_, err = svc.RollbackChange(ctx, userID, models.RoleUser, projectID, ch.ID)
+	require.ErrorIs(t, err, ErrEnhancerChangeConflict)
+
+	// Возвращаем применённое значение — откат проходит и восстанавливает old.
+	projSvc.project.Description = "новое описание"
+	rolled, err := svc.RollbackChange(ctx, userID, models.RoleUser, projectID, ch.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.EnhancerChangeStatusRolledBack, rolled.Status)
+	require.Equal(t, "старое описание", projSvc.project.Description)
+}
+
+func TestEnhancerApply_DescriptionConflict(t *testing.T) {
+	projectID := uuid.New()
+	project := &models.Project{ID: projectID, Description: "уже другое"}
+	svc, repo, _ := newApplyFixture(t, project)
+	ch := seedChange(t, repo, projectID, models.EnhancerChangeKindProjectDescription, nil,
+		`{"old":"старое описание","new":"новое"}`)
+
+	_, err := svc.ApplyChange(context.Background(), uuid.New(), models.RoleUser, projectID, ch.ID)
+	require.ErrorIs(t, err, ErrEnhancerChangeConflict)
+}
+
+func TestEnhancerApply_ProjectSettings(t *testing.T) {
+	projectID := uuid.New()
+	userID := uuid.New()
+	project := &models.Project{ID: projectID} // settings пустые (nil ≈ {})
+	svc, repo, projSvc := newApplyFixture(t, project)
+
+	ch := seedChange(t, repo, projectID, models.EnhancerChangeKindProjectSettings, nil,
+		`{"old":{},"new":{"max_parallel":2}}`)
+
+	applied, err := svc.ApplyChange(context.Background(), userID, models.RoleUser, projectID, ch.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.EnhancerChangeStatusApplied, applied.Status)
+	require.JSONEq(t, `{"max_parallel":2}`, string(projSvc.project.Settings))
+}
+
+func TestEnhancerRejectChange(t *testing.T) {
+	projectID := uuid.New()
+	project := &models.Project{ID: projectID}
+	svc, repo, _ := newApplyFixture(t, project)
+	ctx := context.Background()
+	ch := seedChange(t, repo, projectID, models.EnhancerChangeKindProjectDescription, nil, `{"old":"","new":"x"}`)
+
+	rejected, err := svc.RejectChange(ctx, uuid.New(), models.RoleUser, projectID, ch.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.EnhancerChangeStatusRejected, rejected.Status)
+	require.NotNil(t, rejected.DecidedAt)
+
+	// Отклонённое нельзя применить или откатить.
+	_, err = svc.ApplyChange(ctx, uuid.New(), models.RoleUser, projectID, ch.ID)
+	require.ErrorIs(t, err, ErrEnhancerChangeBadState)
+	_, err = svc.RollbackChange(ctx, uuid.New(), models.RoleUser, projectID, ch.ID)
+	require.ErrorIs(t, err, ErrEnhancerChangeBadState)
+}
+
+func TestEnhancerApply_ChangeFromOtherProject(t *testing.T) {
+	projectID := uuid.New()
+	project := &models.Project{ID: projectID}
+	svc, repo, _ := newApplyFixture(t, project)
+	ch := seedChange(t, repo, uuid.New() /* чужой проект */, models.EnhancerChangeKindProjectDescription, nil, `{"old":"","new":"x"}`)
+
+	_, err := svc.ApplyChange(context.Background(), uuid.New(), models.RoleUser, projectID, ch.ID)
+	require.ErrorIs(t, err, ErrEnhancerChangeNotFound)
 }
 
 func TestEnhancerListRunChanges_WrongProject(t *testing.T) {

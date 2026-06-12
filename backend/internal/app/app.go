@@ -466,6 +466,10 @@ func Run(role Role) {
 	routerDecisionRepoV2 := repository.NewRouterDecisionRepository(db)
 	worktreeRepoV2 := repository.NewWorktreeRepository(db)
 
+	// Репозиторий энхансера нужен и ContextBuilder'у (оверрайды промптов), и
+	// EnhancerService ниже — создаём здесь один на оба потребителя.
+	enhancerRepo := repository.NewEnhancerRepository(db)
+
 	// Sprint 15.M7 — функциональная опция вместо type-assertion-шима WithSandboxAuthResolver.
 	orchestratorContextBuilder := service.NewContextBuilderFull(
 		encryptor, pipelinePromptComposer, sandboxSecrets, taskMsgRepo,
@@ -475,6 +479,8 @@ func Run(role Role) {
 		service.WithAgentSettingsServiceOption(agentSettingsSvc),
 		service.WithArtifactRepositoryOption(artifactRepoV2),
 		service.WithGitIntegrationRepositoryOption(gitIntegrationRepo),
+		// Фаза 2 энхансера: применённые проектные добавки к промптам агентов.
+		service.WithEnhancerOverridesOption(enhancerRepo),
 	)
 
 	llmProviderRepo := repository.NewLLMProviderRepository(db)
@@ -856,8 +862,8 @@ func Run(role Role) {
 	// Энхансер проекта — мета-агент улучшения работы агентов: анализирует историю
 	// задач и копит предложения изменений (propose-режим). Переиспользует
 	// agentloop-Executor, каталог ассистента (whitelist read-инструментов) и
-	// LLM-резолвер с пользовательскими ключами.
-	enhancerRepo := repository.NewEnhancerRepository(db)
+	// LLM-резолвер с пользовательскими ключами. enhancerRepo создан выше
+	// (его же читает ContextBuilder для оверрайдов промптов).
 	enhancerSvc, err := service.NewEnhancerService(service.EnhancerServiceDeps{
 		Repo:        enhancerRepo,
 		ProjectSvc:  projectService,

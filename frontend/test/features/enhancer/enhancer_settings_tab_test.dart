@@ -15,12 +15,14 @@ class _FakeRepo extends EnhancerRepository {
   _FakeRepo({
     required this.config,
     required this.runs,
-    this.changes = const [],
-  }) : super(dio: Dio());
+    List<EnhancerChangeModel> changes = const [],
+  })  : changes = List.of(changes),
+        super(dio: Dio());
 
   final EnhancerConfigModel config;
   final List<EnhancerRunModel> runs;
   final List<EnhancerChangeModel> changes;
+  int applyCalls = 0;
 
   @override
   Future<EnhancerConfigModel> getConfig(
@@ -42,7 +44,19 @@ class _FakeRepo extends EnhancerRepository {
     String runId, {
     CancelToken? cancelToken,
   }) async =>
-      changes;
+      List.of(changes);
+
+  @override
+  Future<EnhancerChangeModel> applyChange(
+    String projectId,
+    String changeId, {
+    CancelToken? cancelToken,
+  }) async {
+    applyCalls++;
+    final i = changes.indexWhere((c) => c.id == changeId);
+    changes[i] = changes[i].copyWith(status: 'applied');
+    return changes[i];
+  }
 }
 
 const _config = EnhancerConfigModel(projectId: 'p1');
@@ -131,5 +145,33 @@ void main() {
     expect(find.text('task abc looped on SupportAgent'), findsOneWidget);
     expect(find.text('fewer router steps'), findsOneWidget);
     expect(find.text('Proposed'), findsOneWidget);
+  });
+
+  testWidgets('apply button applies change and switches to rollback',
+      (tester) async {
+    final repo = _FakeRepo(
+      config: _config,
+      runs: [_doneRun()],
+      changes: [_change()],
+    );
+    await pumpTall(tester, _harness(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    // proposed → видны Apply и Reject.
+    expect(find.text('Apply'), findsOneWidget);
+    expect(find.text('Reject'), findsOneWidget);
+
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+
+    expect(repo.applyCalls, 1);
+    expect(find.text('Change applied'), findsOneWidget); // snackbar
+    // Список перечитан: статус applied, доступен только Roll back.
+    expect(find.text('Applied'), findsOneWidget);
+    expect(find.text('Roll back'), findsOneWidget);
+    expect(find.text('Apply'), findsNothing);
   });
 }

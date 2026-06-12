@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/l10n/require.dart';
+import 'package:frontend/features/enhancer/domain/enhancer_exceptions.dart';
 import 'package:frontend/features/enhancer/domain/models/enhancer_change_model.dart';
 import 'package:frontend/features/enhancer/domain/models/enhancer_run_model.dart';
 import 'package:frontend/features/enhancer/presentation/controllers/enhancer_runs_controller.dart';
@@ -142,7 +143,11 @@ class _EnhancerRunChanges extends ConsumerWidget {
                 for (final change in changes)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: _EnhancerChangeTile(change: change),
+                    child: _EnhancerChangeTile(
+                      projectId: projectId,
+                      runId: runId,
+                      change: change,
+                    ),
                   ),
               ],
             ),
@@ -166,16 +171,57 @@ class _EnhancerRunChanges extends ConsumerWidget {
   }
 }
 
-/// Одно предложение: цель, обоснование, ожидаемый эффект и дифф (JSON).
-class _EnhancerChangeTile extends StatelessWidget {
-  const _EnhancerChangeTile({required this.change});
+/// Одно предложение: цель, обоснование, ожидаемый эффект, дифф (JSON) и
+/// действия (применить / отклонить / откатить — по статусу).
+class _EnhancerChangeTile extends ConsumerStatefulWidget {
+  const _EnhancerChangeTile({
+    required this.projectId,
+    required this.runId,
+    required this.change,
+  });
 
+  final String projectId;
+  final String runId;
   final EnhancerChangeModel change;
+
+  @override
+  ConsumerState<_EnhancerChangeTile> createState() =>
+      _EnhancerChangeTileState();
+}
+
+class _EnhancerChangeTileState extends ConsumerState<_EnhancerChangeTile> {
+  bool _busy = false;
+
+  Future<void> _run(
+    Future<void> Function() action,
+    String successText,
+  ) async {
+    final l10n = requireAppLocalizations(context, where: 'EnhancerChangeTile');
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await action();
+      messenger.showSnackBar(SnackBar(content: Text(successText)));
+    } on EnhancerConflictException {
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.enhancerChangeConflictSnack)),
+      );
+    } on EnhancerException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = requireAppLocalizations(context, where: 'EnhancerChangeTile');
     final theme = Theme.of(context);
+    final change = widget.change;
+    final controller =
+        ref.read(enhancerRunsControllerProvider(widget.projectId).notifier);
 
     final targetLabel = switch (change.targetKind) {
       'agent_override' => l10n.enhancerTargetAgentOverride,
@@ -250,6 +296,47 @@ class _EnhancerChangeTile extends StatelessWidget {
               ),
             ),
           ),
+          if (change.status == 'proposed' || change.status == 'applied') ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (change.status == 'proposed') ...[
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _run(
+                              () => controller.rejectChange(
+                                  widget.runId, change.id),
+                              l10n.enhancerChangeRejectedSnack,
+                            ),
+                    child: Text(l10n.enhancerChangeRejectButton),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonal(
+                    onPressed: _busy
+                        ? null
+                        : () => _run(
+                              () => controller.applyChange(
+                                  widget.runId, change.id),
+                              l10n.enhancerChangeAppliedSnack,
+                            ),
+                    child: Text(l10n.enhancerChangeApplyButton),
+                  ),
+                ] else
+                  OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _run(
+                              () => controller.rollbackChange(
+                                  widget.runId, change.id),
+                              l10n.enhancerChangeRolledBackSnack,
+                            ),
+                    child: Text(l10n.enhancerChangeRollbackButton),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

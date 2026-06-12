@@ -8,6 +8,8 @@ import (
 	"github.com/devteam/backend/internal/agent"
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -151,4 +153,71 @@ func TestContextBuilder_Build_SandboxAgentModelFromSettings(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, "deepseek/deepseek-v4-flash", input.Model)
+}
+
+// fakeOverrideReader — стаб ProjectAgentOverrideReader для теста подмешивания
+// проектного оверрайда (фаза 2 энхансера).
+type fakeOverrideReader struct {
+	override *models.ProjectAgentOverride
+	err      error
+}
+
+func (f *fakeOverrideReader) GetActiveOverride(ctx context.Context, projectID, agentID uuid.UUID) (*models.ProjectAgentOverride, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.override, nil
+}
+
+func TestContextBuilder_Build_EnhancerOverrideAppended(t *testing.T) {
+	prompt := "Ты — разработчик."
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	builder := NewContextBuilderFull(nil, nil, nil, nil,
+		WithEnhancerOverridesOption(&fakeOverrideReader{override: &models.ProjectAgentOverride{
+			ProjectID:      projectID,
+			AgentID:        agentID,
+			PromptAddendum: "Всегда указывай repo_slug в подзадачах.",
+			IsActive:       true,
+		}}),
+	)
+	input, err := builder.Build(context.Background(),
+		&models.Task{Title: "test", ProjectID: projectID},
+		&models.Agent{
+			ID:            agentID,
+			Name:          "developer",
+			Role:          models.AgentRoleDeveloper,
+			ExecutionKind: models.AgentExecutionKindLLM,
+			SystemPrompt:  &prompt,
+		},
+		&models.Project{ID: projectID},
+		nil,
+	)
+	assert.NoError(t, err)
+	// Базовый промпт сохранён, добавка дописана отдельным блоком в конце.
+	assert.True(t, strings.HasPrefix(input.PromptSystem, prompt))
+	assert.Contains(t, input.PromptSystem, "=== PROJECT RULES (enhancer) ===")
+	assert.Contains(t, input.PromptSystem, "Всегда указывай repo_slug")
+}
+
+func TestContextBuilder_Build_NoOverrideKeepsPromptIntact(t *testing.T) {
+	prompt := "Ты — разработчик."
+	builder := NewContextBuilderFull(nil, nil, nil, nil,
+		WithEnhancerOverridesOption(&fakeOverrideReader{err: repository.ErrProjectAgentOverrideNotFound}),
+	)
+	input, err := builder.Build(context.Background(),
+		&models.Task{Title: "test"},
+		&models.Agent{
+			ID:            uuid.New(),
+			Name:          "developer",
+			Role:          models.AgentRoleDeveloper,
+			ExecutionKind: models.AgentExecutionKindLLM,
+			SystemPrompt:  &prompt,
+		},
+		&models.Project{ID: uuid.New()},
+		nil,
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, prompt, input.PromptSystem)
 }
