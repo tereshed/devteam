@@ -75,6 +75,11 @@ definitions:
     properties:
       agent_id:
         type: string
+      attach_sandbox_services:
+        description: |-
+          AttachSandboxServices — подключать ли к sandbox-прогонам агента эфемерные
+          сервис-сайдкары проекта (postgres для тестов с БД, Sprint 22).
+        type: boolean
       code_backend:
         type: string
       code_backend_settings:
@@ -635,6 +640,13 @@ definitions:
     required:
     - name
     type: object
+  dto.DispatchScoutRequest:
+    properties:
+      problem:
+        type: string
+    required:
+    - problem
+    type: object
   dto.EnhancerChangeListResponse:
     properties:
       changes:
@@ -1182,6 +1194,42 @@ definitions:
     - email
     - password
     type: object
+  dto.SandboxServiceConfigResponse:
+    properties:
+      alias:
+        type: string
+      db_name:
+        type: string
+      db_user:
+        type: string
+      id:
+        type: string
+      image:
+        type: string
+      is_enabled:
+        type: boolean
+      kind:
+        type: string
+      port:
+        type: integer
+      project_id:
+        type: string
+      ready_timeout_seconds:
+        type: integer
+      seed_kind:
+        type: string
+      seed_value:
+        type: string
+    type: object
+  dto.SandboxServiceListResponse:
+    properties:
+      services:
+        items:
+          $ref: '#/definitions/dto.SandboxServiceConfigResponse'
+        type: array
+      total:
+        type: integer
+    type: object
   dto.ScheduledTaskListResponse:
     properties:
       scheduled_tasks:
@@ -1218,6 +1266,61 @@ definitions:
       team_id:
         type: string
       updated_at:
+        type: string
+    type: object
+  dto.ScoutConfigResponse:
+    properties:
+      code_backend:
+        type: string
+      code_backend_settings:
+        type: object
+      is_enabled:
+        type: boolean
+      project_id:
+        type: string
+      prompt:
+        type: string
+      provider_kind:
+        type: string
+      sandbox_permissions:
+        type: object
+      subscription_id:
+        type: string
+      temperature:
+        type: number
+      timeout_seconds:
+        type: integer
+    type: object
+  dto.ScoutRunListResponse:
+    properties:
+      runs:
+        items:
+          $ref: '#/definitions/dto.ScoutRunResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  dto.ScoutRunResponse:
+    properties:
+      code_backend:
+        type: string
+      dossier:
+        type: string
+      error:
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      problem:
+        type: string
+      project_id:
+        type: string
+      sandbox_instance_id:
+        type: string
+      started_at:
+        type: string
+      status:
         type: string
     type: object
   dto.SendAssistantMessageRequest:
@@ -1476,6 +1579,11 @@ definitions:
     type: object
   dto.UpdateAgentSettingsRequest:
     properties:
+      attach_sandbox_services:
+        description: |-
+          AttachSandboxServices — тумблер подключения сервис-сайдкаров проекта (Sprint 22).
+          nil → поле не меняется (omit).
+        type: boolean
       code_backend:
         type: string
       code_backend_settings:
@@ -1612,6 +1720,37 @@ definitions:
       team_id:
         type: string
     type: object
+  dto.UpdateScoutConfigRequest:
+    properties:
+      code_backend:
+        description: CodeBackend — claude-code/hermes/antigravity.
+        type: string
+      code_backend_settings:
+        description: 'CodeBackendSettings — JSON-объект: model/mcp_servers/skills/hermes-блок.'
+        type: object
+      is_enabled:
+        type: boolean
+      prompt:
+        description: Prompt — редактируемый промпт; "" → сброс на встроенный дефолт.
+        type: string
+      provider_kind:
+        description: |-
+          ProviderKind — kind LLM-провайдера; "" → сброс (NULL). Ограничен бэкендом
+          (hermes → anthropic/openrouter/hermes; antigravity → antigravity*).
+        type: string
+      sandbox_permissions:
+        description: 'SandboxPermissions — JSON-объект: allow/deny/ask/defaultMode.'
+        type: object
+      subscription_id:
+        description: SubscriptionID — UUID подключённой подписки; "" → сброс на дефолтную
+          подписку владельца.
+        type: string
+      temperature:
+        description: Temperature — параметр LLM (0..2).
+        type: number
+      timeout_seconds:
+        type: integer
+    type: object
   dto.UpdateTaskRequest:
     properties:
       assigned_agent_id:
@@ -1666,6 +1805,39 @@ definitions:
         type: string
       team_id:
         type: string
+    type: object
+  dto.UpsertSandboxServiceRequest:
+    properties:
+      alias:
+        description: 'Alias — сетевой alias/hostname в bridge-сети прогона (агент:
+          alias:port). Обязателен.'
+        type: string
+      db_name:
+        description: DBName / DBUser — имя БД и суперюзера сервис-контейнера.
+        type: string
+      db_user:
+        type: string
+      image:
+        description: Image — docker-образ; пусто → дефолт (postgres:16-alpine).
+        type: string
+      is_enabled:
+        type: boolean
+      kind:
+        description: Kind — тип сервиса; пусто → postgres.
+        type: string
+      port:
+        description: Port — порт сервиса; 0 → 5432.
+        type: integer
+      ready_timeout_seconds:
+        description: ReadyTimeoutSeconds — потолок ожидания готовности; 0 → 60.
+        type: integer
+      seed_kind:
+        description: SeedKind — none | repo_file | inline; пусто → none.
+        type: string
+      seed_value:
+        type: string
+    required:
+    - alias
     type: object
   dto.UserResponse:
     properties:
@@ -2134,6 +2306,12 @@ definitions:
         items:
           $ref: '#/definitions/models.AgentSkill'
         type: array
+      attach_sandbox_services:
+        description: |-
+          Sprint 22 — подключать к sandbox-прогонам агента эфемерные сервис-сайдкары
+          проекта (sandbox_service_configs), например postgres для интеграционных тестов
+          с БД. Только для sandbox-агентов; включается на уровне агента (типично tester).
+        type: boolean
       code_backend:
         $ref: '#/definitions/models.CodeBackend'
       code_backend_settings:
@@ -6384,6 +6562,132 @@ paths:
       summary: Обновление репозитория проекта
       tags:
       - projects
+  /projects/{id}/sandbox-services:
+    get:
+      description: Список эфемерных сервис-сайдкаров (например postgres для интеграционных
+        тестов с БД), которые поднимаются рядом с sandbox-агентом.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SandboxServiceListResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Сервис-сайдкары проекта
+      tags:
+      - sandbox-services
+    put:
+      consumes:
+      - application/json
+      description: Upsert декларации сервиса по alias (тип, образ, db_name/db_user,
+        порт, сид, таймаут готовности). Пароль БД не хранится — генерится на каждый
+        прогон.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Декларация сервиса
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpsertSandboxServiceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SandboxServiceConfigResponse'
+        "400":
+          description: Невалидные поля
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Создание/обновление сервис-сайдкара
+      tags:
+      - sandbox-services
+  /projects/{id}/sandbox-services/{serviceId}:
+    delete:
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sandbox Service Config ID
+        in: path
+        name: serviceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Удалено
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Не найдено
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Удаление сервис-сайдкара
+      tags:
+      - sandbox-services
   /projects/{id}/scheduled-tasks:
     get:
       description: Возвращает все расписания проекта.
@@ -6576,6 +6880,221 @@ paths:
       summary: Обновление регулярной задачи
       tags:
       - scheduled-tasks
+  /projects/{id}/scout:
+    get:
+      description: Возвращает настройки разведчика; если проект ещё не настраивался
+        — дефолт (выключен, claude-code).
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ScoutConfigResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Конфиг разведчика проекта
+      tags:
+      - scout
+    put:
+      consumes:
+      - application/json
+      description: Частично обновляет настройки разведчика (тумблер, промпт, бэкенд,
+        подписка, таймаут).
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Изменения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateScoutConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ScoutConfigResponse'
+        "400":
+          description: Невалидный JSON / бэкенд / таймаут
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Выбранная подписка не подключена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Обновление конфига разведчика
+      tags:
+      - scout
+  /projects/{id}/scout/run:
+    post:
+      consumes:
+      - application/json
+      description: Запускает headless sandbox-прогон сбора контекста на подписке.
+        Возвращает прогон в статусе running; досье появится по завершении.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Постановка проблемы
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.DispatchScoutRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/dto.ScoutRunResponse'
+        "400":
+          description: Пустая постановка / невалидный JSON
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "422":
+          description: Нет репо / подписки / неподдерживаемый бэкенд
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Запуск разведчика
+      tags:
+      - scout
+  /projects/{id}/scout/runs:
+    get:
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ScoutRunListResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Прогоны разведчика
+      tags:
+      - scout
+  /projects/{id}/scout/runs/{runId}:
+    get:
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Scout Run ID
+        in: path
+        name: runId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ScoutRunResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Прогон не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Прогон разведчика
+      tags:
+      - scout
   /projects/{id}/secrets:
     get:
       parameters:

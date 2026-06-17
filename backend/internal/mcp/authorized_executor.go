@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/llm/agentloop"
@@ -197,7 +198,7 @@ func (e *AuthorizedExecutor) Catalog() []agentloop.Tool {
 			},
 			agentloop.Tool{
 				Name:                 "task_create",
-				Description:          "Создать задачу в проекте. Требует подтверждения.",
+				Description:          "Создать задачу в проекте. Требует подтверждения. Если задача рождается из обсуждения проблемы или досье разведчика — передавай acceptance_criteria (критерии приёмки), чтобы они доехали до planner'а и tester'а.",
 				InputSchema:          schemaTaskCreate,
 				RequiresConfirmation: true,
 				Handler:              e.taskCreate,
@@ -485,6 +486,7 @@ func businessErr(status, message string) (json.RawMessage, error) {
 //   - ErrProjectNotFound / ErrTaskNotFound и т.п. → not_found
 //   - ErrInvalidInput / ErrAgentValidation → validation
 //   - всё остальное → error
+//
 // Возвращает payload + nil (ошибка идёт в LLM, не в loop-failure).
 func mapServiceErr(err error) (json.RawMessage, error) {
 	switch {
@@ -827,6 +829,11 @@ type taskCreateArgs struct {
 	TeamID          *string `json:"team_id,omitempty"`
 	AssignedAgentID *string `json:"assigned_agent_id,omitempty"`
 	ParentTaskID    *string `json:"parent_task_id,omitempty"`
+	// AcceptanceCriteria — поведенческие критерии приёмки «действие → результат»,
+	// собранные в диалоге/досье разведчика. Доезжают до planner'а: пишутся в
+	// Task.Context и дописываются секцией в описание (planner калибрует severity
+	// и tester проверяет именно их — см. occ-постмортем).
+	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
 }
 
 func (e *AuthorizedExecutor) taskCreate(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
@@ -852,9 +859,21 @@ func (e *AuthorizedExecutor) taskCreate(ctx context.Context, auth agentloop.Auth
 	createReq := dto.CreateTaskRequest{
 		Title: a.Title,
 	}
+	desc := ""
 	if a.Description != nil {
-		createReq.Description = *a.Description
+		desc = *a.Description
 	}
+	// Критерии приёмки (из диалога/досье разведчика) доезжают до planner'а двумя
+	// путями: явной секцией в описании (его planner читает гарантированно и обязан
+	// вывести acceptance_criteria) и структурно в Task.Context (машиночитаемая
+	// провенанс-метка). Так фича не «выдумывает критерии заново» (см. occ-постмортем).
+	if len(a.AcceptanceCriteria) > 0 {
+		desc = appendAcceptanceCriteria(desc, a.AcceptanceCriteria)
+		if ctxJSON, mErr := json.Marshal(map[string]any{"acceptance_criteria": a.AcceptanceCriteria}); mErr == nil {
+			createReq.Context = datatypes.JSON(ctxJSON)
+		}
+	}
+	createReq.Description = desc
 	if a.Priority != nil {
 		createReq.Priority = *a.Priority
 	}
@@ -899,6 +918,29 @@ func (e *AuthorizedExecutor) taskCreate(ctx context.Context, auth agentloop.Auth
 	}
 
 	return marshalResult(task)
+}
+
+// appendAcceptanceCriteria дописывает к описанию задачи секцию критериев приёмки.
+// planner читает именно описание и обязан вывести acceptance_criteria — явная
+// секция гарантирует, что собранные при постановке критерии не выдумываются заново.
+func appendAcceptanceCriteria(desc string, criteria []string) string {
+	var b strings.Builder
+	b.WriteString(desc)
+	if strings.TrimSpace(desc) != "" {
+		b.WriteString("\n\n")
+	}
+	b.WriteString("## Критерии приёмки\n")
+	b.WriteString("(собраны при постановке задачи; planner обязан их сохранить, tester — проверить)\n")
+	n := 0
+	for _, c := range criteria {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		n++
+		fmt.Fprintf(&b, "- AC%d: %s\n", n, c)
+	}
+	return b.String()
 }
 
 type taskUpdateArgs struct {
@@ -1436,44 +1478,44 @@ func (e *AuthorizedExecutor) createGitRepository(ctx context.Context, auth agent
 // ─────────────────────────────────────────────────────────────────────────────
 
 var (
-	schemaEmpty             = json.RawMessage(`{"type":"object","properties":{}}`)
-	schemaProjectList       = json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"git_provider":{"type":"string"},"search":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaEmpty       = json.RawMessage(`{"type":"object","properties":{}}`)
+	schemaProjectList = json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"git_provider":{"type":"string"},"search":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	// Anthropic tool-schemas НЕ принимают oneOf/anyOf/allOf на верхнем уровне input_schema
 	// (status 400 invalid_request_error). Альтернативность id|project_id валидируется в
 	// runtime через idArgs.resolve() — этого достаточно.
-	schemaProjectGet        = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
-	schemaProjectCreate     = json.RawMessage(`{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"git_provider":{"type":"string"},"git_url":{"type":"string"},"git_default_branch":{"type":"string"}}}`)
-	schemaProjectUpdate     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
-	schemaTaskList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaTaskGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
-	schemaTaskCreate        = json.RawMessage(`{"type":"object","required":["project_id","title"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"parent_task_id":{"type":"string","format":"uuid"}}}`)
-	schemaTaskUpdate        = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"status":{"type":"string"},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"clear_assigned_agent":{"type":"boolean"},"branch_name":{"type":"string"}}}`)
-	schemaConvList          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaConvGet           = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
-	schemaConvCreate        = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"}}}`)
-	schemaConvSendMessage   = json.RawMessage(`{"type":"object","required":["conversation_id","content"],"properties":{"conversation_id":{"type":"string","format":"uuid"},"content":{"type":"string"}}}`)
-	schemaAgentList    = json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
-	schemaAgentGet     = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
-	schemaArtifactList = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"}}}`)
-	schemaArtifactGet       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо artifact_id (UUID артефакта)."}`)
-	schemaAppNavigate       = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
-	schemaGitIntegrationList = json.RawMessage(`{"type":"object","properties":{}}`)
-	schemaGitRepositoryList  = json.RawMessage(`{"type":"object","required":["provider"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"}}}`)
+	schemaProjectGet          = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
+	schemaProjectCreate       = json.RawMessage(`{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"git_provider":{"type":"string"},"git_url":{"type":"string"},"git_default_branch":{"type":"string"}}}`)
+	schemaProjectUpdate       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
+	schemaTaskList            = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaTaskGet             = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
+	schemaTaskCreate          = json.RawMessage(`{"type":"object","required":["project_id","title"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"parent_task_id":{"type":"string","format":"uuid"},"acceptance_criteria":{"type":"array","items":{"type":"string"},"description":"Поведенческие критерии приёмки в формате «действие → наблюдаемый результат» (напр. «PATCH с устаревшей version → HTTP 409»). Передавай их, когда задача рождается из обсуждения проблемы или досье разведчика, чтобы planner/tester анкорились на них, а не выдумывали заново."}}}`)
+	schemaTaskUpdate          = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"status":{"type":"string"},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"clear_assigned_agent":{"type":"boolean"},"branch_name":{"type":"string"}}}`)
+	schemaConvList            = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaConvGet             = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
+	schemaConvCreate          = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"}}}`)
+	schemaConvSendMessage     = json.RawMessage(`{"type":"object","required":["conversation_id","content"],"properties":{"conversation_id":{"type":"string","format":"uuid"},"content":{"type":"string"}}}`)
+	schemaAgentList           = json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
+	schemaAgentGet            = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
+	schemaArtifactList        = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"}}}`)
+	schemaArtifactGet         = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо artifact_id (UUID артефакта)."}`)
+	schemaAppNavigate         = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
+	schemaGitIntegrationList  = json.RawMessage(`{"type":"object","properties":{}}`)
+	schemaGitRepositoryList   = json.RawMessage(`{"type":"object","required":["provider"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"}}}`)
 	schemaGitRepositoryCreate = json.RawMessage(`{"type":"object","required":["provider","name"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"},"name":{"type":"string","description":"Имя нового репозитория"},"private":{"type":"boolean","description":"Сделать ли репозиторий приватным"},"description":{"type":"string","description":"Описание нового репозитория"}}}`)
-	schemaTeamGet        = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
-	schemaTeamUpdate     = json.RawMessage(`{"type":"object","required":["name"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"}},"description":"UUID проекта и новое название."}`)
-	schemaTeamAgentPatch = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"clear_model":{"type":"boolean"},"model":{"type":"string"},"clear_prompt_id":{"type":"boolean"},"prompt_id":{"type":"string","format":"uuid"},"clear_system_prompt":{"type":"boolean"},"system_prompt":{"type":"string"},"clear_code_backend":{"type":"boolean"},"code_backend":{"type":"string"},"is_active":{"type":"boolean"},"tool_definition_ids":{"type":"array","items":{"type":"string","format":"uuid"}}}}`)
-	schemaTeamAgentCreate = json.RawMessage(`{"type":"object","required":["name","role","execution_kind"],"properties":{"project_id":{"type":"string","format":"uuid"},"team_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"role":{"type":"string","enum":["orchestrator","router","developer","reviewer","tester","planner","coder","researcher","writer"]},"execution_kind":{"type":"string","enum":["llm","sandbox"]},"role_description":{"type":"string"},"system_prompt":{"type":"string"},"prompt_id":{"type":"string","format":"uuid"},"model":{"type":"string"},"provider_kind":{"type":"string","enum":["openai","anthropic","deepseek","zhipu","openrouter","anthropic_oauth","antigravity","antigravity_oauth","hermes"]},"code_backend":{"type":"string","enum":["claude-code","aider","hermes","custom"]},"temperature":{"type":"number"},"max_tokens":{"type":"integer"}}}`)
-	schemaTeamAgentDelete = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
-	schemaTeamList       = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
-	schemaTeamCreate     = json.RawMessage(`{"type":"object","required":["name","type"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"type":{"type":"string"}},"description":"Создать новую команду в проекте."}`)
-	schemaTeamDelete     = json.RawMessage(`{"type":"object","required":["team_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"team_id":{"type":"string","format":"uuid"}},"description":"Удалить команду из проекта."}`)
-	schemaTeamTypeList   = json.RawMessage(`{"type":"object","properties":{}}`)
-	schemaTeamTypeCreate = json.RawMessage(`{"type":"object","required":["code","name"],"properties":{"code":{"type":"string"},"name":{"type":"string"}}}`)
-	schemaTeamTypeDelete = json.RawMessage(`{"type":"object","required":["code"],"properties":{"code":{"type":"string"}}}`)
-	schemaCodeSearch     = json.RawMessage(`{"type":"object","required":["project_id","query"],"properties":{"project_id":{"type":"string","format":"uuid"},"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}}}`)
-	schemaCodeFileRead   = json.RawMessage(`{"type":"object","required":["project_id","path"],"properties":{"project_id":{"type":"string","format":"uuid"},"path":{"type":"string"},"line_start":{"type":"integer","minimum":1},"line_end":{"type":"integer","minimum":1}}}`)
-	schemaCodeDirList    = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"path":{"type":"string"}}}`)
+	schemaTeamGet             = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
+	schemaTeamUpdate          = json.RawMessage(`{"type":"object","required":["name"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"}},"description":"UUID проекта и новое название."}`)
+	schemaTeamAgentPatch      = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"clear_model":{"type":"boolean"},"model":{"type":"string"},"clear_prompt_id":{"type":"boolean"},"prompt_id":{"type":"string","format":"uuid"},"clear_system_prompt":{"type":"boolean"},"system_prompt":{"type":"string"},"clear_code_backend":{"type":"boolean"},"code_backend":{"type":"string"},"is_active":{"type":"boolean"},"tool_definition_ids":{"type":"array","items":{"type":"string","format":"uuid"}}}}`)
+	schemaTeamAgentCreate     = json.RawMessage(`{"type":"object","required":["name","role","execution_kind"],"properties":{"project_id":{"type":"string","format":"uuid"},"team_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"role":{"type":"string","enum":["orchestrator","router","developer","reviewer","tester","planner","coder","researcher","writer"]},"execution_kind":{"type":"string","enum":["llm","sandbox"]},"role_description":{"type":"string"},"system_prompt":{"type":"string"},"prompt_id":{"type":"string","format":"uuid"},"model":{"type":"string"},"provider_kind":{"type":"string","enum":["openai","anthropic","deepseek","zhipu","openrouter","anthropic_oauth","antigravity","antigravity_oauth","hermes"]},"code_backend":{"type":"string","enum":["claude-code","aider","hermes","custom"]},"temperature":{"type":"number"},"max_tokens":{"type":"integer"}}}`)
+	schemaTeamAgentDelete     = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"}}}`)
+	schemaTeamList            = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
+	schemaTeamCreate          = json.RawMessage(`{"type":"object","required":["name","type"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"type":{"type":"string"}},"description":"Создать новую команду в проекте."}`)
+	schemaTeamDelete          = json.RawMessage(`{"type":"object","required":["team_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"team_id":{"type":"string","format":"uuid"}},"description":"Удалить команду из проекта."}`)
+	schemaTeamTypeList        = json.RawMessage(`{"type":"object","properties":{}}`)
+	schemaTeamTypeCreate      = json.RawMessage(`{"type":"object","required":["code","name"],"properties":{"code":{"type":"string"},"name":{"type":"string"}}}`)
+	schemaTeamTypeDelete      = json.RawMessage(`{"type":"object","required":["code"],"properties":{"code":{"type":"string"}}}`)
+	schemaCodeSearch          = json.RawMessage(`{"type":"object","required":["project_id","query"],"properties":{"project_id":{"type":"string","format":"uuid"},"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}}}`)
+	schemaCodeFileRead        = json.RawMessage(`{"type":"object","required":["project_id","path"],"properties":{"project_id":{"type":"string","format":"uuid"},"path":{"type":"string"},"line_start":{"type":"integer","minimum":1},"line_end":{"type":"integer","minimum":1}}}`)
+	schemaCodeDirList         = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"path":{"type":"string"}}}`)
 )
 
 func (e *AuthorizedExecutor) teamGet(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {

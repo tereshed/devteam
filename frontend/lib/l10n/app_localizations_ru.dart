@@ -2068,6 +2068,14 @@ class AppLocalizationsRu extends AppLocalizations {
   String get agentSandboxSettingsProviderNone => '— нет —';
 
   @override
+  String get agentSandboxSettingsAttachServicesLabel =>
+      'Подключать тест-сервисы проекта';
+
+  @override
+  String get agentSandboxSettingsAttachServicesHelper =>
+      'Поднимать эфемерные тестовые сервисы проекта (например PostgreSQL) для sandbox-прогонов этого агента. Обычно включается у tester.';
+
+  @override
   String get agentSandboxSettingsCodeBackendLabel => 'Code backend';
 
   @override
@@ -3301,6 +3309,231 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get weekdayShortSun => 'Вс';
+
+  @override
+  String get sandboxServicesTabTitle => 'Тестовое окружение';
+
+  @override
+  String get sandboxServicesHeading => 'Эфемерные тестовые сервисы';
+
+  @override
+  String get sandboxServicesDescription =>
+      'Объявите одноразовые сервисы (например PostgreSQL), которые поднимаются рядом с sandbox-агентом для интеграционных тестов с БД. Агент подключает их тумблером «подключать тест-сервисы» (обычно tester). Пароль генерится на каждый прогон и не хранится.';
+
+  @override
+  String get sandboxServicesEmpty => 'Тестовые сервисы ещё не настроены.';
+
+  @override
+  String get sandboxServicesAddButton => 'Добавить сервис';
+
+  @override
+  String get sandboxServicesLoadError =>
+      'Не удалось загрузить тестовые сервисы.';
+
+  @override
+  String get sandboxServicesSavedSnack => 'Сервис сохранён';
+
+  @override
+  String get sandboxServicesDeletedSnack => 'Сервис удалён';
+
+  @override
+  String get sandboxServiceEnabledLabel => 'Включён';
+
+  @override
+  String get sandboxServiceFormTitleNew => 'Новый тестовый сервис';
+
+  @override
+  String get sandboxServiceFormTitleEdit => 'Редактирование тестового сервиса';
+
+  @override
+  String get sandboxServiceAliasLabel => 'Alias (hostname, напр. db)';
+
+  @override
+  String get sandboxServiceImageLabel => 'Образ';
+
+  @override
+  String get sandboxServiceDbNameLabel => 'Имя БД';
+
+  @override
+  String get sandboxServiceDbUserLabel => 'Пользователь БД';
+
+  @override
+  String get sandboxServicePortLabel => 'Порт';
+
+  @override
+  String get sandboxServiceReadyTimeoutLabel => 'Таймаут готовности (сек)';
+
+  @override
+  String get sandboxServiceSeedKindLabel => 'Сид';
+
+  @override
+  String get sandboxServiceSeedValueLabel =>
+      'Значение сида (путь в репо или SQL)';
+
+  @override
+  String get sandboxServiceSave => 'Сохранить';
+
+  @override
+  String get sandboxServiceCancel => 'Отмена';
+
+  @override
+  String get sandboxServiceDelete => 'Удалить';
+
+  @override
+  String get sandboxServiceDeleteTitle => 'Удалить сервис?';
+
+  @override
+  String sandboxServiceDeleteConfirm(String alias) {
+    return 'Удалить тестовый сервис «$alias»?';
+  }
+
+  @override
+  String get scoutTabTitle => 'Разведчик';
+
+  @override
+  String get scoutHeading => 'Разведчик проекта';
+
+  @override
+  String get scoutDescription =>
+      'Когда пользователь приходит с проблемой, а не с готовой задачей, разведчик запускает headless-прогон в sandbox на вашей подписке, читает репозитории проекта и собирает досье контекста (релевантные файлы, как устроено, подходы, открытые вопросы, предлагаемые критерии приёмки) — чтобы помочь сформулировать задачу. Доступен ассистенту проекта, когда включён.';
+
+  @override
+  String get scoutEnabledLabel => 'Включён';
+
+  @override
+  String get scoutEnabledHint =>
+      'Позволяет ассистенту проекта запускать разведчика для сбора контекста.';
+
+  @override
+  String get scoutBackendLabel => 'Бэкенд';
+
+  @override
+  String get scoutBackendHint =>
+      'CLI в sandbox. Запуск сейчас поддерживает claude-code (подписка).';
+
+  @override
+  String get scoutTimeoutLabel => 'Таймаут прогона, секунды';
+
+  @override
+  String get scoutTimeoutHint =>
+      '60–3600. Жёсткий потолок прогона разведчика в sandbox.';
+
+  @override
+  String get scoutSubscriptionNote =>
+      'Разведчик работает на подключённой подписке Claude владельца проекта (не на metered API). Без подключённой подписки прогон не запустится.';
+
+  @override
+  String get scoutSaveButton => 'Сохранить';
+
+  @override
+  String get scoutSavedSnack => 'Настройки разведчика сохранены';
+
+  @override
+  String get scoutPromptHeading => 'Промпт разведчика';
+
+  @override
+  String get scoutPromptHint =>
+      'Инструкции для разведчика. Пусто — используется встроенный дефолтный промпт.';
+
+  @override
+  String get scoutPromptDefaultNotice =>
+      'Используется встроенный дефолтный промпт.';
+
+  @override
+  String get scoutRunsTitle => 'Прогоны';
+
+  @override
+  String get scoutRunsEmpty =>
+      'Прогонов ещё нет. Запустите разведку вручную или дайте ассистенту это сделать.';
+
+  @override
+  String get scoutRunButton => 'Запустить разведку';
+
+  @override
+  String get scoutRunStartedSnack =>
+      'Разведка запущена — досье появится в списке прогонов';
+
+  @override
+  String get scoutRunDialogTitle => 'Запуск разведки';
+
+  @override
+  String get scoutRunDialogHint =>
+      'Опишите проблему своими словами: что болит и какой желаемый исход.';
+
+  @override
+  String get scoutRunDialogCancel => 'Отмена';
+
+  @override
+  String get scoutRunDialogStart => 'Запустить';
+
+  @override
+  String get scoutRunStatusRunning => 'Выполняется';
+
+  @override
+  String get scoutRunStatusDone => 'Готово';
+
+  @override
+  String get scoutRunStatusFailed => 'Ошибка';
+
+  @override
+  String get scoutDossierTitle => 'Досье';
+
+  @override
+  String get scoutDossierEmpty => 'Досье нет';
+
+  @override
+  String get scoutLoadError => 'Не удалось загрузить данные разведчика';
+
+  @override
+  String get scoutProviderLabel => 'Провайдер';
+
+  @override
+  String get scoutProviderHint =>
+      'Аутентификация/провайдер. claude-code: anthropic_oauth = подписка. hermes: anthropic/openrouter/hermes.';
+
+  @override
+  String get scoutProviderNone => '— не задан —';
+
+  @override
+  String get scoutProviderRequired => 'Бэкенд hermes требует явного провайдера';
+
+  @override
+  String get scoutModelLabel => 'Модель';
+
+  @override
+  String get scoutModelHint =>
+      'напр. claude-sonnet-4-6, anthropic/claude-3.5-sonnet. Пусто — дефолт бэкенда.';
+
+  @override
+  String get scoutTemperatureLabel => 'Temperature';
+
+  @override
+  String get scoutAdvancedTitle => 'Расширенные настройки sandbox';
+
+  @override
+  String get scoutMcpLabel => 'MCP-серверы (JSON)';
+
+  @override
+  String get scoutMcpHint =>
+      'JSON-массив mcp_servers в том же формате, что у агента. Пусто — нет.';
+
+  @override
+  String get scoutSkillsLabel => 'Скиллы (JSON)';
+
+  @override
+  String get scoutSkillsHint =>
+      'JSON-массив skills в том же формате, что у агента. Пусто — нет.';
+
+  @override
+  String get scoutPermissionsLabel => 'Permissions (JSON)';
+
+  @override
+  String get scoutPermissionsHint =>
+      'JSON-объект: allow/deny/ask/defaultMode (Claude Code). Пусто — дефолт.';
+
+  @override
+  String get scoutInvalidJsonSnack =>
+      'Невалидный JSON в расширенных настройках — поправьте и сохраните снова';
 
   @override
   String get enhancerTabTitle => 'Улучшение';

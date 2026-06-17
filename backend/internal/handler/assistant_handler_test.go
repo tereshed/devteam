@@ -82,6 +82,10 @@ func (m *MockAssistantService) ConfirmToolCall(ctx context.Context, sessionID, u
 	return args.Error(0)
 }
 
+func (m *MockAssistantService) ResumeFromScout(ctx context.Context, sessionID, userID uuid.UUID, toolCallID, dossier string, runErr error) {
+	m.Called(ctx, sessionID, userID, toolCallID, dossier, runErr)
+}
+
 func (m *MockAssistantService) ListActiveTasks(ctx context.Context, userID uuid.UUID) ([]service.ActiveTaskSummary, error) {
 	args := m.Called(ctx, userID)
 	var tasks []service.ActiveTaskSummary
@@ -170,7 +174,7 @@ func TestAssistant_GetMessages_CursorParsing(t *testing.T) {
 	mockSvc := new(MockAssistantService)
 	beforeID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
 	beforeAt := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
-	
+
 	mockSvc.On("GetHistory", mock.Anything, testAssistantSessionID, testAssistantUserID, 30, beforeAt, beforeID).Return([]*models.AssistantMessage{}, nil)
 
 	w := httptest.NewRecorder()

@@ -788,6 +788,9 @@ func Run(role Role) {
 					},
 					orchestratorContextBuilder,
 				)
+				// Sprint 22: репозиторий деклараций сервис-сайдкаров (postgres для тестов
+				// с БД); агенты с attach_sandbox_services получат их в in.Services.
+				w.SetSandboxServiceRepo(repository.NewSandboxServiceRepository(db))
 				go func() {
 					if err := w.Run(ctxWorker); err != nil {
 						log.Printf("agent worker exited with error: %v", err)
@@ -839,23 +842,61 @@ func Run(role Role) {
 	})
 	assistantSessionRepo := repository.NewAssistantSessionRepository(db)
 	assistantLLMResolver := service.NewAssistantLLMClientAdapter(llmCredSvc, llmFactory, cfg.LLM, llmRepo, llmModelRepo)
+
+	// Разведчик проекта (фазы 0–2: конфиг, диспатч прогонов в sandbox на подписке,
+	// wake-up распарканной сессии ассистента). Строим ДО ассистента: он передаётся
+	// в deps ассистента как ScoutDispatcher (диспатч из park + гейтинг tool'а),
+	// а обратную связь (ResumeFromScout) ставим сеттером ниже — разрыв цикла DI.
+	// Гоняет тот же sandboxAgentExecutor, что dev-агенты; OAuth-токен подписки
+	// резолвит claudeCodeAuthSvc от имени владельца проекта.
+	scoutSvc, err := service.NewScoutService(service.ScoutServiceDeps{
+		Repo:             repository.NewScoutRepository(db),
+		ProjectSvc:       projectService,
+		SubscriptionRepo: claudeCodeSubRepo,
+		RepoRepo:         projectRepoRepo,
+		SandboxExecutor:  sandboxAgentExecutor,
+		AuthResolver:     sandboxAuthResolver,
+		AgentSettingsSvc: agentSettingsSvc,
+		GitTokenResolver: orchestratorContextBuilder,
+		Logger:           slog.Default(),
+	})
+	if err != nil {
+		log.Fatalf("Failed to construct ScoutService: %v", err)
+	}
+
+	// Sprint 22: декларации эфемерных сервис-сайдкаров проекта (postgres для
+	// интеграционных тестов с БД). Репозиторий переиспользуется AgentWorker'ом —
+	// он строит in.Services для агентов с attach_sandbox_services.
+	sandboxServiceRepo := repository.NewSandboxServiceRepository(db)
+	sandboxServiceConfigSvc, err := service.NewSandboxServiceConfigService(service.SandboxServiceConfigDeps{
+		Repo:       sandboxServiceRepo,
+		ProjectSvc: projectService,
+	})
+	if err != nil {
+		log.Fatalf("Failed to construct SandboxServiceConfigService: %v", err)
+	}
+
 	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{
-		Repo:         assistantSessionRepo,
-		TaskRepo:     taskRepo,
-		ProjectRepo:  projectRepo,
-		TeamRepo:     teamRepo,
-		AgentLoader:  service.NewDBAgentLoader(db),
-		AgentCreator: agentSvcV2,
-		LLMResolver:  assistantLLMResolver,
-		UserCreds:    llmCredSvc,
-		ToolCatalog:  assistantToolCatalog,
-		Hub:          hub,
-		Executor:     assistantExecutor,
-		Logger:       v2Logger, // redact-обёрнутый; не пускает токены/ключи/пароли в stdout (см. comment выше).
+		Repo:            assistantSessionRepo,
+		TaskRepo:        taskRepo,
+		ProjectRepo:     projectRepo,
+		TeamRepo:        teamRepo,
+		AgentLoader:     service.NewDBAgentLoader(db),
+		AgentCreator:    agentSvcV2,
+		LLMResolver:     assistantLLMResolver,
+		UserCreds:       llmCredSvc,
+		ToolCatalog:     assistantToolCatalog,
+		ScoutDispatcher: scoutSvc,
+		Hub:             hub,
+		Executor:        assistantExecutor,
+		Logger:          v2Logger, // redact-обёрнутый; не пускает токены/ключи/пароли в stdout (см. comment выше).
 	})
 	if err != nil {
 		log.Fatalf("Failed to construct AssistantService: %v", err)
 	}
+	// Обратная связь разведчик→ассистент: по завершении прогона ScoutService
+	// закрывает распарканный tool_call досье и поднимает луп (см. ResumeFromScout).
+	scoutSvc.SetResumer(assistantSvc)
 	// Stale-recovery ассистент-сессий — задача-синглтон (только лидер): чистка, одного хватает.
 	leaderElector.OnLeader("assistant-stale-recovery", assistantSvc.StartStaleRecovery)
 
@@ -936,6 +977,8 @@ func Run(role Role) {
 		TaskHandler:           taskHandler,
 		ScheduledTaskHandler:  scheduledTaskHandler,
 		EnhancerHandler:       handler.NewEnhancerHandler(enhancerSvc),
+		ScoutHandler:          handler.NewScoutHandler(scoutSvc),
+		SandboxServiceHandler: handler.NewSandboxServiceHandler(sandboxServiceConfigSvc),
 		WorkflowHandler:       workflowHandler,
 		WebhookHandler:        webhookHandler,
 		ConversationHandler:   conversationHandler,
@@ -998,23 +1041,24 @@ func Run(role Role) {
 
 	if role.RunsHTTP() && cfg.MCP.Enabled {
 		mcpSrv := mcpserver.NewMCPServer(mcpserver.Dependencies{
-			Config:                 cfg.MCP,
-			LLMService:             llmService,
-			WorkflowEngine:         workflowEngine,
-			PromptService:          promptService,
-			ProjectService:         projectService,
-			TeamService:            teamService,
-			TaskService:            taskService,
-			ScheduledTaskService:   scheduledTaskService,
-			EnhancerService:        enhancerSvc,
-			ToolDefinitionService:  toolDefinitionService,
-			OrchestratorSvc:        orchestratorService,
-			ApiKeyService:          apiKeyService,
-			ClaudeCodeAuthService:  claudeCodeAuthSvc,
-			AntigravityAuthService: antigravityAuthSvc,
-			GitIntegrationService:  gitIntegrationSvc,
-			MCPServerRegistryRepo:  repository.NewMCPServerRegistryRepository(db),
-			AgentSkillRepo:         repository.NewAgentSkillRepository(db),
+			Config:                  cfg.MCP,
+			LLMService:              llmService,
+			WorkflowEngine:          workflowEngine,
+			PromptService:           promptService,
+			ProjectService:          projectService,
+			TeamService:             teamService,
+			TaskService:             taskService,
+			ScheduledTaskService:    scheduledTaskService,
+			EnhancerService:         enhancerSvc,
+			SandboxServiceConfigSvc: sandboxServiceConfigSvc,
+			ToolDefinitionService:   toolDefinitionService,
+			OrchestratorSvc:         orchestratorService,
+			ApiKeyService:           apiKeyService,
+			ClaudeCodeAuthService:   claudeCodeAuthSvc,
+			AntigravityAuthService:  antigravityAuthSvc,
+			GitIntegrationService:   gitIntegrationSvc,
+			MCPServerRegistryRepo:   repository.NewMCPServerRegistryRepository(db),
+			AgentSkillRepo:          repository.NewAgentSkillRepository(db),
 
 			// Sprint 17 / Sprint 5 — v2 orchestration MCP tools через SERVICE-слой.
 			AgentSvcV2: agentSvcV2,

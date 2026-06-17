@@ -12,19 +12,20 @@ import (
 
 // Dependencies содержит зависимости MCP-сервера
 type Dependencies struct {
-	Config                config.MCPConfig
-	LLMService            service.LLMService
-	WorkflowEngine        service.WorkflowEngine
-	PromptService         service.PromptService
-	ProjectService        service.ProjectService
-	TeamService           service.TeamService
-	TaskService           service.TaskService
-	ScheduledTaskService  service.ScheduledTaskService
-	EnhancerService       service.EnhancerService
-	ToolDefinitionService service.ToolDefinitionService
-	ConversationSvc       service.ConversationService
-	OrchestratorSvc       service.TaskOrchestrator
-	ApiKeyService         service.ApiKeyService
+	Config                  config.MCPConfig
+	LLMService              service.LLMService
+	WorkflowEngine          service.WorkflowEngine
+	PromptService           service.PromptService
+	ProjectService          service.ProjectService
+	TeamService             service.TeamService
+	TaskService             service.TaskService
+	ScheduledTaskService    service.ScheduledTaskService
+	EnhancerService         service.EnhancerService
+	SandboxServiceConfigSvc service.SandboxServiceConfigService
+	ToolDefinitionService   service.ToolDefinitionService
+	ConversationSvc         service.ConversationService
+	OrchestratorSvc         service.TaskOrchestrator
+	ApiKeyService           service.ApiKeyService
 
 	// Sprint 15.15: опционально. nil — инструменты не регистрируются.
 	ClaudeCodeAuthService  service.ClaudeCodeAuthService
@@ -77,6 +78,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterTaskTools(server, deps.TaskService, deps.OrchestratorSvc)
 	RegisterScheduledTaskTools(server, deps.ScheduledTaskService)
 	RegisterEnhancerTools(server, deps.EnhancerService)
+	RegisterSandboxServiceTools(server, deps.SandboxServiceConfigSvc)
 	RegisterConversationTools(server, deps.ConversationSvc)
 	RegisterClaudeCodeAuthTools(server, deps.ClaudeCodeAuthService)
 	RegisterAntigravityAuthTools(server, deps.AntigravityAuthService)

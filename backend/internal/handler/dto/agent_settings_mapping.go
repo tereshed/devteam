@@ -13,9 +13,10 @@ import (
 // AgentSettingsResponseFromModel — DRY-маппинг models.Agent → AgentSettingsResponse.
 func AgentSettingsResponseFromModel(a *models.Agent) AgentSettingsResponse {
 	resp := AgentSettingsResponse{
-		AgentID:             a.ID,
-		CodeBackendSettings: jsonObjectOrEmpty(a.CodeBackendSettings),
-		SandboxPermissions:  jsonObjectOrEmpty(a.SandboxPermissions),
+		AgentID:               a.ID,
+		CodeBackendSettings:   jsonObjectOrEmpty(a.CodeBackendSettings),
+		SandboxPermissions:    jsonObjectOrEmpty(a.SandboxPermissions),
+		AttachSandboxServices: a.AttachSandboxServices,
 	}
 	if a.CodeBackend != nil {
 		s := string(*a.CodeBackend)

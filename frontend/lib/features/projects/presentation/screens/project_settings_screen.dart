@@ -15,6 +15,8 @@ import 'package:frontend/features/projects/presentation/widgets/project_settings
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_field_row.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_stack_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_vector_section.dart';
+import 'package:frontend/features/sandbox_services/presentation/widgets/sandbox_services_tab.dart';
+import 'package:frontend/features/scout/presentation/widgets/scout_settings_tab.dart';
 import 'package:frontend/features/settings/presentation/widgets/assistant_prompt_editor.dart';
 import 'package:frontend/features/team/presentation/widgets/project_variables_section.dart';
 import 'package:frontend/features/webhooks/presentation/widgets/webhooks_list_section.dart';
@@ -403,7 +405,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
           ),
         Expanded(
           child: DefaultTabController(
-            length: 5,
+            length: 7,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -415,6 +417,8 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                     Tab(text: AppLocalizations.of(context)!.webhooksTitle),
                     Tab(text: AppLocalizations.of(context)!.assistantPromptProjectTabTitle),
                     Tab(text: AppLocalizations.of(context)!.enhancerTabTitle),
+                    Tab(text: AppLocalizations.of(context)!.scoutTabTitle),
+                    Tab(text: AppLocalizations.of(context)!.sandboxServicesTabTitle),
                   ],
                 ),
                 Expanded(
@@ -551,6 +555,8 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                         ),
                       ),
                       EnhancerSettingsTab(projectId: widget.projectId),
+                      ScoutSettingsTab(projectId: widget.projectId),
+                      SandboxServicesTab(projectId: widget.projectId),
                     ],
                   ),
                 ),

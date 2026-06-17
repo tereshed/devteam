@@ -438,11 +438,25 @@ class _SwimlaneModel {
     required bool taskActive,
     required AppLocalizations l10n,
   }) {
-    final sorted = List<RouterDecision>.from(decisions)
+    final rawSorted = List<RouterDecision>.from(decisions)
       ..sort((a, b) {
         final byStep = a.stepNo.compareTo(b.stepNo);
         return byStep != 0 ? byStep : a.createdAt.compareTo(b.createdAt);
       });
+    // Защита от дублей step_no: оставляем первое (самое раннее) решение на каждый
+    // step_no. Дубли появлялись у задач, перезапущенных resume'ом до фикса (resume
+    // сбрасывал step_no=0 → повторный прогон переиспользовал номера). Без дедупа
+    // окна шагов (winStart/winEnd по step_no) схлопывались, а далёкие по времени
+    // повторные решения растягивали ось → планер «уезжал» за экран.
+    final sorted = <RouterDecision>[];
+    {
+      final seenSteps = <int>{};
+      for (final d in rawSorted) {
+        if (seenSteps.add(d.stepNo)) {
+          sorted.add(d);
+        }
+      }
+    }
 
     // t0 — самое раннее событие; tEnd — now (если активна) или последнее событие.
     var t0 = sorted.first.createdAt;

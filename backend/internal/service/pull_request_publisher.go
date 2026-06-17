@@ -21,6 +21,10 @@ type PullRequestPublisher interface {
 	// head=task branch, base=repo.GitDefaultBranch, репозиторий repo.GitURL, креды —
 	// repo-level git_credential c фоллбеком на project-level и OAuth-интеграцию владельца.
 	PublishForRepo(ctx context.Context, task *models.Task, project *models.Project, repo *models.ProjectRepository) (*gitprovider.PullRequest, error)
+	// LatestPipelineStatus — статус последнего CI-пайплайна ветки ref (CI-gate, Sprint 22).
+	// repo=nil → одно-репо (поля project). Провайдер без поддержки CI или нерезолвимые
+	// креды → PipelineStatusNone (гейт не блокирует), без ошибки.
+	LatestPipelineStatus(ctx context.Context, project *models.Project, repo *models.ProjectRepository, ref string) (*gitprovider.PipelineResult, error)
 }
 
 // gitPRPublisher — продакшен-реализация: использует gitprovider.Factory + Encryptor
@@ -163,6 +167,44 @@ func (p *gitPRPublisher) PublishForRepo(ctx context.Context, task *models.Task, 
 	}
 	p.log.Info("PR opened (repo-scoped)", "project_id", project.ID, "task_id", task.ID, "repo_slug", repo.Slug, "branch", *task.BranchName, "pr_number", pr.Number, "pr_url", pr.HTMLURL)
 	return pr, nil
+}
+
+// LatestPipelineStatus резолвит креды и провайдер (как для открытия PR), затем
+// читает статус CI через опциональный gitprovider.PipelineStatusReader. Провайдер
+// без поддержки CI / нерезолвимые креды → PipelineStatusNone (не блокируем гейт).
+func (p *gitPRPublisher) LatestPipelineStatus(ctx context.Context, project *models.Project, repo *models.ProjectRepository, ref string) (*gitprovider.PipelineResult, error) {
+	none := &gitprovider.PipelineResult{Status: gitprovider.PipelineStatusNone}
+	if p == nil || p.factory == nil || project == nil || ref == "" {
+		return none, nil
+	}
+	var (
+		creds        gitprovider.Credentials
+		providerType string
+		repoURL      string
+		err          error
+	)
+	if repo != nil {
+		creds, err = p.resolveRepoCredentials(ctx, project, repo)
+		providerType = string(repo.GitProvider)
+		repoURL = repo.GitURL
+	} else {
+		creds, err = p.resolveCredentials(ctx, project)
+		providerType = string(project.GitProvider)
+		repoURL = project.GitURL
+	}
+	if err != nil {
+		// Нет кред / non-PR провайдер — проверить CI нечем, не блокируем гейт.
+		return none, nil
+	}
+	provider, err := p.factory.Create(providerType, creds)
+	if err != nil {
+		return none, nil
+	}
+	reader, ok := provider.(gitprovider.PipelineStatusReader)
+	if !ok {
+		return none, nil
+	}
+	return reader.GetLatestPipelineStatus(ctx, repoURL, ref)
 }
 
 // resolveCredentials выбирает git-credential для открытия PR.

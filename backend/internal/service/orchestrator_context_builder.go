@@ -24,6 +24,10 @@ type ContextBuilder interface {
 	Build(ctx context.Context, task *models.Task, assignedAgent *models.Agent, project *models.Project, targetRepo *models.ProjectRepository) (*agent.ExecutionInput, error)
 	// WithCodeChunks добавляет найденные фрагменты кода в контекст (Задача 9.11).
 	WithCodeChunks(input *agent.ExecutionInput, chunks []indexer.Chunk) error
+	// ResolveGitTokenSecrets — git-креды (GIT_TOKEN/GIT_TOKEN_USER/GIT_SSH_KEY) для
+	// клонирования в sandbox. Экспортируется для переиспользования разведчиком,
+	// чтобы не дублировать дешифровку кредов и OAuth-рефреш.
+	ResolveGitTokenSecrets(ctx context.Context, project *models.Project, targetRepo *models.ProjectRepository) map[string]string
 }
 
 // PipelinePromptComposer merges base + role system prompts from disk (task 6.8).
@@ -184,6 +188,11 @@ func WithSandboxAuthResolver(builder ContextBuilder, resolver SandboxAuthEnvReso
 // Приоритет: (1) выбранный OAuth-аккаунт репо/проекта (git_integration_credential_id);
 // (2) PAT-credential репо/проекта (git_credentials); (3) фолбэк на первый OAuth-аккаунт
 // провайдера владельца. Мульти-аккаунт: репо/проект могут указывать разные аккаунты.
+// ResolveGitTokenSecrets — экспортируемая обёртка над resolveGitTokenSecrets.
+func (b *contextBuilder) ResolveGitTokenSecrets(ctx context.Context, project *models.Project, targetRepo *models.ProjectRepository) map[string]string {
+	return b.resolveGitTokenSecrets(ctx, project, targetRepo)
+}
+
 func (b *contextBuilder) resolveGitTokenSecrets(ctx context.Context, project *models.Project, targetRepo *models.ProjectRepository) map[string]string {
 	out := map[string]string{}
 	if project == nil {

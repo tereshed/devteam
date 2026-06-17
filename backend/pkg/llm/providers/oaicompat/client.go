@@ -87,7 +87,15 @@ func (c *Client) Generate(ctx context.Context, req llm.Request) (*llm.Response, 
 		return nil, fmt.Errorf("oaicompat: decode response: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
-		return nil, fmt.Errorf("oaicompat: empty choices in response")
+		// Провайдер вернул HTTP 200 без choices — реальная причина (rate-limit,
+		// недоступная модель, safety/finish_reason) лежит в теле (часто поле "error"
+		// у openrouter). Без него мы видим бесполезное "empty choices". Прикладываем
+		// усечённое тело, чтобы причина попадала в лог/ошибку ассистента.
+		snippet := string(payload)
+		if len(snippet) > 512 {
+			snippet = snippet[:512] + "…"
+		}
+		return nil, fmt.Errorf("oaicompat: empty choices in response (body: %s)", snippet)
 	}
 	return c.mapResponse(parsed), nil
 }

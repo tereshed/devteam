@@ -15,14 +15,17 @@ import (
 type instanceState struct {
 	mu sync.Mutex
 
-	taskID           string
-	containerID      string
-	containerName    string
-	hostTempDir      string
-	networkID        string
-	effectiveTimeout time.Duration
-	stopGracePeriod  time.Duration
-	createdAt        time.Time
+	taskID        string
+	containerID   string
+	containerName string
+	hostTempDir   string
+	networkID     string
+	// serviceContainerIDs — ID эфемерных сервис-сайдкаров прогона (Sprint 22); сносятся
+	// вместе с агент-контейнером и сетью в Cleanup и rollback-defer RunTask.
+	serviceContainerIDs []string
+	effectiveTimeout    time.Duration
+	stopGracePeriod     time.Duration
+	createdAt           time.Time
 
 	doneOnce sync.Once
 	doneCh   chan struct{}
@@ -33,13 +36,13 @@ type instanceState struct {
 	waitLoopOnce sync.Once
 
 	// Намерения и фазы остановки — только под st.mu (без разрозненных атомиков, 5.8).
-	initCancelRequested     bool
-	userStopIntent          bool
-	businessTimeoutIntent   bool
-	waitCompleted           bool
-	cleaned                 bool
-	businessTimer           *time.Timer
-	cancelWait              context.CancelFunc
+	initCancelRequested   bool
+	userStopIntent        bool
+	businessTimeoutIntent bool
+	waitCompleted         bool
+	cleaned               bool
+	businessTimer         *time.Timer
+	cancelWait            context.CancelFunc
 
 	// onCleanup вызывается при Cleanup (7.6).
 	onCleanup func()
@@ -47,7 +50,7 @@ type instanceState struct {
 	streamMu     sync.Mutex
 	streamCancel context.CancelFunc
 	streamActive bool
-	streamCh     chan LogEntry // мастер-канал для tee (7.6)
+	streamCh     chan LogEntry   // мастер-канал для tee (7.6)
 	externalCh   <-chan LogEntry // второе плечо tee для StreamLogs (7.6)
 }
 

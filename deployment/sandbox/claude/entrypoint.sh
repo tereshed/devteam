@@ -457,6 +457,30 @@ if [[ -n "${SIBLING_REPOS:-}" ]]; then
   done <<< "$SIBLINGS_TSV"
 fi
 
+# --- wait_services: ждём готовности эфемерных сервис-сайдкаров (Sprint 22) ---
+# Runner поднимает postgres-сайдкар на той же bridge-сети с alias-DNS и пробрасывает
+# POSTGRES_HOST/POSTGRES_PORT + SERVICE_READY_TIMEOUT. Ждём TCP-accept через bash /dev/tcp
+# (psql в образ не тянем). Внешний порт postgres открывается только ПОСЛЕ initdb+seed, поэтому
+# accept = «готов и засижен». Fail-loud по таймауту, чтобы не висеть до бизнес-дедлайна.
+if [[ -n "${POSTGRES_HOST:-}" ]]; then
+  PHASE="wait_services"
+  svc_port="${POSTGRES_PORT:-5432}"
+  svc_deadline=$(( SECONDS + ${SERVICE_READY_TIMEOUT:-60} ))
+  echo "entrypoint: waiting for service ${POSTGRES_HOST}:${svc_port} (timeout ${SERVICE_READY_TIMEOUT:-60}s)" >>"$AGENT_LOG"
+  until (exec 3<>"/dev/tcp/${POSTGRES_HOST}/${svc_port}") 2>/dev/null; do
+    exec 3>&- 2>/dev/null || true
+    if (( SECONDS >= svc_deadline )); then
+      echo "entrypoint: service ${POSTGRES_HOST}:${svc_port} not ready in time" >&2
+      LAST_EXIT_CODE=1
+      MESSAGE="service ${POSTGRES_HOST}:${svc_port} not ready"
+      exit 1
+    fi
+    sleep 1
+  done
+  exec 3>&- 2>/dev/null || true
+  echo "entrypoint: service ${POSTGRES_HOST}:${svc_port} is ready" >>"$AGENT_LOG"
+fi
+
 # --- agent: stdin = prompt + разделитель + context; короткий -p (без больших argv) ---
 PHASE="agent"
 # Headless: без TTY не ждём интерактива и телеметрию-приглашения (зависания по таймауту оркестратора).

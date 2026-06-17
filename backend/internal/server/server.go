@@ -47,6 +47,8 @@ type Dependencies struct {
 	TaskHandler           *handler.TaskHandler
 	ScheduledTaskHandler  *handler.ScheduledTaskHandler
 	EnhancerHandler       *handler.EnhancerHandler
+	ScoutHandler          *handler.ScoutHandler
+	SandboxServiceHandler *handler.SandboxServiceHandler
 	WorkflowHandler       *handler.WorkflowHandler
 	WebhookHandler        *handler.WebhookHandler
 	ConversationHandler   *handler.ConversationHandler
@@ -359,6 +361,22 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				projects.POST("/:id/enhancer/changes/:changeId/apply", deps.EnhancerHandler.ApplyChange)
 				projects.POST("/:id/enhancer/changes/:changeId/reject", deps.EnhancerHandler.RejectChange)
 				projects.POST("/:id/enhancer/changes/:changeId/rollback", deps.EnhancerHandler.RollbackChange)
+			}
+
+			// Разведчик проекта: конфиг агента сбора контекста (sandbox, на подписке) + прогоны.
+			if deps.ScoutHandler != nil {
+				projects.GET("/:id/scout", deps.ScoutHandler.GetConfig)
+				projects.PUT("/:id/scout", deps.ScoutHandler.UpdateConfig)
+				projects.POST("/:id/scout/run", deps.ScoutHandler.Dispatch)
+				projects.GET("/:id/scout/runs", deps.ScoutHandler.ListRuns)
+				projects.GET("/:id/scout/runs/:runId", deps.ScoutHandler.GetRun)
+			}
+
+			// Sprint 22: эфемерные сервис-сайдкары проекта (postgres для тестов с БД).
+			if deps.SandboxServiceHandler != nil {
+				projects.GET("/:id/sandbox-services", deps.SandboxServiceHandler.List)
+				projects.PUT("/:id/sandbox-services", deps.SandboxServiceHandler.Upsert)
+				projects.DELETE("/:id/sandbox-services/:serviceId", deps.SandboxServiceHandler.Delete)
 			}
 
 			// Мульти-репо: управление git-репозиториями проекта.

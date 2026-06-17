@@ -13,7 +13,7 @@ import (
 // используйте opts.LogSafe() или fmt.Sprintf("%s", opts) при наличии fmt.Stringer.
 func (o SandboxOptions) LogSafe() string {
 	return fmt.Sprintf(
-		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s Timeout:%v StopGracePeriod:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d}}",
+		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s Timeout:%v StopGracePeriod:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d} Services:%s}",
 		o.TaskID,
 		o.ProjectID,
 		o.Backend,
@@ -30,7 +30,27 @@ func (o SandboxOptions) LogSafe() string {
 		o.ResourceLimit.MemoryMB,
 		o.ResourceLimit.DiskMB,
 		o.ResourceLimit.PIDsLimit,
+		servicesLogSafe(o.Services),
 	)
+}
+
+// servicesLogSafe — представление сервис-сайдкаров для логов: alias/image/port +
+// маскированный env (POSTGRES_PASSWORD), без сырого seed.
+func servicesLogSafe(services []ServiceSpec) string {
+	if len(services) == 0 {
+		return "[]"
+	}
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, s := range services {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "{alias:%q image:%q port:%d env:%s seed:%s}",
+			s.Alias, s.Image, s.Port, maskEnvVarsForLog(s.Env), byteLenDesc(s.SeedSQL))
+	}
+	b.WriteByte(']')
+	return b.String()
 }
 
 // String реализует fmt.Stringer: то же, что LogSafe, чтобы случайный %s / %v не сливал ключи.

@@ -107,14 +107,14 @@ func (cb CodeBackend) IsValid() bool {
 type AgentProviderKind string
 
 const (
-	AgentProviderKindAnthropic      AgentProviderKind = "anthropic"
-	AgentProviderKindAnthropicOAuth AgentProviderKind = "anthropic_oauth"
-	AgentProviderKindDeepSeek       AgentProviderKind = "deepseek"
-	AgentProviderKindZhipu          AgentProviderKind = "zhipu"
-	AgentProviderKindOpenRouter     AgentProviderKind = "openrouter"
-	AgentProviderKindAntigravity    AgentProviderKind = "antigravity"
+	AgentProviderKindAnthropic        AgentProviderKind = "anthropic"
+	AgentProviderKindAnthropicOAuth   AgentProviderKind = "anthropic_oauth"
+	AgentProviderKindDeepSeek         AgentProviderKind = "deepseek"
+	AgentProviderKindZhipu            AgentProviderKind = "zhipu"
+	AgentProviderKindOpenRouter       AgentProviderKind = "openrouter"
+	AgentProviderKindAntigravity      AgentProviderKind = "antigravity"
 	AgentProviderKindAntigravityOAuth AgentProviderKind = "antigravity_oauth"
-	AgentProviderKindHermes         AgentProviderKind = "hermes"
+	AgentProviderKindHermes           AgentProviderKind = "hermes"
 )
 
 // IsValid проверяет валидность kind.
@@ -255,8 +255,8 @@ type Agent struct {
 	ProviderKind        *AgentProviderKind `gorm:"type:varchar(32)" json:"provider_kind"`
 	CodeBackendSettings datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"code_backend_settings" swaggertype:"object"`
 	SandboxPermissions  datatypes.JSON     `gorm:"type:jsonb;not null;default:'{}'" json:"sandbox_permissions" swaggertype:"object"`
-	IsActive            bool           `gorm:"default:true" json:"is_active"`
-	RequiresCodeContext bool           `gorm:"default:false" json:"requires_code_context"`
+	IsActive            bool               `gorm:"default:true" json:"is_active"`
+	RequiresCodeContext bool               `gorm:"default:false" json:"requires_code_context"`
 
 	// Sprint 17 / Orchestration v2 — поля для LLM-driven Router.
 	// ExecutionKind — обязательно (NOT NULL в БД). Llm vs sandbox runtime.
@@ -271,6 +271,11 @@ type Agent struct {
 
 	// Phase 4 §4.1 — подключить внутренний MCP DevTeam (для управления сущностями).
 	InternalMCPEnabled bool `gorm:"default:false" json:"internal_mcp_enabled"`
+
+	// Sprint 22 — подключать к sandbox-прогонам агента эфемерные сервис-сайдкары
+	// проекта (sandbox_service_configs), например postgres для интеграционных тестов
+	// с БД. Только для sandbox-агентов; включается на уровне агента (типично tester).
+	AttachSandboxServices bool `gorm:"column:attach_sandbox_services;not null;default:false" json:"attach_sandbox_services"`
 
 	CreatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"created_at"`
 	UpdatedAt time.Time `gorm:"type:timestamp with time zone;default:now()" json:"updated_at"`
@@ -323,7 +328,7 @@ type Execution struct {
 	Status        ExecutionStatus `gorm:"not null;default:'pending'"`
 	CurrentStepID string
 	InputData     string         `gorm:"type:text"`
-	OutputData    string         `gorm:"type:text"` // New field for final result
+	OutputData    string         `gorm:"type:text"`                                    // New field for final result
 	Context       datatypes.JSON `gorm:"type:jsonb;default:'{}'" swaggertype:"object"` // Shared memory
 	StepCount     int            `gorm:"default:0"`
 	MaxSteps      int            `gorm:"default:20"`
@@ -335,17 +340,17 @@ type Execution struct {
 
 // ExecutionStep представляет один шаг в истории выполнения
 type ExecutionStep struct {
-	ID            uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	ExecutionID   uuid.UUID  `gorm:"type:uuid"`
-	StepID        string     `gorm:"not null"`
-	AgentID       *uuid.UUID `gorm:"type:uuid"`
-	Agent         *Agent     `gorm:"foreignKey:AgentID"`
+	ID             uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	ExecutionID    uuid.UUID  `gorm:"type:uuid"`
+	StepID         string     `gorm:"not null"`
+	AgentID        *uuid.UUID `gorm:"type:uuid"`
+	Agent          *Agent     `gorm:"foreignKey:AgentID"`
 	PromptSnapshot string     `gorm:"type:text"`
-	InputContext  string     `gorm:"type:text"`
-	OutputContent string     `gorm:"type:text"`
-	TokensUsed    int        `gorm:"default:0"`
-	DurationMs    int        `gorm:"default:0"`
-	CreatedAt     time.Time
+	InputContext   string     `gorm:"type:text"`
+	OutputContent  string     `gorm:"type:text"`
+	TokensUsed     int        `gorm:"default:0"`
+	DurationMs     int        `gorm:"default:0"`
+	CreatedAt      time.Time
 }
 
 // --- Вспомогательные структуры для парсинга Configuration JSON ---
@@ -385,12 +390,12 @@ type StepConfig struct {
 
 // LoopConfig конфигурация цикла
 type LoopConfig struct {
-	BodyStepID     string `json:"body_step_id"`                // Шаг, который выполняется в цикле
-	MaxIterations  int    `json:"max_iterations"`              // Максимум итераций (защита от бесконечного цикла)
-	ExitCondition  string `json:"exit_condition"`              // Промпт для LLM: "Should we exit? Answer YES or NO"
-	ExitAgentID    string `json:"exit_agent_id,omitempty"`     // Legacy: UUID агента для проверки условия
-	ExitAgentRole  string `json:"exit_agent_role,omitempty"`   // Роль агента для проверки условия выхода
-	ExitOnResponse string `json:"exit_on_response,omitempty"`  // При каком ответе выходить (default: "YES")
+	BodyStepID     string `json:"body_step_id"`               // Шаг, который выполняется в цикле
+	MaxIterations  int    `json:"max_iterations"`             // Максимум итераций (защита от бесконечного цикла)
+	ExitCondition  string `json:"exit_condition"`             // Промпт для LLM: "Should we exit? Answer YES or NO"
+	ExitAgentID    string `json:"exit_agent_id,omitempty"`    // Legacy: UUID агента для проверки условия
+	ExitAgentRole  string `json:"exit_agent_role,omitempty"`  // Роль агента для проверки условия выхода
+	ExitOnResponse string `json:"exit_on_response,omitempty"` // При каком ответе выходить (default: "YES")
 }
 
 // APICallConfig конфигурация вызова внешнего API
@@ -405,8 +410,8 @@ type APICallConfig struct {
 
 // LoopState хранит состояние цикла в контексте выполнения
 type LoopState struct {
-	StepID         string `json:"step_id"`
+	StepID           string `json:"step_id"`
 	CurrentIteration int    `json:"current_iteration"`
-	MaxIterations  int    `json:"max_iterations"`
-	ReturnToStepID string `json:"return_to_step_id"` // Куда вернуться после тела цикла
+	MaxIterations    int    `json:"max_iterations"`
+	ReturnToStepID   string `json:"return_to_step_id"` // Куда вернуться после тела цикла
 }

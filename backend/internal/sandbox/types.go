@@ -151,6 +151,11 @@ type SandboxOptions struct {
 	// SiblingRepos — мульти-репо: соседние репозитории проекта, монтируемые read-only
 	// (entrypoint клонирует их в SiblingsPath/<slug>). Каждый URL обязан пройти ValidateRepoURL.
 	SiblingRepos []SiblingRepoSpec
+
+	// Services — эфемерные сервис-сайдкары прогона (Sprint 22): runner поднимает по
+	// контейнеру на сервис в той же per-run bridge-сети с alias-DNS (например postgres
+	// для интеграционных тестов с БД). Пусто → прежнее поведение. Требует DisableNetwork=false.
+	Services []ServiceSpec
 }
 
 // SiblingRepoSpec — соседний репозиторий проекта для read-only клонирования в sandbox.
@@ -207,6 +212,23 @@ func (o SandboxOptions) Clone() SandboxOptions {
 		}
 	} else {
 		res.EnvVars = nil
+	}
+	// Глубокая копия Services: каждый ServiceSpec.Env — мапа, которую runner читает в
+	// горутине ожидания/инъекции env параллельно с вызывающим (иначе concurrent map access).
+	if o.Services != nil {
+		res.Services = make([]ServiceSpec, len(o.Services))
+		for i, s := range o.Services {
+			cp := s
+			if s.Env != nil {
+				cp.Env = make(map[string]string, len(s.Env))
+				for k, v := range s.Env {
+					cp.Env[k] = v
+				}
+			}
+			res.Services[i] = cp
+		}
+	} else {
+		res.Services = nil
 	}
 	return res
 }

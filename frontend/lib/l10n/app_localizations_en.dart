@@ -2043,6 +2043,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSandboxSettingsProviderNone => '— none —';
 
   @override
+  String get agentSandboxSettingsAttachServicesLabel =>
+      'Attach project test services';
+
+  @override
+  String get agentSandboxSettingsAttachServicesHelper =>
+      'Bring up the project\'s ephemeral test services (e.g. PostgreSQL) for this agent\'s sandbox runs. Typically enabled for the tester.';
+
+  @override
   String get agentSandboxSettingsCodeBackendLabel => 'Code backend';
 
   @override
@@ -3273,6 +3281,229 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get weekdayShortSun => 'Sun';
+
+  @override
+  String get sandboxServicesTabTitle => 'Test environment';
+
+  @override
+  String get sandboxServicesHeading => 'Ephemeral test services';
+
+  @override
+  String get sandboxServicesDescription =>
+      'Declare disposable services (e.g. PostgreSQL) that are brought up next to the sandbox agent for DB-backed integration tests. An agent attaches them via its \'attach test services\' toggle (typically the tester). A throwaway password is generated per run — it is never stored.';
+
+  @override
+  String get sandboxServicesEmpty => 'No test services configured yet.';
+
+  @override
+  String get sandboxServicesAddButton => 'Add service';
+
+  @override
+  String get sandboxServicesLoadError => 'Failed to load test services.';
+
+  @override
+  String get sandboxServicesSavedSnack => 'Service saved';
+
+  @override
+  String get sandboxServicesDeletedSnack => 'Service deleted';
+
+  @override
+  String get sandboxServiceEnabledLabel => 'Enabled';
+
+  @override
+  String get sandboxServiceFormTitleNew => 'New test service';
+
+  @override
+  String get sandboxServiceFormTitleEdit => 'Edit test service';
+
+  @override
+  String get sandboxServiceAliasLabel => 'Alias (hostname, e.g. db)';
+
+  @override
+  String get sandboxServiceImageLabel => 'Image';
+
+  @override
+  String get sandboxServiceDbNameLabel => 'Database name';
+
+  @override
+  String get sandboxServiceDbUserLabel => 'Database user';
+
+  @override
+  String get sandboxServicePortLabel => 'Port';
+
+  @override
+  String get sandboxServiceReadyTimeoutLabel => 'Ready timeout (sec)';
+
+  @override
+  String get sandboxServiceSeedKindLabel => 'Seed';
+
+  @override
+  String get sandboxServiceSeedValueLabel => 'Seed value (repo path or SQL)';
+
+  @override
+  String get sandboxServiceSave => 'Save';
+
+  @override
+  String get sandboxServiceCancel => 'Cancel';
+
+  @override
+  String get sandboxServiceDelete => 'Delete';
+
+  @override
+  String get sandboxServiceDeleteTitle => 'Delete service?';
+
+  @override
+  String sandboxServiceDeleteConfirm(String alias) {
+    return 'Delete the test service \"$alias\"?';
+  }
+
+  @override
+  String get scoutTabTitle => 'Scout';
+
+  @override
+  String get scoutHeading => 'Project Scout';
+
+  @override
+  String get scoutDescription =>
+      'When a user comes with a problem rather than a formalized task, the scout runs a headless sandbox pass on your subscription, reads the project repositories and gathers a context dossier (relevant files, how it works, approaches, open questions, proposed acceptance criteria) to help formulate the task. Available to the project assistant when enabled.';
+
+  @override
+  String get scoutEnabledLabel => 'Enabled';
+
+  @override
+  String get scoutEnabledHint =>
+      'Lets the project assistant dispatch the scout for context gathering.';
+
+  @override
+  String get scoutBackendLabel => 'Backend';
+
+  @override
+  String get scoutBackendHint =>
+      'Sandbox CLI. Dispatch currently supports claude-code (subscription).';
+
+  @override
+  String get scoutTimeoutLabel => 'Run timeout, seconds';
+
+  @override
+  String get scoutTimeoutHint =>
+      '60–3600. Hard cap for a scout run in the sandbox.';
+
+  @override
+  String get scoutSubscriptionNote =>
+      'The scout runs on the project owner\'s connected Claude subscription (not metered API). Without a connected subscription the run will fail.';
+
+  @override
+  String get scoutSaveButton => 'Save';
+
+  @override
+  String get scoutSavedSnack => 'Scout settings saved';
+
+  @override
+  String get scoutPromptHeading => 'Scout prompt';
+
+  @override
+  String get scoutPromptHint =>
+      'Instructions for the scout. Empty — the built-in default prompt is used.';
+
+  @override
+  String get scoutPromptDefaultNotice => 'Using the built-in default prompt.';
+
+  @override
+  String get scoutRunsTitle => 'Runs';
+
+  @override
+  String get scoutRunsEmpty =>
+      'No runs yet. Start a scout manually or let the assistant dispatch it.';
+
+  @override
+  String get scoutRunButton => 'Run scout';
+
+  @override
+  String get scoutRunStartedSnack =>
+      'Scout started — the dossier will appear in the runs list';
+
+  @override
+  String get scoutRunDialogTitle => 'Run scout';
+
+  @override
+  String get scoutRunDialogHint =>
+      'Describe the problem in your own words: what hurts and the desired outcome.';
+
+  @override
+  String get scoutRunDialogCancel => 'Cancel';
+
+  @override
+  String get scoutRunDialogStart => 'Run';
+
+  @override
+  String get scoutRunStatusRunning => 'Running';
+
+  @override
+  String get scoutRunStatusDone => 'Done';
+
+  @override
+  String get scoutRunStatusFailed => 'Failed';
+
+  @override
+  String get scoutDossierTitle => 'Dossier';
+
+  @override
+  String get scoutDossierEmpty => 'No dossier';
+
+  @override
+  String get scoutLoadError => 'Failed to load scout data';
+
+  @override
+  String get scoutProviderLabel => 'Provider';
+
+  @override
+  String get scoutProviderHint =>
+      'Auth/provider. claude-code: anthropic_oauth = subscription. hermes: anthropic/openrouter/hermes.';
+
+  @override
+  String get scoutProviderNone => '— not set —';
+
+  @override
+  String get scoutProviderRequired =>
+      'The hermes backend requires an explicit provider';
+
+  @override
+  String get scoutModelLabel => 'Model';
+
+  @override
+  String get scoutModelHint =>
+      'e.g. claude-sonnet-4-6, anthropic/claude-3.5-sonnet. Empty — backend default.';
+
+  @override
+  String get scoutTemperatureLabel => 'Temperature';
+
+  @override
+  String get scoutAdvancedTitle => 'Advanced sandbox settings';
+
+  @override
+  String get scoutMcpLabel => 'MCP servers (JSON)';
+
+  @override
+  String get scoutMcpHint =>
+      'JSON array of mcp_servers, same shape as the agent\'s. Empty — none.';
+
+  @override
+  String get scoutSkillsLabel => 'Skills (JSON)';
+
+  @override
+  String get scoutSkillsHint =>
+      'JSON array of skills, same shape as the agent\'s. Empty — none.';
+
+  @override
+  String get scoutPermissionsLabel => 'Permissions (JSON)';
+
+  @override
+  String get scoutPermissionsHint =>
+      'JSON object: allow/deny/ask/defaultMode (Claude Code). Empty — defaults.';
+
+  @override
+  String get scoutInvalidJsonSnack =>
+      'Invalid JSON in advanced settings — fix and save again';
 
   @override
   String get enhancerTabTitle => 'Enhancement';

@@ -92,10 +92,22 @@ func maxAllowedMemoryMB(ceilBytes int64) int64 {
 }
 
 // ValidateResourceLimits проверяет ResourceLimit до Docker (overflow, потолки политики). policy нормализуется внутри.
+// Лимиты каждого сервис-сайдкара проверяются той же логикой (сайдкар не может запросить безлимит).
 func (o SandboxOptions) ValidateResourceLimits(policy ResourceLimitPolicy) error {
 	policy = normalizeResourceLimitPolicy(policy)
-	rl := o.ResourceLimit
+	if err := validateOneResourceLimit(o.ResourceLimit, policy); err != nil {
+		return err
+	}
+	for i := range o.Services {
+		if err := validateOneResourceLimit(o.Services[i].ResourceLimit, policy); err != nil {
+			return fmt.Errorf("service %q: %w", o.Services[i].Alias, err)
+		}
+	}
+	return nil
+}
 
+// validateOneResourceLimit — общая проверка одного ResourceLimit против нормализованной политики.
+func validateOneResourceLimit(rl ResourceLimit, policy ResourceLimitPolicy) error {
 	if rl.DiskMB != 0 {
 		return fmt.Errorf("%w: resource_limit.disk_mb is reserved; only 0 is allowed until disk quotas are implemented", ErrInvalidOptions)
 	}
@@ -182,6 +194,18 @@ func (o SandboxOptions) validateWithoutResourceLimits(ctx context.Context) error
 
 	if o.StopGracePeriod < 0 {
 		return fmt.Errorf("%w: stop_grace_period must not be negative", ErrInvalidOptions)
+	}
+
+	// Эфемерные сервис-сайдкары: структурная валидация (alias/port/env/seed). Allowlist
+	// образов сверяется в RunTask (как и для агент-образа). Сервисы требуют bridge-сеть —
+	// на DisableNetwork (none) сайдкар недостижим, поэтому fail-loud.
+	if len(o.Services) > 0 && o.DisableNetwork {
+		return fmt.Errorf("%w: services require network (DisableNetwork must be false)", ErrInvalidOptions)
+	}
+	for i := range o.Services {
+		if err := o.Services[i].validateStructural(); err != nil {
+			return err
+		}
 	}
 
 	return nil

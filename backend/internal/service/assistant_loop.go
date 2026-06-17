@@ -223,7 +223,7 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		Temperature:  agent.Temperature,
 		MaxTokens:    agent.MaxTokens,
 		History:      history,
-		Tools:        s.deps.ToolCatalog.Catalog(),
+		Tools:        s.assistantTools(ctx, sess),
 		ServerTools:  assistantServerTools(providerKind),
 		Auth: agentloop.AuthContext{
 			UserID:    userID.String(),
@@ -271,7 +271,13 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 			return
 		}
 		releaseBusy = false // ВАЖНО: §3.1 «destructive-confirm: флаг остаётся TRUE»
-		s.broadcastConfirmRequest(userID, sessionID, *result.ParkedCall)
+		// scout_dispatch паркуется не для подтверждения пользователем, а в ожидании
+		// прогона разведчика: запускаем его, а закроет tool_call ResumeFromScout.
+		if result.ParkedCall.Name == scoutDispatchToolName {
+			s.handleScoutPark(ctx, sessionID, userID, sess, *result.ParkedCall)
+		} else {
+			s.broadcastConfirmRequest(userID, sessionID, *result.ParkedCall)
+		}
 
 	case agentloop.StatusLimitExceeded:
 		s.appendErrorMessage(ctx, sessionID, userID, fmt.Sprintf("превышен лимит шагов (%d), сформулируйте запрос точнее", AssistantMaxIterations))
@@ -500,6 +506,89 @@ func (s *assistantService) parkPendingConfirmation(ctx context.Context, sessionI
 	}
 	_ = userID // userID нужен для будущей аудит-метрики; пока не используется.
 	return nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Разведчик (scout_dispatch): сборка каталога, определение tool'а, park-обработчик.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// scoutDispatchToolName — имя assistant-tool'а запуска разведчика.
+const scoutDispatchToolName = "scout_dispatch"
+
+// assistantTools — каталог tools для прогона. scout_dispatch добавляется только
+// для проектной сессии с включённым разведчиком (требование: доступен только
+// ассистенту проекта). Глобальный ассистент его не видит.
+func (s *assistantService) assistantTools(ctx context.Context, sess *models.AssistantSession) []agentloop.Tool {
+	tools := s.deps.ToolCatalog.Catalog()
+	if sess != nil && sess.ProjectID != nil && s.deps.ScoutDispatcher != nil &&
+		s.deps.ScoutDispatcher.ScoutEnabled(ctx, *sess.ProjectID) {
+		tools = append(tools, scoutDispatchTool())
+	}
+	return tools
+}
+
+// scoutDispatchTool — определение assistant-tool'а. RequiresConfirmation=true,
+// чтобы Executor распарковал луп после вызова (ConfirmPark); реальный диспатч и
+// закрытие tool_call идут вне Executor (handleScoutPark + ResumeFromScout).
+func scoutDispatchTool() agentloop.Tool {
+	return agentloop.Tool{
+		Name:                 scoutDispatchToolName,
+		Description:          "Запустить агента-разведчика: headless-прогон в sandbox, который читает репозитории проекта и собирает досье контекста по проблеме пользователя (релевантные файлы, как устроено, подходы, открытые вопросы, критерии приёмки). Используй, когда пользователь приходит с проблемой/болью, а не с готовой задачей, и нужно собрать контекст перед постановкой. Прогон идёт минуты; досье придёт как результат этого вызова.",
+		InputSchema:          json.RawMessage(`{"type":"object","properties":{"problem":{"type":"string","description":"Постановка проблемы пользователя своими словами: что болит и какой желаемый исход."}},"required":["problem"]}`),
+		RequiresConfirmation: true,
+		Handler:              scoutDispatchHandler,
+	}
+}
+
+// scoutDispatchHandler — защитная заглушка. scout_dispatch — confirm-park tool:
+// его handler не исполняется (диспатч идёт в handleScoutPark, результат — через
+// ResumeFromScout). Если всё же вызвался — вернём бизнес-ошибку, а не панику.
+func scoutDispatchHandler(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
+	return json.Marshal(struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}{"error", "scout_dispatch обрабатывается асинхронно и не исполняется напрямую"})
+}
+
+// handleScoutPark запускает разведчика для распарканного вызова. При любой
+// синхронной неудаче немедленно закрывает tool_call ошибкой (ResumeFromScout),
+// чтобы сессия не залипла в busy навсегда.
+func (s *assistantService) handleScoutPark(ctx context.Context, sessionID, userID uuid.UUID, sess *models.AssistantSession, call agentloop.ToolCall) {
+	s.appendAssistantNote(ctx, sessionID, userID, "🔍 Разведчик собирает контекст проекта — вернусь с результатом…")
+
+	if s.deps.ScoutDispatcher == nil || sess == nil || sess.ProjectID == nil {
+		s.ResumeFromScout(ctx, sessionID, userID, call.ID, "", fmt.Errorf("разведчик недоступен в этом контексте"))
+		return
+	}
+	var a struct {
+		Problem string `json:"problem"`
+	}
+	_ = json.Unmarshal(call.Arguments, &a)
+	problem := strings.TrimSpace(a.Problem)
+	if problem == "" {
+		s.ResumeFromScout(ctx, sessionID, userID, call.ID, "", fmt.Errorf("не передана постановка проблемы (problem)"))
+		return
+	}
+	if err := s.deps.ScoutDispatcher.DispatchForSession(ctx, userID, *sess.ProjectID, sessionID, call.ID, problem); err != nil {
+		s.ResumeFromScout(ctx, sessionID, userID, call.ID, "", err)
+		return
+	}
+	// Успех: прогон пошёл асинхронно; wake-up придёт из ScoutService по завершении.
+}
+
+// appendAssistantNote записывает нейтральное assistant-сообщение (статус) и
+// рассылает его по WS. В отличие от appendErrorMessage — не про ошибку.
+func (s *assistantService) appendAssistantNote(ctx context.Context, sessionID, userID uuid.UUID, text string) {
+	row := &models.AssistantMessage{
+		SessionID: sessionID,
+		Role:      models.AssistantMessageRoleAssistant,
+		Content:   ptrString(text),
+	}
+	if err := s.deps.Repo.AppendMessage(ctx, row); err != nil {
+		s.deps.Logger.WarnContext(ctx, "assistant: append scout note failed", slog.String("error", err.Error()))
+		return
+	}
+	s.broadcastMessage(userID, sessionID, row)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

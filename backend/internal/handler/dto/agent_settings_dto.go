@@ -14,6 +14,9 @@ type AgentSettingsResponse struct {
 	CodeBackend         *string         `json:"code_backend,omitempty"`
 	CodeBackendSettings json.RawMessage `json:"code_backend_settings" swaggertype:"object"`
 	SandboxPermissions  json.RawMessage `json:"sandbox_permissions" swaggertype:"object"`
+	// AttachSandboxServices — подключать ли к sandbox-прогонам агента эфемерные
+	// сервис-сайдкары проекта (postgres для тестов с БД, Sprint 22).
+	AttachSandboxServices bool `json:"attach_sandbox_services"`
 }
 
 // UpdateAgentSettingsRequest — тело PUT /agents/:id/settings.
@@ -26,4 +29,7 @@ type UpdateAgentSettingsRequest struct {
 	CodeBackend         *string         `json:"code_backend,omitempty"`
 	CodeBackendSettings json.RawMessage `json:"code_backend_settings,omitempty" swaggertype:"object"`
 	SandboxPermissions  json.RawMessage `json:"sandbox_permissions,omitempty" swaggertype:"object"`
+	// AttachSandboxServices — тумблер подключения сервис-сайдкаров проекта (Sprint 22).
+	// nil → поле не меняется (omit).
+	AttachSandboxServices *bool `json:"attach_sandbox_services,omitempty"`
 }

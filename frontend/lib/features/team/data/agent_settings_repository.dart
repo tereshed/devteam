@@ -52,6 +52,7 @@ class AgentSettingsRepository {
     String? codeBackend,
     Map<String, dynamic>? codeBackendSettings,
     Map<String, dynamic>? sandboxPermissions,
+    bool? attachSandboxServices,
     CancelToken? cancelToken,
   }) async {
     final body = <String, dynamic>{
@@ -60,6 +61,8 @@ class AgentSettingsRepository {
         'code_backend_settings': codeBackendSettings,
       if (sandboxPermissions != null)
         'sandbox_permissions': sandboxPermissions,
+      if (attachSandboxServices != null)
+        'attach_sandbox_services': attachSandboxServices,
     };
     try {
       final resp = await _dio.put<Map<String, dynamic>>(

@@ -13,6 +13,11 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'assistant_chat_controller.g.dart';
 
+/// Имя tool'а разведчика. Он паркуется как confirm-tool лишь ради механики паузы,
+/// но авто-обрабатывается на бэке (прогон в sandbox → ResumeFromScout закроет
+/// tool_call досье) — поэтому НЕ показываем по нему confirm-карту пользователю.
+const String _kScoutDispatchTool = 'scout_dispatch';
+
 /// Состояние ассистент-чата правой панели (Sprint 21 §10/§12 frontend).
 ///
 /// Содержит активную сессию, её историю сообщений (ASC по `createdAt`),
@@ -458,6 +463,10 @@ class AssistantChatController extends _$AssistantChatController {
       },
       assistantConfirmRequest: (e) {
         if (!_matchesCurrent(e.value.sessionId)) return null;
+        // scout_dispatch авто-обрабатывается на бэке — confirm-карту не показываем.
+        if (e.value.toolName == _kScoutDispatchTool) {
+          return null;
+        }
         state = state.copyWith(pendingConfirm: e.value);
         return null;
       },
@@ -666,7 +675,8 @@ class AssistantChatController extends _$AssistantChatController {
               state.pendingConfirm!.toolCallId != pendingId) {
             final toolMsgIdx =
                 state.messages.indexWhere((m) => m.toolCallId == pendingId);
-            if (toolMsgIdx >= 0) {
+            if (toolMsgIdx >= 0 &&
+                state.messages[toolMsgIdx].toolName != _kScoutDispatchTool) {
               final toolMsg = state.messages[toolMsgIdx];
               final confirmEvent = WsAssistantConfirmRequestEvent(
                 ts: toolMsg.createdAt,
@@ -683,6 +693,9 @@ class AssistantChatController extends _$AssistantChatController {
                 session: updatedSession,
               );
             } else {
+              // scout_dispatch паркуется как pending, но авто-обрабатывается на
+              // бэке (прогон в sandbox → ResumeFromScout закроет tool_call досье);
+              // подтверждение пользователем НЕ требуется — показываем прогресс.
               state = state.copyWith(session: updatedSession);
             }
           } else {

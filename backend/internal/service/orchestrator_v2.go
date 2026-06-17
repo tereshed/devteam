@@ -15,6 +15,7 @@ import (
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/pkg/gitprovider"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"gorm.io/gorm"
@@ -72,6 +73,14 @@ type OrchestratorConfig struct {
 	// DefaultBaseBranch — fallback если Project.GitDefaultBranch пуст.
 	// Обычно "main".
 	DefaultBaseBranch string
+
+	// CIGate (Sprint 22) — после открытия MR оркестратор дожидается вердикта CI-пайплайна
+	// этого MR и при красном пайплайне переводит done→needs_human (со ссылкой на упавший
+	// джоб). Ловит ложный passed тестера (sandbox не воспроизводит весь проектный CI).
+	// CIGateEnabled=false → шаг пропускается (прежнее поведение: done сразу после открытия PR).
+	CIGateEnabled      bool
+	CIGatePollInterval time.Duration // период опроса статуса пайплайна
+	CIGateTimeout      time.Duration // потолок ожидания терминального статуса
 }
 
 // DefaultOrchestratorConfig возвращает разумные дефолты MVP.
@@ -82,6 +91,9 @@ func DefaultOrchestratorConfig() OrchestratorConfig {
 		MaxDeadJobsPerTask:  3,
 		MaxSameAgentRepeats: 4,
 		DefaultBaseBranch:   "main",
+		CIGateEnabled:       true,
+		CIGatePollInterval:  30 * time.Second,
+		CIGateTimeout:       25 * time.Minute,
 	}
 }
 
@@ -424,6 +436,13 @@ func (o *Orchestrator) publishSingleRepoPR(ctx context.Context, taskID uuid.UUID
 		if task.BranchName != nil {
 			branch = *task.BranchName
 		}
+		// MR уже открыт (идемпотентный повтор done-гейта) — не провал: переходим к CI-gate
+		// и гейтим пайплайн ветки.
+		if errors.Is(err, gitprovider.ErrConflict) {
+			o.logger.InfoContext(ctx, "pr-gate: MR already exists — proceeding to CI-gate", "task_id", taskID)
+			o.startCIGate(project, taskID, []ciGateTarget{{branch: branch, slug: "project"}})
+			return
+		}
 		reason := fmt.Sprintf(
 			"Задача не завершена: не удалось открыть PR — изменения не приземлены в репозиторий (%v). "+
 				"Привяжите git-credential к проекту и убедитесь, что ветка %q запушена в remote.",
@@ -441,6 +460,13 @@ func (o *Orchestrator) publishSingleRepoPR(ctx context.Context, taskID uuid.UUID
 		Update("result", fmt.Sprintf("PR #%d: %s", pr.Number, pr.HTMLURL)).Error; uerr != nil {
 		o.logger.WarnContext(ctx, "pr-gate: store PR url failed", "task_id", taskID, "error", uerr)
 	}
+
+	// CI-gate (Sprint 22): дождаться вердикта пайплайна MR; красный → done→needs_human.
+	branch := ""
+	if task.BranchName != nil {
+		branch = *task.BranchName
+	}
+	o.startCIGate(project, taskID, []ciGateTarget{{branch: branch, prURL: pr.HTMLURL, slug: "project"}})
 }
 
 // publishMultiRepoPRs открывает по PR на каждый затронутый репозиторий. Задача done только
@@ -455,6 +481,11 @@ func (o *Orchestrator) publishMultiRepoPRs(ctx context.Context, taskID uuid.UUID
 	}
 	var ok []opened
 	var failures []string
+	var ciTargets []ciGateTarget
+	branch := ""
+	if task.BranchName != nil {
+		branch = *task.BranchName
+	}
 
 	for _, repo := range repos {
 		pr, err := o.prPublisher.PublishForRepo(ctx, task, project, repo)
@@ -466,10 +497,18 @@ func (o *Orchestrator) publishMultiRepoPRs(ctx context.Context, taskID uuid.UUID
 					"task_id", taskID, "repo_slug", repo.Slug, "reason", err.Error())
 				continue
 			}
+			// MR уже открыт (идемпотентный повтор) — не провал; гейтим пайплайн ветки этого репо.
+			if errors.Is(err, gitprovider.ErrConflict) {
+				o.logger.InfoContext(ctx, "pr-gate: MR already exists — will CI-gate",
+					"task_id", taskID, "repo_slug", repo.Slug)
+				ciTargets = append(ciTargets, ciGateTarget{repo: repo, branch: branch, slug: repo.Slug})
+				continue
+			}
 			failures = append(failures, fmt.Sprintf("%s: %v", repo.Slug, err))
 			continue
 		}
 		ok = append(ok, opened{slug: repo.Slug, number: pr.Number, url: pr.HTMLURL})
+		ciTargets = append(ciTargets, ciGateTarget{repo: repo, branch: branch, prURL: pr.HTMLURL, slug: repo.Slug})
 		tpr := &models.TaskPullRequest{TaskID: taskID, RepoSlug: repo.Slug, PRNumber: pr.Number, PRURL: pr.HTMLURL}
 		if uerr := o.db.WithContext(ctx).
 			Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "task_id"}, {Name: "repo_slug"}}, DoNothing: true}).
@@ -491,20 +530,23 @@ func (o *Orchestrator) publishMultiRepoPRs(ctx context.Context, taskID uuid.UUID
 		return
 	}
 
-	if len(ok) == 0 {
-		o.logger.InfoContext(ctx, "pr-gate: no PRs needed across touched repos (all skipped)", "task_id", taskID)
-		return
+	if len(ok) > 0 {
+		parts := make([]string, 0, len(ok))
+		for _, r := range ok {
+			parts = append(parts, fmt.Sprintf("%s: PR #%d %s", r.slug, r.number, r.url))
+		}
+		result := strings.Join(parts, "\n")
+		o.logger.InfoContext(ctx, "pr-gate: multi-repo PRs opened", "task_id", taskID, "count", len(ok))
+		if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
+			Update("result", result).Error; uerr != nil {
+			o.logger.WarnContext(ctx, "pr-gate: store PR urls failed", "task_id", taskID, "error", uerr)
+		}
+	} else {
+		o.logger.InfoContext(ctx, "pr-gate: no new PRs opened (all skipped or already exist)", "task_id", taskID)
 	}
-	parts := make([]string, 0, len(ok))
-	for _, r := range ok {
-		parts = append(parts, fmt.Sprintf("%s: PR #%d %s", r.slug, r.number, r.url))
-	}
-	result := strings.Join(parts, "\n")
-	o.logger.InfoContext(ctx, "pr-gate: multi-repo PRs opened", "task_id", taskID, "count", len(ok))
-	if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
-		Update("result", result).Error; uerr != nil {
-		o.logger.WarnContext(ctx, "pr-gate: store PR urls failed", "task_id", taskID, "error", uerr)
-	}
+
+	// CI-gate (Sprint 22): дождаться вердиктов пайплайнов открытых/существующих MR; любой красный → needs_human.
+	o.startCIGate(project, taskID, ciTargets)
 }
 
 // downgradeToNeedsHuman переводит задачу done→needs_human с честной причиной.

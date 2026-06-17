@@ -60,11 +60,23 @@ List<AgentNodeData> buildAgentNodes({
   // в данных встретятся дубликаты (исторические задачи до фикса инкремента), тай-брейк
   // по времени держит окна привязки артефактов монотонными и не даёт одному артефакту
   // попасть на две ноды (перекрытие окон).
-  final sortedDecisions = List<RouterDecision>.from(decisions)
+  final rawSortedDecisions = List<RouterDecision>.from(decisions)
     ..sort((a, b) {
       final byStep = a.stepNo.compareTo(b.stepNo);
       return byStep != 0 ? byStep : a.createdAt.compareTo(b.createdAt);
     });
+  // Дедуп по step_no: x-колонка = stepNo*2, поэтому дубли (легаси-задачи до фикса
+  // resume, переиспользовавшего номера) накладывались в одну колонку. Оставляем
+  // первое (раннее) решение на step_no.
+  final sortedDecisions = <RouterDecision>[];
+  {
+    final seenSteps = <int>{};
+    for (final d in rawSortedDecisions) {
+      if (seenSteps.add(d.stepNo)) {
+        sortedDecisions.add(d);
+      }
+    }
+  }
 
   if (sortedDecisions.isEmpty) {
     if (assignedAgentName != null) {

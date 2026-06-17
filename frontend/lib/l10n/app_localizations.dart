@@ -3770,6 +3770,18 @@ abstract class AppLocalizations {
   /// **'— нет —'**
   String get agentSandboxSettingsProviderNone;
 
+  /// No description provided for @agentSandboxSettingsAttachServicesLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключать тест-сервисы проекта'**
+  String get agentSandboxSettingsAttachServicesLabel;
+
+  /// No description provided for @agentSandboxSettingsAttachServicesHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'Поднимать эфемерные тестовые сервисы проекта (например PostgreSQL) для sandbox-прогонов этого агента. Обычно включается у tester.'**
+  String get agentSandboxSettingsAttachServicesHelper;
+
   /// No description provided for @agentSandboxSettingsCodeBackendLabel.
   ///
   /// In ru, this message translates to:
@@ -6085,6 +6097,414 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Вс'**
   String get weekdayShortSun;
+
+  /// No description provided for @sandboxServicesTabTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестовое окружение'**
+  String get sandboxServicesTabTitle;
+
+  /// No description provided for @sandboxServicesHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Эфемерные тестовые сервисы'**
+  String get sandboxServicesHeading;
+
+  /// No description provided for @sandboxServicesDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Объявите одноразовые сервисы (например PostgreSQL), которые поднимаются рядом с sandbox-агентом для интеграционных тестов с БД. Агент подключает их тумблером «подключать тест-сервисы» (обычно tester). Пароль генерится на каждый прогон и не хранится.'**
+  String get sandboxServicesDescription;
+
+  /// No description provided for @sandboxServicesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тестовые сервисы ещё не настроены.'**
+  String get sandboxServicesEmpty;
+
+  /// No description provided for @sandboxServicesAddButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить сервис'**
+  String get sandboxServicesAddButton;
+
+  /// No description provided for @sandboxServicesLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить тестовые сервисы.'**
+  String get sandboxServicesLoadError;
+
+  /// No description provided for @sandboxServicesSavedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервис сохранён'**
+  String get sandboxServicesSavedSnack;
+
+  /// No description provided for @sandboxServicesDeletedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервис удалён'**
+  String get sandboxServicesDeletedSnack;
+
+  /// No description provided for @sandboxServiceEnabledLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Включён'**
+  String get sandboxServiceEnabledLabel;
+
+  /// No description provided for @sandboxServiceFormTitleNew.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый тестовый сервис'**
+  String get sandboxServiceFormTitleNew;
+
+  /// No description provided for @sandboxServiceFormTitleEdit.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактирование тестового сервиса'**
+  String get sandboxServiceFormTitleEdit;
+
+  /// No description provided for @sandboxServiceAliasLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Alias (hostname, напр. db)'**
+  String get sandboxServiceAliasLabel;
+
+  /// No description provided for @sandboxServiceImageLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Образ'**
+  String get sandboxServiceImageLabel;
+
+  /// No description provided for @sandboxServiceDbNameLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя БД'**
+  String get sandboxServiceDbNameLabel;
+
+  /// No description provided for @sandboxServiceDbUserLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пользователь БД'**
+  String get sandboxServiceDbUserLabel;
+
+  /// No description provided for @sandboxServicePortLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Порт'**
+  String get sandboxServicePortLabel;
+
+  /// No description provided for @sandboxServiceReadyTimeoutLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Таймаут готовности (сек)'**
+  String get sandboxServiceReadyTimeoutLabel;
+
+  /// No description provided for @sandboxServiceSeedKindLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сид'**
+  String get sandboxServiceSeedKindLabel;
+
+  /// No description provided for @sandboxServiceSeedValueLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение сида (путь в репо или SQL)'**
+  String get sandboxServiceSeedValueLabel;
+
+  /// No description provided for @sandboxServiceSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get sandboxServiceSave;
+
+  /// No description provided for @sandboxServiceCancel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get sandboxServiceCancel;
+
+  /// No description provided for @sandboxServiceDelete.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get sandboxServiceDelete;
+
+  /// No description provided for @sandboxServiceDeleteTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить сервис?'**
+  String get sandboxServiceDeleteTitle;
+
+  /// No description provided for @sandboxServiceDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить тестовый сервис «{alias}»?'**
+  String sandboxServiceDeleteConfirm(String alias);
+
+  /// No description provided for @scoutTabTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разведчик'**
+  String get scoutTabTitle;
+
+  /// No description provided for @scoutHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разведчик проекта'**
+  String get scoutHeading;
+
+  /// No description provided for @scoutDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Когда пользователь приходит с проблемой, а не с готовой задачей, разведчик запускает headless-прогон в sandbox на вашей подписке, читает репозитории проекта и собирает досье контекста (релевантные файлы, как устроено, подходы, открытые вопросы, предлагаемые критерии приёмки) — чтобы помочь сформулировать задачу. Доступен ассистенту проекта, когда включён.'**
+  String get scoutDescription;
+
+  /// No description provided for @scoutEnabledLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Включён'**
+  String get scoutEnabledLabel;
+
+  /// No description provided for @scoutEnabledHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Позволяет ассистенту проекта запускать разведчика для сбора контекста.'**
+  String get scoutEnabledHint;
+
+  /// No description provided for @scoutBackendLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Бэкенд'**
+  String get scoutBackendLabel;
+
+  /// No description provided for @scoutBackendHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'CLI в sandbox. Запуск сейчас поддерживает claude-code (подписка).'**
+  String get scoutBackendHint;
+
+  /// No description provided for @scoutTimeoutLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Таймаут прогона, секунды'**
+  String get scoutTimeoutLabel;
+
+  /// No description provided for @scoutTimeoutHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'60–3600. Жёсткий потолок прогона разведчика в sandbox.'**
+  String get scoutTimeoutHint;
+
+  /// No description provided for @scoutSubscriptionNote.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разведчик работает на подключённой подписке Claude владельца проекта (не на metered API). Без подключённой подписки прогон не запустится.'**
+  String get scoutSubscriptionNote;
+
+  /// No description provided for @scoutSaveButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get scoutSaveButton;
+
+  /// No description provided for @scoutSavedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки разведчика сохранены'**
+  String get scoutSavedSnack;
+
+  /// No description provided for @scoutPromptHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Промпт разведчика'**
+  String get scoutPromptHeading;
+
+  /// No description provided for @scoutPromptHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Инструкции для разведчика. Пусто — используется встроенный дефолтный промпт.'**
+  String get scoutPromptHint;
+
+  /// No description provided for @scoutPromptDefaultNotice.
+  ///
+  /// In ru, this message translates to:
+  /// **'Используется встроенный дефолтный промпт.'**
+  String get scoutPromptDefaultNotice;
+
+  /// No description provided for @scoutRunsTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Прогоны'**
+  String get scoutRunsTitle;
+
+  /// No description provided for @scoutRunsEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Прогонов ещё нет. Запустите разведку вручную или дайте ассистенту это сделать.'**
+  String get scoutRunsEmpty;
+
+  /// No description provided for @scoutRunButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Запустить разведку'**
+  String get scoutRunButton;
+
+  /// No description provided for @scoutRunStartedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разведка запущена — досье появится в списке прогонов'**
+  String get scoutRunStartedSnack;
+
+  /// No description provided for @scoutRunDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Запуск разведки'**
+  String get scoutRunDialogTitle;
+
+  /// No description provided for @scoutRunDialogHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Опишите проблему своими словами: что болит и какой желаемый исход.'**
+  String get scoutRunDialogHint;
+
+  /// No description provided for @scoutRunDialogCancel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get scoutRunDialogCancel;
+
+  /// No description provided for @scoutRunDialogStart.
+  ///
+  /// In ru, this message translates to:
+  /// **'Запустить'**
+  String get scoutRunDialogStart;
+
+  /// No description provided for @scoutRunStatusRunning.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выполняется'**
+  String get scoutRunStatusRunning;
+
+  /// No description provided for @scoutRunStatusDone.
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get scoutRunStatusDone;
+
+  /// No description provided for @scoutRunStatusFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ошибка'**
+  String get scoutRunStatusFailed;
+
+  /// No description provided for @scoutDossierTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Досье'**
+  String get scoutDossierTitle;
+
+  /// No description provided for @scoutDossierEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Досье нет'**
+  String get scoutDossierEmpty;
+
+  /// No description provided for @scoutLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить данные разведчика'**
+  String get scoutLoadError;
+
+  /// No description provided for @scoutProviderLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Провайдер'**
+  String get scoutProviderLabel;
+
+  /// No description provided for @scoutProviderHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аутентификация/провайдер. claude-code: anthropic_oauth = подписка. hermes: anthropic/openrouter/hermes.'**
+  String get scoutProviderHint;
+
+  /// No description provided for @scoutProviderNone.
+  ///
+  /// In ru, this message translates to:
+  /// **'— не задан —'**
+  String get scoutProviderNone;
+
+  /// No description provided for @scoutProviderRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Бэкенд hermes требует явного провайдера'**
+  String get scoutProviderRequired;
+
+  /// No description provided for @scoutModelLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Модель'**
+  String get scoutModelLabel;
+
+  /// No description provided for @scoutModelHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'напр. claude-sonnet-4-6, anthropic/claude-3.5-sonnet. Пусто — дефолт бэкенда.'**
+  String get scoutModelHint;
+
+  /// No description provided for @scoutTemperatureLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Temperature'**
+  String get scoutTemperatureLabel;
+
+  /// No description provided for @scoutAdvancedTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Расширенные настройки sandbox'**
+  String get scoutAdvancedTitle;
+
+  /// No description provided for @scoutMcpLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-серверы (JSON)'**
+  String get scoutMcpLabel;
+
+  /// No description provided for @scoutMcpHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'JSON-массив mcp_servers в том же формате, что у агента. Пусто — нет.'**
+  String get scoutMcpHint;
+
+  /// No description provided for @scoutSkillsLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скиллы (JSON)'**
+  String get scoutSkillsLabel;
+
+  /// No description provided for @scoutSkillsHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'JSON-массив skills в том же формате, что у агента. Пусто — нет.'**
+  String get scoutSkillsHint;
+
+  /// No description provided for @scoutPermissionsLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Permissions (JSON)'**
+  String get scoutPermissionsLabel;
+
+  /// No description provided for @scoutPermissionsHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'JSON-объект: allow/deny/ask/defaultMode (Claude Code). Пусто — дефолт.'**
+  String get scoutPermissionsHint;
+
+  /// No description provided for @scoutInvalidJsonSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Невалидный JSON в расширенных настройках — поправьте и сохраните снова'**
+  String get scoutInvalidJsonSnack;
 
   /// No description provided for @enhancerTabTitle.
   ///

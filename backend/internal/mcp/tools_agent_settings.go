@@ -34,10 +34,11 @@ type AgentSettingsGetParams struct {
 // колонкой agents.llm_provider_id (миграция 029). Для смены провайдера используйте
 // PATCH /projects/:id/team/agents/:agentId c полем `provider_kind`.
 type AgentSettingsUpdateParams struct {
-	AgentID             string          `json:"agent_id" jsonschema:"UUID агента"`
-	CodeBackend         *string         `json:"code_backend,omitempty" jsonschema:"claude-code | aider | custom"`
-	CodeBackendSettings json.RawMessage `json:"code_backend_settings,omitempty" jsonschema:"JSON-объект code_backend_settings"`
-	SandboxPermissions  json.RawMessage `json:"sandbox_permissions,omitempty" jsonschema:"JSON-объект permissions (allow/deny/defaultMode)"`
+	AgentID               string          `json:"agent_id" jsonschema:"UUID агента"`
+	CodeBackend           *string         `json:"code_backend,omitempty" jsonschema:"claude-code | aider | custom"`
+	CodeBackendSettings   json.RawMessage `json:"code_backend_settings,omitempty" jsonschema:"JSON-объект code_backend_settings"`
+	SandboxPermissions    json.RawMessage `json:"sandbox_permissions,omitempty" jsonschema:"JSON-объект permissions (allow/deny/defaultMode)"`
+	AttachSandboxServices *bool           `json:"attach_sandbox_services,omitempty" jsonschema:"Подключать ли к sandbox-прогонам агента эфемерные сервис-сайдкары проекта (postgres для тестов с БД)"`
 }
 
 // MCPServerListParams — параметры mcp_server_list.
@@ -129,9 +130,10 @@ func makeAgentSettingsUpdateHandler(svc service.TeamService) func(ctx context.Co
 			return ValidationErr("invalid agent_id")
 		}
 		req := dto.UpdateAgentSettingsRequest{
-			CodeBackend:         params.CodeBackend,
-			CodeBackendSettings: params.CodeBackendSettings,
-			SandboxPermissions:  params.SandboxPermissions,
+			CodeBackend:           params.CodeBackend,
+			CodeBackendSettings:   params.CodeBackendSettings,
+			SandboxPermissions:    params.SandboxPermissions,
+			AttachSandboxServices: params.AttachSandboxServices,
 		}
 		a, err := svc.UpdateAgentSettings(ctx, actor, id, req)
 		if err != nil {
@@ -235,4 +237,3 @@ func makeSkillListHandler(
 		return OK("skills", items)
 	}
 }
-

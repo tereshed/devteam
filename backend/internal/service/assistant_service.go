@@ -33,13 +33,13 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/llm/agentloop"
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/ws"
 	"github.com/devteam/backend/pkg/llm"
-	"github.com/devteam/backend/internal/handler/dto"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,6 +182,11 @@ type AssistantService interface {
 	// затем стартует новую агент-петлю с обновлённой историей.
 	ConfirmToolCall(ctx context.Context, sessionID, userID uuid.UUID, toolCallID string, approved bool) error
 
+	// ResumeFromScout — wake-up распарканной на scout_dispatch сессии: закрывает
+	// pending tool_call досье (или ошибкой) как tool_result и поднимает луп.
+	// Вызывается ScoutService по завершении прогона (реализует ScoutResumer).
+	ResumeFromScout(ctx context.Context, sessionID, userID uuid.UUID, toolCallID, dossier string, runErr error)
+
 	// ListActiveTasks — все task.state=active из проектов пользователя
 	// (для Tasks-tab правой панели).
 	ListActiveTasks(ctx context.Context, userID uuid.UUID) ([]ActiveTaskSummary, error)
@@ -196,12 +201,12 @@ type AssistantService interface {
 
 // ActiveTaskSummary — короткая карточка для Tasks-tab.
 type ActiveTaskSummary struct {
-	TaskID      uuid.UUID         `json:"task_id"`
-	ProjectID   uuid.UUID         `json:"project_id"`
-	ProjectName string            `json:"project_name"`
-	Title       string            `json:"title"`
-	State       models.TaskState  `json:"state"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	TaskID      uuid.UUID        `json:"task_id"`
+	ProjectID   uuid.UUID        `json:"project_id"`
+	ProjectName string           `json:"project_name"`
+	Title       string           `json:"title"`
+	State       models.TaskState `json:"state"`
+	UpdatedAt   time.Time        `json:"updated_at"`
 }
 
 // AssistantServiceDeps — DI-bag для конструктора. Сделано struct'ом,
@@ -214,18 +219,21 @@ type AssistantAgentCreator interface {
 // AssistantServiceDeps — DI-bag для конструктора. Сделано struct'ом,
 // потому что зависимостей много и позиционная передача стала бы хрупкой.
 type AssistantServiceDeps struct {
-	Repo        repository.AssistantSessionRepository
-	TaskRepo    repository.TaskRepository
-	ProjectRepo repository.ProjectRepository
-	TeamRepo    repository.TeamRepository
-	AgentLoader AssistantAgentLoader
+	Repo         repository.AssistantSessionRepository
+	TaskRepo     repository.TaskRepository
+	ProjectRepo  repository.ProjectRepository
+	TeamRepo     repository.TeamRepository
+	AgentLoader  AssistantAgentLoader
 	AgentCreator AssistantAgentCreator
-	LLMResolver AssistantLLMClientResolver
-	UserCreds   UserLlmCredentialService
-	ToolCatalog AssistantToolCatalogProvider
-	Hub         WSBroadcaster
-	Executor    *agentloop.Executor
-	Logger      *slog.Logger
+	LLMResolver  AssistantLLMClientResolver
+	UserCreds    UserLlmCredentialService
+	ToolCatalog  AssistantToolCatalogProvider
+	// ScoutDispatcher — разведчик проекта (опционально; nil → tool scout_dispatch
+	// не добавляется в каталог). Диспатч из park-обработчика + гейтинг по проекту.
+	ScoutDispatcher ScoutDispatcher
+	Hub             WSBroadcaster
+	Executor        *agentloop.Executor
+	Logger          *slog.Logger
 }
 
 // NewAssistantService — конструктор.
@@ -500,6 +508,19 @@ func (s *assistantService) ConfirmToolCall(ctx context.Context, sessionID, userI
 		return ErrAssistantInvalidInput
 	}
 
+	// scout_dispatch паркуется как confirm-tool лишь ради механики паузы — его НЕ
+	// закрывает пользовательский confirm: закроет ResumeFromScout по завершении
+	// прогона. Без этого гарда confirm (его шлёт фронт по pending-состоянию) гонится
+	// с асинхронным прогоном и рвёт доставку досье ("tool больше не доступен", т.к.
+	// scout_dispatch нет в глобальном каталоге AuthorizedExecutor). Гард по имени
+	// тула — без гонки с созданием scout_run.
+	if pending, perr := s.deps.Repo.GetPendingToolMessage(ctx, sessionID, toolCallID); perr == nil &&
+		pending != nil && pending.ToolName != nil && *pending.ToolName == scoutDispatchToolName {
+		s.deps.Logger.InfoContext(ctx, "assistant: confirm ignored for in-flight scout dispatch",
+			slog.String("session_id", sessionID.String()), slog.String("tool_call_id", toolCallID))
+		return nil
+	}
+
 	// 1) Сборка tool_result — бизнес-решение.
 	//    - approved=true: исполняем tool через каталог;
 	//    - approved=false: synthetic `{status:"denied"}`.
@@ -522,6 +543,44 @@ func (s *assistantService) ConfirmToolCall(ctx context.Context, sessionID, userI
 	//    внутри Transaction(func(tx){...}) — антипаттерн (out-of-tx чтение).
 	go s.runAgentLoopResume(context.Background(), sessionID, userID)
 	return nil
+}
+
+// ResumeFromScout закрывает распарканный на scout_dispatch tool_call результатом
+// разведки (досье или ошибка) и поднимает луп — тем же путём, что confirm-resume.
+// Вызывается ScoutService из фоновой горутины при завершении прогона.
+func (s *assistantService) ResumeFromScout(ctx context.Context, sessionID, userID uuid.UUID, toolCallID, dossier string, runErr error) {
+	if sessionID == uuid.Nil || userID == uuid.Nil || toolCallID == "" {
+		s.deps.Logger.WarnContext(ctx, "assistant: scout resume with invalid args",
+			slog.String("session_id", sessionID.String()), slog.String("tool_call_id", toolCallID))
+		return
+	}
+	resultJSON := buildScoutToolResult(dossier, runErr)
+	if err := s.deps.Repo.ConfirmAndClosePending(ctx, sessionID, userID, toolCallID, resultJSON); err != nil {
+		// Сессия не распаркована на этот tool_call (гонка / уже закрыта / stale-recovery) —
+		// логируем и выходим: поднимать нечего.
+		s.deps.Logger.WarnContext(ctx, "assistant: scout resume — close pending failed",
+			slog.String("error", err.Error()), slog.String("session_id", sessionID.String()))
+		return
+	}
+	s.broadcastToolResult(userID, sessionID, toolCallID, runErr == nil, resultJSON)
+	go s.runAgentLoopResume(context.Background(), sessionID, userID)
+}
+
+// buildScoutToolResult — tool_result для scout_dispatch: досье при успехе или
+// нейтральная ошибка при сбое (модель на resume сообщит пользователю).
+func buildScoutToolResult(dossier string, runErr error) []byte {
+	if runErr != nil {
+		b, _ := json.Marshal(struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		}{"failed", "разведка не удалась: " + runErr.Error()})
+		return b
+	}
+	b, _ := json.Marshal(struct {
+		Status  string `json:"status"`
+		Dossier string `json:"dossier"`
+	}{"done", dossier})
+	return b
 }
 
 // buildConfirmResultJSON — для approved=true исполняет MCP-tool через каталог

@@ -19,6 +19,9 @@ abstract class AgentSettingsModel with _$AgentSettingsModel {
     @JsonKey(name: 'sandbox_permissions')
     @Default(<String, dynamic>{})
     Map<String, dynamic> sandboxPermissions,
+    @JsonKey(name: 'attach_sandbox_services')
+    @Default(false)
+    bool attachSandboxServices,
   }) = _AgentSettingsModel;
 
   factory AgentSettingsModel.fromJson(Map<String, dynamic> json) =>

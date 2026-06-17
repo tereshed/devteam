@@ -89,6 +89,8 @@ class _BodyState extends ConsumerState<_Body>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   late String? _codeBackend = widget.current.codeBackend;
+  // Sprint 22: подключать ли к sandbox-прогонам агента сервис-сайдкары проекта (postgres для тестов с БД).
+  late bool _attachSandboxServices = widget.current.attachSandboxServices;
   // Sprint 22: для hermes Skills/MCP живут в code_backend_settings.hermes.*
   // (builder читает только их); для остальных backend'ов — верхнеуровневые ключи.
   static List<dynamic> _initialList(AgentSettingsModel current, String key) {
@@ -176,6 +178,7 @@ class _BodyState extends ConsumerState<_Body>
         codeBackend: _codeBackend,
         codeBackendSettings: codeBackendSettings,
         sandboxPermissions: _permissionsForm.toMap(),
+        attachSandboxServices: _attachSandboxServices,
       );
       ref.invalidate(agentSettingsProvider(widget.agentID));
       if (!mounted) return;
@@ -243,6 +246,9 @@ class _BodyState extends ConsumerState<_Body>
               _ProviderTab(
                 codeBackend: _codeBackend,
                 onCodeBackendChanged: (v) => setState(() => _codeBackend = v),
+                attachSandboxServices: _attachSandboxServices,
+                onAttachSandboxServicesChanged: (v) =>
+                    setState(() => _attachSandboxServices = v),
               ),
               _JsonTab(
                 controller: _mcpJSON,
@@ -297,10 +303,14 @@ class _ProviderTab extends ConsumerWidget {
   const _ProviderTab({
     required this.codeBackend,
     required this.onCodeBackendChanged,
+    required this.attachSandboxServices,
+    required this.onAttachSandboxServicesChanged,
   });
 
   final String? codeBackend;
   final ValueChanged<String?> onCodeBackendChanged;
+  final bool attachSandboxServices;
+  final ValueChanged<bool> onAttachSandboxServicesChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -327,6 +337,15 @@ class _ProviderTab extends ConsumerWidget {
                   )),
             ],
             onChanged: onCodeBackendChanged,
+          ),
+          const SizedBox(height: 8),
+          // Sprint 22: подключение эфемерных сервис-сайдкаров проекта (postgres для тестов с БД).
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.agentSandboxSettingsAttachServicesLabel),
+            subtitle: Text(l10n.agentSandboxSettingsAttachServicesHelper),
+            value: attachSandboxServices,
+            onChanged: onAttachSandboxServicesChanged,
           ),
         ],
       ),

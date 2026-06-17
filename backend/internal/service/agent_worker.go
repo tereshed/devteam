@@ -163,6 +163,15 @@ type AgentWorker struct {
 	logger         *slog.Logger
 	cfg            AgentWorkerConfig
 	contextBuilder ContextBuilder
+	// sandboxServiceRepo — декларации эфемерных сервис-сайдкаров проекта (Sprint 22).
+	// nil → сервисы не подключаются (ставится сеттером в app.go, как scout-resumer).
+	sandboxServiceRepo repository.SandboxServiceRepository
+}
+
+// SetSandboxServiceRepo привязывает репозиторий деклараций сервис-сайдкаров
+// (Sprint 22). Вызывается один раз при wiring; nil оставляет фичу выключенной.
+func (w *AgentWorker) SetSandboxServiceRepo(r repository.SandboxServiceRepository) {
+	w.sandboxServiceRepo = r
 }
 
 // NewAgentWorker — конструктор.
@@ -618,6 +627,10 @@ func (w *AgentWorker) processOne(parentCtx context.Context, ev *models.TaskEvent
 	} else {
 		in = w.buildExecutionInput(&task, &agentRec, payload.Input, targetArtifact)
 	}
+
+	// Sprint 22: подключить эфемерные сервис-сайдкары проекта (postgres для тестов
+	// с БД), если агент включил attach_sandbox_services. Пароль БД генерится на прогон.
+	w.attachSandboxServices(execCtx, &task, &agentRec, &in)
 
 	// Ключи владельца проекта (user_llm_credentials) приоритетнее env при
 	// LLM-вызовах (planner/decomposer/...); пусто → fallback на env-ключ.

@@ -73,6 +73,12 @@ type ExecutionInput struct {
 	// Целевой (writable) репозиторий подзадачи передаётся через GitURL/BranchName выше.
 	SiblingRepos []SiblingRepo
 
+	// Services — эфемерные сервис-сайдкары прогона (Sprint 22): runner поднимает их
+	// рядом с агент-контейнером (postgres для интеграционных тестов с БД). Заполняется
+	// AgentWorker'ом для агентов с attach_sandbox_services из sandbox_service_configs
+	// проекта. Пароль генерится на каждый прогон → не логируется, не хранится.
+	Services []sandbox.ServiceSpec
+
 	CodeBackend string
 
 	// AgentSettings — Sprint 16.C: per-agent артефакты для sandbox-runner'а
@@ -141,6 +147,17 @@ func (in ExecutionInput) String() string {
 	b.WriteString(in.BranchName)
 	b.WriteString(" CodeBackend:")
 	b.WriteString(in.CodeBackend)
+	if len(in.Services) > 0 {
+		// Только count + aliases: Env сервиса несёт сгенерированный пароль БД.
+		b.WriteString(" Services:[")
+		for i, s := range in.Services {
+			if i > 0 {
+				b.WriteByte(' ')
+			}
+			b.WriteString(s.Alias)
+		}
+		b.WriteByte(']')
+	}
 	b.WriteString(" StructuredContext:")
 	writeJSONLenOrEmpty(&b, in.StructuredContext)
 	b.WriteString(" EnvSecrets:")

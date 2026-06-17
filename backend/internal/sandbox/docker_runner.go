@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -34,6 +36,9 @@ type DockerSandboxRunner struct {
 	cli     *client.Client
 	stopper *dockerStopper
 	allowed []string
+	// allowedServiceImages — allowlist образов эфемерных сервис-сайдкаров (Sprint 22).
+	// Пусто → DefaultAllowedSandboxServiceImages(). Сверяется в RunTask по каждому сервису.
+	allowedServiceImages []string
 
 	// limitPolicy — полы/потолки cgroup для ContainerCreate (5.9); по умолчанию DefaultResourceLimitPolicy().
 	limitPolicy ResourceLimitPolicy
@@ -67,8 +72,28 @@ func DefaultAllowedSandboxImages() []string {
 	}
 }
 
+// DefaultAllowedSandboxServiceImages — allowlist образов сервис-сайдкаров по умолчанию.
+// Расширяется через WithAllowedServiceImages из конфига/DI.
+func DefaultAllowedSandboxServiceImages() []string {
+	return []string{
+		"postgres:16-alpine",
+		"postgres:16",
+		"postgres:15-alpine",
+		"postgres:15",
+	}
+}
+
 // RunnerOption — опциональная настройка DockerSandboxRunner (расширяем без ломки существующих вызовов конструктора).
 type RunnerOption func(*DockerSandboxRunner)
+
+// WithAllowedServiceImages задаёт allowlist образов сервис-сайдкаров (Sprint 22). Пусто игнорируется.
+func WithAllowedServiceImages(images []string) RunnerOption {
+	return func(r *DockerSandboxRunner) {
+		if len(images) > 0 {
+			r.allowedServiceImages = append([]string(nil), images...)
+		}
+	}
+}
 
 // WithStreamLogsEntryBuffer задаёт ёмкость канала StreamLogs (число слотов LogEntry). Значения <= 0 игнорируются.
 func WithStreamLogsEntryBuffer(n int) RunnerOption {
@@ -128,12 +153,13 @@ func NewDockerSandboxRunner(cli *client.Client, allowedImages []string, opts ...
 		allowed = DefaultAllowedSandboxImages()
 	}
 	r := &DockerSandboxRunner{
-		cli:         cli,
-		stopper:     newDockerStopper(cli),
-		allowed:     allowed,
-		limitPolicy: normalizeResourceLimitPolicy(ResourceLimitPolicy{}),
-		instances:   make(map[string]*instanceState),
-		creating:    make(map[string]*instanceState),
+		cli:                  cli,
+		stopper:              newDockerStopper(cli),
+		allowed:              allowed,
+		allowedServiceImages: DefaultAllowedSandboxServiceImages(),
+		limitPolicy:          normalizeResourceLimitPolicy(ResourceLimitPolicy{}),
+		instances:            make(map[string]*instanceState),
+		creating:             make(map[string]*instanceState),
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -210,6 +236,10 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 			out = append(out, EnvSiblingRepos+"="+string(blob))
 		}
 	}
+	// Sprint 22: connection-vars эфемерных сервис-сайдкаров (POSTGRES_*/DATABASE_URL/
+	// SERVICE_READY_TIMEOUT первого сервиса). Дописываются последними → высший приоритет
+	// (минуя ValidateEnvKeys — генерит runner, как REPO_URL/BRANCH_NAME).
+	out = appendServiceConnEnv(out, opts.Services)
 	// Sprint 15.22 / 15.M5: permission-mode для claude code CLI.
 	// Жёстко валидируем значение по белому списку, чтобы инъекция вида "default\n--evil-flag"
 	// или произвольный текст из БД не попадал в env контейнера.
@@ -646,6 +676,133 @@ func sortStrings(s []string) {
 	}
 }
 
+// startServiceContainers поднимает эфемерные сервис-сайдкары на сети netName с alias-DNS.
+// Возвращает ID всех СОЗДАННЫХ контейнеров (даже при ошибке на середине) — чтобы вызывающий
+// rollback-defer снёс их. seed (если задан) копируется в /docker-entrypoint-initdb.d ДО старта.
+func (r *DockerSandboxRunner) startServiceContainers(ctx context.Context, st *instanceState, opts SandboxOptions, netName, networkID, agentContainerName string) ([]string, error) {
+	var ids []string
+	pol := r.limitPolicy
+	for i := range opts.Services {
+		s := opts.Services[i]
+		if err := r.ensureLocalImage(ctx, s.Image); err != nil {
+			return ids, err
+		}
+		if err := st.errIfInitCancelled(); err != nil {
+			return ids, err
+		}
+		svcName := fmt.Sprintf("%s-svc-%s", agentContainerName, s.Alias)
+		if inspect, ierr := r.cli.ContainerInspect(ctx, svcName); ierr == nil {
+			slog.Warn("sandbox: service run conflict, removing existing container", "task_id", opts.TaskID, "container_id", inspect.ID, "alias", s.Alias)
+			r.removeContainerForceLogged(ctx, opts.TaskID, inspect.ID, "service_run_conflict")
+		} else if !errdefs.IsNotFound(ierr) {
+			return ids, fmt.Errorf("inspect service container name: %w", errors.Join(ErrSandboxDocker, ierr))
+		}
+
+		initTrue := true
+		memBytes := effectiveMemoryBytes(s.ResourceLimit.MemoryMB, pol.MemoryFloorBytes, pol.MemoryCeilBytes)
+		pidsLim := effectivePidsLimit(s.ResourceLimit.PIDsLimit, pol.PidsFloor, pol.PidsCeil)
+		nanoCPUs := effectiveNanoCPUs(s.ResourceLimit.NanoCPUs, pol.DefaultNanoCPUs, pol.NanoCPUsCeil)
+		hc := &containertypes.HostConfig{
+			NetworkMode: containertypes.NetworkMode(netName),
+			Init:        &initTrue,
+			LogConfig: containertypes.LogConfig{
+				Type:   "json-file",
+				Config: map[string]string{"max-size": "10m", "max-file": "3"},
+			},
+			Resources: containertypes.Resources{
+				Memory:     memBytes,
+				MemorySwap: memBytes,
+				NanoCPUs:   nanoCPUs,
+				PidsLimit:  &pidsLim,
+			},
+			ReadonlyRootfs: false,
+		}
+		cfg := &containertypes.Config{
+			Image: s.Image,
+			Env:   serviceEnvSlice(s.Env),
+			Labels: map[string]string{
+				"devteam.sandbox":    "1",
+				"devteam.task_id":    opts.TaskID,
+				"devteam.service":    "1",
+				"devteam.service_of": agentContainerName,
+				"devteam.network_id": networkID,
+			},
+		}
+		netCfg := &network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{
+				netName: {Aliases: []string{s.Alias}},
+			},
+		}
+		createResp, cerr := r.cli.ContainerCreate(ctx, cfg, hc, netCfg, nil, svcName)
+		if cerr != nil {
+			return ids, fmt.Errorf("service container create (%s): %w", s.Alias, errors.Join(ErrSandboxDocker, cerr))
+		}
+		ids = append(ids, createResp.ID)
+		st.mu.Lock()
+		st.serviceContainerIDs = append(st.serviceContainerIDs, createResp.ID)
+		st.mu.Unlock()
+
+		// Сид: postgres-образ прогоняет *.sql из /docker-entrypoint-initdb.d на первой
+		// инициализации (контейнер всегда свежий → всегда «первая»). Копируем ДО старта.
+		if strings.TrimSpace(s.SeedSQL) != "" {
+			seedRC, serr := buildServiceSeedTar(s.SeedSQL)
+			if serr != nil {
+				return ids, fmt.Errorf("build seed tar (%s): %w", s.Alias, serr)
+			}
+			cpErr := r.cli.CopyToContainer(ctx, createResp.ID, "/docker-entrypoint-initdb.d", seedRC, containertypes.CopyToContainerOptions{})
+			seedRC.Close()
+			if cpErr != nil {
+				return ids, fmt.Errorf("copy seed to service (%s): %w", s.Alias, errors.Join(ErrSandboxDocker, cpErr))
+			}
+		}
+
+		if err := st.errIfInitCancelled(); err != nil {
+			return ids, err
+		}
+		if serr := r.cli.ContainerStart(ctx, createResp.ID, containertypes.StartOptions{}); serr != nil {
+			return ids, fmt.Errorf("service container start (%s): %w", s.Alias, errors.Join(ErrSandboxDocker, serr))
+		}
+	}
+	return ids, nil
+}
+
+// buildServiceSeedTar упаковывает seed SQL в tar с единственным файлом seed.sql
+// (CopyToContainer распакует в /docker-entrypoint-initdb.d). Размер ограничен maxServiceSeedBytes.
+func buildServiceSeedTar(seedSQL string) (io.ReadCloser, error) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	hdr := &tar.Header{Name: "seed.sql", Mode: 0o644, Size: int64(len(seedSQL))}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return nil, err
+	}
+	if _, err := tw.Write([]byte(seedSQL)); err != nil {
+		return nil, err
+	}
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	return io.NopCloser(bytes.NewReader(buf.Bytes())), nil
+}
+
+// removeServiceContainersByNetwork сносит сервис-сайдкары прогона по labels (fallback в
+// Cleanup, когда in-memory state потерян — например после рестарта процесса).
+func (r *DockerSandboxRunner) removeServiceContainersByNetwork(ctx context.Context, taskID, netID string) {
+	if netID == "" {
+		return
+	}
+	f := filters.NewArgs()
+	f.Add("label", "devteam.service=1")
+	f.Add("label", "devteam.network_id="+netID)
+	list, err := r.cli.ContainerList(ctx, containertypes.ListOptions{All: true, Filters: f})
+	if err != nil {
+		slog.Warn("sandbox: list service containers for cleanup", "network_id", netID, "err", err)
+		return
+	}
+	for _, c := range list {
+		r.removeContainerForceLogged(ctx, taskID, c.ID, "cleanup_service_by_label")
+	}
+}
+
 // RunTask реализует SandboxRunner.RunTask.
 func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) (*SandboxInstance, error) {
 	opts = opts.Clone()
@@ -657,6 +814,12 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 	}
 	if err := ValidateAllowedImage(opts.Image, r.allowed); err != nil {
 		return nil, err
+	}
+	// Sprint 22: образ каждого сервис-сайдкара — против отдельного allowlist (как агент-образ).
+	for i := range opts.Services {
+		if err := ValidateAllowedImage(opts.Services[i].Image, r.allowedServiceImages); err != nil {
+			return nil, fmt.Errorf("service %q: %w", opts.Services[i].Alias, err)
+		}
 	}
 	if r.cli == nil {
 		return nil, fmt.Errorf("docker client is nil: %w", ErrSandboxDocker)
@@ -689,6 +852,7 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		containerID   string
 		networkID     string
 		hostTmp       string
+		serviceIDs    []string
 		registeredRun = false
 	)
 	defer func() {
@@ -697,6 +861,13 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		r.mu.Unlock()
 		if !registeredRun && containerID != "" {
 			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "run_task_defer")
+		}
+		// Сервис-сайдкары сносим ПОСЛЕ агент-контейнера и ДО сети (removeNetworkBestEffort
+		// ретраит на «active endpoints», но так меньше повторов).
+		if !registeredRun {
+			for _, sid := range serviceIDs {
+				r.removeContainerForceLogged(ctx, opts.TaskID, sid, "run_task_defer_service")
+			}
 		}
 		if !registeredRun && networkID != "" {
 			r.removeNetworkBestEffort(ctx, networkID)
@@ -755,10 +926,17 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		}
 	} else {
 		netName = sandboxBridgeNetworkName(opts.TaskID, opts.ExecutionID)
+		// ICC (inter-container comms) выключен по умолчанию; для прогонов с сервис-
+		// сайдкарами включаем, иначе агент не достучится до сервиса. Сеть приватна на один
+		// прогон (только агент + его сервисы) → изоляция от других прогонов не слабеет.
+		icc := "false"
+		if len(opts.Services) > 0 {
+			icc = "true"
+		}
 		netResp, nerr := r.cli.NetworkCreate(ctx, netName, network.CreateOptions{
 			Driver: "bridge",
 			Options: map[string]string{
-				"com.docker.network.bridge.enable_icc": "false",
+				"com.docker.network.bridge.enable_icc": icc,
 			},
 			Labels: map[string]string{
 				"devteam.sandbox": "1",
@@ -790,6 +968,17 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 			EndpointsConfig: map[string]*network.EndpointSettings{
 				netName: {},
 			},
+		}
+	}
+
+	// Sprint 22: поднимаем эфемерные сервис-сайдкары на той же bridge-сети с alias-DNS
+	// ДО агент-контейнера (агент ждёт их готовности в entrypoint). svcIDs возвращаются
+	// даже при ошибке — чтобы rollback-defer снёс уже созданные.
+	if len(opts.Services) > 0 {
+		svcIDs, serr := r.startServiceContainers(ctx, st, opts, netName, networkID, cName)
+		serviceIDs = append(serviceIDs, svcIDs...)
+		if serr != nil {
+			return nil, serr
 		}
 	}
 
@@ -1347,11 +1536,13 @@ func (r *DockerSandboxRunner) Cleanup(ctx context.Context, sandboxID string) err
 	defer cancel()
 
 	var netID, hostTmp string
+	var serviceIDs []string
 	r.mu.Lock()
 	st := r.instances[sandboxID]
 	if st != nil {
 		netID = st.networkID
 		hostTmp = st.hostTempDir
+		serviceIDs = append([]string(nil), st.serviceContainerIDs...)
 		delete(r.instances, sandboxID)
 	}
 	r.mu.Unlock()
@@ -1380,6 +1571,15 @@ func (r *DockerSandboxRunner) Cleanup(ctx context.Context, sandboxID string) err
 		} else {
 			return fmt.Errorf("container remove: %w", errors.Join(ErrSandboxDocker, err))
 		}
+	}
+	// Сервис-сайдкары (Sprint 22) сносим после агент-контейнера, до сети. При живом state —
+	// по запомненным ID; иначе (рестарт процесса) — по labels через network_id.
+	if st != nil {
+		for _, sid := range serviceIDs {
+			r.removeContainerForceLogged(rmCtx, st.taskID, sid, "cleanup_service")
+		}
+	} else {
+		r.removeServiceContainersByNetwork(rmCtx, "", netID)
 	}
 	r.removeNetworkBestEffort(rmCtx, netID)
 	if hostTmp != "" {

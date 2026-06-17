@@ -160,6 +160,9 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		Timeout:       0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
 		AgentSettings: in.AgentSettings,
 		SiblingRepos:  siblings,
+		// Sprint 22: эфемерные сервис-сайдкары (postgres для тестов с БД). Спека уже
+		// собрана AgentWorker'ом; структурная валидация и allowlist образов — в RunTask.
+		Services: in.Services,
 	}
 
 	// 4. Запуск задачи

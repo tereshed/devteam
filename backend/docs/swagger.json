@@ -5839,6 +5839,202 @@
                 }
             }
         },
+        "/projects/{id}/sandbox-services": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Список эфемерных сервис-сайдкаров (например postgres для интеграционных тестов с БД), которые поднимаются рядом с sandbox-агентом.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sandbox-services"
+                ],
+                "summary": "Сервис-сайдкары проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SandboxServiceListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Upsert декларации сервиса по alias (тип, образ, db_name/db_user, порт, сид, таймаут готовности). Пароль БД не хранится — генерится на каждый прогон.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sandbox-services"
+                ],
+                "summary": "Создание/обновление сервис-сайдкара",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Декларация сервиса",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpsertSandboxServiceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SandboxServiceConfigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидные поля",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/sandbox-services/{serviceId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sandbox-services"
+                ],
+                "summary": "Удаление сервис-сайдкара",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sandbox Service Config ID",
+                        "name": "serviceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Удалено"
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Не найдено",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/projects/{id}/scheduled-tasks": {
             "get": {
                 "security": [
@@ -6125,6 +6321,344 @@
                     },
                     "404": {
                         "description": "Расписание / проект не найдены",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/scout": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Возвращает настройки разведчика; если проект ещё не настраивался — дефолт (выключен, claude-code).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scout"
+                ],
+                "summary": "Конфиг разведчика проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ScoutConfigResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Частично обновляет настройки разведчика (тумблер, промпт, бэкенд, подписка, таймаут).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scout"
+                ],
+                "summary": "Обновление конфига разведчика",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Изменения",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateScoutConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ScoutConfigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный JSON / бэкенд / таймаут",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Выбранная подписка не подключена",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/scout/run": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Запускает headless sandbox-прогон сбора контекста на подписке. Возвращает прогон в статусе running; досье появится по завершении.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scout"
+                ],
+                "summary": "Запуск разведчика",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Постановка проблемы",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.DispatchScoutRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ScoutRunResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Пустая постановка / невалидный JSON",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Нет репо / подписки / неподдерживаемый бэкенд",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/scout/runs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scout"
+                ],
+                "summary": "Прогоны разведчика",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ScoutRunListResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/scout/runs/{runId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scout"
+                ],
+                "summary": "Прогон разведчика",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Scout Run ID",
+                        "name": "runId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ScoutRunResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Прогон не найден",
                         "schema": {
                             "$ref": "#/definitions/apierror.ErrorResponse"
                         }
@@ -9098,6 +9632,10 @@
                 "agent_id": {
                     "type": "string"
                 },
+                "attach_sandbox_services": {
+                    "description": "AttachSandboxServices — подключать ли к sandbox-прогонам агента эфемерные\nсервис-сайдкары проекта (postgres для тестов с БД, Sprint 22).",
+                    "type": "boolean"
+                },
                 "code_backend": {
                     "type": "string"
                 },
@@ -9928,6 +10466,17 @@
                 }
             }
         },
+        "dto.DispatchScoutRequest": {
+            "type": "object",
+            "required": [
+                "problem"
+            ],
+            "properties": {
+                "problem": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.EnhancerChangeListResponse": {
             "type": "object",
             "properties": {
@@ -10743,6 +11292,61 @@
                 }
             }
         },
+        "dto.SandboxServiceConfigResponse": {
+            "type": "object",
+            "properties": {
+                "alias": {
+                    "type": "string"
+                },
+                "db_name": {
+                    "type": "string"
+                },
+                "db_user": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "ready_timeout_seconds": {
+                    "type": "integer"
+                },
+                "seed_kind": {
+                    "type": "string"
+                },
+                "seed_value": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SandboxServiceListResponse": {
+            "type": "object",
+            "properties": {
+                "services": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SandboxServiceConfigResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.ScheduledTaskListResponse": {
             "type": "object",
             "properties": {
@@ -10797,6 +11401,90 @@
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ScoutConfigResponse": {
+            "type": "object",
+            "properties": {
+                "code_backend": {
+                    "type": "string"
+                },
+                "code_backend_settings": {
+                    "type": "object"
+                },
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "provider_kind": {
+                    "type": "string"
+                },
+                "sandbox_permissions": {
+                    "type": "object"
+                },
+                "subscription_id": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "timeout_seconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ScoutRunListResponse": {
+            "type": "object",
+            "properties": {
+                "runs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ScoutRunResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ScoutRunResponse": {
+            "type": "object",
+            "properties": {
+                "code_backend": {
+                    "type": "string"
+                },
+                "dossier": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "problem": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "sandbox_instance_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -11186,6 +11874,10 @@
         "dto.UpdateAgentSettingsRequest": {
             "type": "object",
             "properties": {
+                "attach_sandbox_services": {
+                    "description": "AttachSandboxServices — тумблер подключения сервис-сайдкаров проекта (Sprint 22).\nnil → поле не меняется (omit).",
+                    "type": "boolean"
+                },
                 "code_backend": {
                     "type": "string"
                 },
@@ -11382,6 +12074,45 @@
                 }
             }
         },
+        "dto.UpdateScoutConfigRequest": {
+            "type": "object",
+            "properties": {
+                "code_backend": {
+                    "description": "CodeBackend — claude-code/hermes/antigravity.",
+                    "type": "string"
+                },
+                "code_backend_settings": {
+                    "description": "CodeBackendSettings — JSON-объект: model/mcp_servers/skills/hermes-блок.",
+                    "type": "object"
+                },
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "prompt": {
+                    "description": "Prompt — редактируемый промпт; \"\" → сброс на встроенный дефолт.",
+                    "type": "string"
+                },
+                "provider_kind": {
+                    "description": "ProviderKind — kind LLM-провайдера; \"\" → сброс (NULL). Ограничен бэкендом\n(hermes → anthropic/openrouter/hermes; antigravity → antigravity*).",
+                    "type": "string"
+                },
+                "sandbox_permissions": {
+                    "description": "SandboxPermissions — JSON-объект: allow/deny/ask/defaultMode.",
+                    "type": "object"
+                },
+                "subscription_id": {
+                    "description": "SubscriptionID — UUID подключённой подписки; \"\" → сброс на дефолтную подписку владельца.",
+                    "type": "string"
+                },
+                "temperature": {
+                    "description": "Temperature — параметр LLM (0..2).",
+                    "type": "number"
+                },
+                "timeout_seconds": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.UpdateTaskRequest": {
             "type": "object",
             "properties": {
@@ -11457,6 +12188,51 @@
                     "type": "string"
                 },
                 "team_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UpsertSandboxServiceRequest": {
+            "type": "object",
+            "required": [
+                "alias"
+            ],
+            "properties": {
+                "alias": {
+                    "description": "Alias — сетевой alias/hostname в bridge-сети прогона (агент: alias:port). Обязателен.",
+                    "type": "string"
+                },
+                "db_name": {
+                    "description": "DBName / DBUser — имя БД и суперюзера сервис-контейнера.",
+                    "type": "string"
+                },
+                "db_user": {
+                    "type": "string"
+                },
+                "image": {
+                    "description": "Image — docker-образ; пусто → дефолт (postgres:16-alpine).",
+                    "type": "string"
+                },
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "description": "Kind — тип сервиса; пусто → postgres.",
+                    "type": "string"
+                },
+                "port": {
+                    "description": "Port — порт сервиса; 0 → 5432.",
+                    "type": "integer"
+                },
+                "ready_timeout_seconds": {
+                    "description": "ReadyTimeoutSeconds — потолок ожидания готовности; 0 → 60.",
+                    "type": "integer"
+                },
+                "seed_kind": {
+                    "description": "SeedKind — none | repo_file | inline; пусто → none.",
+                    "type": "string"
+                },
+                "seed_value": {
                     "type": "string"
                 }
             }
@@ -12137,6 +12913,10 @@
                     "items": {
                         "$ref": "#/definitions/models.AgentSkill"
                     }
+                },
+                "attach_sandbox_services": {
+                    "description": "Sprint 22 — подключать к sandbox-прогонам агента эфемерные сервис-сайдкары\nпроекта (sandbox_service_configs), например postgres для интеграционных тестов\nс БД. Только для sandbox-агентов; включается на уровне агента (типично tester).",
+                    "type": "boolean"
                 },
                 "code_backend": {
                     "$ref": "#/definitions/models.CodeBackend"

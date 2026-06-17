@@ -36,7 +36,7 @@ var (
 	ErrTeamCannotDeleteDevelopment = errors.New("cannot delete the development team")
 	ErrTeamTypeInvalid             = errors.New("invalid team type")
 	ErrTeamTypeInUse               = errors.New("cannot delete team type that is currently in use")
-	ErrTeamTypeCannotDeleteSystem   = errors.New("cannot delete system team type")
+	ErrTeamTypeCannotDeleteSystem  = errors.New("cannot delete system team type")
 )
 
 // TeamService минимальная бизнес-обёртка над TeamRepository.
@@ -235,7 +235,7 @@ func (s *teamService) CreateAgent(ctx context.Context, projectID uuid.UUID, team
 	if team.ProjectID != projectID {
 		return nil, ErrTeamNotFound
 	}
-	
+
 	in := CreateAgentInput{
 		Name:            req.Name,
 		Role:            models.AgentRole(req.Role),
@@ -257,11 +257,11 @@ func (s *teamService) CreateAgent(ctx context.Context, projectID uuid.UUID, team
 		cb := models.CodeBackend(*req.CodeBackend)
 		in.CodeBackend = &cb
 	}
-	
+
 	if s.agentSvc == nil {
 		return nil, fmt.Errorf("AgentService is not configured")
 	}
-	
+
 	return s.agentSvc.Create(ctx, in)
 }
 
@@ -624,6 +624,12 @@ func (s *teamService) UpdateAgentSettings(ctx context.Context, actor AgentSettin
 			return nil, err
 		}
 		a.SandboxPermissions = append([]byte(nil), req.SandboxPermissions...)
+	}
+
+	// Sprint 22: тумблер подключения эфемерных сервис-сайдкаров проекта (postgres
+	// для интеграционных тестов с БД). Имеет смысл только для sandbox-агентов.
+	if req.AttachSandboxServices != nil {
+		a.AttachSandboxServices = *req.AttachSandboxServices
 	}
 
 	if err := s.teamRepo.SaveAgent(ctx, a); err != nil {

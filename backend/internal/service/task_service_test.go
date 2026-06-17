@@ -1000,7 +1000,7 @@ func TestTaskResume_FromNeedsHuman(t *testing.T) {
 		return tk.State == models.TaskStateActive &&
 			tk.CompletedAt == nil &&
 			tk.ErrorMessage == nil &&
-			tk.CurrentStepNo == 0 &&
+			tk.CurrentStepNo == 15 && // step_no сохраняется (монотонность), не сбрасывается в 0
 			tk.CancelRequested == false
 	}), models.TaskStateNeedsHuman, mock.AnythingOfType("time.Time")).Return(nil)
 
@@ -1027,7 +1027,7 @@ func TestTaskResume_FromFailed(t *testing.T) {
 		return tk.State == models.TaskStateActive &&
 			tk.CompletedAt == nil &&
 			tk.ErrorMessage == nil &&
-			tk.CurrentStepNo == 0 &&
+			tk.CurrentStepNo == 42 && // step_no сохраняется (монотонность), не сбрасывается в 0
 			tk.CancelRequested == false
 	}), models.TaskStateFailed, mock.AnythingOfType("time.Time")).Return(nil)
 

@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/devteam/backend/internal/domain/events"
+	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/metrics"
-	"github.com/google/uuid"
-	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/pkg/async"
+	"github.com/google/uuid"
 	"github.com/tidwall/sjson"
 	"gorm.io/datatypes"
 )
@@ -28,16 +28,16 @@ import (
 var branchNameSlugRe = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 
 var (
-	ErrTaskNotFound           = errors.New("task not found")
-	ErrTaskInvalidTitle       = errors.New("task title is required")
-	ErrTaskInvalidPriority    = errors.New("invalid task priority")
-	ErrTaskInvalidStatus      = errors.New("invalid task status")
-	ErrTaskInvalidTransition  = errors.New("invalid status transition")
-	ErrTaskTerminalStatus     = errors.New("task is in terminal status")
+	ErrTaskNotFound          = errors.New("task not found")
+	ErrTaskInvalidTitle      = errors.New("task title is required")
+	ErrTaskInvalidPriority   = errors.New("invalid task priority")
+	ErrTaskInvalidStatus     = errors.New("invalid task status")
+	ErrTaskInvalidTransition = errors.New("invalid status transition")
+	ErrTaskTerminalStatus    = errors.New("task is in terminal status")
 	// ErrTaskAlreadyTerminal — race condition при Cancel: задача уже завершилась
 	// (done/failed/cancelled) или её прямо сейчас финализирует другой процесс.
 	// Маппится в HTTP 409 Conflict с error_code task_already_terminal.
-	ErrTaskAlreadyTerminal = errors.New("task is already in terminal state")
+	ErrTaskAlreadyTerminal    = errors.New("task is already in terminal state")
 	ErrTaskConcurrentUpdate   = errors.New("task was modified concurrently, please retry")
 	ErrTaskParentNotFound     = errors.New("parent task not found")
 	ErrAgentNotInTeam         = errors.New("agent does not belong to project team")
@@ -85,11 +85,12 @@ func parseCustomTimeout(s string) (*models.IntervalDuration, error) {
 // прошла) отражается в artifacts, не в state.
 //
 // Переходы:
-//   active       → done | failed | cancelled | needs_human | paused
-//   paused       → active | cancelled (Sprint 17 / 6.10 — Pause/Resume v2)
-//   needs_human  → active | cancelled (resume или отмена оператором)
-//   failed       → active (retry с теми же параметрами)
-//   done | cancelled — терминальные
+//
+//	active       → done | failed | cancelled | needs_human | paused
+//	paused       → active | cancelled (Sprint 17 / 6.10 — Pause/Resume v2)
+//	needs_human  → active | cancelled (resume или отмена оператором)
+//	failed       → active (retry с теми же параметрами)
+//	done | cancelled — терминальные
 var allowedTransitions = map[models.TaskState][]models.TaskState{
 	models.TaskStateActive: {
 		// Active → Active разрешён: метаданные task'а (assigned_agent, result,
@@ -140,7 +141,6 @@ type TaskService interface {
 	Correct(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, text string) (*models.Task, error)
 
 	ListActiveByUser(ctx context.Context, userID uuid.UUID, states []models.TaskState, limit int) ([]repository.ActiveTaskRow, error)
-
 
 	Transition(ctx context.Context, taskID uuid.UUID, newState models.TaskState, opts TransitionOpts) (*models.Task, error)
 
@@ -711,7 +711,7 @@ func (s *taskService) ListActiveByUser(ctx context.Context, userID uuid.UUID, st
 func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID, req dto.UpdateTaskRequest) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevState models.TaskState
+		prevState  models.TaskState
 		occurredAt time.Time
 	)
 
@@ -841,7 +841,7 @@ func (s *taskService) Delete(ctx context.Context, userID uuid.UUID, userRole mod
 func (s *taskService) Pause(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevState models.TaskState
+		prevState  models.TaskState
 		occurredAt time.Time
 	)
 
@@ -945,7 +945,7 @@ func (s *taskService) Cancel(ctx context.Context, userID uuid.UUID, userRole mod
 func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole models.UserRole, taskID uuid.UUID) (*models.Task, error) {
 	var (
 		updated    *models.Task
-		prevState models.TaskState
+		prevState  models.TaskState
 		occurredAt time.Time
 	)
 
@@ -974,9 +974,10 @@ func (s *taskService) Resume(ctx context.Context, userID uuid.UUID, userRole mod
 		applyTimestampsOnStateChange(task, prevState, models.TaskStateActive)
 		task.ErrorMessage = nil
 		task.CancelRequested = false
-		if prevState == models.TaskStateFailed || prevState == models.TaskStateNeedsHuman {
-			task.CurrentStepNo = 0
-		}
+		// НЕ сбрасываем current_step_no: orchestrator требует уникальный и монотонный step_no
+		// (см. orchestrator_v2.go «инкремент step_no — ВСЕГДА»). Сброс в 0 при resume заставлял
+		// повторный прогон переиспользовать те же номера → коллизии router_decisions/артефактов
+		// и поломанный execution-граф (дубли колонок). Продолжаем нумерацию с текущего значения.
 		if err := s.taskRepo.Update(txCtx, task, expectedStatus, expectedUpdatedAt); err != nil {
 			return mapTaskRepoErr(err)
 		}
@@ -1004,7 +1005,7 @@ func (s *taskService) Correct(ctx context.Context, userID uuid.UUID, userRole mo
 
 	var (
 		updated    *models.Task
-		prevState models.TaskState
+		prevState  models.TaskState
 		msg        *models.TaskMessage
 		occurredAt time.Time
 	)
