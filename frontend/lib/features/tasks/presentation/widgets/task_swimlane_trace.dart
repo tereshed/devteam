@@ -52,6 +52,10 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
     with SingleTickerProviderStateMixin {
   late final AnimationController _anim;
 
+  /// Горизонтальный скролл ленты: длинные флоу (десятки шагов) не влезают по
+  /// ширине, поэтому ось прокручивается, а не сжимается в нечитаемую кашу.
+  final ScrollController _hScroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +72,7 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
 
   @override
   void dispose() {
+    _hScroll.dispose();
     _anim.dispose();
     super.dispose();
   }
@@ -151,7 +156,9 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
     final scheme = Theme.of(context).colorScheme;
     final colors = _TraceColors.fromScheme(scheme);
     final width = MediaQuery.sizeOf(context).width;
-    final gutter = width < 600 ? 96.0 : 132.0;
+    final isNarrow = width < 600;
+    final gutter = isNarrow ? 96.0 : 132.0;
+    final minUnitW = isNarrow ? 52.0 : 72.0;
 
     return Column(
       children: [
@@ -159,13 +166,16 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
           child: LayoutBuilder(
             builder: (context, c) {
               final layout = _TraceLayout(
-                size: Size(c.maxWidth, c.maxHeight),
+                viewport: Size(c.maxWidth, c.maxHeight),
                 model: model,
                 gutter: gutter,
+                minUnitW: minUnitW,
               );
-              final body = SizedBox(
-                width: layout.size.width,
-                height: layout.size.height,
+              // Канва ленты (ось + дорожки). Может быть шире вьюпорта — тогда
+              // прокручивается по горизонтали, а не сжимается в кашу.
+              final canvas = SizedBox(
+                width: layout.canvasW,
+                height: layout.canvasH,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -186,11 +196,47 @@ class _TaskSwimlaneTraceState extends ConsumerState<TaskSwimlaneTrace>
                   ],
                 ),
               );
+
+              // Горизонтальная прокрутка ленты, если контент шире вьюпорта.
+              final scrollableBand = layout.canvasW > c.maxWidth + 0.5
+                  ? Scrollbar(
+                      controller: _hScroll,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        controller: _hScroll,
+                        scrollDirection: Axis.horizontal,
+                        child: canvas,
+                      ),
+                    )
+                  : canvas;
+
+              // Гаттер (подписи дорожек) закреплён слева: при прокрутке вправо
+              // видно, какая дорожка чья. Непрозрачная подложка прячет уезжающую
+              // под него ленту.
+              final pinned = Stack(
+                children: [
+                  Positioned.fill(child: scrollableBand),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: gutter,
+                    child: ColoredBox(
+                      color: colors.surface,
+                      child: CustomPaint(
+                        painter: _GutterPainter(layout: layout, colors: colors),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+
+              final sized = SizedBox(height: layout.canvasH, child: pinned);
               // Вертикальный скролл, если дорожек больше, чем влезает по высоте.
-              if (layout.contentH > c.maxHeight) {
-                return SingleChildScrollView(child: body);
+              if (layout.canvasH > c.maxHeight + 0.5) {
+                return SingleChildScrollView(child: sized);
               }
-              return body;
+              return sized;
             },
           ),
         ),
@@ -355,11 +401,25 @@ _SpanResult _resultOf(AgentNodeData n) {
   return _SpanResult.pending;
 }
 
+/// Компактная длительность для тултипа: «42s», «3m 5s», «1h 12m».
+String _fmtDuration(double sec) {
+  final s = sec.round();
+  if (s < 60) {
+    return '${s}s';
+  }
+  if (s < 3600) {
+    return '${s ~/ 60}m ${s % 60}s';
+  }
+  return '${s ~/ 3600}h ${(s % 3600) ~/ 60}m';
+}
+
 class _Span {
   final AgentNodeData node;
   final String laneKey;
+
+  /// Координата (в сек от t0) шага, на котором агента назначили — ЛЕВЫЙ край чипа.
+  /// Ширина чипа определяется подписью (а не длительностью), см. [_TraceLayout].
   final double startSec;
-  final double endSec;
   final _SpanResult result;
   final String label; // короткая подпись на баре
   final String tooltip;
@@ -367,7 +427,6 @@ class _Span {
     required this.node,
     required this.laneKey,
     required this.startSec,
-    required this.endSec,
     required this.result,
     required this.label,
     required this.tooltip,
@@ -476,13 +535,10 @@ class _SwimlaneModel {
     double sec(DateTime d) => d.difference(t0).inMilliseconds / 1000.0;
     final tEndSec = math.max(sec(tEnd), 1.0);
 
-    // Окна шагов: [createdAt, следующий createdAt) либо до tEnd для последнего.
+    // Старт каждого шага = время его решения роутера (левый край чипа агента).
     final winStart = <int, double>{};
-    final winEnd = <int, double>{};
     for (var i = 0; i < sorted.length; i++) {
       winStart[sorted[i].stepNo] = sec(sorted[i].createdAt);
-      winEnd[sorted[i].stepNo] =
-          i + 1 < sorted.length ? sec(sorted[i + 1].createdAt) : tEndSec;
     }
 
     // Дорожки: router сверху, далее агенты в порядке первого появления.
@@ -513,20 +569,18 @@ class _SwimlaneModel {
         continue;
       }
       final start = winStart[n.stepNo] ?? 0;
-      final wEnd = winEnd[n.stepNo] ?? tEndSec;
-      double end;
       final running = n.status == NodeStatus.running;
+      // Длительность работы агента больше НЕ кодируется шириной бара (чипы —
+      // по подписи, иначе агенты, дождавшиеся артефакта спустя несколько шагов
+      // роутера, рисовались гигантскими овалами). Но саму длительность считаем
+      // и кладём в тултип — пропадает только визуальная растяжка, не информация.
+      double? end;
       if (running) {
         end = tEndSec;
       } else if (n.artifacts.isNotEmpty) {
         end = n.artifacts
             .map((a) => sec(a.createdAt))
             .reduce((a, b) => a > b ? a : b);
-      } else {
-        end = wEnd;
-      }
-      if (end < start) {
-        end = start;
       }
       for (final a in n.artifacts) {
         artifactToNode[a.id] = n.id;
@@ -536,6 +590,9 @@ class _SwimlaneModel {
       final label = kind ?? _TraceColors.resultLabel(l10n, result);
       final tip = StringBuffer(
           '${n.name} · step ${n.stepNo} · ${_TraceColors.resultLabel(l10n, result)}');
+      if (end != null && end > start) {
+        tip.write(' · ${_fmtDuration(end - start)}');
+      }
       if (n.artifacts.isNotEmpty) {
         tip.write('\n${n.artifacts.last.kind}: ${n.artifacts.last.summary}');
       }
@@ -543,7 +600,6 @@ class _SwimlaneModel {
         node: n,
         laneKey: n.name,
         startSec: start,
-        endSec: end,
         result: result,
         label: label,
         tooltip: tip.toString(),
@@ -598,17 +654,30 @@ class _SwimlaneModel {
 // LAYOUT — геометрия (единый источник для отрисовки и оверлеев).
 // ─────────────────────────────────────────────────────────────────────────────
 class _TraceLayout {
-  final Size size;
+  /// Видимая область (от LayoutBuilder). Канва (см. [canvasW]/[canvasH]) может
+  /// быть БОЛЬШЕ — тогда лента прокручивается, а не сжимается.
+  final Size viewport;
   final _SwimlaneModel model;
   final double gutter;
+
+  /// Минимальная ширина колонки-шага. Не даём оси сжиматься в нечитаемую кашу:
+  /// при десятках шагов канва расширяется и включается горизонтальный скролл.
+  final double minUnitW;
   static const double rulerH = 44;
   static const double laneH = 52;
   static const double barH = 28;
   static const double rightPad = 28;
+  static const double topPad = 12;
+  static const double bottomPad = 12;
 
   late final double unitW; // ширина одной «колонки-шага»
   late final double topOffset;
   late final double contentH;
+
+  /// Реальный размер канвы (≥ вьюпорта). Шире вьюпорта → горизонтальный скролл;
+  /// выше → вертикальный.
+  late final double canvasW;
+  late final double canvasH;
 
   /// Прямоугольники спанов после ГОРИЗОНТАЛЬНОЙ УПАКОВКИ внутри дорожки:
   /// пересекающиеся по времени спаны одного агента раздвигаются вправо встык
@@ -617,14 +686,36 @@ class _TraceLayout {
   /// всегда совпадают.
   late final Map<String, Rect> _spanRects;
 
-  _TraceLayout({required this.size, required this.model, required this.gutter}) {
+  _TraceLayout({
+    required this.viewport,
+    required this.model,
+    required this.gutter,
+    this.minUnitW = 72,
+  }) {
     contentH = rulerH + model.lanes.length * laneH;
-    // Ось — в координате шагов: равная ширина на каждый интервал решений роутера.
-    unitW = (size.width - gutter - rightPad) / model.stepCount;
     // Лента прижата к верху (а не центрируется по высоте).
-    topOffset = 12;
+    topOffset = topPad;
+    // Ось — в координате шагов: равная ширина на каждый интервал решений роутера.
+    // Сжимаем под вьюпорт, но не уже minUnitW — иначе гейты/чипы превращаются в
+    // нечитаемую кашу. Когда не влезает — канва расширяется и включается скролл.
+    final fitW = (viewport.width - gutter - rightPad) / model.stepCount;
+    unitW = math.max(fitW, minUnitW);
     _spanRects = _packLanes();
+    // Ширина канвы = правый край самого правого упакованного спана (бары могут
+    // вылезти за ось из-за минимальной ширины подписи) либо конец оси — что
+    // больше; и не меньше вьюпорта.
+    var packedRight = gutter + model.stepCount * unitW;
+    for (final r in _spanRects.values) {
+      if (r.right > packedRight) {
+        packedRight = r.right;
+      }
+    }
+    canvasW = math.max(viewport.width, packedRight + rightPad);
+    canvasH = math.max(viewport.height, topOffset + contentH + bottomPad);
   }
+
+  /// Размер канвы для painter'а (может превышать вьюпорт → прокрутка).
+  Size get size => Size(canvasW, canvasH);
 
   double get bandTop => topOffset + rulerH;
   double get bandBottom => topOffset + contentH;
@@ -634,20 +725,21 @@ class _TraceLayout {
 
   Rect spanRect(_Span s) => _spanRects[s.node.id] ?? _naturalRect(s);
 
-  // «Естественный» прямоугольник (старт→конец по времени), нижняя граница
-  // ширины — по подписи. Фолбэк, если спана нет в упакованной карте.
+  // «Естественный» прямоугольник: чип по ширине подписи, левым краем на шаге
+  // назначения. Фолбэк, если спана нет в упакованной карте.
   Rect _naturalRect(_Span s) {
     final cy = laneCenter(laneIndex(s.laneKey));
     final x0 = xOf(s.startSec);
-    final w = math.max(xOf(s.endSec) - x0, _chipMinWidth(s));
+    final w = _chipMinWidth(s);
     return Rect.fromLTRB(x0, cy - barH / 2, x0 + w, cy + barH / 2);
   }
 
   // Раскладка спанов по дорожкам без наложения. Внутри одной дорожки идём слева
   // направо; если очередной спан налезает на предыдущий — сдвигаем его вправо до
-  // правого края предыдущего + зазор. Ширина бара = max(длительность, ширина
-  // подписи), чтобы мгновенные события-точки не схлопывались в нечитаемые
-  // обрезки. Гейты роутера и now-line остаются в истинных координатах времени.
+  // правого края предыдущего + зазор. Ширина чипа = ширина подписи (длительность
+  // НЕ растягивает бар — иначе агенты с поздним артефактом давали гигантские
+  // овалы; длительность теперь в тултипе). Гейты роутера и now-line — в истинных
+  // координатах времени.
   Map<String, Rect> _packLanes() {
     const gap = 6.0;
     final byLane = <String, List<_Span>>{};
@@ -661,7 +753,7 @@ class _TraceLayout {
       var cursor = double.negativeInfinity;
       for (final s in list) {
         final natLeft = xOf(s.startSec);
-        final w = math.max(xOf(s.endSec) - natLeft, _chipMinWidth(s));
+        final w = _chipMinWidth(s);
         final left = math.max(natLeft, cursor + gap);
         out[s.node.id] =
             Rect.fromLTRB(left, cy - barH / 2, left + w, cy + barH / 2);
@@ -983,6 +1075,73 @@ class _TracePainter extends CustomPainter {
       old.selectedNodeId != selectedNodeId ||
       old.selectedName != selectedName ||
       old.layout != layout;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUTTER PAINTER — закреплённая слева колонка подписей дорожек.
+//
+// Рисуется поверх горизонтально прокручиваемой ленты на непрозрачной подложке,
+// поэтому при скролле вправо подписи агентов остаются на месте, а уезжающая под
+// них лента не просвечивает. Геометрия (laneCenter/gutter) — из того же
+// [_TraceLayout], что и основной painter, поэтому строки совпадают по высоте.
+// ─────────────────────────────────────────────────────────────────────────────
+class _GutterPainter extends CustomPainter {
+  _GutterPainter({required this.layout, required this.colors});
+  final _TraceLayout layout;
+  final _TraceColors colors;
+  _SwimlaneModel get m => layout.model;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (var i = 0; i < m.lanes.length; i++) {
+      final lane = m.lanes[i];
+      final cy = layout.laneCenter(i);
+      // Разделитель дорожки — продолжение линий ленты в зону гаттера.
+      canvas.drawLine(
+        Offset(0, cy + _TraceLayout.laneH / 2),
+        Offset(size.width, cy + _TraceLayout.laneH / 2),
+        Paint()..color = colors.lineSoft,
+      );
+      final accent = i == 0 ? colors.router : colors.onSurfaceMuted;
+      canvas.drawCircle(Offset(16, cy - 5), 4, Paint()..color = accent);
+      _text(canvas, lane.label, Offset(28, cy - 13),
+          color: colors.onSurface,
+          size: 12.5,
+          weight: FontWeight.w600,
+          maxWidth: layout.gutter - 32);
+      if (lane.sub.isNotEmpty) {
+        _text(canvas, lane.sub, Offset(28, cy + 2),
+            color: colors.onSurfaceMuted.withValues(alpha: 0.8),
+            size: 10,
+            maxWidth: layout.gutter - 32);
+      }
+    }
+    // Правая граница гаттера.
+    canvas.drawLine(Offset(layout.gutter, layout.topOffset),
+        Offset(layout.gutter, layout.bandBottom), Paint()..color = colors.line);
+  }
+
+  void _text(Canvas canvas, String s, Offset o,
+      {required Color color,
+      required double size,
+      FontWeight weight = FontWeight.w400,
+      double? maxWidth}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: s,
+        style: TextStyle(color: color, fontSize: size, fontWeight: weight),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(
+        maxWidth: maxWidth == null ? double.infinity : math.max(0.0, maxWidth));
+    tp.paint(canvas, o);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GutterPainter old) =>
+      old.layout != layout || old.colors != colors;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

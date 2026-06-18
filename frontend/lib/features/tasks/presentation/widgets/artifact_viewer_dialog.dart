@@ -540,7 +540,7 @@ class _JsonView extends StatelessWidget {
     // Иначе JsonEncoder экранирует \n, текст уходит в одну строку и уезжает за край.
     final raw = content['raw_output'] ?? content['raw_response'];
     if (raw is String) {
-      return _LargeTextView(text: raw, kind: kind, wrap: true);
+      return _LargeTextView(text: raw, kind: kind);
     }
     final pretty = const JsonEncoder.withIndent('  ').convert(content);
     return _LargeTextView(text: pretty, kind: kind);
@@ -551,13 +551,10 @@ class _JsonView extends StatelessWidget {
 /// "Copy full" — спасает UI thread на `merged_code` / `raw_output_truncated`,
 /// где content легко уходит в сотни KB.
 class _LargeTextView extends StatelessWidget {
-  const _LargeTextView({required this.text, required this.kind, this.wrap = false});
+  const _LargeTextView({required this.text, required this.kind});
 
   final String text;
   final String kind;
-  // wrap=true: строки переносятся по ширине (для raw-текста). false: одна строка,
-  // клип (для pretty-JSON — там перенос ломает выравнивание).
-  final bool wrap;
 
   Future<void> _copyAll(BuildContext context) async {
     final l10n =
@@ -579,7 +576,7 @@ class _LargeTextView extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (ctx) => Dialog.fullscreen(
-        child: _FullScreenText(text: text, kind: kind, wrap: wrap),
+        child: _FullScreenText(text: text, kind: kind),
       ),
     );
   }
@@ -643,14 +640,13 @@ class _LargeTextView extends StatelessWidget {
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               itemCount: lines.length,
-              // wrap: переменная высота строк (перенос), поэтому без itemExtent.
-              itemExtent: wrap ? null : 18,
+              // Переносим длинные строки по ширине: иначе длинные значения JSON
+              // (напр. description) уезжают за правый край — горизонтального
+              // скролла тут нет. Высота строк переменная, поэтому без itemExtent.
               itemBuilder: (context, i) {
                 return Text(
                   lines[i],
-                  maxLines: wrap ? null : 1,
-                  softWrap: wrap,
-                  overflow: TextOverflow.clip,
+                  softWrap: true,
                   style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 12, height: 1.4),
                 );
@@ -677,11 +673,10 @@ List<String> _splitLinesIsolate(String text) =>
 const int _kFullScreenIsolateThreshold = 50 * 1024;
 
 class _FullScreenText extends StatefulWidget {
-  const _FullScreenText({required this.text, required this.kind, this.wrap = false});
+  const _FullScreenText({required this.text, required this.kind});
 
   final String text;
   final String kind;
-  final bool wrap;
 
   @override
   State<_FullScreenText> createState() => _FullScreenTextState();
@@ -750,13 +745,11 @@ class _FullScreenTextState extends State<_FullScreenText> {
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: lines.length,
-              itemExtent: widget.wrap ? null : 18,
+              // Перенос длинных строк по ширине (без горизонтального скролла).
               itemBuilder: (context, i) {
                 return Text(
                   lines[i],
-                  maxLines: widget.wrap ? null : 1,
-                  softWrap: widget.wrap,
-                  overflow: TextOverflow.clip,
+                  softWrap: true,
                   style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 12, height: 1.4),
                 );

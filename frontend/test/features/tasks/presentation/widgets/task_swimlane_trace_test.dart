@@ -6,6 +6,7 @@ import 'package:frontend/features/projects/domain/models/team_model.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
 import 'package:frontend/features/tasks/domain/models/router_decision_model.dart';
+import 'package:frontend/features/tasks/domain/models/task_event_model.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_swimlane_trace.dart';
 import 'package:frontend/features/team/data/team_providers.dart';
 import 'package:frontend/l10n/app_localizations.dart';
@@ -64,6 +65,7 @@ void main() {
         teamProvider(projectId).overrideWith((ref) => team(agents)),
         taskRouterDecisionsProvider(taskId).overrideWith((ref) => decisions),
         taskArtifactsProvider(taskId).overrideWith((ref) => artifacts),
+        taskEventsProvider(taskId).overrideWith((ref) => const <TaskEventModel>[]),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -134,6 +136,30 @@ void main() {
 
     // Легенда содержит пункт «нужны правки», рендер без падений.
     expect(find.text('Changes requested'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('длинный флоу прокручивается по горизонтали, а не сжимается',
+      (tester) async {
+    final t0 = DateTime.utc(2026, 5, 30, 10, 0, 0);
+    // Много шагов в узком вьюпорте: лента шире экрана → должен включиться
+    // горизонтальный скролл (регрессия: раньше всё сжималось/уезжало за экран).
+    final decisions = [
+      for (var i = 0; i < 30; i++)
+        dec(i, [i.isEven ? 'developer' : 'reviewer'],
+            t0.add(Duration(minutes: i))),
+    ];
+    await tester.pumpWidget(harness(
+      agents: [agent('developer', 'developer'), agent('reviewer', 'reviewer')],
+      decisions: decisions,
+      artifacts: const [],
+    ));
+    await tester.pump();
+
+    final horizontalScroll = find.byWidgetPredicate(
+      (w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
+    );
+    expect(horizontalScroll, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
