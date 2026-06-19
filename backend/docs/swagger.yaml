@@ -555,6 +555,11 @@ definitions:
         type: string
       description:
         type: string
+      external_key:
+        description: |-
+          ExternalKey — ключ тикета задачи (напр. DEV-123). Обязателен, если шаблон имени
+          ветки проекта содержит {ticket} без fallback (иначе 422 external_key_required).
+        type: string
       parent_task_id:
         type: string
       priority:
@@ -1120,6 +1125,14 @@ definitions:
           AssistantPrompt — per-project промпт ассистента (наследуется копией при
           создании проекта; nil — legacy/сброшен → используется user-промпт).
         type: string
+      branch_name_pattern:
+        type: string
+      branch_name_template:
+        description: BranchNameTemplate/Pattern/Locked — per-project конвенция именования
+          веток.
+        type: string
+      branch_naming_locked:
+        type: boolean
       created_at:
         type: string
       description:
@@ -1463,6 +1476,8 @@ definitions:
         type: string
       error_message:
         type: string
+      external_key:
+        type: string
       id:
         type: string
       message_count:
@@ -1636,6 +1651,20 @@ definitions:
           AssistantPrompt — per-project промпт ассистента (см. models.Project).
           Пустая строка → сброс в NULL (рантайм вернётся к user-промпту).
         type: string
+      branch_name_pattern:
+        description: |-
+          BranchNamePattern — явный regex «жёсткого формата» ветки. Пустая строка → сброс
+          в NULL (использовать выведенный из шаблона).
+        type: string
+      branch_name_template:
+        description: |-
+          BranchNameTemplate — per-project шаблон имён git-веток. Пустая строка → сброс в
+          NULL (дефолт task/{short_id}-{slug}). Валидируется (ValidateBranchTemplate).
+        type: string
+      branch_naming_locked:
+        description: BranchNamingLocked — запрет ручного override имени ветки (только
+          генерируемое).
+        type: boolean
       clear_settings:
         type: boolean
       clear_tech_stack:
@@ -1766,6 +1795,10 @@ definitions:
           ("4h", "90m", "1h30m"), bounds: 1m..72h.
         type: string
       description:
+        type: string
+      external_key:
+        description: ExternalKey — ключ тикета задачи (напр. DEV-123). Передача ""
+          сбрасывает ключ.
         type: string
       priority:
         type: string
@@ -2664,6 +2697,21 @@ definitions:
           копии редактируются независимо). NULL — legacy/сброшен → рантайм использует
           user-промпт ассистента.
         type: string
+      branch_name_pattern:
+        description: |-
+          BranchNamePattern — опциональный явный regex формата ветки, перебивает выведенный
+          из шаблона. NULL ⇒ использовать выведенный из BranchNameTemplate.
+        type: string
+      branch_name_template:
+        description: |-
+          BranchNameTemplate — per-project шаблон имён git-веток (см. branch_template.go).
+          NULL/'' ⇒ дефолт task/{short_id}-{slug}. Также источник «жёсткого формата»
+          (из него выводится regex для валидации ручных override'ов).
+        type: string
+      branch_naming_locked:
+        description: BranchNamingLocked — запрещает ручной override имени ветки (только
+          генерируемое).
+        type: boolean
       created_at:
         type: string
       description:

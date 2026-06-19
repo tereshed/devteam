@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -980,6 +981,30 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 			v := *req.AssistantPrompt
 			project.AssistantPrompt = &v
 		}
+	}
+	if req.BranchNameTemplate != nil {
+		// Пустая строка = сброс к дефолтному шаблону (NULL в БД).
+		if trimmed := strings.TrimSpace(*req.BranchNameTemplate); trimmed == "" {
+			project.BranchNameTemplate = nil
+		} else {
+			if err := ValidateBranchTemplate(trimmed); err != nil {
+				return nil, err
+			}
+			project.BranchNameTemplate = &trimmed
+		}
+	}
+	if req.BranchNamePattern != nil {
+		if trimmed := strings.TrimSpace(*req.BranchNamePattern); trimmed == "" {
+			project.BranchNamePattern = nil
+		} else {
+			if _, err := regexp.Compile(trimmed); err != nil {
+				return nil, fmt.Errorf("%w: branch_name_pattern: %v", ErrBranchTemplateInvalid, err)
+			}
+			project.BranchNamePattern = &trimmed
+		}
+	}
+	if req.BranchNamingLocked != nil {
+		project.BranchNamingLocked = *req.BranchNamingLocked
 	}
 	if req.GitProvider != nil {
 		gp := models.GitProvider(*req.GitProvider)

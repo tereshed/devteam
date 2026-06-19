@@ -44,9 +44,12 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _urlCtrl = TextEditingController();
   final _branchCtrl = TextEditingController();
+  final _branchTemplateCtrl = TextEditingController();
+  final _branchPatternCtrl = TextEditingController();
   final _vectorCtrl = TextEditingController();
 
   String _gitProvider = gitProviders.first;
+  bool _branchNamingLocked = false;
   final List<ProjectSettingsTechFieldRow> _techRows = [];
   bool _dirty = false;
   bool _pendingRemoveGitCredential = false;
@@ -69,6 +72,8 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
   void dispose() {
     _urlCtrl.dispose();
     _branchCtrl.dispose();
+    _branchTemplateCtrl.dispose();
+    _branchPatternCtrl.dispose();
     _vectorCtrl.dispose();
     for (final r in _techRows) {
       r.dispose();
@@ -87,6 +92,8 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
   void _resetForNewProject() {
     _urlCtrl.clear();
     _branchCtrl.clear();
+    _branchTemplateCtrl.clear();
+    _branchPatternCtrl.clear();
     _vectorCtrl.clear();
     setState(() {
       _dirty = false;
@@ -96,6 +103,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
       _vectorSnapshotBeforeEdit = null;
       _lastApplied = null;
       _gitProvider = gitProviders.first;
+      _branchNamingLocked = false;
       for (final r in _techRows) {
         r.dispose();
       }
@@ -108,6 +116,9 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     _gitProvider = p.gitProvider;
     _urlCtrl.text = p.gitUrl;
     _branchCtrl.text = p.gitDefaultBranch;
+    _branchTemplateCtrl.text = p.branchNameTemplate ?? '';
+    _branchPatternCtrl.text = p.branchNamePattern ?? '';
+    _branchNamingLocked = p.branchNamingLocked;
     _vectorCtrl.text = p.vectorCollection;
     _vectorSnapshotBeforeEdit = p.vectorCollection.trim();
     for (final r in _techRows) {
@@ -174,6 +185,9 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
       techStackEditedNonEmptyKeys: _collectTechMap(),
       pendingRemoveGitCredential: _pendingRemoveGitCredential,
       explicitClearTechStack: _explicitClearTechStack,
+      branchNameTemplate: _branchTemplateCtrl.text,
+      branchNamePattern: _branchPatternCtrl.text,
+      branchNamingLocked: _branchNamingLocked,
     );
 
     if (patch == null || patch.toJson().isEmpty) {
@@ -444,6 +458,15 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                                   },
                                   urlController: _urlCtrl,
                                   branchController: _branchCtrl,
+                                  branchTemplateController: _branchTemplateCtrl,
+                                  branchPatternController: _branchPatternCtrl,
+                                  branchNamingLocked: _branchNamingLocked,
+                                  onBranchNamingLockedChanged: (v) {
+                                    setState(() {
+                                      _branchNamingLocked = v;
+                                      _dirty = true;
+                                    });
+                                  },
                                   project: project,
                                   pendingRemoveGitCredential: _pendingRemoveGitCredential,
                                   onToggleUnlinkCredential: () {

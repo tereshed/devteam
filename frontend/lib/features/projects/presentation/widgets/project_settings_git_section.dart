@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
 import 'package:frontend/features/projects/presentation/utils/git_provider_display.dart';
 import 'package:frontend/features/projects/presentation/utils/git_remote_url.dart';
+import 'package:frontend/features/projects/presentation/widgets/branch_naming_section.dart';
 import 'package:frontend/l10n/app_localizations.dart';
 
 /// Git: провайдер, URL, ветка, карточка credential (13.4).
@@ -12,6 +13,10 @@ class ProjectSettingsGitSection extends StatelessWidget {
     required this.onGitProviderChanged,
     required this.urlController,
     required this.branchController,
+    required this.branchTemplateController,
+    required this.branchPatternController,
+    required this.branchNamingLocked,
+    required this.onBranchNamingLockedChanged,
     required this.project,
     required this.pendingRemoveGitCredential,
     required this.onToggleUnlinkCredential,
@@ -22,6 +27,10 @@ class ProjectSettingsGitSection extends StatelessWidget {
   final ValueChanged<String> onGitProviderChanged;
   final TextEditingController urlController;
   final TextEditingController branchController;
+  final TextEditingController branchTemplateController;
+  final TextEditingController branchPatternController;
+  final bool branchNamingLocked;
+  final ValueChanged<bool> onBranchNamingLockedChanged;
   final ProjectModel project;
   final bool pendingRemoveGitCredential;
   final VoidCallback onToggleUnlinkCredential;
@@ -94,6 +103,13 @@ class ProjectSettingsGitSection extends StatelessWidget {
             labelText: l10n.projectSettingsGitDefaultBranchLabel,
           ),
           onChanged: (_) => onFieldChanged(),
+        ),
+        BranchNamingSection(
+          templateController: branchTemplateController,
+          patternController: branchPatternController,
+          locked: branchNamingLocked,
+          onLockedChanged: onBranchNamingLockedChanged,
+          onChanged: onFieldChanged,
         ),
         if (project.gitCredential != null) ...[
           const SizedBox(height: 12),

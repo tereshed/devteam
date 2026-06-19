@@ -150,6 +150,11 @@ abstract class TaskModel with _$TaskModel {
     @JsonKey(name: 'branch_name')
     String? branchName,
 
+    /// Ключ тикета во внешнем трекере (напр. DEV-123). Подставляется в имя ветки
+    /// плейсхолдером {ticket}; обязателен, если шаблон проекта требует {ticket}.
+    @JsonKey(name: 'external_key')
+    String? externalKey,
+
     /// Per-task override orchestrator timeout (Sprint 17 §6.5).
     /// На wire — строка Go time.Duration ("4h", "90m", "1h30m"); если override
     /// не задан, бэкенд возвращает ключ без значения (omitempty) → null.

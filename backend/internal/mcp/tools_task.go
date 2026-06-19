@@ -41,6 +41,7 @@ type TaskCreateParams struct {
 	Priority        *string `json:"priority,omitempty" jsonschema:"Приоритет (critical, high, medium, low). По умолчанию medium."`
 	AssignedAgentID *string `json:"assigned_agent_id,omitempty" jsonschema:"UUID агента для назначения (должен быть в команде проекта)"`
 	ParentTaskID    *string `json:"parent_task_id,omitempty" jsonschema:"UUID родительской задачи (для создания подзадачи)"`
+	ExternalKey     *string `json:"external_key,omitempty" jsonschema:"Ключ тикета задачи во внешнем трекере (напр. DEV-123). Для некоторых проектов ОБЯЗАТЕЛЕН (иначе создание вернёт ошибку external_key_required). Бери ключ у пользователя — НИКОГДА не придумывай его сам."`
 }
 
 // TaskUpdateParams — параметры task_update.
@@ -53,6 +54,7 @@ type TaskUpdateParams struct {
 	AssignedAgentID    *string `json:"assigned_agent_id,omitempty" jsonschema:"UUID агента для назначения"`
 	ClearAssignedAgent bool    `json:"clear_assigned_agent,omitempty" jsonschema:"Снять назначенного агента"`
 	BranchName         *string `json:"branch_name,omitempty" jsonschema:"Git-ветка задачи"`
+	ExternalKey        *string `json:"external_key,omitempty" jsonschema:"Ключ тикета во внешнем трекере (напр. DEV-123). Пустая строка сбрасывает ключ. Бери у пользователя — не выдумывай."`
 }
 
 // RegisterTaskTools регистрирует MCP-инструменты для задач.
@@ -218,6 +220,9 @@ func makeTaskCreateHandler(taskSvc service.TaskService, orchestratorSvc service.
 			}
 			createReq.ParentTaskID = &parentID
 		}
+		if params.ExternalKey != nil {
+			createReq.ExternalKey = params.ExternalKey
+		}
 
 		task, err := taskSvc.Create(ctx, uid, role, projectID, createReq)
 		if err != nil {
@@ -270,6 +275,7 @@ func makeTaskUpdateHandler(taskSvc service.TaskService, orchestratorSvc service.
 			Status:             params.Status,
 			ClearAssignedAgent: params.ClearAssignedAgent,
 			BranchName:         params.BranchName,
+			ExternalKey:        params.ExternalKey,
 		}
 		if params.AssignedAgentID != nil {
 			agentID, err := uuid.Parse(*params.AssignedAgentID)
@@ -322,9 +328,17 @@ func taskServiceMCPError(err error) (*mcp.CallToolResult, any, error) {
 		return Err("agent does not belong to project team", err)
 	case errors.Is(err, service.ErrTaskParentNotFound):
 		return Err("parent task not found", err)
+	case errors.Is(err, service.ErrExternalKeyRequired):
+		return ValidationErr("external_key is required for this project (a ticket key like DEV-123). Ask the user for it — do not invent one.")
+	case errors.Is(err, service.ErrBranchNamingLocked):
+		return ValidationErr("this project locks branch naming: omit branch_name, it is generated from the project template.")
+	case errors.Is(err, service.ErrBranchPatternMismatch):
+		return ValidationErr(err.Error())
 	case errors.Is(err, service.ErrTaskInvalidTitle),
 		errors.Is(err, service.ErrTaskInvalidPriority),
 		errors.Is(err, service.ErrTaskInvalidStatus),
+		errors.Is(err, service.ErrInvalidExternalKey),
+		errors.Is(err, service.ErrTaskInvalidBranch),
 		errors.Is(err, service.ErrTaskMessageInvalidType):
 		return ValidationErr(err.Error())
 	default:

@@ -1244,6 +1244,35 @@ class AppLocalizationsRu extends AppLocalizations {
   String get projectSettingsGitDefaultBranchLabel => 'Ветка по умолчанию';
 
   @override
+  String get projectSettingsBranchNamingTitle => 'Именование веток';
+
+  @override
+  String get projectSettingsBranchTemplateLabel => 'Шаблон имени ветки';
+
+  @override
+  String get projectSettingsBranchTemplateHint =>
+      'Плейсхолдеры: ticket, slug, short_id, id, date. Fallback вида ticket|short_id. Пусто — дефолтная ветка.';
+
+  @override
+  String get projectSettingsBranchPatternLabel =>
+      'Жёсткий формат (regex, опционально)';
+
+  @override
+  String get projectSettingsBranchPatternHint =>
+      'Валидирует ручные override имени ветки. Пусто — выводится из шаблона.';
+
+  @override
+  String get projectSettingsBranchLockLabel =>
+      'Запретить ручной override ветки';
+
+  @override
+  String get projectSettingsBranchLockSubtitle =>
+      'Имя ветки только генерируется из шаблона';
+
+  @override
+  String get projectSettingsBranchPreviewLabel => 'Превью';
+
+  @override
   String get projectSettingsGitCredentialCardTitle =>
       'Привязанный Git credential';
 
@@ -2277,6 +2306,34 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get tasksCustomTimeoutEdit => 'Изменить';
+
+  @override
+  String get tasksExternalKeyTitle => 'Ключ тикета';
+
+  @override
+  String get tasksExternalKeyNone => 'нет';
+
+  @override
+  String get tasksExternalKeyEdit => 'Изменить ключ тикета';
+
+  @override
+  String get tasksExternalKeyLabel => 'Ключ тикета';
+
+  @override
+  String get tasksExternalKeyHelper =>
+      'Напр. DEV-123. Буквы, цифры, дефис и подчёркивание, до 64 символов.';
+
+  @override
+  String get tasksExternalKeyInvalid => 'Неверный формат ключа тикета';
+
+  @override
+  String get tasksExternalKeySave => 'Сохранить';
+
+  @override
+  String get tasksExternalKeySavedSnack => 'Ключ тикета сохранён';
+
+  @override
+  String get tasksExternalKeyClearedSnack => 'Ключ тикета сброшен';
 
   @override
   String get tasksCustomTimeoutSave => 'Сохранить';

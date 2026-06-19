@@ -2252,6 +2252,54 @@ abstract class AppLocalizations {
   /// **'Ветка по умолчанию'**
   String get projectSettingsGitDefaultBranchLabel;
 
+  /// No description provided for @projectSettingsBranchNamingTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Именование веток'**
+  String get projectSettingsBranchNamingTitle;
+
+  /// No description provided for @projectSettingsBranchTemplateLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Шаблон имени ветки'**
+  String get projectSettingsBranchTemplateLabel;
+
+  /// No description provided for @projectSettingsBranchTemplateHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Плейсхолдеры: ticket, slug, short_id, id, date. Fallback вида ticket|short_id. Пусто — дефолтная ветка.'**
+  String get projectSettingsBranchTemplateHint;
+
+  /// No description provided for @projectSettingsBranchPatternLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Жёсткий формат (regex, опционально)'**
+  String get projectSettingsBranchPatternLabel;
+
+  /// No description provided for @projectSettingsBranchPatternHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Валидирует ручные override имени ветки. Пусто — выводится из шаблона.'**
+  String get projectSettingsBranchPatternHint;
+
+  /// No description provided for @projectSettingsBranchLockLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Запретить ручной override ветки'**
+  String get projectSettingsBranchLockLabel;
+
+  /// No description provided for @projectSettingsBranchLockSubtitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя ветки только генерируется из шаблона'**
+  String get projectSettingsBranchLockSubtitle;
+
+  /// No description provided for @projectSettingsBranchPreviewLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Превью'**
+  String get projectSettingsBranchPreviewLabel;
+
   /// Карточка read-only credential
   ///
   /// In ru, this message translates to:
@@ -4159,6 +4207,60 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Изменить'**
   String get tasksCustomTimeoutEdit;
+
+  /// No description provided for @tasksExternalKeyTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключ тикета'**
+  String get tasksExternalKeyTitle;
+
+  /// No description provided for @tasksExternalKeyNone.
+  ///
+  /// In ru, this message translates to:
+  /// **'нет'**
+  String get tasksExternalKeyNone;
+
+  /// No description provided for @tasksExternalKeyEdit.
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменить ключ тикета'**
+  String get tasksExternalKeyEdit;
+
+  /// No description provided for @tasksExternalKeyLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключ тикета'**
+  String get tasksExternalKeyLabel;
+
+  /// No description provided for @tasksExternalKeyHelper.
+  ///
+  /// In ru, this message translates to:
+  /// **'Напр. DEV-123. Буквы, цифры, дефис и подчёркивание, до 64 символов.'**
+  String get tasksExternalKeyHelper;
+
+  /// No description provided for @tasksExternalKeyInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Неверный формат ключа тикета'**
+  String get tasksExternalKeyInvalid;
+
+  /// No description provided for @tasksExternalKeySave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get tasksExternalKeySave;
+
+  /// No description provided for @tasksExternalKeySavedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключ тикета сохранён'**
+  String get tasksExternalKeySavedSnack;
+
+  /// No description provided for @tasksExternalKeyClearedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ключ тикета сброшен'**
+  String get tasksExternalKeyClearedSnack;
 
   /// No description provided for @tasksCustomTimeoutSave.
   ///

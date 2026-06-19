@@ -1230,6 +1230,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectSettingsGitDefaultBranchLabel => 'Default branch';
 
   @override
+  String get projectSettingsBranchNamingTitle => 'Branch naming';
+
+  @override
+  String get projectSettingsBranchTemplateLabel => 'Branch name template';
+
+  @override
+  String get projectSettingsBranchTemplateHint =>
+      'Placeholders: ticket, slug, short_id, id, date. Fallback like ticket|short_id. Empty = default branch.';
+
+  @override
+  String get projectSettingsBranchPatternLabel =>
+      'Strict format (regex, optional)';
+
+  @override
+  String get projectSettingsBranchPatternHint =>
+      'Validates manual branch overrides. Leave empty to derive it from the template.';
+
+  @override
+  String get projectSettingsBranchLockLabel => 'Lock manual branch override';
+
+  @override
+  String get projectSettingsBranchLockSubtitle =>
+      'Branch name is only generated from the template';
+
+  @override
+  String get projectSettingsBranchPreviewLabel => 'Preview';
+
+  @override
   String get projectSettingsGitCredentialCardTitle => 'Linked Git credential';
 
   @override
@@ -2252,6 +2280,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tasksCustomTimeoutEdit => 'Edit';
+
+  @override
+  String get tasksExternalKeyTitle => 'Ticket key';
+
+  @override
+  String get tasksExternalKeyNone => 'none';
+
+  @override
+  String get tasksExternalKeyEdit => 'Edit ticket key';
+
+  @override
+  String get tasksExternalKeyLabel => 'Ticket key';
+
+  @override
+  String get tasksExternalKeyHelper =>
+      'e.g. DEV-123. Letters, digits, dash and underscore, up to 64 chars.';
+
+  @override
+  String get tasksExternalKeyInvalid => 'Invalid ticket key format';
+
+  @override
+  String get tasksExternalKeySave => 'Save';
+
+  @override
+  String get tasksExternalKeySavedSnack => 'Ticket key saved';
+
+  @override
+  String get tasksExternalKeyClearedSnack => 'Ticket key cleared';
 
   @override
   String get tasksCustomTimeoutSave => 'Save';

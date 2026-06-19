@@ -107,4 +107,74 @@ void main() {
       );
     },
   );
+
+  test('задание шаблона ветки → branch_name_template в патче', () {
+    final baseline = makeProject();
+    final req = buildProjectSettingsUpdateRequest(
+      baseline: baseline,
+      gitProvider: baseline.gitProvider,
+      gitUrl: baseline.gitUrl,
+      gitDefaultBranch: baseline.gitDefaultBranch,
+      vectorCollection: baseline.vectorCollection,
+      techStackEditedNonEmptyKeys: const {},
+      pendingRemoveGitCredential: false,
+      explicitClearTechStack: false,
+      branchNameTemplate: 'issue/{ticket}_{slug}',
+    );
+    expect(req, isNotNull);
+    expect(req!.branchNameTemplate, 'issue/{ticket}_{slug}');
+  });
+
+  test('сброс шаблона ветки (пустая строка при заданном baseline) → "" в патче',
+      () {
+    final baseline =
+        makeProject().copyWith(branchNameTemplate: 'issue/{ticket}_{slug}');
+    final req = buildProjectSettingsUpdateRequest(
+      baseline: baseline,
+      gitProvider: baseline.gitProvider,
+      gitUrl: baseline.gitUrl,
+      gitDefaultBranch: baseline.gitDefaultBranch,
+      vectorCollection: baseline.vectorCollection,
+      techStackEditedNonEmptyKeys: const {},
+      pendingRemoveGitCredential: false,
+      explicitClearTechStack: false,
+      branchNameTemplate: '',
+    );
+    expect(req, isNotNull);
+    expect(req!.branchNameTemplate, '');
+  });
+
+  test('переключение замка → branch_naming_locked в патче', () {
+    final baseline = makeProject();
+    final req = buildProjectSettingsUpdateRequest(
+      baseline: baseline,
+      gitProvider: baseline.gitProvider,
+      gitUrl: baseline.gitUrl,
+      gitDefaultBranch: baseline.gitDefaultBranch,
+      vectorCollection: baseline.vectorCollection,
+      techStackEditedNonEmptyKeys: const {},
+      pendingRemoveGitCredential: false,
+      explicitClearTechStack: false,
+      branchNamingLocked: true,
+    );
+    expect(req, isNotNull);
+    expect(req!.branchNamingLocked, isTrue);
+  });
+
+  test('шаблон без изменений → не попадает в патч', () {
+    final baseline =
+        makeProject().copyWith(branchNameTemplate: 'task/{short_id}-{slug}');
+    final req = buildProjectSettingsUpdateRequest(
+      baseline: baseline,
+      gitProvider: baseline.gitProvider,
+      gitUrl: baseline.gitUrl,
+      gitDefaultBranch: baseline.gitDefaultBranch,
+      vectorCollection: baseline.vectorCollection,
+      techStackEditedNonEmptyKeys: const {},
+      pendingRemoveGitCredential: false,
+      explicitClearTechStack: false,
+      branchNameTemplate: 'task/{short_id}-{slug}',
+    );
+    expect(req, isNull);
+  });
 }

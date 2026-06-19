@@ -134,6 +134,8 @@ abstract class CreateTaskRequest with _$CreateTaskRequest {
     @JsonKey(name: 'parent_task_id') String? parentTaskId,
     @JsonKey(name: 'assigned_agent_id') String? assignedAgentId,
     @Default(<String, dynamic>{}) Map<String, dynamic> context,
+    /// Ключ тикета (напр. DEV-123). Обязателен, если шаблон ветки проекта требует {ticket}.
+    @JsonKey(name: 'external_key') String? externalKey,
     // Orchestration v2 / Sprint 17 — override 4h orchestrator timeout per-task.
     // Формат поддерживаемый бэкендом: Go time.Duration string ("4h", "90m", "1h30m").
     @JsonKey(name: 'custom_timeout') String? customTimeout,
@@ -162,6 +164,9 @@ abstract class UpdateTaskRequest with _$UpdateTaskRequest {
     @Default(false)
     bool clearAssignedAgent,
     @JsonKey(name: 'branch_name') String? branchName,
+
+    /// Ключ тикета (напр. DEV-123). null — не менять; "" — сбросить ключ.
+    @JsonKey(name: 'external_key') String? externalKey,
 
     /// Per-task override orchestrator timeout (Sprint 17 §6.5). Формат Go
     /// time.Duration ("4h", "90m", "1h30m"); bounds 1m..72h на бэкенде.

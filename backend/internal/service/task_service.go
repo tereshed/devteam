@@ -17,6 +17,7 @@ import (
 	"github.com/devteam/backend/internal/metrics"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/internal/sandbox"
 	"github.com/devteam/backend/pkg/async"
 	"github.com/google/uuid"
 	"github.com/tidwall/sjson"
@@ -575,8 +576,77 @@ func generateBranchName(taskID uuid.UUID, title string) string {
 	return "task/" + prefix + "-" + slug
 }
 
+// resolveBranchName определяет имя git-ветки задачи с учётом per-project конвенции:
+// ручной override (если не запрещён и проходит «жёсткий формат») либо генерация из
+// шаблона проекта. Обязательность ключа тикета выводится из шаблона ({ticket} без
+// fallback) — fail-loud, если ключ не передан. Ошибка рендера шаблона не роняет
+// создание: происходит safety-fallback на дефолтное имя.
+func (s *taskService) resolveBranchName(ctx context.Context, project *models.Project, taskID uuid.UUID, req dto.CreateTaskRequest, externalKey string) (string, error) {
+	tmpl := ""
+	if project.BranchNameTemplate != nil {
+		tmpl = strings.TrimSpace(*project.BranchNameTemplate)
+	}
+
+	if TemplateRequiresTicket(tmpl) && externalKey == "" {
+		return "", ErrExternalKeyRequired
+	}
+
+	if req.BranchName != nil && strings.TrimSpace(*req.BranchName) != "" {
+		if project.BranchNamingLocked {
+			return "", ErrBranchNamingLocked
+		}
+		override := strings.TrimSpace(*req.BranchName)
+		if err := sandbox.ValidateBranchName(override); err != nil {
+			return "", fmt.Errorf("%w: %v", ErrTaskInvalidBranch, err)
+		}
+		if pat := s.effectiveBranchPattern(project, tmpl); pat != nil && !pat.MatchString(override) {
+			return "", fmt.Errorf("%w: %q (expected %s)", ErrBranchPatternMismatch, override, pat.String())
+		}
+		return override, nil
+	}
+
+	name, err := RenderBranchName(tmpl, BranchVars{
+		TaskID:      taskID,
+		Title:       req.Title,
+		ExternalKey: externalKey,
+		Now:         time.Now(),
+	})
+	if err != nil {
+		s.logger.WarnContext(ctx, "task_service: branch template render failed, using default",
+			slog.String("project_id", project.ID.String()),
+			slog.String("template", tmpl),
+			slog.String("error", err.Error()),
+		)
+		name = generateBranchName(taskID, req.Title)
+	}
+	return name, nil
+}
+
+// effectiveBranchPattern возвращает regex «жёсткого формата» имени ветки: явный
+// branch_name_pattern проекта, иначе выведенный из шаблона. nil ⇒ конвенция не задана
+// (применяется только git-ref-safe floor sandbox.ValidateBranchName).
+func (s *taskService) effectiveBranchPattern(project *models.Project, tmpl string) *regexp.Regexp {
+	if project.BranchNamePattern != nil && strings.TrimSpace(*project.BranchNamePattern) != "" {
+		raw := strings.TrimSpace(*project.BranchNamePattern)
+		if re, err := regexp.Compile(raw); err == nil {
+			return re
+		}
+		s.logger.Warn("task_service: invalid project branch_name_pattern, ignoring",
+			slog.String("project_id", project.ID.String()))
+		return nil
+	}
+	if tmpl == "" {
+		return nil
+	}
+	if re, err := CompileBranchPattern(tmpl); err == nil {
+		return re
+	}
+	return nil
+}
+
 func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole models.UserRole, projectID uuid.UUID, req dto.CreateTaskRequest) (*models.Task, error) {
-	if _, err := s.projectSvc.GetByID(ctx, userID, userRole, projectID); err != nil {
+	project, err := s.projectSvc.GetByID(ctx, userID, userRole, projectID)
+	if err != nil {
 		return nil, err
 	}
 	if err := validateTaskTitle(req.Title); err != nil {
@@ -602,12 +672,23 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		customTimeout = ct
 	}
 
+	// ExternalKey — ключ тикета (подставляется плейсхолдером {ticket} в имя ветки).
+	externalKey := ""
+	if req.ExternalKey != nil {
+		externalKey = strings.TrimSpace(*req.ExternalKey)
+	}
+	var externalKeyPtr *string
+	if externalKey != "" {
+		if err := ValidateExternalKey(externalKey); err != nil {
+			return nil, err
+		}
+		externalKeyPtr = &externalKey
+	}
+
 	taskID := uuid.New()
-	var branchName string
-	if req.BranchName != nil && *req.BranchName != "" {
-		branchName = *req.BranchName
-	} else {
-		branchName = generateBranchName(taskID, req.Title)
+	branchName, err := s.resolveBranchName(ctx, project, taskID, req, externalKey)
+	if err != nil {
+		return nil, err
 	}
 
 	task := &models.Task{
@@ -623,6 +704,7 @@ func (s *taskService) Create(ctx context.Context, userID uuid.UUID, userRole mod
 		Context:       ctxJSON,
 		Artifacts:     datatypes.JSON([]byte("{}")),
 		BranchName:    &branchName,
+		ExternalKey:   externalKeyPtr,
 		CustomTimeout: customTimeout,
 	}
 
@@ -770,6 +852,17 @@ func (s *taskService) Update(ctx context.Context, userID uuid.UUID, userRole mod
 		}
 		if req.BranchName != nil {
 			task.BranchName = req.BranchName
+		}
+		if req.ExternalKey != nil {
+			key := strings.TrimSpace(*req.ExternalKey)
+			if key == "" {
+				task.ExternalKey = nil
+			} else {
+				if err := ValidateExternalKey(key); err != nil {
+					return err
+				}
+				task.ExternalKey = &key
+			}
 		}
 		if req.CustomTimeout != nil {
 			if *req.CustomTimeout == "" {

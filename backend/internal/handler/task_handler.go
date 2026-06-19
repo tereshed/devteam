@@ -89,6 +89,11 @@ func writeTaskServiceError(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrTaskInvalidTimeout):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrInvalidTimeout, err.Error())
+	case errors.Is(err, service.ErrInvalidExternalKey), errors.Is(err, service.ErrTaskInvalidBranch):
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
+	case errors.Is(err, service.ErrExternalKeyRequired), errors.Is(err, service.ErrBranchNamingLocked),
+		errors.Is(err, service.ErrBranchPatternMismatch):
+		apierror.JSON(c, http.StatusUnprocessableEntity, apierror.ErrUnprocessable, err.Error())
 	case errors.Is(err, service.ErrTaskMessageInvalidType):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrUserCorrectionTooLarge), errors.Is(err, service.ErrUserCorrectionInvalidUTF8),

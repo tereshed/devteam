@@ -64,6 +64,15 @@ type Project struct {
 	GitProvider       GitProvider    `gorm:"type:varchar(50);not null;default:'local'" json:"git_provider"`
 	GitURL            string         `gorm:"type:varchar(1024)" json:"git_url"`
 	GitDefaultBranch  string         `gorm:"type:varchar(255);not null;default:'main'" json:"git_default_branch"`
+	// BranchNameTemplate — per-project шаблон имён git-веток (см. branch_template.go).
+	// NULL/'' ⇒ дефолт task/{short_id}-{slug}. Также источник «жёсткого формата»
+	// (из него выводится regex для валидации ручных override'ов).
+	BranchNameTemplate *string `gorm:"type:text" json:"branch_name_template,omitempty"`
+	// BranchNamePattern — опциональный явный regex формата ветки, перебивает выведенный
+	// из шаблона. NULL ⇒ использовать выведенный из BranchNameTemplate.
+	BranchNamePattern *string `gorm:"type:text" json:"branch_name_pattern,omitempty"`
+	// BranchNamingLocked — запрещает ручной override имени ветки (только генерируемое).
+	BranchNamingLocked bool `gorm:"type:boolean;not null;default:false" json:"branch_naming_locked"`
 	LastIndexedCommit string         `gorm:"type:varchar(255);not null;default:''" json:"last_indexed_commit"`
 	// IndexingStartedAt — момент последнего перехода в status=indexing; маркер давности
 	// для recovery осиротевшей индексации (RetentionService.RunOnceStuckIndexing).

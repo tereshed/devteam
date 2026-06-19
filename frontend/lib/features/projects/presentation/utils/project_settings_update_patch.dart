@@ -64,6 +64,9 @@ UpdateProjectRequest? buildProjectSettingsUpdateRequest({
   required Map<String, String> techStackEditedNonEmptyKeys,
   required bool pendingRemoveGitCredential,
   required bool explicitClearTechStack,
+  String branchNameTemplate = '',
+  String branchNamePattern = '',
+  bool branchNamingLocked = false,
 }) {
   String? gitProviderOut;
   if (gitProvider != baseline.gitProvider) {
@@ -127,6 +130,25 @@ UpdateProjectRequest? buildProjectSettingsUpdateRequest({
     clearTechStack: clearTechStack,
   );
 
+  // Именование веток: пустая строка осознанно отправляется как "" — backend
+  // трактует её как сброс к дефолту/выведенному (см. project_service.Update).
+  String? branchTemplateOut;
+  final trimmedTemplate = branchNameTemplate.trim();
+  if (trimmedTemplate != (baseline.branchNameTemplate ?? '').trim()) {
+    branchTemplateOut = trimmedTemplate;
+  }
+
+  String? branchPatternOut;
+  final trimmedPattern = branchNamePattern.trim();
+  if (trimmedPattern != (baseline.branchNamePattern ?? '').trim()) {
+    branchPatternOut = trimmedPattern;
+  }
+
+  bool? branchLockedOut;
+  if (branchNamingLocked != baseline.branchNamingLocked) {
+    branchLockedOut = branchNamingLocked;
+  }
+
   final req = UpdateProjectRequest(
     gitProvider: gitProviderOut,
     gitUrl: gitUrlOut,
@@ -135,6 +157,9 @@ UpdateProjectRequest? buildProjectSettingsUpdateRequest({
     techStack: techStackOut,
     clearTechStack: clearTechStack,
     removeGitCredential: removeGitCredential,
+    branchNameTemplate: branchTemplateOut,
+    branchNamePattern: branchPatternOut,
+    branchNamingLocked: branchLockedOut,
   );
 
   if (req.toJson().isEmpty) {

@@ -96,7 +96,10 @@ type Task struct {
 	Result          *string        `gorm:"type:text" json:"result"`
 	Artifacts       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"artifacts" swaggertype:"object"`
 	BranchName      *string        `gorm:"type:varchar(255)" json:"branch_name"`
-	ErrorMessage    *string        `gorm:"type:text" json:"error_message"`
+	// ExternalKey — внешний ключ тикета (напр. DEV-123). Подставляется плейсхолдером
+	// {ticket} в имя ветки; обязателен, если шаблон проекта требует {ticket}.
+	ExternalKey  *string `gorm:"type:varchar(64)" json:"external_key,omitempty"`
+	ErrorMessage *string `gorm:"type:text" json:"error_message"`
 	StartedAt       *time.Time     `gorm:"type:timestamp with time zone" json:"started_at"`
 	CompletedAt     *time.Time     `gorm:"type:timestamp with time zone" json:"completed_at"`
 

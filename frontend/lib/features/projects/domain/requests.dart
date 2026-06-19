@@ -114,6 +114,18 @@ abstract class UpdateProjectRequest with _$UpdateProjectRequest {
     /// пустая строка "" — сброс к user-промпту.
     @JsonKey(name: 'assistant_prompt')
     String? assistantPrompt,
+
+    /// Шаблон имён веток. null — не менять; "" — сброс к дефолту.
+    @JsonKey(name: 'branch_name_template')
+    String? branchNameTemplate,
+
+    /// Явный regex формата ветки. null — не менять; "" — сброс к выведенному.
+    @JsonKey(name: 'branch_name_pattern')
+    String? branchNamePattern,
+
+    /// Запрет ручного override имени ветки.
+    @JsonKey(name: 'branch_naming_locked')
+    bool? branchNamingLocked,
   }) = _UpdateProjectRequest;
 
   const UpdateProjectRequest._();

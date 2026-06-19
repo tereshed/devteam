@@ -67,6 +67,20 @@ abstract class ProjectModel with _$ProjectModel {
     @JsonKey(name: 'assistant_prompt')
     String? assistantPrompt,
 
+    /// Per-project шаблон имён git-веток ({ticket}/{slug}/{short_id}/...).
+    /// null/'' — дефолт task/{short_id}-{slug}.
+    @JsonKey(name: 'branch_name_template')
+    String? branchNameTemplate,
+
+    /// Явный regex «жёсткого формата» ветки. Перебивает выведенный из шаблона.
+    @JsonKey(name: 'branch_name_pattern')
+    String? branchNamePattern,
+
+    /// Запрет ручного override имени ветки (ветка только генерируемая).
+    @JsonKey(name: 'branch_naming_locked')
+    @Default(false)
+    bool branchNamingLocked,
+
     /// Дата создания
     @JsonKey(name: 'created_at')
     required DateTime createdAt,

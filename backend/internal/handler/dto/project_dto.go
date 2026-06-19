@@ -59,6 +59,14 @@ type UpdateProjectRequest struct {
 	// AssistantPrompt — per-project промпт ассистента (см. models.Project).
 	// Пустая строка → сброс в NULL (рантайм вернётся к user-промпту).
 	AssistantPrompt *string `json:"assistant_prompt"`
+	// BranchNameTemplate — per-project шаблон имён git-веток. Пустая строка → сброс в
+	// NULL (дефолт task/{short_id}-{slug}). Валидируется (ValidateBranchTemplate).
+	BranchNameTemplate *string `json:"branch_name_template"`
+	// BranchNamePattern — явный regex «жёсткого формата» ветки. Пустая строка → сброс
+	// в NULL (использовать выведенный из шаблона).
+	BranchNamePattern *string `json:"branch_name_pattern"`
+	// BranchNamingLocked — запрет ручного override имени ветки (только генерируемое).
+	BranchNamingLocked *bool `json:"branch_naming_locked"`
 }
 
 // GitCredentialSummary краткие данные credential без секретов.
@@ -95,9 +103,13 @@ type ProjectResponse struct {
 	Repositories []ProjectRepositoryResponse `json:"repositories,omitempty"`
 	// AssistantPrompt — per-project промпт ассистента (наследуется копией при
 	// создании проекта; nil — legacy/сброшен → используется user-промпт).
-	AssistantPrompt *string   `json:"assistant_prompt,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	AssistantPrompt *string `json:"assistant_prompt,omitempty"`
+	// BranchNameTemplate/Pattern/Locked — per-project конвенция именования веток.
+	BranchNameTemplate *string   `json:"branch_name_template,omitempty"`
+	BranchNamePattern  *string   `json:"branch_name_pattern,omitempty"`
+	BranchNamingLocked bool      `json:"branch_naming_locked"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // ProjectListResponse пагинированный список проектов.
@@ -153,6 +165,9 @@ func ToProjectResponse(p *models.Project) ProjectResponse {
 		Settings:                   p.Settings,
 		Repositories:               repos,
 		AssistantPrompt:            p.AssistantPrompt,
+		BranchNameTemplate:         p.BranchNameTemplate,
+		BranchNamePattern:          p.BranchNamePattern,
+		BranchNamingLocked:         p.BranchNamingLocked,
 		CreatedAt:                  p.CreatedAt,
 		UpdatedAt:                  p.UpdatedAt,
 	}

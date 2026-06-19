@@ -21,6 +21,9 @@ type CreateTaskRequest struct {
 	// (Developer/Tester c claude-code) использует при clone в контейнере.
 	// Без него orchestrator не сможет дойти до in_progress→review.
 	BranchName *string `json:"branch_name"`
+	// ExternalKey — ключ тикета задачи (напр. DEV-123). Обязателен, если шаблон имени
+	// ветки проекта содержит {ticket} без fallback (иначе 422 external_key_required).
+	ExternalKey *string `json:"external_key,omitempty"`
 	// CustomTimeout — per-task override task_timeout (формат time.ParseDuration:
 	// "4h", "90m", "1h30m"). Если пуст — используется глобальный default.
 	CustomTimeout *string `json:"custom_timeout,omitempty"`
@@ -60,6 +63,8 @@ type UpdateTaskRequest struct {
 	AssignedAgentID    *uuid.UUID `json:"assigned_agent_id"`
 	ClearAssignedAgent bool       `json:"clear_assigned_agent"`
 	BranchName         *string    `json:"branch_name"`
+	// ExternalKey — ключ тикета задачи (напр. DEV-123). Передача "" сбрасывает ключ.
+	ExternalKey *string `json:"external_key,omitempty"`
 	// CustomTimeout — per-task override task_timeout. Передача "" сбрасывает
 	// override (возвращает к глобальному default). Формат time.ParseDuration
 	// ("4h", "90m", "1h30m"), bounds: 1m..72h.
@@ -113,6 +118,7 @@ type TaskResponse struct {
 	Result        *string        `json:"result,omitempty"`
 	Artifacts     datatypes.JSON `json:"artifacts" swaggertype:"string"`
 	BranchName    *string        `json:"branch_name,omitempty"`
+	ExternalKey   *string        `json:"external_key,omitempty"`
 	CustomTimeout *string        `json:"custom_timeout,omitempty"`
 	ErrorMessage  *string        `json:"error_message,omitempty"`
 	SubTasks      []TaskSummary  `json:"sub_tasks,omitempty"`
@@ -235,6 +241,7 @@ func ToTaskResponse(t *models.Task) TaskResponse {
 		Result:        t.Result,
 		Artifacts:     t.Artifacts,
 		BranchName:    t.BranchName,
+		ExternalKey:   t.ExternalKey,
 		CustomTimeout: customTimeout,
 		ErrorMessage:  t.ErrorMessage,
 		SubTasks:      sub,

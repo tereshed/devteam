@@ -19,6 +19,7 @@ import 'package:frontend/features/tasks/presentation/state/task_states.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_display.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_message_metadata_redaction.dart';
 import 'package:frontend/features/tasks/presentation/utils/task_status_display.dart';
+import 'package:frontend/features/tasks/presentation/widgets/task_external_key_editor.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_timeout_editor.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_execution_graph.dart';
 import 'package:frontend/features/tasks/presentation/widgets/task_swimlane_trace.dart';
@@ -1044,6 +1045,8 @@ class _TaskHeaderSection extends ConsumerWidget {
         task.customTimeout != null && task.customTimeout!.isNotEmpty;
     final timeoutDisabled = data.realtimeMutationBlocked ||
         data.lifecycleMutationInFlight != null;
+    final hasExternalKey =
+        task.externalKey != null && task.externalKey!.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -1093,6 +1096,35 @@ class _TaskHeaderSection extends ConsumerWidget {
                           projectId: projectId,
                           taskId: taskId,
                           currentValue: task.customTimeout,
+                        )),
+              ),
+              InputChip(
+                avatar: Icon(
+                  hasExternalKey ? Icons.confirmation_number : Icons.confirmation_number_outlined,
+                  size: 18,
+                ),
+                label: Text(
+                  hasExternalKey
+                      ? '${l10n.tasksExternalKeyTitle}: ${task.externalKey}'
+                      : '${l10n.tasksExternalKeyTitle}: ${l10n.tasksExternalKeyNone}',
+                ),
+                backgroundColor: hasExternalKey
+                    ? scheme.secondaryContainer
+                    : scheme.surfaceContainerHighest,
+                labelStyle: TextStyle(
+                  color: hasExternalKey
+                      ? scheme.onSecondaryContainer
+                      : scheme.onSurfaceVariant,
+                ),
+                tooltip: l10n.tasksExternalKeyEdit,
+                onPressed: timeoutDisabled
+                    ? null
+                    : () => unawaited(showTaskExternalKeyDialog(
+                          context: context,
+                          ref: ref,
+                          projectId: projectId,
+                          taskId: taskId,
+                          currentValue: task.externalKey,
                         )),
               ),
             ],

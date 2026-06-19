@@ -175,6 +175,16 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 			}
 		}
 
+		// Авто-директива: если шаблон имён веток проекта требует {ticket}, ассистент
+		// обязан получить ключ у пользователя и НЕ выдумывать его. Жёсткий гейт всё
+		// равно в task_service.Create — это лишь чтобы агент спросил заранее.
+		if project.BranchNameTemplate != nil && TemplateRequiresTicket(strings.TrimSpace(*project.BranchNameTemplate)) {
+			pb.WriteString("\n=== TICKET KEY REQUIRED ===\n")
+			pb.WriteString("This project REQUIRES a ticket key (external_key, e.g. DEV-123) for EVERY task. ")
+			pb.WriteString("Before calling task_create, obtain the ticket key from the user and pass it as external_key. ")
+			pb.WriteString("NEVER invent or guess a ticket key — if the user did not provide one, ask for it.\n")
+		}
+
 		if len(teams) > 0 {
 			pb.WriteString("\n=== PROJECT TEAMS & AGENTS ===\n")
 			for _, t := range teams {
