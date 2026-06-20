@@ -26,6 +26,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -117,6 +118,9 @@ var (
 	// ErrAssistantInvalidInput — fast-fail валидация публичных методов.
 	// Handler → 400.
 	ErrAssistantInvalidInput = errors.New("assistant: invalid input")
+	// ErrAssistantNotRunning — StopRun по сессии, которая не выполняет петлю
+	// (busy=false или паркована на confirm). Handler → 409.
+	ErrAssistantNotRunning = errors.New("assistant: session is not running")
 	// ErrAssistantAgentNotConfigured — в БД нет agent с role='assistant'.
 	// Handler → 500 (это конфиг-ошибка деплоя).
 	ErrAssistantAgentNotConfigured = errors.New("assistant: agent registry entry is missing")
@@ -181,6 +185,11 @@ type AssistantService interface {
 	// исполняет tool в той же горутине (синхронно завершает confirm-call),
 	// затем стартует новую агент-петлю с обновлённой историей.
 	ConfirmToolCall(ctx context.Context, sessionID, userID uuid.UUID, toolCallID string, approved bool) error
+
+	// StopRun — кооперативно останавливает выполняющуюся агент-петлю: отменяет
+	// фоновый контекст, петля выходит на ближайшей итерации и пишет нейтральную
+	// заметку. ErrAssistantNotRunning, если сессия не busy / паркована на confirm.
+	StopRun(ctx context.Context, sessionID, userID uuid.UUID) error
 
 	// ResumeFromScout — wake-up распарканной на scout_dispatch сессии: закрывает
 	// pending tool_call досье (или ошибкой) как tool_result и поднимает луп.
@@ -276,11 +285,48 @@ func NewAssistantService(deps AssistantServiceDeps) (AssistantService, error) {
 	if deps.Logger == nil {
 		deps.Logger = logging.NopLogger()
 	}
-	return &assistantService{deps: deps}, nil
+	return &assistantService{
+		deps: deps,
+		runs: make(map[uuid.UUID]context.CancelFunc),
+	}, nil
 }
 
 type assistantService struct {
 	deps AssistantServiceDeps
+	// runs — реестр cancel-функций активных агент-петель по session_id, чтобы
+	// StopRun мог мгновенно отменить фоновый контекст (in-process; кросс-инстансно
+	// stuck-busy расклинивается через ReleaseBusy в StopRun).
+	runsMu sync.Mutex
+	runs   map[uuid.UUID]context.CancelFunc
+}
+
+// trackRun регистрирует cancel активной петли. Если по session_id уже есть запись
+// (не должно при корректном busy-гарде) — отменяет старую во избежание утечки.
+func (s *assistantService) trackRun(sessionID uuid.UUID, cancel context.CancelFunc) {
+	s.runsMu.Lock()
+	if old, ok := s.runs[sessionID]; ok {
+		old()
+	}
+	s.runs[sessionID] = cancel
+	s.runsMu.Unlock()
+}
+
+func (s *assistantService) untrackRun(sessionID uuid.UUID) {
+	s.runsMu.Lock()
+	delete(s.runs, sessionID)
+	s.runsMu.Unlock()
+}
+
+// cancelRun отменяет активную петлю по session_id. Возвращает false, если на этом
+// инстансе нет зарегистрированной петли (рестарт/другой инстанс).
+func (s *assistantService) cancelRun(sessionID uuid.UUID) bool {
+	s.runsMu.Lock()
+	cancel, ok := s.runs[sessionID]
+	s.runsMu.Unlock()
+	if ok {
+		cancel()
+	}
+	return ok
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -496,6 +542,35 @@ func (s *assistantService) SendMessage(ctx context.Context, sessionID, userID uu
 	go s.runAgentLoop(context.Background(), sessionID, userID)
 
 	return userMsg, false, nil
+}
+
+// StopRun — кооперативно останавливает выполняющуюся петлю ассистента.
+func (s *assistantService) StopRun(ctx context.Context, sessionID, userID uuid.UUID) error {
+	if sessionID == uuid.Nil || userID == uuid.Nil {
+		return ErrAssistantInvalidInput
+	}
+	sess, err := s.deps.Repo.GetSession(ctx, sessionID, userID)
+	if err != nil {
+		return s.mapRepoErr(err)
+	}
+	// Останавливать имеет смысл только активную петлю. Паркованную на confirm
+	// сессию пользователь закрывает через deny, а не stop.
+	if !sess.Busy || sess.PendingToolCallID != nil {
+		return ErrAssistantNotRunning
+	}
+	if s.cancelRun(sessionID) {
+		// Петля сама снимет busy и допишет заметку (см. runWithRecovery).
+		return nil
+	}
+	// Нет живой горутины на этом инстансе (рестарт/другой инстанс), но сессия
+	// числится busy — расклиниваем вручную, чтобы пользователь не залип.
+	if relErr := s.deps.Repo.ReleaseBusy(ctx, sessionID); relErr != nil {
+		return s.mapRepoErr(relErr)
+	}
+	if fresh, gerr := s.deps.Repo.GetSession(ctx, sessionID, userID); gerr == nil {
+		s.broadcastSessionUpdated(userID, fresh)
+	}
+	return nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

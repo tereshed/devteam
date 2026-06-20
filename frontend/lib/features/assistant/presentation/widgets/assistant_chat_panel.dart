@@ -296,9 +296,16 @@ class _AssistantChatPanelState extends ConsumerState<AssistantChatPanel> {
             controller: _inputController,
             focusNode: _inputFocus,
             onSend: _onSend,
+            onStop: state.isBusy
+                ? () => ref
+                    .read(assistantChatControllerProvider.notifier)
+                    .stopSession()
+                : null,
+            isStopActive: state.isBusy,
             isSending: state.isBusy,
             hintText: l10n.assistantInputHint,
             sendTooltip: l10n.assistantSend,
+            stopTooltip: l10n.assistantStop,
             isVoiceEnabled: isVoiceEnabled,
             voiceModel: voiceModel,
           ),

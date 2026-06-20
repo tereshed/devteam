@@ -257,6 +257,22 @@ class AssistantChatController extends _$AssistantChatController {
     }
   }
 
+  /// Останавливает выполняющуюся петлю ассистента (кнопка «Стоп»).
+  /// Best-effort: busy реконсилится через WS session_updated / polling, поэтому
+  /// гонку «уже завершилось» (409 not_running) и сетевые сбои не баннерим.
+  Future<void> stopSession() async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return;
+    }
+    final repo = ref.read(assistantRepositoryProvider);
+    try {
+      await repo.stopRun(sessionId);
+    } on AssistantRepositoryException {
+      // Игнорируем: состояние сессии всё равно придёт через WS/polling.
+    }
+  }
+
   Future<void> _selectSession(AssistantSessionModel session) async {
     // Гард scope: сессия чужого scope (глобальная внутри проекта, чужой проект,
     // проектная на глобальном экране) не может стать текущей — ассистент молча

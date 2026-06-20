@@ -2517,6 +2517,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get assistantSend => 'Send';
 
   @override
+  String get assistantStop => 'Stop';
+
+  @override
+  String get assistantCopyMessage => 'Copy';
+
+  @override
+  String get assistantCopied => 'Copied';
+
+  @override
   String get assistantConfirmTitle => 'Confirm action';
 
   @override

@@ -566,6 +566,7 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				assistant.GET("/sessions/:id/messages", deps.AssistantHandler.GetMessages)
 				assistant.POST("/sessions/:id/messages", deps.AssistantHandler.SendMessage)
 				assistant.POST("/sessions/:id/confirm", deps.AssistantHandler.ConfirmToolCall)
+				assistant.POST("/sessions/:id/stop", deps.AssistantHandler.StopRun)
 			}
 		}
 

@@ -41,6 +41,7 @@ class ChatMessage extends StatefulWidget {
     required this.content,
     this.isStreaming = false,
     this.messageId,
+    this.selectable = true,
   });
 
   /// Одно из [conversationMessageRoles]: `user` | `assistant` | `system`.
@@ -54,6 +55,10 @@ class ChatMessage extends StatefulWidget {
 
   /// Уникальный ID сообщения (необходимо для интерактивных опросов и кнопок).
   final String? messageId;
+
+  /// Включает собственный [MarkdownBody.selectable]. Выставляй `false`, когда
+  /// лента обёрнута во внешний [SelectionArea] (единое выделение по всему чату).
+  final bool selectable;
 
   /// Убираем [md.InlineHtmlSyntax] из GFM inline-набора — иначе `<script>` в строке стал бы узлом HTML.
   /// Блоковый HTML из [BlockParser.standardBlockSyntaxes] ([HtmlBlockSyntax]) даёт в AST обычный
@@ -236,7 +241,7 @@ class _ChatMessageState extends State<ChatMessage> {
     return RepaintBoundary(
       child: MarkdownBody(
         data: _processed,
-        selectable: true,
+        selectable: widget.selectable,
         softLineBreak: true,
         extensionSet: ChatMessage.safeGfmExtensionSet,
         styleSheet: sheet,

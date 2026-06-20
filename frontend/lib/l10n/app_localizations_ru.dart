@@ -2544,6 +2544,15 @@ class AppLocalizationsRu extends AppLocalizations {
   String get assistantSend => 'Отправить';
 
   @override
+  String get assistantStop => 'Остановить';
+
+  @override
+  String get assistantCopyMessage => 'Копировать';
+
+  @override
+  String get assistantCopied => 'Скопировано';
+
+  @override
   String get assistantConfirmTitle => 'Подтвердите действие';
 
   @override

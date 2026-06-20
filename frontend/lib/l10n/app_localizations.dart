@@ -4622,6 +4622,24 @@ abstract class AppLocalizations {
   /// **'Отправить'**
   String get assistantSend;
 
+  /// No description provided for @assistantStop.
+  ///
+  /// In ru, this message translates to:
+  /// **'Остановить'**
+  String get assistantStop;
+
+  /// No description provided for @assistantCopyMessage.
+  ///
+  /// In ru, this message translates to:
+  /// **'Копировать'**
+  String get assistantCopyMessage;
+
+  /// No description provided for @assistantCopied.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировано'**
+  String get assistantCopied;
+
   /// No description provided for @assistantConfirmTitle.
   ///
   /// In ru, this message translates to:

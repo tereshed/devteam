@@ -468,7 +468,9 @@ class _ChatInputState extends ConsumerState<ChatInput> with SingleTickerProvider
                   if (widget.onStop != null) ...[
                     IconButton(
                       tooltip: widget.stopTooltip,
-                      onPressed: widget.isSending || _isTranscribing ? null : widget.onStop,
+                      // Стоп активен именно когда идёт операция (isSending);
+                      // блокируем только во время распознавания речи.
+                      onPressed: _isTranscribing ? null : widget.onStop,
                       style: widget.isStopActive
                           ? IconButton.styleFrom(
                               foregroundColor: theme.colorScheme.error,

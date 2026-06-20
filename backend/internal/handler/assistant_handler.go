@@ -485,6 +485,39 @@ func (h *AssistantHandler) ConfirmToolCall(c *gin.Context) {
 	c.JSON(http.StatusAccepted, dto.ConfirmToolCallResponse{Accepted: true})
 }
 
+// StopRun останавливает выполняющуюся агент-петлю ассистента.
+// @Summary Остановить выполнение ассистента
+// @Description Кооперативно прерывает выполняющуюся петлю ассистента (например, когда он зациклился на ошибке). Петля выходит на ближайшей итерации и освобождает сессию.
+// @Tags assistant
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Security OAuth2Password
+// @Param id path string true "Session ID" format(uuid)
+// @Success 204 "Остановлено"
+// @Failure 400 {object} apierror.ErrorResponse "Невалидный UUID"
+// @Failure 401 {object} apierror.ErrorResponse "Не авторизован"
+// @Failure 404 {object} apierror.ErrorResponse "Сессия не найдена"
+// @Failure 409 {object} apierror.ErrorResponse "Сессия не выполняется"
+// @Failure 500 {object} apierror.ErrorResponse "Внутренняя ошибка"
+// @Router /assistant/sessions/{id}/stop [post]
+func (h *AssistantHandler) StopRun(c *gin.Context) {
+	uid, ok := getUserID(c)
+	if !ok {
+		apierror.JSON(c, http.StatusUnauthorized, apierror.ErrAccessDenied, "Unauthorized")
+		return
+	}
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid session_id format")
+		return
+	}
+	if err := h.service.StopRun(c.Request.Context(), sessionID, uid); err != nil {
+		h.respondAssistantError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Active tasks (Tasks-tab правой панели)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -555,6 +588,8 @@ func (h *AssistantHandler) respondAssistantError(c *gin.Context, err error) {
 		apierror.JSON(c, http.StatusConflict, "no_pending_confirmation", err.Error())
 	case errors.Is(err, service.ErrAssistantAlreadyConfirmed):
 		apierror.JSON(c, http.StatusConflict, "already_confirmed", err.Error())
+	case errors.Is(err, service.ErrAssistantNotRunning):
+		apierror.JSON(c, http.StatusConflict, "not_running", err.Error())
 	case errors.Is(err, service.ErrAssistantAgentNotConfigured):
 		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, err.Error())
 	default:

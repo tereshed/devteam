@@ -4065,6 +4065,48 @@ paths:
       summary: Отправка сообщения ассистенту
       tags:
       - assistant
+  /assistant/sessions/{id}/stop:
+    post:
+      description: Кооперативно прерывает выполняющуюся петлю ассистента (например,
+        когда он зациклился на ошибке). Петля выходит на ближайшей итерации и освобождает
+        сессию.
+      parameters:
+      - description: Session ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Остановлено
+        "400":
+          description: Невалидный UUID
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Сессия не найдена
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "409":
+          description: Сессия не выполняется
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OAuth2Password: []
+      summary: Остановить выполнение ассистента
+      tags:
+      - assistant
   /assistant/status:
     get:
       description: Возвращает статус конфигурации ассистента (настроены ли ключи).

@@ -86,6 +86,11 @@ func (m *MockAssistantService) ResumeFromScout(ctx context.Context, sessionID, u
 	m.Called(ctx, sessionID, userID, toolCallID, dossier, runErr)
 }
 
+func (m *MockAssistantService) StopRun(ctx context.Context, sessionID, userID uuid.UUID) error {
+	args := m.Called(ctx, sessionID, userID)
+	return args.Error(0)
+}
+
 func (m *MockAssistantService) ListActiveTasks(ctx context.Context, userID uuid.UUID) ([]service.ActiveTaskSummary, error) {
 	args := m.Called(ctx, userID)
 	var tasks []service.ActiveTaskSummary

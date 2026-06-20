@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:frontend/features/assistant/domain/assistant_message_model.dart';
 import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
+import 'package:frontend/l10n/app_localizations.dart';
 
 /// Сообщение ассистента/пользователя/системы (Sprint 21 §8, redesign).
 ///
@@ -9,6 +11,10 @@ import 'package:frontend/features/chat/presentation/widgets/chat_message.dart';
 /// - ассистент — на всю ширину с аватаром (markdown/таблицам есть место);
 /// - система — приглушённая строка с иконкой.
 /// Ярлыки ролей убраны: роль читается по выравниванию/аватару.
+///
+/// Текст выделяется мышью (MarkdownBody.selectable). Дополнительно у каждого
+/// сообщения есть кнопка «Копировать» — гарантированный способ забрать текст
+/// независимо от платформы/жестов.
 class AssistantMessageBubble extends StatelessWidget {
   const AssistantMessageBubble({super.key, required this.message});
 
@@ -33,21 +39,29 @@ class AssistantMessageBubble extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(40, 4, 12, 4),
         child: Align(
           alignment: Alignment.centerRight,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 300),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: scheme.primary,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 300),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(4),
+                    ),
+                  ),
+                  child: _content(theme, scheme.onPrimary, chatRole, isSystem),
                 ),
               ),
-              child: _content(theme, scheme.onPrimary, chatRole, isSystem),
-            ),
+              _copyButton(context, message.content ?? ''),
+            ],
           ),
         ),
       );
@@ -72,7 +86,15 @@ class AssistantMessageBubble extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(child: _content(theme, fg, chatRole, isSystem)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _content(theme, fg, chatRole, isSystem),
+                _copyButton(context, message.content ?? ''),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -102,6 +124,35 @@ class AssistantMessageBubble extends StatelessWidget {
         role: chatRole,
         content: message.content ?? '',
         messageId: message.id,
+      ),
+    );
+  }
+
+  /// Кнопка-копирование всего текста сообщения в буфер обмена.
+  Widget _copyButton(BuildContext context, String text) {
+    if (text.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: IconButton(
+        icon: const Icon(Icons.copy_rounded, size: 15),
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 30, minHeight: 26),
+        color: scheme.onSurfaceVariant,
+        tooltip: l10n.assistantCopyMessage,
+        onPressed: () {
+          Clipboard.setData(ClipboardData(text: text));
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(l10n.assistantCopied),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        },
       ),
     );
   }

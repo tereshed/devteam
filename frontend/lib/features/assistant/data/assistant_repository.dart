@@ -168,6 +168,32 @@ class AssistantRepository {
     }
   }
 
+  /// `POST /assistant/sessions/:id/stop` — кооперативно останавливает
+  /// выполняющуюся петлю ассистента. 204 — остановлено; 409 — сессия не
+  /// выполняется (гонка «уже завершилось»).
+  Future<void> stopRun(
+    String sessionId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (sessionId.isEmpty) {
+      throw ArgumentError('sessionId is required');
+    }
+    try {
+      final response = await _dio.post<void>(
+        '/assistant/sessions/$sessionId/stop',
+        cancelToken: cancelToken,
+      );
+      if (response.statusCode != 204) {
+        throw AssistantApiException(
+          'Expected status 204, got ${response.statusCode}',
+          statusCode: response.statusCode,
+        );
+      }
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   // ──────────────────────────── Messages ────────────────────────────
 
   /// `GET /assistant/sessions/:id/messages` — курсорная пагинация.

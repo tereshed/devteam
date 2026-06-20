@@ -47,6 +47,10 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	ctx, cancel := context.WithTimeout(parent, AssistantLoopTimeout)
 	defer cancel()
 
+	// Регистрируем cancel, чтобы StopRun мог мгновенно прервать петлю.
+	s.trackRun(sessionID, cancel)
+	defer s.untrackRun(sessionID)
+
 	// released flag — управляет тем, снимать ли busy в defer'е. По умолчанию
 	// true (снимаем); если Run вернёт Parked — выставляем в false ДО возврата.
 	releaseBusy := true
@@ -180,9 +184,12 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		// равно в task_service.Create — это лишь чтобы агент спросил заранее.
 		if project.BranchNameTemplate != nil && TemplateRequiresTicket(strings.TrimSpace(*project.BranchNameTemplate)) {
 			pb.WriteString("\n=== TICKET KEY REQUIRED ===\n")
-			pb.WriteString("This project REQUIRES a ticket key (external_key, e.g. DEV-123) for EVERY task. ")
-			pb.WriteString("Before calling task_create, obtain the ticket key from the user and pass it as external_key. ")
-			pb.WriteString("NEVER invent or guess a ticket key — if the user did not provide one, ask for it.\n")
+			pb.WriteString("This project REQUIRES a ticket key (e.g. DEV-123) for EVERY task. ")
+			pb.WriteString("You MUST pass the key via the task_create `external_key` parameter. ")
+			pb.WriteString("Do NOT put it only in the title, description or acceptance_criteria — it MUST be set in external_key. ")
+			pb.WriteString("Extract the key from the user's request and set external_key to it. ")
+			pb.WriteString("NEVER invent or guess a key — if the user did not provide one, ask before creating the task. ")
+			pb.WriteString("Calling task_create without external_key will fail with external_key_required.\n")
 		}
 
 		if len(teams) > 0 {
@@ -293,6 +300,16 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		s.appendErrorMessage(ctx, sessionID, userID, fmt.Sprintf("превышен лимит шагов (%d), сформулируйте запрос точнее", AssistantMaxIterations))
 
 	case agentloop.StatusFailed:
+		// Пользователь нажал «Стоп» → StopRun отменил контекст (context.Canceled,
+		// в отличие от timeout = DeadlineExceeded). Не показываем ошибку — пишем
+		// нейтральную заметку. ctx уже отменён, поэтому пишем на context.Background().
+		if errors.Is(result.Cause, context.Canceled) && ctx.Err() == context.Canceled {
+			s.deps.Logger.InfoContext(context.Background(), "assistant: loop stopped by user",
+				slog.String("session_id", sessionID.String()),
+			)
+			s.appendAssistantNote(context.Background(), sessionID, userID, "⏹️ Выполнение остановлено.")
+			return
+		}
 		// Cause может быть ctx-timeout, LLM-error, hook-error.
 		// В историю — нейтральный текст; детали — только в лог.
 		causeStr := ""
