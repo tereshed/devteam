@@ -67,6 +67,7 @@ UpdateProjectRequest? buildProjectSettingsUpdateRequest({
   String branchNameTemplate = '',
   String branchNamePattern = '',
   bool branchNamingLocked = false,
+  String mrTitleTemplate = '',
 }) {
   String? gitProviderOut;
   if (gitProvider != baseline.gitProvider) {
@@ -149,6 +150,12 @@ UpdateProjectRequest? buildProjectSettingsUpdateRequest({
     branchLockedOut = branchNamingLocked;
   }
 
+  String? mrTitleOut;
+  final trimmedMrTitle = mrTitleTemplate.trim();
+  if (trimmedMrTitle != (baseline.mrTitleTemplate ?? '').trim()) {
+    mrTitleOut = trimmedMrTitle;
+  }
+
   final req = UpdateProjectRequest(
     gitProvider: gitProviderOut,
     gitUrl: gitUrlOut,
@@ -160,6 +167,7 @@ UpdateProjectRequest? buildProjectSettingsUpdateRequest({
     branchNameTemplate: branchTemplateOut,
     branchNamePattern: branchPatternOut,
     branchNamingLocked: branchLockedOut,
+    mrTitleTemplate: mrTitleOut,
   );
 
   if (req.toJson().isEmpty) {

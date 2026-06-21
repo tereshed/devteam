@@ -73,6 +73,9 @@ type Project struct {
 	BranchNamePattern *string `gorm:"type:text" json:"branch_name_pattern,omitempty"`
 	// BranchNamingLocked — запрещает ручной override имени ветки (только генерируемое).
 	BranchNamingLocked bool `gorm:"type:boolean;not null;default:false" json:"branch_naming_locked"`
+	// MRTitleTemplate — per-project шаблон тайтла MR/PR ({title}/{ticket}/{branch}/...).
+	// NULL/'' ⇒ дефолт «PolyMaths: {title}».
+	MRTitleTemplate *string `gorm:"type:text" json:"mr_title_template,omitempty"`
 	LastIndexedCommit string         `gorm:"type:varchar(255);not null;default:''" json:"last_indexed_commit"`
 	// IndexingStartedAt — момент последнего перехода в status=indexing; маркер давности
 	// для recovery осиротевшей индексации (RetentionService.RunOnceStuckIndexing).

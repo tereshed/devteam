@@ -165,6 +165,55 @@ func TestCompileBranchPatternUnknownPlaceholder(t *testing.T) {
 	}
 }
 
+func mrVars(title, ticket, branch, repo string) MRTitleVars {
+	return MRTitleVars{
+		TaskID:      fixedTaskID,
+		Title:       title,
+		ExternalKey: ticket,
+		Branch:      branch,
+		RepoSlug:    repo,
+		Now:         time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC),
+	}
+}
+
+func TestRenderMRTitle(t *testing.T) {
+	cases := []struct {
+		name   string
+		tmpl   string
+		ticket string
+		want   string
+	}{
+		{"default empty reproduces legacy", "", "DEV-123", "PolyMaths: Fix login bug"},
+		{"ticket prefix", "[{ticket}] {title}", "DEV-123", "[DEV-123] Fix login bug"},
+		{"ticket colon title", "{ticket}: {title}", "DEV-123", "DEV-123: Fix login bug"},
+		{"empty ticket collapses spaces", "{ticket} {title}", "", "Fix login bug"},
+		{"branch and repo", "{repo} {branch}", "DEV-123", "main issue/DEV-123_fix"},
+		{"unknown placeholder dropped", "x {nope} {title}", "DEV-123", "x Fix login bug"},
+		{"short_id", "{short_id} {title}", "DEV-123", "a1b2c3d4 Fix login bug"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := RenderMRTitle(tc.tmpl, mrVars("Fix login bug", tc.ticket, "issue/DEV-123_fix", "main"))
+			if got != tc.want {
+				t.Errorf("RenderMRTitle(%q) = %q, want %q", tc.tmpl, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateMRTitleTemplate(t *testing.T) {
+	for _, ok := range []string{"", "[{ticket}] {title}", "{repo}: {branch} ({short_id})"} {
+		if err := ValidateMRTitleTemplate(ok); err != nil {
+			t.Errorf("ValidateMRTitleTemplate(%q) unexpected error: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"{title} {bogus}", "{ticket|wat}"} {
+		if err := ValidateMRTitleTemplate(bad); !errors.Is(err, ErrMRTitleTemplateInvalid) {
+			t.Errorf("ValidateMRTitleTemplate(%q) = %v, want ErrMRTitleTemplateInvalid", bad, err)
+		}
+	}
+}
+
 func TestValidateBranchTemplate(t *testing.T) {
 	ok := []string{"", "issue/{ticket}_{slug}", "task/{short_id}-{slug}", "{ticket|short_id}/{date}"}
 	for _, tmpl := range ok {

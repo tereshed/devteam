@@ -126,6 +126,10 @@ abstract class UpdateProjectRequest with _$UpdateProjectRequest {
     /// Запрет ручного override имени ветки.
     @JsonKey(name: 'branch_naming_locked')
     bool? branchNamingLocked,
+
+    /// Шаблон тайтла MR. null — не менять; "" — сброс к дефолту.
+    @JsonKey(name: 'mr_title_template')
+    String? mrTitleTemplate,
   }) = _UpdateProjectRequest;
 
   const UpdateProjectRequest._();

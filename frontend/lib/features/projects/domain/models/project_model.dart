@@ -81,6 +81,11 @@ abstract class ProjectModel with _$ProjectModel {
     @Default(false)
     bool branchNamingLocked,
 
+    /// Шаблон тайтла MR/PR ({title}/{ticket}/{branch}/...).
+    /// null/'' — дефолт «PolyMaths: {title}».
+    @JsonKey(name: 'mr_title_template')
+    String? mrTitleTemplate,
+
     /// Дата создания
     @JsonKey(name: 'created_at')
     required DateTime createdAt,

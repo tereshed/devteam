@@ -2300,6 +2300,24 @@ abstract class AppLocalizations {
   /// **'Превью'**
   String get projectSettingsBranchPreviewLabel;
 
+  /// No description provided for @projectSettingsMrTitleTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Название MR / PR'**
+  String get projectSettingsMrTitleTitle;
+
+  /// No description provided for @projectSettingsMrTitleLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Шаблон названия MR'**
+  String get projectSettingsMrTitleLabel;
+
+  /// No description provided for @projectSettingsMrTitleHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Плейсхолдеры: title, ticket, slug, branch, repo, short_id, date. Пусто — PolyMaths: title.'**
+  String get projectSettingsMrTitleHint;
+
   /// Карточка read-only credential
   ///
   /// In ru, this message translates to:

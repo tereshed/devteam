@@ -1258,6 +1258,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectSettingsBranchPreviewLabel => 'Preview';
 
   @override
+  String get projectSettingsMrTitleTitle => 'MR / PR title';
+
+  @override
+  String get projectSettingsMrTitleLabel => 'MR title template';
+
+  @override
+  String get projectSettingsMrTitleHint =>
+      'Placeholders: title, ticket, slug, branch, repo, short_id, date. Empty = PolyMaths: title.';
+
+  @override
   String get projectSettingsGitCredentialCardTitle => 'Linked Git credential';
 
   @override

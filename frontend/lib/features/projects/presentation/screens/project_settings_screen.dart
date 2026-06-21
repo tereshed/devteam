@@ -46,6 +46,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
   final _branchCtrl = TextEditingController();
   final _branchTemplateCtrl = TextEditingController();
   final _branchPatternCtrl = TextEditingController();
+  final _mrTitleCtrl = TextEditingController();
   final _vectorCtrl = TextEditingController();
 
   String _gitProvider = gitProviders.first;
@@ -74,6 +75,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     _branchCtrl.dispose();
     _branchTemplateCtrl.dispose();
     _branchPatternCtrl.dispose();
+    _mrTitleCtrl.dispose();
     _vectorCtrl.dispose();
     for (final r in _techRows) {
       r.dispose();
@@ -94,6 +96,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     _branchCtrl.clear();
     _branchTemplateCtrl.clear();
     _branchPatternCtrl.clear();
+    _mrTitleCtrl.clear();
     _vectorCtrl.clear();
     setState(() {
       _dirty = false;
@@ -118,6 +121,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     _branchCtrl.text = p.gitDefaultBranch;
     _branchTemplateCtrl.text = p.branchNameTemplate ?? '';
     _branchPatternCtrl.text = p.branchNamePattern ?? '';
+    _mrTitleCtrl.text = p.mrTitleTemplate ?? '';
     _branchNamingLocked = p.branchNamingLocked;
     _vectorCtrl.text = p.vectorCollection;
     _vectorSnapshotBeforeEdit = p.vectorCollection.trim();
@@ -188,6 +192,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
       branchNameTemplate: _branchTemplateCtrl.text,
       branchNamePattern: _branchPatternCtrl.text,
       branchNamingLocked: _branchNamingLocked,
+      mrTitleTemplate: _mrTitleCtrl.text,
     );
 
     if (patch == null || patch.toJson().isEmpty) {
@@ -460,6 +465,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                                   branchController: _branchCtrl,
                                   branchTemplateController: _branchTemplateCtrl,
                                   branchPatternController: _branchPatternCtrl,
+                                  mrTitleController: _mrTitleCtrl,
                                   branchNamingLocked: _branchNamingLocked,
                                   onBranchNamingLockedChanged: (v) {
                                     setState(() {

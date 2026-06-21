@@ -12,6 +12,7 @@ class BranchNamingSection extends StatefulWidget {
     super.key,
     required this.templateController,
     required this.patternController,
+    required this.mrTitleController,
     required this.locked,
     required this.onLockedChanged,
     required this.onChanged,
@@ -19,6 +20,7 @@ class BranchNamingSection extends StatefulWidget {
 
   final TextEditingController templateController;
   final TextEditingController patternController;
+  final TextEditingController mrTitleController;
   final bool locked;
   final ValueChanged<bool> onLockedChanged;
   final VoidCallback onChanged;
@@ -32,11 +34,13 @@ class _BranchNamingSectionState extends State<BranchNamingSection> {
   void initState() {
     super.initState();
     widget.templateController.addListener(_onTemplateChanged);
+    widget.mrTitleController.addListener(_onTemplateChanged);
   }
 
   @override
   void dispose() {
     widget.templateController.removeListener(_onTemplateChanged);
+    widget.mrTitleController.removeListener(_onTemplateChanged);
     super.dispose();
   }
 
@@ -49,6 +53,7 @@ class _BranchNamingSectionState extends State<BranchNamingSection> {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final preview = branchTemplatePreview(widget.templateController.text);
+    final mrPreview = mrTitlePreview(widget.mrTitleController.text);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -127,6 +132,61 @@ class _BranchNamingSectionState extends State<BranchNamingSection> {
           onChanged: widget.onLockedChanged,
           title: Text(l10n.projectSettingsBranchLockLabel),
           subtitle: Text(l10n.projectSettingsBranchLockSubtitle),
+        ),
+        const SizedBox(height: 12),
+        const Divider(height: 1),
+        const SizedBox(height: 16),
+        Text(
+          l10n.projectSettingsMrTitleTitle,
+          style: theme.textTheme.titleSmall,
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          key: const ValueKey('project-settings-mr-title-template'),
+          controller: widget.mrTitleController,
+          decoration: InputDecoration(
+            labelText: l10n.projectSettingsMrTitleLabel,
+            hintText: '[{ticket}] {title}',
+            helperText: l10n.projectSettingsMrTitleHint,
+            helperMaxLines: 3,
+          ),
+          onChanged: (_) => widget.onChanged(),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.merge_type,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.projectSettingsBranchPreviewLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    SelectableText(
+                      mrPreview,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

@@ -161,6 +161,23 @@ void main() {
     expect(req!.branchNamingLocked, isTrue);
   });
 
+  test('задание шаблона тайтла MR → mr_title_template в патче', () {
+    final baseline = makeProject();
+    final req = buildProjectSettingsUpdateRequest(
+      baseline: baseline,
+      gitProvider: baseline.gitProvider,
+      gitUrl: baseline.gitUrl,
+      gitDefaultBranch: baseline.gitDefaultBranch,
+      vectorCollection: baseline.vectorCollection,
+      techStackEditedNonEmptyKeys: const {},
+      pendingRemoveGitCredential: false,
+      explicitClearTechStack: false,
+      mrTitleTemplate: '[{ticket}] {title}',
+    );
+    expect(req, isNotNull);
+    expect(req!.mrTitleTemplate, '[{ticket}] {title}');
+  });
+
   test('шаблон без изменений → не попадает в патч', () {
     final baseline =
         makeProject().copyWith(branchNameTemplate: 'task/{short_id}-{slug}');

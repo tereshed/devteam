@@ -1273,6 +1273,16 @@ class AppLocalizationsRu extends AppLocalizations {
   String get projectSettingsBranchPreviewLabel => 'Превью';
 
   @override
+  String get projectSettingsMrTitleTitle => 'Название MR / PR';
+
+  @override
+  String get projectSettingsMrTitleLabel => 'Шаблон названия MR';
+
+  @override
+  String get projectSettingsMrTitleHint =>
+      'Плейсхолдеры: title, ticket, slug, branch, repo, short_id, date. Пусто — PolyMaths: title.';
+
+  @override
   String get projectSettingsGitCredentialCardTitle =>
       'Привязанный Git credential';
 

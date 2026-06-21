@@ -93,7 +93,8 @@ func writeProjectServiceError(c *gin.Context, err error) {
 		errors.Is(err, service.ErrUpdateProjectGitCredentialConflict),
 		errors.Is(err, service.ErrUpdateProjectTechStackConflict),
 		errors.Is(err, service.ErrUpdateProjectSettingsConflict),
-		errors.Is(err, service.ErrBranchTemplateInvalid):
+		errors.Is(err, service.ErrBranchTemplateInvalid),
+		errors.Is(err, service.ErrMRTitleTemplateInvalid):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	default:
 		apierror.JSON(c, http.StatusInternalServerError, apierror.ErrInternalServerError, "Request failed")

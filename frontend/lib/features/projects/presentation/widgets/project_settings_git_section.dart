@@ -15,6 +15,7 @@ class ProjectSettingsGitSection extends StatelessWidget {
     required this.branchController,
     required this.branchTemplateController,
     required this.branchPatternController,
+    required this.mrTitleController,
     required this.branchNamingLocked,
     required this.onBranchNamingLockedChanged,
     required this.project,
@@ -29,6 +30,7 @@ class ProjectSettingsGitSection extends StatelessWidget {
   final TextEditingController branchController;
   final TextEditingController branchTemplateController;
   final TextEditingController branchPatternController;
+  final TextEditingController mrTitleController;
   final bool branchNamingLocked;
   final ValueChanged<bool> onBranchNamingLockedChanged;
   final ProjectModel project;
@@ -107,6 +109,7 @@ class ProjectSettingsGitSection extends StatelessWidget {
         BranchNamingSection(
           templateController: branchTemplateController,
           patternController: branchPatternController,
+          mrTitleController: mrTitleController,
           locked: branchNamingLocked,
           onLockedChanged: onBranchNamingLockedChanged,
           onChanged: onFieldChanged,

@@ -65,3 +65,66 @@ String branchTemplatePreview(
   }
   return out;
 }
+
+/// Best-effort клиентский рендер шаблона тайтла MR (зеркало RenderMRTitle на бэке).
+/// Плейсхолдеры подставляются как есть; {title} — сырой заголовок (без слугификации).
+String mrTitlePreview(
+  String template, {
+  String title = 'Fix login bug',
+  String ticket = 'DEV-123',
+  String branch = 'issue/DEV-123_fix-login-bug',
+  String shortId = 'a1b2c3d4',
+}) {
+  var tmpl = template.trim();
+  if (tmpl.isEmpty) {
+    tmpl = 'PolyMaths: {title}';
+  }
+  String slug(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+
+  String resolve(String name) {
+    switch (name) {
+      case 'title':
+        return title;
+      case 'slug':
+        return slug(title);
+      case 'ticket':
+        return ticket;
+      case 'branch':
+        return branch;
+      case 'repo':
+        return 'main';
+      case 'short_id':
+        return shortId;
+      case 'id':
+        return '$shortId-1111-2222-3333-444455556666';
+      case 'date':
+        return '20260619';
+      case 'yyyy':
+        return '2026';
+      case 'mm':
+        return '06';
+      case 'dd':
+        return '19';
+      default:
+        return '';
+    }
+  }
+
+  final placeholder = RegExp(r'\{([a-z_]+)(?:\|([a-z_]+))?\}');
+  var out = tmpl.replaceAllMapped(placeholder, (m) {
+    var v = resolve(m.group(1)!);
+    final fb = m.group(2);
+    if (v.isEmpty && fb != null) {
+      v = resolve(fb);
+    }
+    return v;
+  });
+  out = out.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  if (out.isEmpty) {
+    out = 'PolyMaths: $title';
+  }
+  return out;
+}

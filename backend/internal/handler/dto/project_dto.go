@@ -67,6 +67,8 @@ type UpdateProjectRequest struct {
 	BranchNamePattern *string `json:"branch_name_pattern"`
 	// BranchNamingLocked — запрет ручного override имени ветки (только генерируемое).
 	BranchNamingLocked *bool `json:"branch_naming_locked"`
+	// MRTitleTemplate — шаблон тайтла MR/PR. null — не менять; "" — сброс к дефолту.
+	MRTitleTemplate *string `json:"mr_title_template"`
 }
 
 // GitCredentialSummary краткие данные credential без секретов.
@@ -108,6 +110,7 @@ type ProjectResponse struct {
 	BranchNameTemplate *string   `json:"branch_name_template,omitempty"`
 	BranchNamePattern  *string   `json:"branch_name_pattern,omitempty"`
 	BranchNamingLocked bool      `json:"branch_naming_locked"`
+	MRTitleTemplate    *string   `json:"mr_title_template,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }
@@ -168,6 +171,7 @@ func ToProjectResponse(p *models.Project) ProjectResponse {
 		BranchNameTemplate:         p.BranchNameTemplate,
 		BranchNamePattern:          p.BranchNamePattern,
 		BranchNamingLocked:         p.BranchNamingLocked,
+		MRTitleTemplate:            p.MRTitleTemplate,
 		CreatedAt:                  p.CreatedAt,
 		UpdatedAt:                  p.UpdatedAt,
 	}

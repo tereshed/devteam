@@ -28,6 +28,10 @@ import (
 // и задаёт «жёсткий формат» — выведенный из него regex (CompileBranchPattern)
 // валидирует ручные override'ы, чтобы они не обходили конвенцию.
 
+// DefaultMRTitleTemplate воспроизводит историческое поведение публикатора PR
+// (`PolyMaths: <title>`). Применяется, когда у проекта не задан свой шаблон тайтла.
+const DefaultMRTitleTemplate = "PolyMaths: {title}"
+
 // DefaultBranchTemplate воспроизводит историческое поведение generateBranchName
 // (task/<short_id>-<slug>). Применяется, когда у проекта не задан свой шаблон
 // или когда рендер пользовательского шаблона дал невалидное имя (safety-fallback).
@@ -49,7 +53,13 @@ var (
 	ErrBranchPatternMismatch = errors.New("branch name does not match the project format")
 	// ErrTaskInvalidBranch — переданный override имени ветки не git-ref-safe.
 	ErrTaskInvalidBranch = errors.New("invalid branch name")
+	// ErrMRTitleTemplateInvalid — шаблон тайтла MR содержит неизвестный плейсхолдер.
+	ErrMRTitleTemplateInvalid = errors.New("invalid MR title template")
 )
+
+// mrSpaceRe схлопывает повторяющиеся пробелы в тайтле MR (например после пустого
+// плейсхолдера).
+var mrSpaceRe = regexp.MustCompile(`\s{2,}`)
 
 // externalKeyRe — безопасный формат ключа тикета (DEV-123, ABC-4567, FEAT_12).
 // Должен начинаться с буквы/цифры; далее буквы/цифры/'-'/'_'; ≤64 символов.
@@ -281,6 +291,102 @@ func ValidateBranchTemplate(tmpl string) error {
 	}
 	if _, err := CompileBranchPattern(tmpl); err != nil {
 		return fmt.Errorf("%w: derived pattern: %v", ErrBranchTemplateInvalid, err)
+	}
+	return nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Шаблон тайтла MR/PR (per-project). Отличия от ветки: тайтл — свободный текст
+// (НЕ git-ref-safe, без слугификации {title}, без авто-суффикса).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// MRTitleVars — значения для подстановки в шаблон тайтла MR.
+type MRTitleVars struct {
+	TaskID      uuid.UUID
+	Title       string
+	ExternalKey string
+	Branch      string
+	RepoSlug    string
+	Now         time.Time
+}
+
+func knownMRPlaceholder(name string) bool {
+	switch name {
+	case "title", "slug", "ticket", "short_id", "id", "branch", "repo", "date", "yyyy", "mm", "dd":
+		return true
+	default:
+		return false
+	}
+}
+
+func resolveMRPlaceholder(name string, vars MRTitleVars) string {
+	switch name {
+	case "title":
+		return vars.Title
+	case "slug":
+		return slugifyForBranch(vars.Title)
+	case "ticket":
+		return vars.ExternalKey
+	case "short_id":
+		return vars.TaskID.String()[:8]
+	case "id":
+		return vars.TaskID.String()
+	case "branch":
+		return vars.Branch
+	case "repo":
+		return vars.RepoSlug
+	case "date":
+		return vars.Now.UTC().Format("20060102")
+	case "yyyy":
+		return vars.Now.UTC().Format("2006")
+	case "mm":
+		return vars.Now.UTC().Format("01")
+	case "dd":
+		return vars.Now.UTC().Format("02")
+	default:
+		return ""
+	}
+}
+
+// RenderMRTitle рендерит шаблон тайтла MR. Пустой шаблон ⇒ DefaultMRTitleTemplate.
+// Плейсхолдеры подставляются как есть (с fallback {a|b}); неизвестные → пусто.
+// Лишние пробелы схлопываются, края тримятся. Никогда не возвращает пустую строку
+// (фолбэк на «PolyMaths: <title>»).
+func RenderMRTitle(tmpl string, vars MRTitleVars) string {
+	tmpl = strings.TrimSpace(tmpl)
+	if tmpl == "" {
+		tmpl = DefaultMRTitleTemplate
+	}
+	out := branchPlaceholderRe.ReplaceAllStringFunc(tmpl, func(m string) string {
+		sub := branchPlaceholderRe.FindStringSubmatch(m)
+		name, fallback := sub[1], sub[2]
+		v := resolveMRPlaceholder(name, vars)
+		if v == "" && fallback != "" {
+			v = resolveMRPlaceholder(fallback, vars)
+		}
+		return v
+	})
+	out = strings.TrimSpace(mrSpaceRe.ReplaceAllString(out, " "))
+	if out == "" {
+		out = strings.TrimSpace("PolyMaths: " + vars.Title)
+	}
+	return out
+}
+
+// ValidateMRTitleTemplate проверяет шаблон тайтла MR при сохранении настроек
+// проекта: все плейсхолдеры известны (пустой шаблон допустим — дефолт).
+func ValidateMRTitleTemplate(tmpl string) error {
+	tmpl = strings.TrimSpace(tmpl)
+	if tmpl == "" {
+		return nil
+	}
+	for _, m := range branchPlaceholderRe.FindAllStringSubmatch(tmpl, -1) {
+		if !knownMRPlaceholder(m[1]) {
+			return fmt.Errorf("%w: unknown placeholder {%s}", ErrMRTitleTemplateInvalid, m[1])
+		}
+		if m[2] != "" && !knownMRPlaceholder(m[2]) {
+			return fmt.Errorf("%w: unknown fallback placeholder {%s}", ErrMRTitleTemplateInvalid, m[2])
+		}
 	}
 	return nil
 }

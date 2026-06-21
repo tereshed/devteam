@@ -1006,6 +1006,17 @@ func (s *projectService) Update(ctx context.Context, userID uuid.UUID, userRole 
 	if req.BranchNamingLocked != nil {
 		project.BranchNamingLocked = *req.BranchNamingLocked
 	}
+	if req.MRTitleTemplate != nil {
+		// Пустая строка = сброс к дефолтному тайтлу (NULL в БД).
+		if trimmed := strings.TrimSpace(*req.MRTitleTemplate); trimmed == "" {
+			project.MRTitleTemplate = nil
+		} else {
+			if err := ValidateMRTitleTemplate(trimmed); err != nil {
+				return nil, err
+			}
+			project.MRTitleTemplate = &trimmed
+		}
+	}
 	if req.GitProvider != nil {
 		gp := models.GitProvider(*req.GitProvider)
 		if !gp.IsValid() {

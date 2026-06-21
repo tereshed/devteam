@@ -1151,6 +1151,8 @@ definitions:
         type: string
       id:
         type: string
+      mr_title_template:
+        type: string
       name:
         type: string
       repositories:
@@ -1682,6 +1684,10 @@ definitions:
       git_provider:
         type: string
       git_url:
+        type: string
+      mr_title_template:
+        description: MRTitleTemplate — шаблон тайтла MR/PR. null — не менять; "" —
+          сброс к дефолту.
         type: string
       name:
         type: string
@@ -2741,6 +2747,11 @@ definitions:
           NULL — legacy-строка, переход был до миграции 084.
         type: string
       last_indexed_commit:
+        type: string
+      mr_title_template:
+        description: |-
+          MRTitleTemplate — per-project шаблон тайтла MR/PR ({title}/{ticket}/{branch}/...).
+          NULL/'' ⇒ дефолт «PolyMaths: {title}».
         type: string
       name:
         type: string
