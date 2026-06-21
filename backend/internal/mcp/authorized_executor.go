@@ -524,6 +524,14 @@ func mapServiceErr(err error) (json.RawMessage, error) {
 		return businessErr("not_found", "агент не найден")
 	case errors.Is(err, service.ErrAgentConcurrentUpdate):
 		return businessErr("error", "конфликт параллельного обновления агента")
+	case errors.Is(err, service.ErrExternalKeyRequired):
+		return businessErr("validation", "для этого проекта обязателен ключ тикета: передай его в параметре external_key (напр. DEV-123). Спроси ключ у пользователя, не придумывай.")
+	case errors.Is(err, service.ErrInvalidExternalKey):
+		return businessErr("validation", "некорректный формат ключа тикета (допустимо: буквы/цифры/-/_, до 64 символов, напр. DEV-123)")
+	case errors.Is(err, service.ErrBranchNamingLocked):
+		return businessErr("validation", "ручное имя ветки запрещено для этого проекта — не передавай branch_name, оно генерируется из шаблона")
+	case errors.Is(err, service.ErrBranchPatternMismatch):
+		return businessErr("validation", err.Error())
 	default:
 		slog.Error("MCP tool execution failed (unmapped error)", "error", err)
 		return businessErr("internal_error", "внутренняя ошибка: "+err.Error())
@@ -829,6 +837,9 @@ type taskCreateArgs struct {
 	TeamID          *string `json:"team_id,omitempty"`
 	AssignedAgentID *string `json:"assigned_agent_id,omitempty"`
 	ParentTaskID    *string `json:"parent_task_id,omitempty"`
+	// ExternalKey — ключ тикета во внешнем трекере (напр. DEV-123). Обязателен
+	// для проектов, где шаблон имени ветки требует {ticket}; подставляется в имя ветки.
+	ExternalKey *string `json:"external_key,omitempty"`
 	// AcceptanceCriteria — поведенческие критерии приёмки «действие → результат»,
 	// собранные в диалоге/досье разведчика. Доезжают до planner'а: пишутся в
 	// Task.Context и дописываются секцией в описание (planner калибрует severity
@@ -897,6 +908,9 @@ func (e *AuthorizedExecutor) taskCreate(ctx context.Context, auth agentloop.Auth
 			return businessErr("validation", fmt.Sprintf("invalid parent_task_id: %q", *a.ParentTaskID))
 		}
 		createReq.ParentTaskID = &parentID
+	}
+	if a.ExternalKey != nil && *a.ExternalKey != "" {
+		createReq.ExternalKey = a.ExternalKey
 	}
 
 	task, err := e.taskSvc.Create(ctx, uid, models.RoleUser, pid, createReq)
@@ -1488,7 +1502,7 @@ var (
 	schemaProjectUpdate       = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"},"description":{"type":"string"}},"description":"Передайте либо id, либо project_id (UUID проекта)."}`)
 	schemaTaskList            = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"state":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaTaskGet             = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"task_id":{"type":"string","format":"uuid"}}}`)
-	schemaTaskCreate          = json.RawMessage(`{"type":"object","required":["project_id","title"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"parent_task_id":{"type":"string","format":"uuid"},"acceptance_criteria":{"type":"array","items":{"type":"string"},"description":"Поведенческие критерии приёмки в формате «действие → наблюдаемый результат» (напр. «PATCH с устаревшей version → HTTP 409»). Передавай их, когда задача рождается из обсуждения проблемы или досье разведчика, чтобы planner/tester анкорились на них, а не выдумывали заново."}}}`)
+	schemaTaskCreate          = json.RawMessage(`{"type":"object","required":["project_id","title"],"properties":{"project_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"parent_task_id":{"type":"string","format":"uuid"},"external_key":{"type":"string","description":"Ключ тикета во внешнем трекере (напр. DEV-111). ОБЯЗАТЕЛЕН для проектов, где имя ветки строится из шаблона с {ticket}: без него создание задачи вернёт external_key_required. Клади ключ ИМЕННО в это поле, а не только в title/description. Бери ключ у пользователя — НИКОГДА не придумывай сам."},"acceptance_criteria":{"type":"array","items":{"type":"string"},"description":"Поведенческие критерии приёмки в формате «действие → наблюдаемый результат» (напр. «PATCH с устаревшей version → HTTP 409»). Передавай их, когда задача рождается из обсуждения проблемы или досье разведчика, чтобы planner/tester анкорились на них, а не выдумывали заново."}}}`)
 	schemaTaskUpdate          = json.RawMessage(`{"type":"object","required":["task_id"],"properties":{"task_id":{"type":"string","format":"uuid"},"title":{"type":"string"},"description":{"type":"string"},"priority":{"type":"string","enum":["critical","high","medium","low"]},"status":{"type":"string"},"team_id":{"type":"string","format":"uuid"},"assigned_agent_id":{"type":"string","format":"uuid"},"clear_assigned_agent":{"type":"boolean"},"branch_name":{"type":"string"}}}`)
 	schemaConvList            = json.RawMessage(`{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}}}`)
 	schemaConvGet             = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"conversation_id":{"type":"string","format":"uuid"}}}`)
