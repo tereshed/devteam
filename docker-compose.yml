@@ -14,11 +14,12 @@ services:
       --master_flags="rpc_bind_addresses=0.0.0.0:7100"
     ports:
       # Биндим на loopback: БД поднята с ysql_enable_auth=false (без пароля), поэтому
-      # публиковать её на 0.0.0.0 нельзя. Локалке localhost:5433 доступен как раньше;
-      # в prod доступ к БД — только внутри docker-сети (сервис yugabytedb:5433).
-      - "127.0.0.1:5433:5433"   # YSQL (PostgreSQL-compatible)
-      - "127.0.0.1:15000:7000"  # YugabyteDB Admin UI
-      - "127.0.0.1:9042:9042"   # YCQL (Cassandra-compatible, optional)
+      # публиковать её на 0.0.0.0 нельзя. Host-порты НЕСТАНДАРТНЫЕ, чтобы не конфликтовать
+      # с локальным Postgres/другими стеками; переопределяются через env (см. шапку ports
+      # у сервиса app). Внутри docker-сети БД по-прежнему на yugabytedb:5433.
+      - "127.0.0.1:${YSQL_HOST_PORT:-15433}:5433"      # YSQL (PostgreSQL-compatible)
+      - "127.0.0.1:${YB_ADMIN_HOST_PORT:-17000}:7000"  # YugabyteDB Admin UI
+      - "127.0.0.1:${YCQL_HOST_PORT:-19042}:9042"      # YCQL (Cassandra-compatible, optional)
     volumes:
       # ВАЖНО: yugabyted (под root) хранит данные в /root/var (base_dir = $HOME/var), НЕ в
       # /home/yugabyte/yb_data. Старый монтаж на /home/yugabyte/yb_data оставлял volume пустым,
@@ -38,7 +39,7 @@ services:
     container_name: wibe_weaviate
     ports:
       # Loopback: Weaviate с ANONYMOUS_ACCESS=true — наружу публиковать нельзя.
-      - "127.0.0.1:8082:8080"  # Внешний порт 8082 (8081 теперь занят MCP-сервером)
+      - "127.0.0.1:${WEAVIATE_HOST_PORT:-18082}:8080"  # нестандартный host-порт
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
@@ -77,8 +78,9 @@ services:
     container_name: wibe_redis
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      # Loopback: Redis без пароля — наружу не публикуем.
-      - "127.0.0.1:6379:6379"
+      # Loopback: Redis без пароля — наружу не публикуем. Host-порт нестандартный
+      # (6379 часто занят локальным Redis); внутри сети — redis:6379.
+      - "127.0.0.1:${REDIS_HOST_PORT:-16379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -150,8 +152,18 @@ services:
     ports:
       # Loopback: в prod наружу смотрит только Caddy (deployment/prod), а до app он
       # ходит по docker-сети (app:8080 / app:8081). Локалке localhost:8080 как раньше.
-      - "127.0.0.1:8080:8080"   # Основной API (Gin)
-      - "127.0.0.1:8081:8081"   # MCP сервер (Model Context Protocol)
+      #
+      # Host-порты переопределяются через env (дефолты — справа). Инфра уже на
+      # нестандартных портах; API/MCP оставлены на 8080/8081, т.к. на них завязаны
+      # OAuth redirect_uri (dev-приложения GitHub/GitLab) и baseUrl фронта. Чтобы
+      # сдвинуть API: задай API_HOST_PORT, пересобери фронт с
+      # --dart-define=API_BASE_URL=http://localhost:<порт>/api/v1 и обнови redirect_uri
+      # в OAuth-приложениях. Полный список override-переменных:
+      #   API_HOST_PORT(8080) MCP_HOST_PORT(8081) YSQL_HOST_PORT(15433)
+      #   YB_ADMIN_HOST_PORT(17000) YCQL_HOST_PORT(19042)
+      #   WEAVIATE_HOST_PORT(18082) REDIS_HOST_PORT(16379)
+      - "127.0.0.1:${API_HOST_PORT:-8080}:8080"   # Основной API (Gin)
+      - "127.0.0.1:${MCP_HOST_PORT:-8081}:8081"   # MCP сервер (Model Context Protocol)
     volumes:
       - ./backend/db/migrations:/root/db/migrations
       - /var/run/docker.sock:/var/run/docker.sock

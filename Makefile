@@ -10,6 +10,11 @@ COMPOSE_TEST := docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_TEST_FILE)
 #   roles — разделение ролей api / worker / scheduler.
 COMPOSE_SCALE_FILE := docker-compose.scale.yml
 COMPOSE_ROLES_FILE := docker-compose.roles.yml
+
+# Host-порт опубликованного YSQL (нестандартный, см. docker-compose.yml: YSQL_HOST_PORT).
+# Используется host-side go-тестами (test-features-*), которые ходят в БД с хоста.
+# Контейнерные migrate-* таргеты ходят по внутренней сети (yugabytedb:5433) и его НЕ используют.
+DB_HOST_PORT ?= 15433
 COMPOSE_SCALE := docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_SCALE_FILE)
 COMPOSE_ROLES := docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_ROLES_FILE)
 # Число реплик роли worker для `make roles-up` (переопределяется: make roles-up WORKERS=4).
@@ -144,7 +149,7 @@ test-features-backend: test-features-up
 		-u GEMINI_API_KEY -u QWEN_API_KEY -u OPENROUTER_API_KEY \
 		-u CLAUDE_CODE_OAUTH_ACCESS_TOKEN \
 		FEATURESMOKE_ENABLED=1 \
-		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		DB_HOST=localhost DB_PORT=$(DB_HOST_PORT) DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
 		FEATURESMOKE_GITEA_URL=http://localhost:3001 \
 		go test -tags featuresmoke -race -timeout 600s ./test/featuresmoke/... -count=1 -v
 
@@ -168,7 +173,7 @@ test-features-frontend: test-features-up
 		-u GEMINI_API_KEY -u QWEN_API_KEY -u OPENROUTER_API_KEY \
 		-u CLAUDE_CODE_OAUTH_ACCESS_TOKEN \
 		FEATURESMOKE_ENABLED=1 FEATURESMOKE_FORCE_PORT=8080 \
-		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		DB_HOST=localhost DB_PORT=$(DB_HOST_PORT) DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
 		FEATURESMOKE_GITEA_URL=http://localhost:3001 \
 		go test -tags "featuresmoke featuresmoke_frontend" -timeout 1800s \
 			./test/featuresmoke/... -run TestFrontendIntegration_Phase3 -count=1 -v
@@ -177,7 +182,7 @@ test-features: test-features-backend test-features-frontend
 
 test-features-real: test-features-up
 	cd backend && FEATURESMOKE_ENABLED=1 FEATURESMOKE_MODE=real \
-		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		DB_HOST=localhost DB_PORT=$(DB_HOST_PORT) DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
 		go test -tags featuresmoke -race -timeout 1800s ./test/featuresmoke/... -count=1 -v
 
 # test-features-e2e-real (Task 5.2, Phase 5): полный pipeline orchestrator →
@@ -193,7 +198,7 @@ test-features-real: test-features-up
 # GITHUB_PAT, ENCRYPTION_KEY. Без них тест делает t.Skip с понятным сообщением.
 test-features-e2e-real: test-features-up
 	cd backend && FEATURESMOKE_ENABLED=1 FEATURESMOKE_MODE=real \
-		DB_HOST=localhost DB_PORT=5433 DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
+		DB_HOST=localhost DB_PORT=$(DB_HOST_PORT) DB_USER=yugabyte DB_PASSWORD=yugabyte DB_NAME=yugabyte \
 		go test -tags "featuresmoke e2ereal" -timeout 1800s \
 			./test/featuresmoke/... -run TestE2EReal_MixedAgentsPipeline -count=1 -v
 
