@@ -232,6 +232,13 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 	if agent.ProviderKind != nil {
 		providerKind = string(*agent.ProviderKind)
 	}
+
+	// Подключаем внешние MCP-серверы проекта на время Run: их инструменты идут в
+	// каталог как обычные function-tools. Сессии живут до closeMCP (CallTool идёт
+	// во время петли). Падение сервера не валит ассистента — см. openProjectMCPTools.
+	mcpTools, closeMCP := s.openProjectMCPTools(ctx, project)
+	defer closeMCP()
+
 	result, runErr := s.deps.Executor.Run(ctx, agentloop.RunRequest{
 		Client:       client,
 		Provider:     providerKind,
@@ -240,7 +247,7 @@ func (s *assistantService) runWithRecovery(parent context.Context, sessionID, us
 		Temperature:  agent.Temperature,
 		MaxTokens:    agent.MaxTokens,
 		History:      history,
-		Tools:        s.assistantTools(ctx, sess),
+		Tools:        append(s.assistantTools(ctx, sess), mcpTools...),
 		ServerTools:  assistantServerTools(providerKind),
 		Auth: agentloop.AuthContext{
 			UserID:    userID.String(),

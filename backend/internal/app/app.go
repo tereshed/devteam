@@ -887,6 +887,7 @@ func Run(role Role) {
 		UserCreds:       llmCredSvc,
 		ToolCatalog:     assistantToolCatalog,
 		ScoutDispatcher: scoutSvc,
+		MCPServers:      service.NewAssistantMCPServerService(repository.NewAssistantMCPServerRepository(db), secretResolver),
 		Hub:             hub,
 		Executor:        assistantExecutor,
 		Logger:          v2Logger, // redact-обёрнутый; не пускает токены/ключи/пароли в stdout (см. comment выше).

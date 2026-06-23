@@ -240,9 +240,12 @@ type AssistantServiceDeps struct {
 	// ScoutDispatcher — разведчик проекта (опционально; nil → tool scout_dispatch
 	// не добавляется в каталог). Диспатч из park-обработчика + гейтинг по проекту.
 	ScoutDispatcher ScoutDispatcher
-	Hub             WSBroadcaster
-	Executor        *agentloop.Executor
-	Logger          *slog.Logger
+	// MCPServers — per-project внешние MCP-серверы (опционально; nil → MCP-инструменты
+	// не подмешиваются). Подключаются на время Run, инструменты идут в каталог ассистента.
+	MCPServers AssistantMCPServerService
+	Hub        WSBroadcaster
+	Executor   *agentloop.Executor
+	Logger     *slog.Logger
 }
 
 // NewAssistantService — конструктор.
