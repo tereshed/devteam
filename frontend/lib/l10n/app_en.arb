@@ -1845,6 +1845,33 @@
   "enhancerChangeAppliedSnack": "Change applied",
   "enhancerChangeRejectedSnack": "Change rejected",
   "enhancerChangeRolledBackSnack": "Change rolled back",
-  "enhancerChangeConflictSnack": "Failed: the target changed after the proposal was created — refresh the list and verify manually"
+  "enhancerChangeConflictSnack": "Failed: the target changed after the proposal was created — refresh the list and verify manually",
+  "assistantMcpTabTitle": "MCP servers",
+  "assistantMcpHeading": "Assistant MCP servers",
+  "assistantMcpDescription": "External MCP servers (remote http/sse) — their tools become available to this project's assistant. Header values may reference project secrets (see the hint in the form).",
+  "assistantMcpEmpty": "No MCP servers configured yet.",
+  "assistantMcpAddButton": "Add server",
+  "assistantMcpLoadError": "Failed to load MCP servers.",
+  "assistantMcpSavedSnack": "Server saved",
+  "assistantMcpDeletedSnack": "Server deleted",
+  "assistantMcpFormTitleNew": "New MCP server",
+  "assistantMcpFormTitleEdit": "Edit MCP server",
+  "assistantMcpNameLabel": "Name",
+  "assistantMcpTransportLabel": "Transport",
+  "assistantMcpUrlLabel": "URL",
+  "assistantMcpHeadersLabel": "Headers (one per line: Name: value)",
+  "assistantMcpHeadersHint": "One header per line, e.g. \"Authorization: Bearer YOUR_TOKEN\". You can reference a project variable instead of a literal value; secrets are resolved server-side (Project variables tab).",
+  "assistantMcpRequireConfirmationLabel": "Ask for confirmation",
+  "assistantMcpEnabledLabel": "Enabled",
+  "assistantMcpSave": "Save",
+  "assistantMcpCancel": "Cancel",
+  "assistantMcpDelete": "Delete",
+  "assistantMcpDeleteTitle": "Delete server?",
+  "assistantMcpDeleteConfirm": "Delete MCP server \"{name}\"?",
+  "@assistantMcpDeleteConfirm": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  }
 }
 

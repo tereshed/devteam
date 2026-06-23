@@ -2017,5 +2017,32 @@
   "enhancerChangeAppliedSnack": "Предложение применено",
   "enhancerChangeRejectedSnack": "Предложение отклонено",
   "enhancerChangeRolledBackSnack": "Изменение откачено",
-  "enhancerChangeConflictSnack": "Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную"
+  "enhancerChangeConflictSnack": "Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную",
+  "assistantMcpTabTitle": "MCP-серверы",
+  "assistantMcpHeading": "MCP-серверы ассистента",
+  "assistantMcpDescription": "Внешние MCP-серверы (remote http/sse) — их инструменты становятся доступны ассистенту этого проекта. В значениях заголовков можно подставлять секреты проекта (см. подсказку в форме).",
+  "assistantMcpEmpty": "MCP-серверы пока не добавлены.",
+  "assistantMcpAddButton": "Добавить сервер",
+  "assistantMcpLoadError": "Не удалось загрузить MCP-серверы.",
+  "assistantMcpSavedSnack": "Сервер сохранён",
+  "assistantMcpDeletedSnack": "Сервер удалён",
+  "assistantMcpFormTitleNew": "Новый MCP-сервер",
+  "assistantMcpFormTitleEdit": "Редактировать MCP-сервер",
+  "assistantMcpNameLabel": "Имя",
+  "assistantMcpTransportLabel": "Транспорт",
+  "assistantMcpUrlLabel": "URL",
+  "assistantMcpHeadersLabel": "Заголовки (по одному в строке: Name: value)",
+  "assistantMcpHeadersHint": "По заголовку в строке, напр. «Authorization: Bearer ВАШ_ТОКЕН». Вместо значения можно сослаться на переменную проекта — секреты резолвятся на сервере (вкладка «Переменные»).",
+  "assistantMcpRequireConfirmationLabel": "Спрашивать подтверждение",
+  "assistantMcpEnabledLabel": "Включён",
+  "assistantMcpSave": "Сохранить",
+  "assistantMcpCancel": "Отмена",
+  "assistantMcpDelete": "Удалить",
+  "assistantMcpDeleteTitle": "Удалить сервер?",
+  "assistantMcpDeleteConfirm": "Удалить MCP-сервер «{name}»?",
+  "@assistantMcpDeleteConfirm": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  }
 }

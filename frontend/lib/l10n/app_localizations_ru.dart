@@ -3759,4 +3759,75 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get enhancerChangeConflictSnack =>
       'Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную';
+
+  @override
+  String get assistantMcpTabTitle => 'MCP-серверы';
+
+  @override
+  String get assistantMcpHeading => 'MCP-серверы ассистента';
+
+  @override
+  String get assistantMcpDescription =>
+      'Внешние MCP-серверы (remote http/sse) — их инструменты становятся доступны ассистенту этого проекта. В значениях заголовков можно подставлять секреты проекта (см. подсказку в форме).';
+
+  @override
+  String get assistantMcpEmpty => 'MCP-серверы пока не добавлены.';
+
+  @override
+  String get assistantMcpAddButton => 'Добавить сервер';
+
+  @override
+  String get assistantMcpLoadError => 'Не удалось загрузить MCP-серверы.';
+
+  @override
+  String get assistantMcpSavedSnack => 'Сервер сохранён';
+
+  @override
+  String get assistantMcpDeletedSnack => 'Сервер удалён';
+
+  @override
+  String get assistantMcpFormTitleNew => 'Новый MCP-сервер';
+
+  @override
+  String get assistantMcpFormTitleEdit => 'Редактировать MCP-сервер';
+
+  @override
+  String get assistantMcpNameLabel => 'Имя';
+
+  @override
+  String get assistantMcpTransportLabel => 'Транспорт';
+
+  @override
+  String get assistantMcpUrlLabel => 'URL';
+
+  @override
+  String get assistantMcpHeadersLabel =>
+      'Заголовки (по одному в строке: Name: value)';
+
+  @override
+  String get assistantMcpHeadersHint =>
+      'По заголовку в строке, напр. «Authorization: Bearer ВАШ_ТОКЕН». Вместо значения можно сослаться на переменную проекта — секреты резолвятся на сервере (вкладка «Переменные»).';
+
+  @override
+  String get assistantMcpRequireConfirmationLabel => 'Спрашивать подтверждение';
+
+  @override
+  String get assistantMcpEnabledLabel => 'Включён';
+
+  @override
+  String get assistantMcpSave => 'Сохранить';
+
+  @override
+  String get assistantMcpCancel => 'Отмена';
+
+  @override
+  String get assistantMcpDelete => 'Удалить';
+
+  @override
+  String get assistantMcpDeleteTitle => 'Удалить сервер?';
+
+  @override
+  String assistantMcpDeleteConfirm(String name) {
+    return 'Удалить MCP-сервер «$name»?';
+  }
 }

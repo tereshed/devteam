@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/api/api_exceptions.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/core/widgets/data_load_error_message.dart';
+import 'package:frontend/features/assistant_mcp/presentation/widgets/assistant_mcp_tab.dart';
 import 'package:frontend/features/enhancer/presentation/widgets/enhancer_settings_tab.dart';
 import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models/project_model.dart';
@@ -424,7 +425,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
           ),
         Expanded(
           child: DefaultTabController(
-            length: 7,
+            length: 8,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -438,6 +439,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                     Tab(text: AppLocalizations.of(context)!.enhancerTabTitle),
                     Tab(text: AppLocalizations.of(context)!.scoutTabTitle),
                     Tab(text: AppLocalizations.of(context)!.sandboxServicesTabTitle),
+                    Tab(text: AppLocalizations.of(context)!.assistantMcpTabTitle),
                   ],
                 ),
                 Expanded(
@@ -586,6 +588,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                       EnhancerSettingsTab(projectId: widget.projectId),
                       ScoutSettingsTab(projectId: widget.projectId),
                       SandboxServicesTab(projectId: widget.projectId),
+                      AssistantMcpTab(projectId: widget.projectId),
                     ],
                   ),
                 ),

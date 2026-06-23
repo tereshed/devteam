@@ -3727,4 +3727,74 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get enhancerChangeConflictSnack =>
       'Failed: the target changed after the proposal was created — refresh the list and verify manually';
+
+  @override
+  String get assistantMcpTabTitle => 'MCP servers';
+
+  @override
+  String get assistantMcpHeading => 'Assistant MCP servers';
+
+  @override
+  String get assistantMcpDescription =>
+      'External MCP servers (remote http/sse) — their tools become available to this project\'s assistant. Header values may reference project secrets (see the hint in the form).';
+
+  @override
+  String get assistantMcpEmpty => 'No MCP servers configured yet.';
+
+  @override
+  String get assistantMcpAddButton => 'Add server';
+
+  @override
+  String get assistantMcpLoadError => 'Failed to load MCP servers.';
+
+  @override
+  String get assistantMcpSavedSnack => 'Server saved';
+
+  @override
+  String get assistantMcpDeletedSnack => 'Server deleted';
+
+  @override
+  String get assistantMcpFormTitleNew => 'New MCP server';
+
+  @override
+  String get assistantMcpFormTitleEdit => 'Edit MCP server';
+
+  @override
+  String get assistantMcpNameLabel => 'Name';
+
+  @override
+  String get assistantMcpTransportLabel => 'Transport';
+
+  @override
+  String get assistantMcpUrlLabel => 'URL';
+
+  @override
+  String get assistantMcpHeadersLabel => 'Headers (one per line: Name: value)';
+
+  @override
+  String get assistantMcpHeadersHint =>
+      'One header per line, e.g. \"Authorization: Bearer YOUR_TOKEN\". You can reference a project variable instead of a literal value; secrets are resolved server-side (Project variables tab).';
+
+  @override
+  String get assistantMcpRequireConfirmationLabel => 'Ask for confirmation';
+
+  @override
+  String get assistantMcpEnabledLabel => 'Enabled';
+
+  @override
+  String get assistantMcpSave => 'Save';
+
+  @override
+  String get assistantMcpCancel => 'Cancel';
+
+  @override
+  String get assistantMcpDelete => 'Delete';
+
+  @override
+  String get assistantMcpDeleteTitle => 'Delete server?';
+
+  @override
+  String assistantMcpDeleteConfirm(String name) {
+    return 'Delete MCP server \"$name\"?';
+  }
 }

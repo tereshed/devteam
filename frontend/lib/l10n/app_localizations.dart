@@ -6925,6 +6925,138 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную'**
   String get enhancerChangeConflictSnack;
+
+  /// No description provided for @assistantMcpTabTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-серверы'**
+  String get assistantMcpTabTitle;
+
+  /// No description provided for @assistantMcpHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-серверы ассистента'**
+  String get assistantMcpHeading;
+
+  /// No description provided for @assistantMcpDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Внешние MCP-серверы (remote http/sse) — их инструменты становятся доступны ассистенту этого проекта. В значениях заголовков можно подставлять секреты проекта (см. подсказку в форме).'**
+  String get assistantMcpDescription;
+
+  /// No description provided for @assistantMcpEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'MCP-серверы пока не добавлены.'**
+  String get assistantMcpEmpty;
+
+  /// No description provided for @assistantMcpAddButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить сервер'**
+  String get assistantMcpAddButton;
+
+  /// No description provided for @assistantMcpLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить MCP-серверы.'**
+  String get assistantMcpLoadError;
+
+  /// No description provided for @assistantMcpSavedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер сохранён'**
+  String get assistantMcpSavedSnack;
+
+  /// No description provided for @assistantMcpDeletedSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер удалён'**
+  String get assistantMcpDeletedSnack;
+
+  /// No description provided for @assistantMcpFormTitleNew.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый MCP-сервер'**
+  String get assistantMcpFormTitleNew;
+
+  /// No description provided for @assistantMcpFormTitleEdit.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать MCP-сервер'**
+  String get assistantMcpFormTitleEdit;
+
+  /// No description provided for @assistantMcpNameLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя'**
+  String get assistantMcpNameLabel;
+
+  /// No description provided for @assistantMcpTransportLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Транспорт'**
+  String get assistantMcpTransportLabel;
+
+  /// No description provided for @assistantMcpUrlLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'URL'**
+  String get assistantMcpUrlLabel;
+
+  /// No description provided for @assistantMcpHeadersLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Заголовки (по одному в строке: Name: value)'**
+  String get assistantMcpHeadersLabel;
+
+  /// No description provided for @assistantMcpHeadersHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'По заголовку в строке, напр. «Authorization: Bearer ВАШ_ТОКЕН». Вместо значения можно сослаться на переменную проекта — секреты резолвятся на сервере (вкладка «Переменные»).'**
+  String get assistantMcpHeadersHint;
+
+  /// No description provided for @assistantMcpRequireConfirmationLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Спрашивать подтверждение'**
+  String get assistantMcpRequireConfirmationLabel;
+
+  /// No description provided for @assistantMcpEnabledLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Включён'**
+  String get assistantMcpEnabledLabel;
+
+  /// No description provided for @assistantMcpSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get assistantMcpSave;
+
+  /// No description provided for @assistantMcpCancel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get assistantMcpCancel;
+
+  /// No description provided for @assistantMcpDelete.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get assistantMcpDelete;
+
+  /// No description provided for @assistantMcpDeleteTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить сервер?'**
+  String get assistantMcpDeleteTitle;
+
+  /// No description provided for @assistantMcpDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить MCP-сервер «{name}»?'**
+  String assistantMcpDeleteConfirm(String name);
 }
 
 class _AppLocalizationsDelegate
