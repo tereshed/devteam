@@ -86,6 +86,9 @@ type Dependencies struct {
 	// Sprint 21 — глобальный ассистент правой панели (docs/tasks/21-assistant-sidebar.md §4).
 	AssistantHandler *handler.AssistantHandler
 
+	// Per-project внешние MCP-серверы ассистента (remote http/sse).
+	AssistantMCPHandler *handler.AssistantMCPServerHandler
+
 	// Phase 1 §1.4 — admin API для дефолтных промптов ролей агентов.
 	AgentRolePromptHandler *handler.AgentRolePromptHandler
 
@@ -377,6 +380,14 @@ func (s *Server) setupRoutes(deps Dependencies) {
 				projects.GET("/:id/sandbox-services", deps.SandboxServiceHandler.List)
 				projects.PUT("/:id/sandbox-services", deps.SandboxServiceHandler.Upsert)
 				projects.DELETE("/:id/sandbox-services/:serviceId", deps.SandboxServiceHandler.Delete)
+			}
+
+			// Внешние MCP-серверы ассистента проекта (remote http/sse).
+			if deps.AssistantMCPHandler != nil {
+				projects.GET("/:id/assistant/mcp-servers", deps.AssistantMCPHandler.List)
+				projects.POST("/:id/assistant/mcp-servers", deps.AssistantMCPHandler.Create)
+				projects.PUT("/:id/assistant/mcp-servers/:serverId", deps.AssistantMCPHandler.Update)
+				projects.DELETE("/:id/assistant/mcp-servers/:serverId", deps.AssistantMCPHandler.Delete)
 			}
 
 			// Мульти-репо: управление git-репозиториями проекта.

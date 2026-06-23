@@ -4961,6 +4961,273 @@
                 }
             }
         },
+        "/projects/{id}/assistant/mcp-servers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Список внешних MCP-серверов (remote http/sse), инструменты которых доступны ассистенту проекта.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant-mcp"
+                ],
+                "summary": "MCP-серверы ассистента проекта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantMCPServerListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Добавляет remote MCP-сервер (http/sse). Headers могут содержать ${secret:NAME} (резолвятся из «Переменных проекта»). require_confirmation по умолчанию true.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant-mcp"
+                ],
+                "summary": "Создание MCP-сервера ассистента",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP-сервер",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateAssistantMCPServerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantMCPServerResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидные поля",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Проект не найден",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/assistant/mcp-servers/{serverId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant-mcp"
+                ],
+                "summary": "Обновление MCP-сервера ассистента",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "MCP Server ID",
+                        "name": "serverId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP-сервер",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateAssistantMCPServerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssistantMCPServerResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидные поля",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Не найдено",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assistant-mcp"
+                ],
+                "summary": "Удаление MCP-сервера ассистента",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "MCP Server ID",
+                        "name": "serverId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Удалено"
+                    },
+                    "403": {
+                        "description": "Нет доступа к проекту",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Не найдено",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/projects/{id}/enhancer": {
             "get": {
                 "security": [
@@ -9895,6 +10162,55 @@
                 }
             }
         },
+        "dto.AssistantMCPServerListResponse": {
+            "type": "object",
+            "properties": {
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AssistantMCPServerResponse"
+                    }
+                }
+            }
+        },
+        "dto.AssistantMCPServerResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "require_confirmation": {
+                    "type": "boolean"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.AssistantMessageListResponse": {
             "type": "object",
             "properties": {
@@ -10218,6 +10534,37 @@
                 },
                 "scopes": {
                     "description": "\"*\" — полный доступ, или список через запятую",
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CreateAssistantMCPServerRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "transport",
+                "url"
+            ],
+            "properties": {
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "require_confirmation": {
+                    "type": "boolean"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "url": {
                     "type": "string"
                 }
             }
@@ -11971,6 +12318,37 @@
                 },
                 "sandbox_permissions": {
                     "type": "object"
+                }
+            }
+        },
+        "dto.UpdateAssistantMCPServerRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "transport",
+                "url"
+            ],
+            "properties": {
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "require_confirmation": {
+                    "type": "boolean"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
                 }
             }
         },

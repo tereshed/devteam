@@ -876,6 +876,10 @@ func Run(role Role) {
 		log.Fatalf("Failed to construct SandboxServiceConfigService: %v", err)
 	}
 
+	// Per-project MCP-серверы ассистента: общий сервис для петли (Deps.MCPServers)
+	// и REST-хендлера. Секреты заголовков резолвятся через secretResolver (project_secrets).
+	assistantMCPSvc := service.NewAssistantMCPServerService(repository.NewAssistantMCPServerRepository(db), secretResolver)
+
 	assistantSvc, err := service.NewAssistantService(service.AssistantServiceDeps{
 		Repo:            assistantSessionRepo,
 		TaskRepo:        taskRepo,
@@ -887,7 +891,7 @@ func Run(role Role) {
 		UserCreds:       llmCredSvc,
 		ToolCatalog:     assistantToolCatalog,
 		ScoutDispatcher: scoutSvc,
-		MCPServers:      service.NewAssistantMCPServerService(repository.NewAssistantMCPServerRepository(db), secretResolver),
+		MCPServers:      assistantMCPSvc,
 		Hub:             hub,
 		Executor:        assistantExecutor,
 		Logger:          v2Logger, // redact-обёрнутый; не пускает токены/ключи/пароли в stdout (см. comment выше).
@@ -980,6 +984,7 @@ func Run(role Role) {
 		EnhancerHandler:       handler.NewEnhancerHandler(enhancerSvc),
 		ScoutHandler:          handler.NewScoutHandler(scoutSvc),
 		SandboxServiceHandler: handler.NewSandboxServiceHandler(sandboxServiceConfigSvc),
+		AssistantMCPHandler:   handler.NewAssistantMCPServerHandler(assistantMCPSvc, projectService),
 		WorkflowHandler:       workflowHandler,
 		WebhookHandler:        webhookHandler,
 		ConversationHandler:   conversationHandler,

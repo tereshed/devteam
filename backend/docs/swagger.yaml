@@ -207,6 +207,38 @@ definitions:
           $ref: '#/definitions/dto.AssistantActiveTaskResponse'
         type: array
     type: object
+  dto.AssistantMCPServerListResponse:
+    properties:
+      servers:
+        items:
+          $ref: '#/definitions/dto.AssistantMCPServerResponse'
+        type: array
+    type: object
+  dto.AssistantMCPServerResponse:
+    properties:
+      created_at:
+        type: string
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      id:
+        type: string
+      is_enabled:
+        type: boolean
+      name:
+        type: string
+      project_id:
+        type: string
+      require_confirmation:
+        type: boolean
+      transport:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+    type: object
   dto.AssistantMessageListResponse:
     properties:
       has_more:
@@ -423,6 +455,27 @@ definitions:
         type: string
     required:
     - name
+    type: object
+  dto.CreateAssistantMCPServerRequest:
+    properties:
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      is_enabled:
+        type: boolean
+      name:
+        type: string
+      require_confirmation:
+        type: boolean
+      transport:
+        type: string
+      url:
+        type: string
+    required:
+    - name
+    - transport
+    - url
     type: object
   dto.CreateConversationRequest:
     properties:
@@ -1607,6 +1660,27 @@ definitions:
         type: object
       sandbox_permissions:
         type: object
+    type: object
+  dto.UpdateAssistantMCPServerRequest:
+    properties:
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      is_enabled:
+        type: boolean
+      name:
+        type: string
+      require_confirmation:
+        type: boolean
+      transport:
+        type: string
+      url:
+        type: string
+    required:
+    - name
+    - transport
+    - url
     type: object
   dto.UpdateEnhancerConfigRequest:
     properties:
@@ -6062,6 +6136,177 @@ paths:
       summary: Обновление проекта
       tags:
       - projects
+  /projects/{id}/assistant/mcp-servers:
+    get:
+      description: Список внешних MCP-серверов (remote http/sse), инструменты которых
+        доступны ассистенту проекта.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AssistantMCPServerListResponse'
+        "401":
+          description: Не авторизован
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: MCP-серверы ассистента проекта
+      tags:
+      - assistant-mcp
+    post:
+      consumes:
+      - application/json
+      description: Добавляет remote MCP-сервер (http/sse). Headers могут содержать
+        ${secret:NAME} (резолвятся из «Переменных проекта»). require_confirmation
+        по умолчанию true.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: MCP-сервер
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateAssistantMCPServerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AssistantMCPServerResponse'
+        "400":
+          description: Невалидные поля
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Проект не найден
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Создание MCP-сервера ассистента
+      tags:
+      - assistant-mcp
+  /projects/{id}/assistant/mcp-servers/{serverId}:
+    delete:
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: MCP Server ID
+        in: path
+        name: serverId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Удалено
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Не найдено
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Удаление MCP-сервера ассистента
+      tags:
+      - assistant-mcp
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: MCP Server ID
+        in: path
+        name: serverId
+        required: true
+        type: string
+      - description: MCP-сервер
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateAssistantMCPServerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AssistantMCPServerResponse'
+        "400":
+          description: Невалидные поля
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "403":
+          description: Нет доступа к проекту
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Не найдено
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Обновление MCP-сервера ассистента
+      tags:
+      - assistant-mcp
   /projects/{id}/enhancer:
     get:
       description: Возвращает настройки энхансера; если проект ещё не настраивался
