@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/devteam/backend/internal/agent"
+	"github.com/devteam/backend/internal/domain/events"
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -79,6 +80,9 @@ type pgHarnessOpts struct {
 	// scriptedExec — если не nil, переиспользуется (нужно для restart-теста,
 	// где новый harness работает поверх существующего контейнера).
 	scriptedExec *pgScriptedExecutor
+	// bus — если не nil, прокидывается в Orchestrator для проверки публикации
+	// live-событий (TaskStatusChanged) при финализации. nil → события UI не нужны.
+	bus events.EventBus
 }
 
 // startPgHarness поднимает postgres-контейнер, применяет миграции 001..040,
@@ -184,8 +188,8 @@ func reuseHarness(t *testing.T, dsn string, scriptedRouterOutputs []string, opts
 		h.artifactRepo, h.eventRepo, h.decisionRepo,
 		nil, // worktreeMgr — для текущих интеграционных тестов без sandbox-агентов не нужен
 		h.router,
-		nil, // notifier
-		nil, // bus — события UI в этих тестах не проверяем
+		nil,      // notifier
+		opts.bus, // bus — nil в большинстве тестов; recordingBus там, где проверяем live-события
 		logger,
 		cfg,
 	)
@@ -763,6 +767,96 @@ func TestPGIntegration_MaxStepsPerTask_NeedsHuman(t *testing.T) {
 	}
 	if stateAfter != "needs_human" {
 		t.Errorf("state changed after finalize: %q", stateAfter)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TestPGIntegration_OrchestratorStep_PublishesTaskStatusEvent
+// ─────────────────────────────────────────────────────────────────────────────
+
+// recordingBus — тест-дабл events.EventBus, копящий опубликованные события.
+// Orchestrator только Publish'ит (Subscribe/Close — для HubBridge), поэтому
+// Subscribe возвращает пустой канал-заглушку. Publish из post-commit хуков Step'а
+// синхронен, так что к моменту возврата Step все события уже записаны.
+type recordingBus struct {
+	mu     sync.Mutex
+	events []events.DomainEvent
+}
+
+func (b *recordingBus) Publish(_ context.Context, ev events.DomainEvent) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.events = append(b.events, ev)
+}
+
+func (b *recordingBus) Subscribe(string, int) (<-chan events.DomainEvent, func()) {
+	return make(chan events.DomainEvent), func() {}
+}
+
+func (b *recordingBus) Close() {}
+
+func (b *recordingBus) statusChanges() []events.TaskStatusChanged {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out []events.TaskStatusChanged
+	for _, e := range b.events {
+		if s, ok := e.(events.TaskStatusChanged); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Регресс на «виджет не видит смену статуса»: автономная финализация задачи
+// оркестратором (active→needs_human через max_steps backstop) ОБЯЗАНА публиковать
+// TaskStatusChanged в EventBus, иначе WS-кадр task_status не уходит и список задач
+// в UI залипает на старом статусе до реконнекта/ручного рефреша.
+func TestPGIntegration_OrchestratorStep_PublishesTaskStatusEvent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test (requires Docker)")
+	}
+	loopResp := `{"done": false, "agents": [{"agent": "planner"}], "reason": "keep going"}`
+	cfg := service.DefaultOrchestratorConfig()
+	cfg.MaxStepsPerTask = 2
+	bus := &recordingBus{}
+	h := startPgHarnessWithOpts(t, []string{loopResp, loopResp, loopResp}, pgHarnessOpts{
+		orchestratorCfg: &cfg,
+		bus:             bus,
+	})
+	defer h.Close()
+
+	ctx := context.Background()
+	taskID := h.createMinimalActiveTask(t)
+	if err := h.orchestrator.EnqueueInitialStep(ctx, taskID); err != nil {
+		t.Fatalf("EnqueueInitialStep: %v", err)
+	}
+
+	// Шаги 0,1 — Router-driven (без финализации); шаг 2 — max_steps backstop → needs_human.
+	for i := 0; i < 3; i++ {
+		if err := h.orchestrator.Step(ctx, taskID); err != nil {
+			t.Fatalf("Step %d: %v", i, err)
+		}
+	}
+
+	statuses := bus.statusChanges()
+	if len(statuses) != 1 {
+		t.Fatalf("expected exactly 1 TaskStatusChanged event, got %d", len(statuses))
+	}
+	ev := statuses[0]
+	if ev.TaskID != taskID {
+		t.Errorf("event TaskID = %s, want %s", ev.TaskID, taskID)
+	}
+	if ev.ProjectID == uuid.Nil {
+		t.Error("event ProjectID is nil")
+	}
+	if ev.UserID == uuid.Nil {
+		t.Error("event UserID is nil (project owner not resolved → assistant Tasks-tab fan-out broken)")
+	}
+	if ev.Previous != string(models.TaskStateActive) {
+		t.Errorf("event Previous = %q, want %q", ev.Previous, models.TaskStateActive)
+	}
+	if ev.Current != string(models.TaskStateNeedsHuman) {
+		t.Errorf("event Current = %q, want %q", ev.Current, models.TaskStateNeedsHuman)
 	}
 }
 

@@ -230,7 +230,8 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 		// 4. Пользователь запросил отмену — финализируем; release worktrees + NOTIFY
 		//    выполняем ПОСЛЕ commit'а (см. postCommit ниже).
 		if task.CancelRequested {
-			postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID), o.scheduleCancelNotify(taskID))
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID), o.scheduleCancelNotify(taskID),
+				o.schedulePublishStatus(&task, task.State, models.TaskStateCancelled, "user cancelled task"))
 			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateCancelled, "user cancelled task")
 		}
 
@@ -238,9 +239,10 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 		if task.CurrentStepNo >= o.cfg.MaxStepsPerTask {
 			o.logger.WarnContext(ctx, "max_steps_per_task exceeded, escalating",
 				"task_id", taskID, "step_no", task.CurrentStepNo, "max", o.cfg.MaxStepsPerTask)
-			postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID))
-			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
-				fmt.Sprintf("max_steps_per_task=%d exceeded", o.cfg.MaxStepsPerTask))
+			reason := fmt.Sprintf("max_steps_per_task=%d exceeded", o.cfg.MaxStepsPerTask)
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID),
+				o.schedulePublishStatus(&task, task.State, models.TaskStateNeedsHuman, reason))
+			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman, reason)
 		}
 
 		// 5.5. Loop detection
@@ -250,9 +252,10 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 		} else if isLoop {
 			o.logger.WarnContext(ctx, "loop detected, escalating to needs_human",
 				"task_id", task.ID, "reason", loopReason)
-			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID))
-			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
-				fmt.Sprintf("loop detected: %s", loopReason))
+			reason := fmt.Sprintf("loop detected: %s", loopReason)
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID),
+				o.schedulePublishStatus(&task, task.State, models.TaskStateNeedsHuman, reason))
+			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman, reason)
 		}
 
 		// 6. Загружаем state для Router'а (metadata only, без content артефактов).
@@ -269,9 +272,10 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 		if o.cfg.MaxDeadJobsPerTask > 0 && len(state.DeadJobs) >= o.cfg.MaxDeadJobsPerTask {
 			o.logger.WarnContext(ctx, "too many dead agent_jobs, escalating to needs_human",
 				"task_id", task.ID, "dead_jobs", len(state.DeadJobs), "max", o.cfg.MaxDeadJobsPerTask)
-			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID))
-			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
-				fmt.Sprintf("%d agent jobs exhausted retries (likely sandbox OOM/timeout); human inspection required", len(state.DeadJobs)))
+			reason := fmt.Sprintf("%d agent jobs exhausted retries (likely sandbox OOM/timeout); human inspection required", len(state.DeadJobs))
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID),
+				o.schedulePublishStatus(&task, task.State, models.TaskStateNeedsHuman, reason))
+			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman, reason)
 		}
 
 		// 6.7. Repeated-dispatch backstop. Если Router N раз подряд выбрал ОДИН И ТОТ ЖЕ
@@ -283,9 +287,10 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 		if reps, agentSet := repeatedDispatchRun(state.RecentDecisions); o.cfg.MaxSameAgentRepeats > 0 && reps >= o.cfg.MaxSameAgentRepeats {
 			o.logger.WarnContext(ctx, "same agent set re-dispatched too many times, escalating to needs_human",
 				"task_id", task.ID, "agents", agentSet, "repeats", reps, "max", o.cfg.MaxSameAgentRepeats)
-			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID))
-			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman,
-				fmt.Sprintf("router re-dispatched the same agent(s) [%s] %d times without convergence; human inspection required", agentSet, reps))
+			reason := fmt.Sprintf("router re-dispatched the same agent(s) [%s] %d times without convergence; human inspection required", agentSet, reps)
+			postCommit = append(postCommit, o.scheduleWorktreeRelease(task.ID),
+				o.schedulePublishStatus(&task, task.State, models.TaskStateNeedsHuman, reason))
+			return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateNeedsHuman, reason)
 		}
 
 		// 7. Router.Decide — может вернуть Done или массив агентов.
@@ -317,6 +322,10 @@ func (o *Orchestrator) Step(ctx context.Context, taskID uuid.UUID) error {
 				return err
 			}
 			postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID))
+			// Live-апдейт статуса в UI. Публикуем ДО PR-гейта, чтобы при последующем
+			// downgrade'е done→needs_human событие needs_human пришло следом (корректная
+			// последовательность вместо тишины).
+			postCommit = append(postCommit, o.schedulePublishStatus(&task, task.State, newState, decision.Reason))
 			// Ground-truth-гейт: для done открываем PR post-commit. Если PR открыть не удастся —
 			// schedulePullRequestPublish переведёт задачу в needs_human (изменения не приземлены).
 			// nil-publisher → хук no-op (прежнее поведение).
@@ -551,6 +560,15 @@ func (o *Orchestrator) publishMultiRepoPRs(ctx context.Context, taskID uuid.UUID
 
 // downgradeToNeedsHuman переводит задачу done→needs_human с честной причиной.
 func (o *Orchestrator) downgradeToNeedsHuman(ctx context.Context, taskID uuid.UUID, reason string) {
+	// Снимок до апдейта: prev-state для события (обычно done — гейт срабатывает после
+	// финализации) и поля для TaskStatusChanged. Best-effort: при ошибке загрузки апдейт
+	// всё равно делаем, просто не публикуем live-событие (UI реконсилирует REST'ом).
+	var task models.Task
+	loadErr := o.db.WithContext(ctx).First(&task, "id = ?", taskID).Error
+	if loadErr != nil {
+		o.logger.WarnContext(ctx, "pr-gate: downgrade load task failed (event skipped)", "task_id", taskID, "error", loadErr)
+	}
+
 	if uerr := o.db.WithContext(ctx).Model(&models.Task{}).Where("id = ?", taskID).
 		Updates(map[string]any{
 			"state":         models.TaskStateNeedsHuman,
@@ -558,6 +576,11 @@ func (o *Orchestrator) downgradeToNeedsHuman(ctx context.Context, taskID uuid.UU
 			"updated_at":    time.Now(),
 		}).Error; uerr != nil {
 		o.logger.ErrorContext(ctx, "pr-gate: downgrade update failed", "task_id", taskID, "error", uerr)
+		return
+	}
+
+	if loadErr == nil {
+		o.publishStatusChanged(ctx, &task, task.State, models.TaskStateNeedsHuman, reason)
 	}
 }
 
@@ -1097,6 +1120,82 @@ func (o *Orchestrator) finalizeTaskInTx(ctx context.Context, tx *gorm.DB, task *
 	return nil
 }
 
+// publishStatusChanged публикует TaskStatusChanged в EventBus → HubBridge → WS
+// (live-апдейт статуса в списке задач/деталях). Без этого автономная финализация
+// оркестратором (active→done/failed/needs_human/cancelled) не доходила до виджетов:
+// task.state менялся прямым UPDATE мимо taskService, который единственный публиковал
+// событие, поэтому статус в UI залипал до реконнекта WS/ручного рефреша.
+//
+// Вызывать ТОЛЬКО post-commit (изменение state уже зафиксировано). bus==nil
+// (тесты/minimal-setup) → no-op. Ошибки публикации не критичны — UI реконсилирует
+// список REST'ом на реконнекте. UserID резолвится best-effort для user-scoped
+// fan-out в Tasks-таб ассистента (Sprint 21 §7); при uuid.Nil project-scoped
+// доставка task_status не страдает.
+func (o *Orchestrator) publishStatusChanged(ctx context.Context, task *models.Task, prev, current models.TaskState, reason string) {
+	if o.bus == nil || task == nil || task.ProjectID == uuid.Nil {
+		return
+	}
+	agentRole := ""
+	if task.AssignedAgent != nil {
+		agentRole = string(task.AssignedAgent.Role)
+	}
+	// Контракт TaskStatusChanged.ErrorMessage: непусто только при Current==failed
+	// (совпадает с taskService.getSafeErrorMessage).
+	errMsg := ""
+	if current == models.TaskStateFailed {
+		errMsg = reason
+	}
+	o.bus.Publish(ctx, events.TaskStatusChanged{
+		ProjectID:       task.ProjectID,
+		UserID:          o.resolveProjectOwnerID(ctx, task.ProjectID),
+		TaskID:          task.ID,
+		ParentTaskID:    task.ParentTaskID,
+		Title:           task.Title,
+		Previous:        string(prev),
+		Current:         string(current),
+		AssignedAgentID: task.AssignedAgentID,
+		AgentRole:       agentRole,
+		ErrorMessage:    errMsg,
+		OccurredAt:      time.Now().UTC(),
+	})
+}
+
+// schedulePublishStatus оборачивает publishStatusChanged в post-commit hook со
+// снимком задачи: task — локальная переменная tx-callback'а Step, а hook исполняется
+// уже после commit'а. Снимок — мелкая копия (читаем только примитивы и неизменяемые
+// указатели). bus==nil → no-op-хук.
+func (o *Orchestrator) schedulePublishStatus(task *models.Task, prev, current models.TaskState, reason string) func(context.Context) {
+	if o.bus == nil || task == nil {
+		return func(context.Context) {}
+	}
+	snap := *task
+	return func(ctx context.Context) {
+		o.publishStatusChanged(ctx, &snap, prev, current, reason)
+	}
+}
+
+// resolveProjectOwnerID — best-effort лукап user_id владельца проекта для user-scoped
+// fan-out (Sprint 21 §7). У оркестратора нет projectSvc, поэтому читаем колонку напрямую.
+// При ошибке → uuid.Nil (HubBridge пропустит assistant.task_update, project-scoped
+// доставка не страдает).
+func (o *Orchestrator) resolveProjectOwnerID(ctx context.Context, projectID uuid.UUID) uuid.UUID {
+	if projectID == uuid.Nil {
+		return uuid.Nil
+	}
+	// Скан в структуру (не в bare uuid.UUID): GORM маппит колонку user_id на поле и
+	// использует его sql.Scanner; Scan прямо в &uuid.UUID молча даёт нулевой UUID.
+	var row struct {
+		UserID uuid.UUID `gorm:"column:user_id"`
+	}
+	if err := o.db.WithContext(ctx).Model(&models.Project{}).
+		Select("user_id").Where("id = ?", projectID).Scan(&row).Error; err != nil {
+		o.logger.WarnContext(ctx, "resolve project owner for task_status event failed",
+			"project_id", projectID, "error", err.Error())
+		return uuid.Nil
+	}
+	return row.UserID
+}
+
 // FailTaskExhausted переводит задачу в failed, когда её step_req окончательно умер
 // (StepWorker исчерпал retry-бюджет на Orchestrator.Step — обычно инфра/внешняя ошибка:
 // LLM 5xx, лимит ключа, серия 40001). Без этого мёртвый step_req никем не будит
@@ -1127,7 +1226,8 @@ func (o *Orchestrator) FailTaskExhausted(ctx context.Context, taskID uuid.UUID, 
 		if task.State != models.TaskStateActive {
 			return nil
 		}
-		postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID))
+		postCommit = append(postCommit, o.scheduleWorktreeRelease(taskID),
+			o.schedulePublishStatus(&task, task.State, models.TaskStateFailed, reason))
 		return o.finalizeTaskInTx(ctx, tx, &task, models.TaskStateFailed, reason)
 	})
 	if err != nil {
