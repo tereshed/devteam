@@ -22,6 +22,7 @@ type Dependencies struct {
 	ScheduledTaskService    service.ScheduledTaskService
 	EnhancerService         service.EnhancerService
 	SandboxServiceConfigSvc service.SandboxServiceConfigService
+	AssistantMCPSvc         service.AssistantMCPServerService
 	ToolDefinitionService   service.ToolDefinitionService
 	ConversationSvc         service.ConversationService
 	OrchestratorSvc         service.TaskOrchestrator
@@ -79,6 +80,7 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 	RegisterScheduledTaskTools(server, deps.ScheduledTaskService)
 	RegisterEnhancerTools(server, deps.EnhancerService)
 	RegisterSandboxServiceTools(server, deps.SandboxServiceConfigSvc)
+	RegisterAssistantMCPTools(server, deps.AssistantMCPSvc, deps.ProjectService)
 	RegisterConversationTools(server, deps.ConversationSvc)
 	RegisterClaudeCodeAuthTools(server, deps.ClaudeCodeAuthService)
 	RegisterAntigravityAuthTools(server, deps.AntigravityAuthService)

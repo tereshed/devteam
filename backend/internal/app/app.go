@@ -1057,6 +1057,7 @@ func Run(role Role) {
 			ScheduledTaskService:    scheduledTaskService,
 			EnhancerService:         enhancerSvc,
 			SandboxServiceConfigSvc: sandboxServiceConfigSvc,
+			AssistantMCPSvc:         assistantMCPSvc,
 			ToolDefinitionService:   toolDefinitionService,
 			OrchestratorSvc:         orchestratorService,
 			ApiKeyService:           apiKeyService,
