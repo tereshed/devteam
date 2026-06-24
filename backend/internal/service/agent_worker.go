@@ -883,6 +883,9 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 			"agent", agentRec.Name, "task_id", taskID, "count", len(arts))
 		for _, art := range arts {
 			stampRepoSlugIntoArtifact(art, repoSlug)
+			if err := validateArtifactPayload(art.Kind, art.Content); err != nil {
+				return fmt.Errorf("artifact payload invalid (%s): %w", art.Kind, err)
+			}
 			err := retryOnConflict(ctx, w.logger, func() error {
 				return w.artifactRepo.Create(ctx, art)
 			})
@@ -1011,10 +1014,75 @@ func (w *AgentWorker) saveArtifact(ctx context.Context, taskID uuid.UUID, agentR
 		Status:        models.ArtifactStatusReady,
 	}
 	stampRepoSlugIntoArtifact(art, repoSlug)
+	if err := validateArtifactPayload(art.Kind, art.Content); err != nil {
+		return fmt.Errorf("artifact payload invalid (%s): %w", art.Kind, err)
+	}
 	if err := retryOnConflict(ctx, w.logger, func() error {
 		return w.artifactRepo.Create(ctx, art)
 	}); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateArtifactPayload — fail-loud-гард (разбор задачи 14736ecd): артефакт профильного
+// kind ОБЯЗАН нести непустой content-payload. Раньше envelope с пустым content (merger,
+// отдавший {"kind":"merged_code"} без merged_branch → сохранялось {"repo_slug":"main"})
+// молча писался как ready, Router/reviewer принимали пустышку за выполненную работу, и
+// reviewer штамповал её approved. Теперь такой результат возвращает ошибку → failEvent →
+// retry/backoff → при исчерпании needs_human (видимо оператору), а не тихий no-op.
+//
+// Проверяется ТОЛЬКО наличие профильного payload, не его «качество» — без ложных срабатываний
+// на валидных минимальных артефактах. Толерантно к обёртке {"content": {...}}, которую часть
+// агентов дублирует. Generic raw_output и subtask_description не имеют жёсткого контракта.
+func validateArtifactPayload(kind models.ArtifactKind, content []byte) error {
+	var m map[string]any
+	if len(content) > 0 {
+		_ = json.Unmarshal(content, &m)
+	}
+	inner := m
+	if c, ok := m["content"].(map[string]any); ok {
+		inner = c
+	}
+	hasStr := func(k string) bool {
+		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {
+			return true
+		}
+		s, ok := inner[k].(string)
+		return ok && strings.TrimSpace(s) != ""
+	}
+	hasArr := func(k string) bool {
+		if a, ok := m[k].([]any); ok && len(a) > 0 {
+			return true
+		}
+		a, ok := inner[k].([]any)
+		return ok && len(a) > 0
+	}
+	switch kind {
+	case models.ArtifactKindMergedCode:
+		if !hasStr("merged_branch") {
+			return fmt.Errorf("merged_code: непустое поле merged_branch обязательно (пустой merge-payload)")
+		}
+	case models.ArtifactKindCodeDiff:
+		if !hasArr("changed_files") && !hasStr("diff") {
+			return fmt.Errorf("code_diff: требуется непустой changed_files[] или diff (пустой diff-payload)")
+		}
+	case models.ArtifactKindDecomposition:
+		if !hasArr("subtasks") {
+			return fmt.Errorf("decomposition: требуется непустой subtasks[]")
+		}
+	case models.ArtifactKindReview:
+		if !hasStr("decision") {
+			return fmt.Errorf("review: требуется непустое поле decision")
+		}
+	case models.ArtifactKindTestResult:
+		if _, err := models.ParseTestResult(content); err != nil {
+			return fmt.Errorf("test_result: %w", err)
+		}
+	case models.ArtifactKindPlan:
+		if !hasArr("steps") && !hasStr("summary") {
+			return fmt.Errorf("plan: требуется непустой steps[] или summary")
+		}
 	}
 	return nil
 }

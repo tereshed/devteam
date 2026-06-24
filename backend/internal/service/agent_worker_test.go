@@ -346,7 +346,7 @@ func TestSaveArtifact_HappyPath(t *testing.T) {
 	agentRec := &models.Agent{Name: "planner"}
 	result := &agent.ExecutionResult{
 		Success: true,
-		Output:  `{"kind": "plan", "summary": "test plan", "content": {"steps": []}}`,
+		Output:  `{"kind": "plan", "summary": "test plan", "content": {"steps": [{"id": "1", "title": "do x"}]}}`,
 	}
 	taskID := uuid.New()
 	if err := w.saveArtifact(context.Background(), taskID, agentRec, result, nil, ""); err != nil {
@@ -401,9 +401,12 @@ func TestSaveArtifact_FallbackOnInvalidEnvelope(t *testing.T) {
 	}
 }
 
-// TestSaveArtifact_FallbackWithMappedAgent — проверяет, что маппинг fallbackKind
-// работает для известных агентов без привязки к конкретному taskID.
-func TestSaveArtifact_FallbackWithMappedAgent(t *testing.T) {
+// TestSaveArtifact_FallbackMappedAgentEmptyPayloadRejected — разбор задачи 14736ecd:
+// developer без envelope маппится в fallbackKind=code_diff, но raw_output-контент НЕ несёт
+// ни changed_files, ни diff. Раньше это молча сохранялось как ready code_diff (пустышка,
+// которую Router принимал за работу). Теперь validateArtifactPayload фейлит saveArtifact →
+// failEvent → retry, артефакт НЕ создаётся.
+func TestSaveArtifact_FallbackMappedAgentEmptyPayloadRejected(t *testing.T) {
 	repo := newMemArtifactRepo()
 	w := &AgentWorker{
 		artifactRepo: repo,
@@ -414,15 +417,104 @@ func TestSaveArtifact_FallbackWithMappedAgent(t *testing.T) {
 		Success: true,
 		Output:  "Я сделал то-то и то-то, без JSON-обёртки, прости.",
 	}
-	if err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil, ""); err != nil {
+	err := w.saveArtifact(context.Background(), uuid.New(), agentRec, result, nil, "")
+	if err == nil {
+		t.Fatal("expected fail-loud error for empty code_diff payload, got nil")
+	}
+	if !strings.Contains(err.Error(), "code_diff") {
+		t.Errorf("error must reference code_diff payload, got: %v", err)
+	}
+	if len(repo.created) != 0 {
+		t.Fatalf("no artifact must be persisted on invalid payload, got %d", len(repo.created))
+	}
+}
+
+// TestValidateArtifactPayload — fail-loud-гард профильных kind (разбор задачи 14736ecd).
+func TestValidateArtifactPayload(t *testing.T) {
+	cases := []struct {
+		name    string
+		kind    models.ArtifactKind
+		content string
+		wantErr bool
+	}{
+		// merged_code — корень бага: пустой/без merged_branch отклоняется.
+		{"merged_code empty", models.ArtifactKindMergedCode, `{}`, true},
+		{"merged_code repo_slug only (the bug)", models.ArtifactKindMergedCode, `{"repo_slug":"main"}`, true},
+		{"merged_code raw_output fallback", models.ArtifactKindMergedCode, `{"repo_slug":"main","raw_output":"...log..."}`, true},
+		{"merged_code valid", models.ArtifactKindMergedCode, `{"merged_branch":"issue/x","repo_slug":"main"}`, false},
+		{"merged_code nested content", models.ArtifactKindMergedCode, `{"content":{"merged_branch":"issue/x"}}`, false},
+		// code_diff — нужен changed_files или diff.
+		{"code_diff empty", models.ArtifactKindCodeDiff, `{"raw_output":""}`, true},
+		{"code_diff changed_files", models.ArtifactKindCodeDiff, `{"changed_files":["a.go"]}`, false},
+		{"code_diff diff", models.ArtifactKindCodeDiff, `{"diff":"@@ -1 +1 @@"}`, false},
+		// decomposition / review / plan.
+		{"decomposition empty", models.ArtifactKindDecomposition, `{}`, true},
+		{"decomposition valid", models.ArtifactKindDecomposition, `{"subtasks":[{"id":"1"}]}`, false},
+		{"review empty", models.ArtifactKindReview, `{}`, true},
+		{"review valid", models.ArtifactKindReview, `{"decision":"approved"}`, false},
+		{"plan empty", models.ArtifactKindPlan, `{}`, true},
+		{"plan steps", models.ArtifactKindPlan, `{"steps":[{"id":"1"}]}`, false},
+		{"plan summary", models.ArtifactKindPlan, `{"summary":"do it"}`, false},
+		// test_result делегирует ParseTestResult.
+		{"test_result missing bools", models.ArtifactKindTestResult, `{"passed":1}`, true},
+		{"test_result valid", models.ArtifactKindTestResult, `{"build_passed":true,"lint_passed":true,"typecheck_passed":true}`, false},
+		// kinds без контракта — всегда ок.
+		{"raw_output", "raw_output", `{"raw_output":"anything"}`, false},
+		{"subtask_description empty", models.ArtifactKindSubtaskDescription, `{}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateArtifactPayload(tc.kind, []byte(tc.content))
+			if (err != nil) != tc.wantErr {
+				t.Errorf("validateArtifactPayload(%s, %s) err=%v, wantErr=%v", tc.kind, tc.content, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestSaveArtifact_EmptyMergedCodeRejected — точный сценарий задачи 14736ecd: merger вернул
+// envelope kind=merged_code без merged_branch. Должен fail-loud, а не сохраниться как ready.
+func TestSaveArtifact_EmptyMergedCodeRejected(t *testing.T) {
+	repo := newMemArtifactRepo()
+	w := &AgentWorker{artifactRepo: repo, logger: discardLogger()}
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output:  `{"kind":"merged_code","summary":"merged"}`,
+	}
+	err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "merger"}, result, nil, "main")
+	if err == nil {
+		t.Fatal("expected fail-loud error for empty merged_code, got nil")
+	}
+	if !strings.Contains(err.Error(), "merged_branch") {
+		t.Errorf("error must mention merged_branch, got: %v", err)
+	}
+	if len(repo.created) != 0 {
+		t.Fatalf("empty merged_code must not be persisted, got %d", len(repo.created))
+	}
+}
+
+// TestSaveArtifact_ValidMergedCodeAccepted — корректный merged_code envelope сохраняется,
+// repo_slug доштамповывается.
+func TestSaveArtifact_ValidMergedCodeAccepted(t *testing.T) {
+	repo := newMemArtifactRepo()
+	w := &AgentWorker{artifactRepo: repo, logger: discardLogger()}
+	result := &agent.ExecutionResult{
+		Success: true,
+		Output:  `{"kind":"merged_code","summary":"merged","content":{"merged_branch":"issue/DEV-481"}}`,
+	}
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "merger"}, result, nil, "main"); err != nil {
 		t.Fatalf("saveArtifact: %v", err)
 	}
 	if len(repo.created) != 1 {
 		t.Fatalf("expected 1 artifact, got %d", len(repo.created))
 	}
-	got := repo.created[0]
-	if got.Kind != models.ArtifactKindCodeDiff {
-		t.Errorf("expected Kind=code_diff for fallback developer, got %q", got.Kind)
+	var m map[string]any
+	_ = json.Unmarshal(repo.created[0].Content, &m)
+	if m["merged_branch"] != "issue/DEV-481" {
+		t.Errorf("merged_branch lost: %v", m)
+	}
+	if m["repo_slug"] != "main" {
+		t.Errorf("repo_slug must be stamped, got: %v", m)
 	}
 }
 
@@ -440,6 +532,7 @@ func TestSaveArtifact_SupersedePreviousReview(t *testing.T) {
 		Kind:             "review",
 		Summary:          "approved",
 		ParentArtifactID: &parentID,
+		Content:          json.RawMessage(`{"decision":"approved"}`),
 	}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
@@ -472,6 +565,7 @@ func TestSaveArtifact_NoSupersedeForPlan(t *testing.T) {
 		Kind:             "plan",
 		Summary:          "v2 plan",
 		ParentArtifactID: &parentID,
+		Content:          json.RawMessage(`{"summary":"v2"}`),
 	}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
@@ -489,7 +583,7 @@ func TestSaveArtifact_LongSummaryTruncated(t *testing.T) {
 	w := &AgentWorker{artifactRepo: repo, logger: discardLogger()}
 	// 600 кириллических символов (1200+ байт)
 	long := strings.Repeat("а", 600)
-	envelope := AgentResponseEnvelope{Kind: "plan", Summary: long}
+	envelope := AgentResponseEnvelope{Kind: "plan", Summary: long, Content: json.RawMessage(`{"summary":"x"}`)}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
 	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil, ""); err != nil {
@@ -502,11 +596,13 @@ func TestSaveArtifact_LongSummaryTruncated(t *testing.T) {
 }
 
 // TestSaveArtifact_EmptyContentBecomesEmptyJSON — content nil/пустой нормализуется в "{}"
-// (БД CHECK не позволит пустой jsonb).
+// (БД CHECK не позволит пустой jsonb). Kind=subtask_description — у него нет обязательного
+// payload-контракта (validateArtifactPayload его не трогает), поэтому пустой content валиден
+// и проверяется именно нормализация.
 func TestSaveArtifact_EmptyContentBecomesEmptyJSON(t *testing.T) {
 	repo := newMemArtifactRepo()
 	w := &AgentWorker{artifactRepo: repo, logger: discardLogger()}
-	envelope := AgentResponseEnvelope{Kind: "plan", Summary: "no content"}
+	envelope := AgentResponseEnvelope{Kind: "subtask_description", Summary: "no content"}
 	envBytes, _ := json.Marshal(envelope)
 	result := &agent.ExecutionResult{Success: true, Output: string(envBytes)}
 	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "planner"}, result, nil, ""); err != nil {
@@ -559,10 +655,12 @@ func TestSaveArtifact_LeakCanaryNotLogged(t *testing.T) {
 	w := &AgentWorker{artifactRepo: repo, logger: logger}
 
 	canary := "AGENT_OUTPUT_CANARY_xyz_no_envelope"
-	// Output не-JSON, чтобы попасть в fallback path с SafeRawAttr-логом.
+	// Output не-JSON, чтобы попасть в fallback path с SafeRawAttr-логом. developer-fallback
+	// маппится в code_diff без payload → validateArtifactPayload отклоняет (fail-loud), но
+	// WARN-лог про fallback пишется ДО отклонения — обе security-инварианты ниже остаются.
 	result := &agent.ExecutionResult{Success: true, Output: "Plain text: " + canary}
-	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "developer"}, result, nil, ""); err != nil {
-		t.Fatalf("saveArtifact: %v", err)
+	if err := w.saveArtifact(context.Background(), uuid.New(), &models.Agent{Name: "developer"}, result, nil, ""); err == nil {
+		t.Fatal("expected fail-loud error for empty code_diff fallback payload")
 	}
 
 	logged := buf.String()
