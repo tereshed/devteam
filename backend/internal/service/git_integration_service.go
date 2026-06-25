@@ -108,9 +108,12 @@ type GitIntegrationService interface {
 	// ListStatuses — все подключённые провайдеры пользователя.
 	ListStatuses(ctx context.Context, userID uuid.UUID) ([]GitIntegrationStatus, error)
 	// ListRepositories возвращает список репозиториев для подключенного провайдера.
-	ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]GitRepository, error)
+	// accountID — выбранный git_integration_credential_id (мульти-аккаунт). uuid.Nil =
+	// фолбэк на ПЕРВЫЙ аккаунт провайдера (agent-флоу/legacy без явного выбора в UI).
+	ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID) ([]GitRepository, error)
 	// CreateRepository создает новый репозиторий у подключенного провайдера.
-	CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, name string, private bool, description string) (*GitRepository, error)
+	// accountID — см. ListRepositories (uuid.Nil = первый аккаунт провайдера).
+	CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID, name string, private bool, description string) (*GitRepository, error)
 }
 
 // GitIntegrationServiceDeps — зависимости конструктора.
@@ -654,11 +657,36 @@ func (s *gitIntegrationService) FreshAccessToken(ctx context.Context, cred *mode
 	return s.ensureFreshToken(ctx, cred)
 }
 
-func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]GitRepository, error) {
+// resolveRepoCredential выбирает git-credential для листинга/создания репозиториев.
+// Если accountID задан — резолвит КОНКРЕТНЫЙ аккаунт (мульти-аккаунт), проверяя владельца
+// и совпадение провайдера запроса. uuid.Nil — фолбэк на ПЕРВЫЙ аккаунт провайдера
+// (agent-флоу/legacy без явного выбора аккаунта в UI).
+//
+// Fail-loud: чужой/несовпадающий аккаунт НЕ деградирует молча до «первого» — иначе
+// вернётся ровно тот баг, который чиним (репозитории не того аккаунта).
+func (s *gitIntegrationService) resolveRepoCredential(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID) (*models.GitIntegrationCredential, error) {
+	if accountID == uuid.Nil {
+		return s.deps.Repo.GetByUserAndProvider(ctx, userID, provider)
+	}
+	cred, err := s.deps.Repo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if cred.UserID != userID {
+		// Не светим существование чужой записи — отвечаем «не найдено».
+		return nil, repository.ErrGitIntegrationNotFound
+	}
+	if cred.Provider != provider {
+		return nil, fmt.Errorf("%w: account %s is not a %s account", repository.ErrInvalidInput, accountID, provider)
+	}
+	return cred, nil
+}
+
+func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID) ([]GitRepository, error) {
 	if userID == uuid.Nil {
 		return nil, errors.New("user id required")
 	}
-	cred, err := s.deps.Repo.GetByUserAndProvider(ctx, userID, provider)
+	cred, err := s.resolveRepoCredential(ctx, userID, provider, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -759,14 +787,14 @@ func (s *gitIntegrationService) ListRepositories(ctx context.Context, userID uui
 	return nil, fmt.Errorf("unsupported provider %q", provider)
 }
 
-func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, name string, private bool, description string) (*GitRepository, error) {
+func (s *gitIntegrationService) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID, name string, private bool, description string) (*GitRepository, error) {
 	if userID == uuid.Nil {
 		return nil, errors.New("user id required")
 	}
 	if name == "" {
 		return nil, errors.New("repository name required")
 	}
-	cred, err := s.deps.Repo.GetByUserAndProvider(ctx, userID, provider)
+	cred, err := s.resolveRepoCredential(ctx, userID, provider, accountID)
 	if err != nil {
 		return nil, err
 	}

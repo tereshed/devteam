@@ -554,6 +554,17 @@ definitions:
     - name
     - template
     type: object
+  dto.CreateRepositoryRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      private:
+        type: boolean
+    required:
+    - name
+    type: object
   dto.CreateScheduledTaskRequest:
     properties:
       cron_expression:
@@ -3006,6 +3017,21 @@ definitions:
     - RoleGuest
     - RoleUser
     - RoleAdmin
+  service.GitRepository:
+    properties:
+      clone_url:
+        type: string
+      default_branch:
+        type: string
+      description:
+        type: string
+      full_name:
+        type: string
+      html_url:
+        type: string
+      name:
+        type: string
+    type: object
   service.SetProjectSecretOutput:
     properties:
       id:
@@ -5100,6 +5126,103 @@ paths:
       summary: Триггер webhook
       tags:
       - webhooks
+  /integrations/{provider}/repos:
+    get:
+      description: |-
+        Возвращает репозитории выбранного аккаунта. account_id (опц.) выбирает конкретный
+        подключённый аккаунт провайдера (мульти-аккаунт); без него — первый аккаунт провайдера.
+      parameters:
+      - description: Провайдер (github|gitlab)
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: git_integration_credential_id выбранного аккаунта
+        in: query
+        name: account_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/service.GitRepository'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Список репозиториев подключённого git-аккаунта
+      tags:
+      - git-integrations
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Создаёт репозиторий у выбранного аккаунта. account_id (опц.) выбирает конкретный
+        подключённый аккаунт провайдера (мульти-аккаунт); без него — первый аккаунт провайдера.
+      parameters:
+      - description: Провайдер (github|gitlab)
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: git_integration_credential_id выбранного аккаунта
+        in: query
+        name: account_id
+        type: string
+      - description: name + private + description
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateRepositoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.GitRepository'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Создать репозиторий в подключённом git-аккаунте
+      tags:
+      - git-integrations
   /integrations/accounts:
     get:
       produces:

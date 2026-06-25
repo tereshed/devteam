@@ -160,7 +160,7 @@ func setupOrchestrationV2RouterWithArtifacts(
 ) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewOrchestrationV2Handler(artRepo, decRepo, nil, taskSvc, nil)
+	h := NewOrchestrationV2Handler(artRepo, decRepo, nil, nil, taskSvc, nil)
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", userID)
 		c.Set("userRole", string(userRole))
@@ -184,7 +184,7 @@ func setupOrchestrationV2RouterWithMgr(
 ) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewOrchestrationV2Handler(nil, nil, wtRepo, taskSvc, mgr)
+	h := NewOrchestrationV2Handler(nil, nil, wtRepo, nil, taskSvc, mgr)
 
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", userID)

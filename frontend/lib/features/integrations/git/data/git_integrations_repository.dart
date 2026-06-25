@@ -181,13 +181,20 @@ class GitIntegrationsRepository {
   }
 
   /// Получить список репозиториев для подключенного провайдера.
+  ///
+  /// [accountId] — git_integration_credential_id выбранного аккаунта (мульти-аккаунт).
+  /// Пусто/null → бэкенд берёт первый аккаунт провайдера (фолбэк).
   Future<List<GitRepositoryModel>> fetchRepositories(
     GitIntegrationProvider provider, {
+    String? accountId,
     CancelToken? cancelToken,
   }) async {
     try {
       final resp = await _dio.get<List<dynamic>>(
         '/integrations/${provider.jsonValue}/repos',
+        queryParameters: (accountId != null && accountId.isNotEmpty)
+            ? {'account_id': accountId}
+            : null,
         cancelToken: cancelToken,
       );
       final list = resp.data ?? [];
@@ -200,9 +207,13 @@ class GitIntegrationsRepository {
   }
 
   /// Создать новый репозиторий у подключенного провайдера.
+  ///
+  /// [accountId] — git_integration_credential_id выбранного аккаунта (мульти-аккаунт).
+  /// Пусто/null → бэкенд берёт первый аккаунт провайдера (фолбэк).
   Future<GitRepositoryModel> createRepository(
     GitIntegrationProvider provider,
     String name, {
+    String? accountId,
     bool private = true,
     String? description,
     CancelToken? cancelToken,
@@ -216,6 +227,9 @@ class GitIntegrationsRepository {
       final resp = await _dio.post<Map<String, dynamic>>(
         '/integrations/${provider.jsonValue}/repos',
         data: body,
+        queryParameters: (accountId != null && accountId.isNotEmpty)
+            ? {'account_id': accountId}
+            : null,
         cancelToken: cancelToken,
       );
       final data = resp.data ?? <String, dynamic>{};

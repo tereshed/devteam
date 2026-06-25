@@ -9,6 +9,7 @@ import (
 	"github.com/devteam/backend/internal/handler/dto"
 	"github.com/devteam/backend/internal/logging"
 	"github.com/devteam/backend/internal/models"
+	"github.com/devteam/backend/internal/repository"
 	"github.com/devteam/backend/internal/service"
 	"github.com/devteam/backend/pkg/apierror"
 	"github.com/gin-gonic/gin"
@@ -436,6 +437,10 @@ func (h *GitIntegrationHandler) mapErr(c *gin.Context, phase string, err error) 
 		errors.Is(err, service.ErrPrivateGitProviderHost),
 		errors.Is(err, service.ErrGitProviderResolveFailed):
 		apierror.JSON(c, http.StatusBadRequest, "invalid_host", "Provided git host is not allowed")
+	case errors.Is(err, repository.ErrGitIntegrationNotFound):
+		apierror.JSON(c, http.StatusNotFound, apierror.ErrNotFound, "Git account not found")
+	case errors.Is(err, repository.ErrInvalidInput):
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid git account selection")
 	default:
 		h.log.Error("git_integration handler internal error",
 			"phase", phase,
@@ -479,7 +484,38 @@ func gitStatusToDTO(s service.GitIntegrationStatus) dto.GitIntegrationStatusResp
 	}
 }
 
+// parseAccountID извлекает опциональный account_id (git_integration_credential_id) из query.
+// Пусто → uuid.Nil (фолбэк на первый аккаунт провайдера). Невалидный UUID → пишет 400 и false.
+func (h *GitIntegrationHandler) parseAccountID(c *gin.Context) (uuid.UUID, bool) {
+	raw := c.Query("account_id")
+	if raw == "" {
+		return uuid.Nil, true
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid account_id format")
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
 // ListRepositories — GET /integrations/:provider/repos.
+//
+// @Summary Список репозиториев подключённого git-аккаунта
+// @Description Возвращает репозитории выбранного аккаунта. account_id (опц.) выбирает конкретный
+// @Description подключённый аккаунт провайдера (мульти-аккаунт); без него — первый аккаунт провайдера.
+// @Tags git-integrations
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Produce json
+// @Param provider path string true "Провайдер (github|gitlab)"
+// @Param account_id query string false "git_integration_credential_id выбранного аккаунта"
+// @Success 200 {array} service.GitRepository
+// @Failure 400 {object} apierror.ErrorResponse
+// @Failure 401 {object} apierror.ErrorResponse
+// @Failure 404 {object} apierror.ErrorResponse
+// @Failure 500 {object} apierror.ErrorResponse
+// @Router /integrations/{provider}/repos [get]
 func (h *GitIntegrationHandler) ListRepositories(c *gin.Context) {
 	uid, ok := getUserID(c)
 	if !ok {
@@ -492,8 +528,12 @@ func (h *GitIntegrationHandler) ListRepositories(c *gin.Context) {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid git provider")
 		return
 	}
+	accountID, ok := h.parseAccountID(c)
+	if !ok {
+		return
+	}
 
-	repos, err := h.svc.ListRepositories(c.Request.Context(), uid, provider)
+	repos, err := h.svc.ListRepositories(c.Request.Context(), uid, provider, accountID)
 	if err != nil {
 		h.mapErr(c, "list_repos", err)
 		return
@@ -502,6 +542,24 @@ func (h *GitIntegrationHandler) ListRepositories(c *gin.Context) {
 }
 
 // CreateRepository — POST /integrations/:provider/repos.
+//
+// @Summary Создать репозиторий в подключённом git-аккаунте
+// @Description Создаёт репозиторий у выбранного аккаунта. account_id (опц.) выбирает конкретный
+// @Description подключённый аккаунт провайдера (мульти-аккаунт); без него — первый аккаунт провайдера.
+// @Tags git-integrations
+// @Security BearerAuth
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param provider path string true "Провайдер (github|gitlab)"
+// @Param account_id query string false "git_integration_credential_id выбранного аккаунта"
+// @Param request body dto.CreateRepositoryRequest true "name + private + description"
+// @Success 200 {object} service.GitRepository
+// @Failure 400 {object} apierror.ErrorResponse
+// @Failure 401 {object} apierror.ErrorResponse
+// @Failure 404 {object} apierror.ErrorResponse
+// @Failure 500 {object} apierror.ErrorResponse
+// @Router /integrations/{provider}/repos [post]
 func (h *GitIntegrationHandler) CreateRepository(c *gin.Context) {
 	uid, ok := getUserID(c)
 	if !ok {
@@ -514,6 +572,10 @@ func (h *GitIntegrationHandler) CreateRepository(c *gin.Context) {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "Invalid git provider")
 		return
 	}
+	accountID, ok := h.parseAccountID(c)
+	if !ok {
+		return
+	}
 
 	var req dto.CreateRepositoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -521,7 +583,7 @@ func (h *GitIntegrationHandler) CreateRepository(c *gin.Context) {
 		return
 	}
 
-	repo, err := h.svc.CreateRepository(c.Request.Context(), uid, provider, req.Name, req.Private, req.Description)
+	repo, err := h.svc.CreateRepository(c.Request.Context(), uid, provider, accountID, req.Name, req.Private, req.Description)
 	if err != nil {
 		h.mapErr(c, "create_repo", err)
 		return

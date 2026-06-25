@@ -75,16 +75,16 @@ func (m *mockGitIntegrationService) ListStatuses(ctx context.Context, userID uui
 	return args.Get(0).([]service.GitIntegrationStatus), args.Error(1)
 }
 
-func (m *mockGitIntegrationService) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]service.GitRepository, error) {
-	args := m.Called(ctx, userID, provider)
+func (m *mockGitIntegrationService) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID) ([]service.GitRepository, error) {
+	args := m.Called(ctx, userID, provider, accountID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]service.GitRepository), args.Error(1)
 }
 
-func (m *mockGitIntegrationService) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, name string, private bool, description string) (*service.GitRepository, error) {
-	args := m.Called(ctx, userID, provider, name, private, description)
+func (m *mockGitIntegrationService) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID, name string, private bool, description string) (*service.GitRepository, error) {
+	args := m.Called(ctx, userID, provider, accountID, name, private, description)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -120,7 +120,7 @@ func TestListGitRepositories_Success(t *testing.T) {
 	ctx := testUserCtx(t)
 	uid, _ := UserIDFromContext(ctx)
 
-	svc.On("ListRepositories", mock.Anything, uid, models.GitIntegrationProviderGitHub).Return([]service.GitRepository{
+	svc.On("ListRepositories", mock.Anything, uid, models.GitIntegrationProviderGitHub, uuid.Nil).Return([]service.GitRepository{
 		{
 			Name:        "repo1",
 			FullName:    "owner/repo1",
@@ -136,6 +136,33 @@ func TestListGitRepositories_Success(t *testing.T) {
 	data := structured.(*Response).Data.(map[string]any)
 	assert.Contains(t, data, "repositories")
 	svc.AssertExpectations(t)
+}
+
+func TestListGitRepositories_PassesAccountID(t *testing.T) {
+	svc := new(mockGitIntegrationService)
+	h := makeListGitRepositoriesHandler(svc)
+	ctx := testUserCtx(t)
+	uid, _ := UserIDFromContext(ctx)
+
+	acc := uuid.New()
+	svc.On("ListRepositories", mock.Anything, uid, models.GitIntegrationProviderGitLab, acc).
+		Return([]service.GitRepository{}, nil)
+
+	result, _, err := h(ctx, nil, &ListGitRepositoriesParams{Provider: "gitlab", AccountID: acc.String()})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	svc.AssertExpectations(t)
+}
+
+func TestListGitRepositories_BadAccountID(t *testing.T) {
+	svc := new(mockGitIntegrationService)
+	h := makeListGitRepositoriesHandler(svc)
+	ctx := testUserCtx(t)
+
+	result, _, err := h(ctx, nil, &ListGitRepositoriesParams{Provider: "gitlab", AccountID: "not-a-uuid"})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	svc.AssertNotCalled(t, "ListRepositories")
 }
 
 func TestListGitRepositories_InvalidProvider(t *testing.T) {
@@ -163,7 +190,7 @@ func TestCreateGitRepository_Success(t *testing.T) {
 		Description: "some desc",
 	}
 
-	svc.On("CreateRepository", mock.Anything, uid, models.GitIntegrationProviderGitHub, "new-repo", true, "some desc").Return(repo, nil)
+	svc.On("CreateRepository", mock.Anything, uid, models.GitIntegrationProviderGitHub, uuid.Nil, "new-repo", true, "some desc").Return(repo, nil)
 
 	result, structured, err := h(ctx, nil, &CreateGitRepositoryParams{
 		Provider:    "github",

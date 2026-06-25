@@ -232,8 +232,10 @@ class _GitRepoSourceSelectorState extends ConsumerState<GitRepoSourceSelector> {
       ];
     }
 
-    // Список репозиториев аккаунта.
-    final reposAsync = ref.watch(gitRepositoriesProvider(domainProvider));
+    // Список репозиториев аккаунта. Ключ включает _accountId — иначе при смене
+    // аккаунта вернётся закэшированный список первого аккаунта провайдера.
+    final reposArgs = (provider: domainProvider, accountId: _accountId);
+    final reposAsync = ref.watch(gitRepositoriesProvider(reposArgs));
     return [
       reposAsync.when(
         data: (repos) {
@@ -316,8 +318,8 @@ class _GitRepoSourceSelectorState extends ConsumerState<GitRepoSourceSelector> {
                     tooltip: 'Обновить список',
                     onPressed: isBusy
                         ? null
-                        : () => ref
-                            .invalidate(gitRepositoriesProvider(domainProvider)),
+                        : () =>
+                            ref.invalidate(gitRepositoriesProvider(reposArgs)),
                   ),
                 ],
               ),
@@ -364,8 +366,8 @@ class _GitRepoSourceSelectorState extends ConsumerState<GitRepoSourceSelector> {
               Row(
                 children: [
                   TextButton(
-                    onPressed: () => ref
-                        .invalidate(gitRepositoriesProvider(domainProvider)),
+                    onPressed: () =>
+                        ref.invalidate(gitRepositoriesProvider(reposArgs)),
                     child: const Text('Повторить'),
                   ),
                   const SizedBox(width: 8),
@@ -467,12 +469,14 @@ class _GitRepoSourceSelectorState extends ConsumerState<GitRepoSourceSelector> {
                                 .createRepository(
                                   provider,
                                   nameCtrl.text.trim(),
+                                  accountId: _accountId,
                                   private: isPrivate,
                                   description: descCtrl.text.trim().isNotEmpty
                                       ? descCtrl.text.trim()
                                       : null,
                                 );
-                            ref.invalidate(gitRepositoriesProvider(provider));
+                            ref.invalidate(gitRepositoriesProvider(
+                                (provider: provider, accountId: _accountId)));
                             if (dialogCtx.mounted) {
                               Navigator.of(dialogCtx).pop();
                             }

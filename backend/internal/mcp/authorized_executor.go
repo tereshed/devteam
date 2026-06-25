@@ -1431,7 +1431,8 @@ func (e *AuthorizedExecutor) listGitIntegrations(ctx context.Context, auth agent
 }
 
 type listGitRepositoriesArgs struct {
-	Provider string `json:"provider"`
+	Provider  string `json:"provider"`
+	AccountID string `json:"account_id,omitempty"`
 }
 
 func (e *AuthorizedExecutor) listGitRepositories(ctx context.Context, auth agentloop.AuthContext, args json.RawMessage) (json.RawMessage, error) {
@@ -1450,7 +1451,11 @@ func (e *AuthorizedExecutor) listGitRepositories(ctx context.Context, auth agent
 	if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
 		return businessErr("validation", "invalid provider, must be 'github' or 'gitlab'")
 	}
-	repos, err := e.gitIntegrationSvc.ListRepositories(ctx, uid, provider)
+	accountID, err := parseOptionalAccountID(a.AccountID)
+	if err != nil {
+		return businessErr("validation", "invalid account_id format")
+	}
+	repos, err := e.gitIntegrationSvc.ListRepositories(ctx, uid, provider, accountID)
 	if err != nil {
 		return mapServiceErr(err)
 	}
@@ -1459,6 +1464,7 @@ func (e *AuthorizedExecutor) listGitRepositories(ctx context.Context, auth agent
 
 type createGitRepositoryArgs struct {
 	Provider    string `json:"provider"`
+	AccountID   string `json:"account_id,omitempty"`
 	Name        string `json:"name"`
 	Private     bool   `json:"private"`
 	Description string `json:"description,omitempty"`
@@ -1480,7 +1486,11 @@ func (e *AuthorizedExecutor) createGitRepository(ctx context.Context, auth agent
 	if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
 		return businessErr("validation", "invalid provider, must be 'github' or 'gitlab'")
 	}
-	repo, err := e.gitIntegrationSvc.CreateRepository(ctx, uid, provider, a.Name, a.Private, a.Description)
+	accountID, err := parseOptionalAccountID(a.AccountID)
+	if err != nil {
+		return businessErr("validation", "invalid account_id format")
+	}
+	repo, err := e.gitIntegrationSvc.CreateRepository(ctx, uid, provider, accountID, a.Name, a.Private, a.Description)
 	if err != nil {
 		return mapServiceErr(err)
 	}
@@ -1514,8 +1524,8 @@ var (
 	schemaArtifactGet         = json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"artifact_id":{"type":"string","format":"uuid"}},"description":"Передайте либо id, либо artifact_id (UUID артефакта)."}`)
 	schemaAppNavigate         = json.RawMessage(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","description":"go_router path, например '/projects/<uuid>'"}}}`)
 	schemaGitIntegrationList  = json.RawMessage(`{"type":"object","properties":{}}`)
-	schemaGitRepositoryList   = json.RawMessage(`{"type":"object","required":["provider"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"}}}`)
-	schemaGitRepositoryCreate = json.RawMessage(`{"type":"object","required":["provider","name"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"},"name":{"type":"string","description":"Имя нового репозитория"},"private":{"type":"boolean","description":"Сделать ли репозиторий приватным"},"description":{"type":"string","description":"Описание нового репозитория"}}}`)
+	schemaGitRepositoryList   = json.RawMessage(`{"type":"object","required":["provider"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"},"account_id":{"type":"string","description":"git_integration_credential_id выбранного аккаунта (опц.; пусто = первый аккаунт провайдера)"}}}`)
+	schemaGitRepositoryCreate = json.RawMessage(`{"type":"object","required":["provider","name"],"properties":{"provider":{"type":"string","description":"Провайдер git-интеграции (github или gitlab)"},"account_id":{"type":"string","description":"git_integration_credential_id выбранного аккаунта (опц.; пусто = первый аккаунт провайдера)"},"name":{"type":"string","description":"Имя нового репозитория"},"private":{"type":"boolean","description":"Сделать ли репозиторий приватным"},"description":{"type":"string","description":"Описание нового репозитория"}}}`)
 	schemaTeamGet             = json.RawMessage(`{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"}},"description":"UUID проекта (опционально, если сессия привязана к проекту)."}`)
 	schemaTeamUpdate          = json.RawMessage(`{"type":"object","required":["name"],"properties":{"project_id":{"type":"string","format":"uuid"},"name":{"type":"string"}},"description":"UUID проекта и новое название."}`)
 	schemaTeamAgentPatch      = json.RawMessage(`{"type":"object","required":["agent_id"],"properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"clear_model":{"type":"boolean"},"model":{"type":"string"},"clear_prompt_id":{"type":"boolean"},"prompt_id":{"type":"string","format":"uuid"},"clear_system_prompt":{"type":"boolean"},"system_prompt":{"type":"string"},"clear_code_backend":{"type":"boolean"},"code_backend":{"type":"string"},"is_active":{"type":"boolean"},"tool_definition_ids":{"type":"array","items":{"type":"string","format":"uuid"}}}}`)

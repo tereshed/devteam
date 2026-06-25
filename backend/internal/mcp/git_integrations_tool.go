@@ -5,6 +5,7 @@ import (
 
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/service"
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -14,15 +15,25 @@ type ListGitIntegrationsParams struct{}
 
 // ListGitRepositoriesParams — параметры для получения списка репозиториев подключенного провайдера.
 type ListGitRepositoriesParams struct {
-	Provider string `json:"provider" jsonschema:"Провайдер git-интеграции (github или gitlab)"`
+	Provider  string `json:"provider" jsonschema:"Провайдер git-интеграции (github или gitlab)"`
+	AccountID string `json:"account_id,omitempty" jsonschema:"git_integration_credential_id выбранного аккаунта (опц.; пусто = первый аккаунт провайдера)"`
 }
 
 // CreateGitRepositoryParams — параметры для создания репозитория.
 type CreateGitRepositoryParams struct {
 	Provider    string `json:"provider" jsonschema:"Провайдер git-интеграции (github или gitlab)"`
+	AccountID   string `json:"account_id,omitempty" jsonschema:"git_integration_credential_id выбранного аккаунта (опц.; пусто = первый аккаунт провайдера)"`
 	Name        string `json:"name" jsonschema:"Имя нового репозитория"`
 	Private     bool   `json:"private" jsonschema:"Сделать ли репозиторий приватным"`
 	Description string `json:"description,omitempty" jsonschema:"Описание нового репозитория"`
+}
+
+// parseOptionalAccountID разбирает опциональный account_id. Пусто → uuid.Nil (фолбэк на первый аккаунт).
+func parseOptionalAccountID(raw string) (uuid.UUID, error) {
+	if raw == "" {
+		return uuid.Nil, nil
+	}
+	return uuid.Parse(raw)
 }
 
 // RegisterGitIntegrationsTools — регистрирует MCP-инструменты для интеграции с Git (list_git_integrations, list_git_repositories, create_git_repository).
@@ -73,8 +84,12 @@ func makeListGitRepositoriesHandler(svc service.GitIntegrationService) func(ctx 
 		if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
 			return ValidationErr("invalid provider, must be 'github' or 'gitlab'")
 		}
+		accountID, err := parseOptionalAccountID(params.AccountID)
+		if err != nil {
+			return ValidationErr("invalid account_id format")
+		}
 
-		repos, err := svc.ListRepositories(ctx, uid, provider)
+		repos, err := svc.ListRepositories(ctx, uid, provider, accountID)
 		if err != nil {
 			return Err("failed to list git repositories", err)
 		}
@@ -95,8 +110,12 @@ func makeCreateGitRepositoryHandler(svc service.GitIntegrationService) func(ctx 
 		if provider != models.GitIntegrationProviderGitHub && provider != models.GitIntegrationProviderGitLab {
 			return ValidationErr("invalid provider, must be 'github' or 'gitlab'")
 		}
+		accountID, err := parseOptionalAccountID(params.AccountID)
+		if err != nil {
+			return ValidationErr("invalid account_id format")
+		}
 
-		repo, err := svc.CreateRepository(ctx, uid, provider, params.Name, params.Private, params.Description)
+		repo, err := svc.CreateRepository(ctx, uid, provider, accountID, params.Name, params.Private, params.Description)
 		if err != nil {
 			return Err("failed to create git repository", err)
 		}

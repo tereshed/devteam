@@ -22,20 +22,21 @@ import (
 
 // stubGitIntegrationSvc — конфигурируемая реализация GitIntegrationService для handler-тестов.
 type stubGitIntegrationSvc struct {
-	initRes        *service.GitIntegrationInitResult
-	initErr        error
-	callbackRes    *service.GitIntegrationCallbackResult
-	callbackErr    error
-	revokeFailed   bool
-	revokeErr      error
-	statusRes      *service.GitIntegrationStatus
-	statusErr      error
-	listRes        []service.GitIntegrationStatus
-	listErr        error
-	listReposRes   []service.GitRepository
-	listReposErr   error
-	createRepoRes  *service.GitRepository
-	createRepoErr  error
+	initRes       *service.GitIntegrationInitResult
+	initErr       error
+	callbackRes   *service.GitIntegrationCallbackResult
+	callbackErr   error
+	revokeFailed  bool
+	revokeErr     error
+	statusRes     *service.GitIntegrationStatus
+	statusErr     error
+	listRes       []service.GitIntegrationStatus
+	listErr       error
+	listReposRes  []service.GitRepository
+	listReposErr  error
+	createRepoRes *service.GitRepository
+	createRepoErr error
+	lastAccountID uuid.UUID // последний accountID, переданный в List/CreateRepository (для ассертов)
 }
 
 func (s *stubGitIntegrationSvc) InitGitHub(context.Context, uuid.UUID, string) (*service.GitIntegrationInitResult, error) {
@@ -62,10 +63,12 @@ func (s *stubGitIntegrationSvc) Status(context.Context, uuid.UUID, models.GitInt
 func (s *stubGitIntegrationSvc) ListStatuses(context.Context, uuid.UUID) ([]service.GitIntegrationStatus, error) {
 	return s.listRes, s.listErr
 }
-func (s *stubGitIntegrationSvc) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider) ([]service.GitRepository, error) {
+func (s *stubGitIntegrationSvc) ListRepositories(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID) ([]service.GitRepository, error) {
+	s.lastAccountID = accountID
 	return s.listReposRes, s.listReposErr
 }
-func (s *stubGitIntegrationSvc) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, name string, private bool, description string) (*service.GitRepository, error) {
+func (s *stubGitIntegrationSvc) CreateRepository(ctx context.Context, userID uuid.UUID, provider models.GitIntegrationProvider, accountID uuid.UUID, name string, private bool, description string) (*service.GitRepository, error) {
+	s.lastAccountID = accountID
 	return s.createRepoRes, s.createRepoErr
 }
 
@@ -244,3 +247,38 @@ func TestGitIntegrationHandler_CreateRepository_OK(t *testing.T) {
 	assert.Equal(t, "newrepo", out.Name)
 }
 
+func TestGitIntegrationHandler_ListRepositories_PassesAccountID(t *testing.T) {
+	svc := &stubGitIntegrationSvc{listReposRes: []service.GitRepository{}}
+	r, _ := setupGitRouter(t, svc)
+
+	acc := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/integrations/gitlab/repos?account_id="+acc.String(), nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, acc, svc.lastAccountID, "выбранный account_id должен дойти до сервиса")
+}
+
+func TestGitIntegrationHandler_ListRepositories_NoAccountID_Nil(t *testing.T) {
+	svc := &stubGitIntegrationSvc{listReposRes: []service.GitRepository{}}
+	r, _ := setupGitRouter(t, svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/integrations/gitlab/repos", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, uuid.Nil, svc.lastAccountID, "без account_id сервис получает uuid.Nil (фолбэк)")
+}
+
+func TestGitIntegrationHandler_ListRepositories_BadAccountID_400(t *testing.T) {
+	svc := &stubGitIntegrationSvc{listReposRes: []service.GitRepository{}}
+	r, _ := setupGitRouter(t, svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/integrations/gitlab/repos?account_id=not-a-uuid", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+}

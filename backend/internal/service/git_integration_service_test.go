@@ -653,7 +653,7 @@ func TestGitIntegration_CreateRepository_GitHub_Success(t *testing.T) {
 		},
 	})
 
-	res, err := svc.CreateRepository(ctx, uid, models.GitIntegrationProviderGitHub, "my-new-repo", true, "hello")
+	res, err := svc.CreateRepository(ctx, uid, models.GitIntegrationProviderGitHub, uuid.Nil, "my-new-repo", true, "hello")
 	if err != nil {
 		t.Fatalf("CreateRepository failed: %v", err)
 	}
@@ -719,11 +719,114 @@ func TestGitIntegration_CreateRepository_GitLab_Success(t *testing.T) {
 		Logger:    logging.NopLogger(),
 	})
 
-	res, err := svc.CreateRepository(context.Background(), uid, models.GitIntegrationProviderGitLab, "my-new-repo", true, "hello")
+	res, err := svc.CreateRepository(context.Background(), uid, models.GitIntegrationProviderGitLab, uuid.Nil, "my-new-repo", true, "hello")
 	if err != nil {
 		t.Fatalf("CreateRepository failed: %v", err)
 	}
 	if res.Name != "my-new-repo" || res.FullName != "test-user/my-new-repo" {
 		t.Errorf("unexpected response: %+v", res)
+	}
+}
+
+// TestGitIntegration_ListRepositories_ExplicitAccountID_UsesThatAccount — ядро фикса
+// мульти-аккаунта: при заданном accountID листинг идёт через ВЫБРАННЫЙ аккаунт (его токен),
+// а не через «первый аккаунт провайдера».
+func TestGitIntegration_ListRepositories_ExplicitAccountID_UsesThatAccount(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/v4/projects" {
+			gotAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"name":"acc2-repo","path_with_namespace":"acc2/repo","web_url":"https://gitlab.example.com/acc2/repo","http_url_to_repo":"https://gitlab.example.com/acc2/repo.git","default_branch":"main"}]`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	srvHost, srvPort, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	srvIP := net.ParseIP(srvHost)
+	resolver := &fakeResolver{responses: [][]net.IP{{srvIP}, {srvIP}}}
+	validator := NewGitProviderHostValidator(resolver, false)
+
+	repo := newFakeRepo()
+	uid := uuid.New()
+	enc, _ := crypto.NewAESEncryptor(testKey32(t))
+	credID := uuid.New()
+	tokenEnc, _ := enc.Encrypt([]byte("glpat-acc2"), repository.GitIntegrationCredentialAAD(credID))
+	_ = repo.Upsert(context.Background(), &models.GitIntegrationCredential{
+		ID:             credID,
+		UserID:         uid,
+		Provider:       models.GitIntegrationProviderGitLab,
+		Host:           "http://" + net.JoinHostPort("gitlab.example.com", srvPort),
+		AccountLogin:   "acc2",
+		AccessTokenEnc: tokenEnc,
+	})
+
+	svc := NewGitIntegrationService(GitIntegrationServiceDeps{
+		Repo:      repo,
+		Encryptor: enc,
+		Validator: validator,
+		Logger:    logging.NopLogger(),
+	})
+
+	repos, err := svc.ListRepositories(context.Background(), uid, models.GitIntegrationProviderGitLab, credID)
+	if err != nil {
+		t.Fatalf("ListRepositories failed: %v", err)
+	}
+	if len(repos) != 1 || repos[0].FullName != "acc2/repo" {
+		t.Fatalf("unexpected repos: %+v", repos)
+	}
+	if gotAuth != "Bearer glpat-acc2" {
+		t.Errorf("expected token of the SELECTED account, got Authorization=%q", gotAuth)
+	}
+}
+
+// TestGitIntegration_ListRepositories_AccountWrongOwner — чужой accountID не должен светиться
+// как существующий: fail-loud «не найдено», без молчаливого фолбэка на свой первый аккаунт.
+func TestGitIntegration_ListRepositories_AccountWrongOwner(t *testing.T) {
+	repo := newFakeRepo()
+	owner := uuid.New()
+	other := uuid.New()
+	enc, _ := crypto.NewAESEncryptor(testKey32(t))
+	credID := uuid.New()
+	tokenEnc, _ := enc.Encrypt([]byte("glpat-x"), repository.GitIntegrationCredentialAAD(credID))
+	_ = repo.Upsert(context.Background(), &models.GitIntegrationCredential{
+		ID:             credID,
+		UserID:         owner,
+		Provider:       models.GitIntegrationProviderGitLab,
+		AccessTokenEnc: tokenEnc,
+	})
+
+	svc := NewGitIntegrationService(GitIntegrationServiceDeps{Repo: repo, Encryptor: enc, Logger: logging.NopLogger()})
+
+	_, err := svc.ListRepositories(context.Background(), other, models.GitIntegrationProviderGitLab, credID)
+	if !errors.Is(err, repository.ErrGitIntegrationNotFound) {
+		t.Fatalf("expected ErrGitIntegrationNotFound for foreign account, got %v", err)
+	}
+}
+
+// TestGitIntegration_ListRepositories_AccountProviderMismatch — accountID другого провайдера
+// должен явно отвергаться (ErrInvalidInput), а не молча использоваться.
+func TestGitIntegration_ListRepositories_AccountProviderMismatch(t *testing.T) {
+	repo := newFakeRepo()
+	uid := uuid.New()
+	enc, _ := crypto.NewAESEncryptor(testKey32(t))
+	credID := uuid.New()
+	tokenEnc, _ := enc.Encrypt([]byte("ghp_x"), repository.GitIntegrationCredentialAAD(credID))
+	_ = repo.Upsert(context.Background(), &models.GitIntegrationCredential{
+		ID:             credID,
+		UserID:         uid,
+		Provider:       models.GitIntegrationProviderGitHub,
+		AccessTokenEnc: tokenEnc,
+	})
+
+	svc := NewGitIntegrationService(GitIntegrationServiceDeps{Repo: repo, Encryptor: enc, Logger: logging.NopLogger()})
+
+	// просим gitlab-репозитории, передав github-аккаунт
+	_, err := svc.ListRepositories(context.Background(), uid, models.GitIntegrationProviderGitLab, credID)
+	if !errors.Is(err, repository.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for provider mismatch, got %v", err)
 	}
 }

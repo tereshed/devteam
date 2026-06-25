@@ -121,7 +121,7 @@ func TestAuthorizedExecutor_ListGitRepositories(t *testing.T) {
 	auth := agentloop.AuthContext{UserID: uid.String()}
 
 	t.Run("Success", func(t *testing.T) {
-		mockGitSvc.On("ListRepositories", mock.Anything, uid, models.GitIntegrationProviderGitHub).Return([]service.GitRepository{
+		mockGitSvc.On("ListRepositories", mock.Anything, uid, models.GitIntegrationProviderGitHub, uuid.Nil).Return([]service.GitRepository{
 			{
 				Name:        "test-repo",
 				FullName:    "user/test-repo",
@@ -180,7 +180,7 @@ func TestAuthorizedExecutor_ListGitRepositories(t *testing.T) {
 	})
 
 	t.Run("Not Found / Not Connected", func(t *testing.T) {
-		mockGitSvc.On("ListRepositories", mock.Anything, uid, models.GitIntegrationProviderGitHub).Return(nil, repository.ErrGitIntegrationNotFound).Once()
+		mockGitSvc.On("ListRepositories", mock.Anything, uid, models.GitIntegrationProviderGitHub, uuid.Nil).Return(nil, repository.ErrGitIntegrationNotFound).Once()
 
 		args := json.RawMessage(`{"provider":"github"}`)
 		res, err := executor.listGitRepositories(context.Background(), auth, args)
@@ -208,7 +208,7 @@ func TestAuthorizedExecutor_CreateGitRepository(t *testing.T) {
 	auth := agentloop.AuthContext{UserID: uid.String()}
 
 	t.Run("Success", func(t *testing.T) {
-		mockGitSvc.On("CreateRepository", mock.Anything, uid, models.GitIntegrationProviderGitHub, "new-repo", true, "hello").Return(&service.GitRepository{
+		mockGitSvc.On("CreateRepository", mock.Anything, uid, models.GitIntegrationProviderGitHub, uuid.Nil, "new-repo", true, "hello").Return(&service.GitRepository{
 			Name:     "new-repo",
 			FullName: "user/new-repo",
 			HTMLURL:  "https://github.com/user/new-repo",

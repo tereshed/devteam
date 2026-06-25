@@ -487,8 +487,11 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
       ];
     }
 
-    // Show the repository selector using future provider
-    final reposAsync = ref.watch(gitRepositoriesProvider(domainProvider));
+    // Show the repository selector using future provider.
+    // Ключ включает _accountId — иначе список не перезапрашивается при смене аккаунта.
+    final reposArgs =
+        (provider: domainProvider, accountId: _accountId);
+    final reposAsync = ref.watch(gitRepositoriesProvider(reposArgs));
     return [
       reposAsync.when(
         data: (repos) {
@@ -569,7 +572,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                     onPressed: isBusy
                         ? null
                         : () {
-                            ref.invalidate(gitRepositoriesProvider(domainProvider));
+                            ref.invalidate(gitRepositoriesProvider(reposArgs));
                           },
                   ),
                 ],
@@ -628,7 +631,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                 children: [
                   TextButton(
                     onPressed: () {
-                      ref.invalidate(gitRepositoriesProvider(domainProvider));
+                      ref.invalidate(gitRepositoriesProvider(reposArgs));
                     },
                     child: const Text('Повторить попытку'),
                   ),
@@ -796,14 +799,16 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                                 .createRepository(
                                   provider,
                                   nameCtrl.text.trim(),
+                                  accountId: _accountId,
                                   private: isPrivate,
                                   description: descCtrl.text.trim().isNotEmpty
                                       ? descCtrl.text.trim()
                                       : null,
                                 );
 
-                            // Invalidate the cache of repositories list
-                            ref.invalidate(gitRepositoriesProvider(provider));
+                            // Invalidate the cache of repositories list (того же аккаунта)
+                            ref.invalidate(gitRepositoriesProvider(
+                                (provider: provider, accountId: _accountId)));
 
                             if (context.mounted) {
                               setState(() {

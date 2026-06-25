@@ -3779,6 +3779,153 @@
                 }
             }
         },
+        "/integrations/{provider}/repos": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Возвращает репозитории выбранного аккаунта. account_id (опц.) выбирает конкретный\nподключённый аккаунт провайдера (мульти-аккаунт); без него — первый аккаунт провайдера.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "git-integrations"
+                ],
+                "summary": "Список репозиториев подключённого git-аккаунта",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Провайдер (github|gitlab)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "git_integration_credential_id выбранного аккаунта",
+                        "name": "account_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/service.GitRepository"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Создаёт репозиторий у выбранного аккаунта. account_id (опц.) выбирает конкретный\nподключённый аккаунт провайдера (мульти-аккаунт); без него — первый аккаунт провайдера.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "git-integrations"
+                ],
+                "summary": "Создать репозиторий в подключённом git-аккаунте",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Провайдер (github|gitlab)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "git_integration_credential_id выбранного аккаунта",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "description": "name + private + description",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateRepositoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.GitRepository"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/llm-providers": {
             "get": {
                 "security": [
@@ -10681,6 +10828,23 @@
                 }
             }
         },
+        "dto.CreateRepositoryRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "private": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.CreateScheduledTaskRequest": {
             "type": "object",
             "required": [
@@ -14176,6 +14340,29 @@
                 "RoleUser",
                 "RoleAdmin"
             ]
+        },
+        "service.GitRepository": {
+            "type": "object",
+            "properties": {
+                "clone_url": {
+                    "type": "string"
+                },
+                "default_branch": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "html_url": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
         },
         "service.SetProjectSecretOutput": {
             "type": "object",
