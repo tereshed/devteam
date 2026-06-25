@@ -157,6 +157,7 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		Instruction:   instruction,
 		Context:       EmbedJSONForXML(NormalizeJSONForParse(in.ContextJSON)),
 		EnvVars:       envVars,
+		ProjectEnv:    in.ProjectEnv,
 		Timeout:       0, // SandboxRunner сам подставит дефолт или можно вычислить из ctx
 		AgentSettings: in.AgentSettings,
 		SiblingRepos:  siblings,

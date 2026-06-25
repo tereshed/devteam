@@ -2141,8 +2141,12 @@ definitions:
     properties:
       created_at:
         type: string
+      description:
+        type: string
       id:
         type: string
+      inject_as_env:
+        type: boolean
       key_name:
         type: string
       project_id:
@@ -2152,6 +2156,14 @@ definitions:
     type: object
   handler.setProjectSecretRequest:
     properties:
+      description:
+        description: Description — необязательная подсказка агенту (что это за переменная).
+        type: string
+      inject_as_env:
+        description: |-
+          InjectAsEnv — класть значение в env песочницы как обычную переменную (и упоминать
+          имя в промпте). Опционально; по умолчанию false.
+        type: boolean
       key_name:
         type: string
       value:
@@ -3034,8 +3046,12 @@ definitions:
     type: object
   service.SetProjectSecretOutput:
     properties:
+      description:
+        type: string
       id:
         type: string
+      inject_as_env:
+        type: boolean
       key_name:
         type: string
       project_id:

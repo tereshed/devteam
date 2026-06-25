@@ -191,6 +191,16 @@ func ptrInt(v int) *int { return &v }
 func mergeSandboxEnv(opts SandboxOptions) []string {
 	// Обязательные пары в конце (перекрывают дубликаты ключей из EnvVars).
 	var out []string
+	// «Переменные проекта» (ProjectEnv) — НИЗШИЙ приоритет: добавляем первыми, чтобы любой
+	// системный ключ (HermesEnv/MCPEnv/EnvVars/REPO_URL/сервис-конн) перекрыл их при дубле
+	// (в docker/exec побеждает последняя пара K=V). Ключи прошли ValidateProjectEnvKeys
+	// (не зарезервированы), reserved-проверка ниже — defense-in-depth.
+	for k, v := range opts.ProjectEnv {
+		if k == EnvRepoURL || k == EnvBranchName || k == EnvBackend {
+			continue
+		}
+		out = append(out, k+"="+v)
+	}
 	// Sprint 16.C: HermesEnv (DEVTEAM_HERMES_*, HERMES_MCP_*) приоритет НИЖЕ
 	// EnvVars — пользовательские переопределения через EnvVars побеждают.
 	// Ключи прошли whitelist в ValidateEnvKeys (включая префикс HERMES_MCP_*).

@@ -32,11 +32,23 @@ class ProjectSecretRepository {
     }
   }
 
-  Future<SecretRefModel> set(String projectId, {required String keyName, required String value, CancelToken? cancelToken}) async {
+  Future<SecretRefModel> set(
+    String projectId, {
+    required String keyName,
+    required String value,
+    bool injectAsEnv = false,
+    String description = '',
+    CancelToken? cancelToken,
+  }) async {
     try {
       final resp = await _dio.post<Map<String, dynamic>>(
         '/projects/$projectId/secrets',
-        data: {'key_name': keyName, 'value': value},
+        data: {
+          'key_name': keyName,
+          'value': value,
+          'inject_as_env': injectAsEnv,
+          'description': description,
+        },
         cancelToken: cancelToken,
       );
       return SecretRefModel.fromJson(resp.data!);

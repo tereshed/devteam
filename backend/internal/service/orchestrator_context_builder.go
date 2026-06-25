@@ -43,6 +43,14 @@ type ProjectAgentOverrideReader interface {
 	GetActiveOverride(ctx context.Context, projectID, agentID uuid.UUID) (*models.ProjectAgentOverride, error)
 }
 
+// ProjectEnvSecretReader — «переменные проекта» с inject_as_env=true: значения для
+// инъекции в env песочницы и имена+описания для промпт-блока «доступные переменные».
+// Реализуется *ProjectSecretService; узкий интерфейс — ContextBuilder не тянет весь сервис.
+type ProjectEnvSecretReader interface {
+	GetInjectableEnv(ctx context.Context, projectID uuid.UUID) (map[string]string, error)
+	ListAdvertised(ctx context.Context, projectID uuid.UUID) ([]AdvertisedProjectVar, error)
+}
+
 // previousStepMessagesLimit — сколько последних agent-сообщений из task_messages
 // показывать следующему агенту pipeline (developer→reviewer и т.п.). Слишком много
 // раздуют prompt и токен-бюджет; слишком мало — reviewer/tester не увидят diff.
@@ -67,6 +75,9 @@ type contextBuilder struct {
 	// enhancerOverrides (опц.) — применённые энхансером проектные добавки к
 	// промптам агентов; nil — оверрайды не подмешиваются.
 	enhancerOverrides ProjectAgentOverrideReader
+	// projectSecrets (опц.) — «переменные проекта» с inject_as_env=true для инъекции в
+	// env песочницы и упоминания в промпте; nil — переменные проекта не подставляются.
+	projectSecrets ProjectEnvSecretReader
 }
 
 // WithEnhancerOverridesOption — подключает чтение проектных оверрайдов промптов
@@ -79,6 +90,12 @@ func WithEnhancerOverridesOption(r ProjectAgentOverrideReader) ContextBuilderOpt
 // WithGitTokenRefresherOption — рефрешер OAuth-токенов для GIT_TOKEN в sandbox (self-hosted GitLab TTL ~2ч).
 func WithGitTokenRefresherOption(r GitTokenRefresher) ContextBuilderOption {
 	return func(b *contextBuilder) { b.tokenRefresher = r }
+}
+
+// WithProjectSecretsOption — подключает «переменные проекта» (inject_as_env): значения
+// льются в env песочницы, имена+описания подставляются в промпт агента.
+func WithProjectSecretsOption(r ProjectEnvSecretReader) ContextBuilderOption {
+	return func(b *contextBuilder) { b.projectSecrets = r }
 }
 
 // SetContextBuilderTokenRefresher — post-construction внедрение рефрешера (gitIntegrationSvc
@@ -95,6 +112,63 @@ func NewContextBuilder(encryptor Encryptor, promptComposer PipelinePromptCompose
 		encryptor: encryptor,
 		composer:  promptComposer,
 	}
+}
+
+// injectProjectEnv вливает «переменные проекта» (inject_as_env=true) в input.ProjectEnv
+// (значения для env песочницы) и добавляет в input.PromptSystem блок «доступные
+// переменные окружения» (имена+описания, без значений). Best-effort: ошибки логируются,
+// задача не падает (как и прочий резолв секретов выше).
+func (b *contextBuilder) injectProjectEnv(ctx context.Context, input *agent.ExecutionInput, project *models.Project) {
+	if b.projectSecrets == nil || project == nil {
+		return
+	}
+
+	envMap, err := b.projectSecrets.GetInjectableEnv(ctx, project.ID)
+	if err != nil {
+		slog.Warn("ContextBuilder: failed to load project env secrets", "project_id", project.ID, "error", err)
+	} else if len(envMap) > 0 {
+		if input.ProjectEnv == nil {
+			input.ProjectEnv = make(map[string]string, len(envMap))
+		}
+		for k, v := range envMap {
+			input.ProjectEnv[k] = v
+		}
+	}
+
+	advertised, err := b.projectSecrets.ListAdvertised(ctx, project.ID)
+	if err != nil {
+		slog.Warn("ContextBuilder: failed to list advertised project vars", "project_id", project.ID, "error", err)
+		return
+	}
+	if block := buildProjectEnvPromptBlock(advertised); block != "" {
+		if input.PromptSystem != "" {
+			input.PromptSystem += "\n\n" + block
+		} else {
+			input.PromptSystem = block
+		}
+	}
+}
+
+// buildProjectEnvPromptBlock собирает текстовый блок «доступные переменные окружения»
+// для системного промпта. Только имена и описания — значения секретов сюда не попадают.
+// Пустой список → "" (блок не добавляется).
+func buildProjectEnvPromptBlock(vars []AdvertisedProjectVar) string {
+	if len(vars) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("=== ДОСТУПНЫЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===\n")
+	b.WriteString("В песочнице доступны следующие переменные окружения (значения скрыты), используй их как $ИМЯ:\n")
+	for _, v := range vars {
+		b.WriteString("- ")
+		b.WriteString(v.KeyName)
+		if d := strings.TrimSpace(v.Description); d != "" {
+			b.WriteString(" — ")
+			b.WriteString(d)
+		}
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func cleanSecrets(secrets map[string]string) map[string]string {
@@ -382,6 +456,10 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 				input.EnvSecrets[k] = v
 			}
 		}
+
+		// «Переменные проекта» (inject_as_env): значения → ProjectEnv (отдельный канал,
+		// мягкая валидация), имена+описания → промпт-блок «доступные переменные».
+		b.injectProjectEnv(ctx, input, project)
 	}
 
 	// Git информация: мульти-репо — из целевого репо подзадачи, иначе из полей проекта.

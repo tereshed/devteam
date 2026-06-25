@@ -5138,6 +5138,30 @@ abstract class AppLocalizations {
   /// **'Значение обязательно'**
   String get projectVariablesValueRequired;
 
+  /// No description provided for @projectVariablesInjectLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подставлять в песочницу (env)'**
+  String get projectVariablesInjectLabel;
+
+  /// No description provided for @projectVariablesInjectHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Значение станет переменной окружения в песочнице, а имя — попадёт в промпт агента как доступная переменная.'**
+  String get projectVariablesInjectHint;
+
+  /// No description provided for @projectVariablesDescriptionLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Описание (опц.)'**
+  String get projectVariablesDescriptionLabel;
+
+  /// No description provided for @projectVariablesEnvBadge.
+  ///
+  /// In ru, this message translates to:
+  /// **'env'**
+  String get projectVariablesEnvBadge;
+
   /// No description provided for @projectVariablesCancelButton.
   ///
   /// In ru, this message translates to:

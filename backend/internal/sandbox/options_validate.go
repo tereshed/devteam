@@ -188,6 +188,10 @@ func (o SandboxOptions) validateWithoutResourceLimits(ctx context.Context) error
 		return errors.Join(ErrInvalidOptions, err)
 	}
 
+	if err := ValidateProjectEnvKeys(o.ProjectEnv); err != nil {
+		return errors.Join(ErrInvalidOptions, err)
+	}
+
 	if o.Timeout < 0 {
 		return fmt.Errorf("%w: timeout must not be negative", ErrInvalidOptions)
 	}

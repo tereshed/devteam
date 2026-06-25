@@ -13,7 +13,7 @@ import (
 // используйте opts.LogSafe() или fmt.Sprintf("%s", opts) при наличии fmt.Stringer.
 func (o SandboxOptions) LogSafe() string {
 	return fmt.Sprintf(
-		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s Timeout:%v StopGracePeriod:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d} Services:%s}",
+		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s ProjectEnv:%s Timeout:%v StopGracePeriod:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d} Services:%s}",
 		o.TaskID,
 		o.ProjectID,
 		o.Backend,
@@ -23,6 +23,7 @@ func (o SandboxOptions) LogSafe() string {
 		byteLenDesc(o.Instruction),
 		byteLenDesc(o.Context),
 		maskEnvVarsForLog(o.EnvVars),
+		maskProjectEnvForLog(o.ProjectEnv),
 		o.Timeout,
 		o.StopGracePeriod,
 		o.DisableNetwork,
@@ -109,6 +110,31 @@ func maskEnvVarsForLog(m map[string]string) string {
 		} else {
 			b.WriteString(fmt.Sprintf("%q", m[k]))
 		}
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+// maskProjectEnvForLog — представление ProjectEnv для логов: ВСЕ значения скрыты
+// (произвольные пользовательские ключи вроде DATABASE_URL не угадываются эвристикой
+// sensitiveEnvKey, поэтому маскируем безусловно). Печатаем только отсортированные имена.
+func maskProjectEnvForLog(m map[string]string) string {
+	if m == nil {
+		return "nil"
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString("map[")
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(k)
+		b.WriteString(`=***`)
 	}
 	b.WriteByte(']')
 	return b.String()

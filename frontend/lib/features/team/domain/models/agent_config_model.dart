@@ -47,6 +47,8 @@ abstract class SecretRefModel with _$SecretRefModel {
   const factory SecretRefModel({
     required String id,
     @JsonKey(name: 'key_name') required String keyName,
+    @JsonKey(name: 'inject_as_env') @Default(false) bool injectAsEnv,
+    @Default('') String description,
     @JsonKey(name: 'created_at') String? createdAt,
     @JsonKey(name: 'updated_at') String? updatedAt,
   }) = _SecretRefModel;

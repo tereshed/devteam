@@ -105,6 +105,8 @@ func openInMemoryDB(t *testing.T) *gorm.DB {
 		project_id text,
 		key_name text,
 		encrypted_value blob,
+		inject_as_env boolean DEFAULT false,
+		description text DEFAULT '',
 		created_at datetime,
 		updated_at datetime
 	)`).Error; err != nil {

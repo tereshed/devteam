@@ -18,21 +18,21 @@ const repoHostLookupTimeout = 5 * time.Second
 // allowedSandboxEnvKeys — белый список ключей, разрешённых в SandboxOptions.EnvVars для entrypoint/clone.
 // Расширение: константы из types.go, префикс APP_, дев-only TASK_* (малый объём); см. ValidateEnvKeys.
 var allowedSandboxEnvKeys = map[string]struct{}{
-	EnvRepoURL:          {},
-	EnvBranchName:       {},
-	EnvBaseRef:          {},
-	EnvStartRef:         {},
-	EnvGitDefaultBranch: {},
-	EnvBackend:          {},
-	EnvAnthropicAPIKey:         {},
-	EnvMaxTurns:                {},
-	"TASK_INSTRUCTION":         {},
-	"TASK_CONTEXT":             {},
-	"GITHUB_TOKEN":             {},
-	"GITLAB_TOKEN":             {},
-	"GIT_TOKEN":                {},
-	EnvGitTokenUser:            {},
-	"BITBUCKET_TOKEN":          {},
+	EnvRepoURL:                  {},
+	EnvBranchName:               {},
+	EnvBaseRef:                  {},
+	EnvStartRef:                 {},
+	EnvGitDefaultBranch:         {},
+	EnvBackend:                  {},
+	EnvAnthropicAPIKey:          {},
+	EnvMaxTurns:                 {},
+	"TASK_INSTRUCTION":          {},
+	"TASK_CONTEXT":              {},
+	"GITHUB_TOKEN":              {},
+	"GITLAB_TOKEN":              {},
+	"GIT_TOKEN":                 {},
+	EnvGitTokenUser:             {},
+	"BITBUCKET_TOKEN":           {},
 	"DEVTEAM_AGENT_MODEL":       {},
 	"DEVTEAM_AGENT_TEMPERATURE": {},
 	"DEVTEAM_AGENT_MAX_TOKENS":  {},
@@ -163,6 +163,46 @@ func ValidateEnvKeys(env map[string]string) error {
 			continue
 		}
 		return fmt.Errorf("env: disallowed key %q (use known keys or APP_* / HERMES_MCP_* / MCP_*): %w", k, ErrInvalidEnvKeys)
+	}
+	return nil
+}
+
+// reservedProjectEnvPrefixes — префиксы, зарезервированные системой/агент-настройками.
+// «Переменные проекта» (ProjectEnv) с такими ключами запрещены — иначе пользователь мог бы
+// перехватить системную переменную (GIT_TOKEN, ANTHROPIC_*, REPO_URL и т.п.).
+var reservedProjectEnvPrefixes = []string{"DEVTEAM_", "HERMES_", "MCP_", "APP_"}
+
+// IsReservedSandboxEnvKey сообщает, что ключ зарезервирован системой и НЕ может
+// использоваться как пользовательская «переменная проекта». Зарезервированы все ключи
+// из системного whitelist (точное совпадение) и зарезервированные префиксы.
+// Имя нормализуется до UPPER (project-секреты и так ^[A-Z...], но проверяем устойчиво).
+func IsReservedSandboxEnvKey(k string) bool {
+	ku := strings.ToUpper(k)
+	if _, ok := allowedSandboxEnvKeys[ku]; ok {
+		return true
+	}
+	for _, p := range reservedProjectEnvPrefixes {
+		if strings.HasPrefix(ku, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateProjectEnvKeys — мягкая валидация ключей «переменных проекта» (ProjectEnv),
+// которые пользователь задаёт произвольно (в отличие от строгого whitelist EnvVars).
+// Требования: непустой синтаксически валидный токен env + НЕ зарезервированный ключ.
+func ValidateProjectEnvKeys(env map[string]string) error {
+	for k := range env {
+		if k == "" {
+			return fmt.Errorf("project env: empty key: %w", ErrInvalidEnvKeys)
+		}
+		if !isSafeEnvKeyToken(k) {
+			return fmt.Errorf("project env: invalid key syntax %q: %w", k, ErrInvalidEnvKeys)
+		}
+		if IsReservedSandboxEnvKey(k) {
+			return fmt.Errorf("project env: reserved key %q is not allowed: %w", k, ErrInvalidEnvKeys)
+		}
 	}
 	return nil
 }

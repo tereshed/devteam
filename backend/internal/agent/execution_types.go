@@ -89,6 +89,12 @@ type ExecutionInput struct {
 
 	EnvSecrets map[string]string
 
+	// ProjectEnv — «переменные проекта» (project_secrets с inject_as_env=true): произвольные
+	// пользовательские env-переменные, доступные агенту в песочнице как $VAR. Отдельно от
+	// EnvSecrets, т.к. проходят мягкую валидацию ключей (ValidateProjectEnvKeys) и
+	// маскируются в логах полностью. Значения — секреты.
+	ProjectEnv map[string]string
+
 	// StructuredContext — сырой JSON доп. контекста роли.
 	// Семантика: nil или len==0 трактуется как "{}" при парсинге (см. NormalizeJSONForParse).
 	StructuredContext json.RawMessage
@@ -161,25 +167,33 @@ func (in ExecutionInput) String() string {
 	b.WriteString(" StructuredContext:")
 	writeJSONLenOrEmpty(&b, in.StructuredContext)
 	b.WriteString(" EnvSecrets:")
-	if len(in.EnvSecrets) == 0 {
-		b.WriteString("{}")
-	} else {
-		keys := make([]string, 0, len(in.EnvSecrets))
-		for k := range in.EnvSecrets {
-			keys = append(keys, k)
-		}
-		slices.Sort(keys)
-		b.WriteByte('{')
-		for i, k := range keys {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			fmt.Fprintf(&b, "%q:***", k)
-		}
-		b.WriteByte('}')
-	}
+	writeMaskedEnvKeys(&b, in.EnvSecrets)
+	b.WriteString(" ProjectEnv:")
+	writeMaskedEnvKeys(&b, in.ProjectEnv)
 	b.WriteByte('}')
 	return b.String()
+}
+
+// writeMaskedEnvKeys печатает {"KEY":***, ...} с отсортированными именами и скрытыми
+// значениями — общий помощник для EnvSecrets и ProjectEnv (оба несут секреты).
+func writeMaskedEnvKeys(b *strings.Builder, m map[string]string) {
+	if len(m) == 0 {
+		b.WriteString("{}")
+		return
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	b.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(b, "%q:***", k)
+	}
+	b.WriteByte('}')
 }
 
 func truncateForLog(s string, max int) string {

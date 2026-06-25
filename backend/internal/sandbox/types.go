@@ -132,6 +132,13 @@ type SandboxOptions struct {
 	// Ключи проходят ValidateEnvKeys (белый список + APP_*, без PATH/LD_* и т.д.).
 	EnvVars map[string]string
 
+	// ProjectEnv — «переменные проекта» (project_secrets с inject_as_env=true), которые
+	// пользователь задаёт произвольно. В отличие от EnvVars проходят МЯГКУЮ валидацию
+	// (ValidateProjectEnvKeys: синтаксис + НЕ зарезервированный ключ), мерджатся в env
+	// контейнера с НИЗШИМ приоритетом (системные EnvVars/MCPEnv/HermesEnv перекрывают).
+	// Значения — секреты: маскируются в логах/JSON полностью (по имени не угадать).
+	ProjectEnv map[string]string
+
 	// Timeout — бизнес-таймаут жизни задачи в изоляции (после успешного start контейнера, политика 5.5/5.8).
 	// Ноль и отрицательные значения запрещены как «бесконечность»: используйте EffectiveTimeout() перед таймерами.
 	Timeout time.Duration
@@ -212,6 +219,14 @@ func (o SandboxOptions) Clone() SandboxOptions {
 		}
 	} else {
 		res.EnvVars = nil
+	}
+	if o.ProjectEnv != nil {
+		res.ProjectEnv = make(map[string]string, len(o.ProjectEnv))
+		for k, v := range o.ProjectEnv {
+			res.ProjectEnv[k] = v
+		}
+	} else {
+		res.ProjectEnv = nil
 	}
 	// Глубокая копия Services: каждый ServiceSpec.Env — мапа, которую runner читает в
 	// горутине ожидания/инъекции env параллельно с вызывающим (иначе concurrent map access).

@@ -481,6 +481,8 @@ func Run(role Role) {
 		service.WithGitIntegrationRepositoryOption(gitIntegrationRepo),
 		// Фаза 2 энхансера: применённые проектные добавки к промптам агентов.
 		service.WithEnhancerOverridesOption(enhancerRepo),
+		// «Переменные проекта» (inject_as_env): значения → env песочницы, имена → промпт.
+		service.WithProjectSecretsOption(projectSecretSvc),
 	)
 
 	llmProviderRepo := repository.NewLLMProviderRepository(db)

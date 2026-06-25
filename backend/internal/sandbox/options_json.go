@@ -12,6 +12,7 @@ type sandboxOptionsWire struct {
 	Instruction     string            `json:"instruction"`
 	Context         string            `json:"context"`
 	EnvVars         map[string]string `json:"env_vars,omitempty"`
+	ProjectEnv      map[string]string `json:"project_env,omitempty"`
 	Timeout         string            `json:"timeout"`
 	StopGracePeriod string            `json:"stop_grace_period"`
 	DisableNetwork  bool              `json:"disable_network"`
@@ -59,6 +60,7 @@ func (o SandboxOptions) MarshalJSON() ([]byte, error) {
 		Instruction:     byteLenDesc(o.Instruction),
 		Context:         byteLenDesc(o.Context),
 		EnvVars:         maskEnvVarsMapForJSON(o.EnvVars),
+		ProjectEnv:      maskAllValuesForJSON(o.ProjectEnv),
 		Timeout:         o.Timeout.String(),
 		StopGracePeriod: o.StopGracePeriod.String(),
 		DisableNetwork:  o.DisableNetwork,
@@ -79,6 +81,19 @@ func maskEnvVarsMapForJSON(m map[string]string) map[string]string {
 		} else {
 			out[k] = v
 		}
+	}
+	return out
+}
+
+// maskAllValuesForJSON скрывает ВСЕ значения (для ProjectEnv: произвольные пользовательские
+// ключи — все значения секретные). Имена сохраняются.
+func maskAllValuesForJSON(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k := range m {
+		out[k] = "***"
 	}
 	return out
 }

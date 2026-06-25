@@ -12,7 +12,7 @@ import (
 
 var ErrProjectSecretNotFound = errors.New("project secret not found")
 
-const projectSecretListColumns = "id, project_id, key_name, created_at, updated_at"
+const projectSecretListColumns = "id, project_id, key_name, inject_as_env, description, created_at, updated_at"
 
 type ProjectSecretRepository interface {
 	Create(ctx context.Context, secret *models.ProjectSecret) error
@@ -50,7 +50,7 @@ func (r *projectSecretRepository) Update(ctx context.Context, secret *models.Pro
 	}
 	result := gormDB(ctx, r.db).WithContext(ctx).
 		Model(secret).
-		Select("encrypted_value", "updated_at").
+		Select("encrypted_value", "inject_as_env", "description", "updated_at").
 		Updates(secret)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update project secret %s: %w", secret.ID, result.Error)

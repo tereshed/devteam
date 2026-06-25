@@ -19,16 +19,23 @@ func NewProjectSecretHandler(svc *service.ProjectSecretService) *ProjectSecretHa
 }
 
 type projectSecretResponse struct {
-	ID        uuid.UUID `json:"id"`
-	ProjectID uuid.UUID `json:"project_id"`
-	KeyName   string    `json:"key_name"`
-	CreatedAt string    `json:"created_at"`
-	UpdatedAt string    `json:"updated_at"`
+	ID          uuid.UUID `json:"id"`
+	ProjectID   uuid.UUID `json:"project_id"`
+	KeyName     string    `json:"key_name"`
+	InjectAsEnv bool      `json:"inject_as_env"`
+	Description string    `json:"description"`
+	CreatedAt   string    `json:"created_at"`
+	UpdatedAt   string    `json:"updated_at"`
 }
 
 type setProjectSecretRequest struct {
 	KeyName string `json:"key_name" binding:"required"`
 	Value   string `json:"value" binding:"required"`
+	// InjectAsEnv — класть значение в env песочницы как обычную переменную (и упоминать
+	// имя в промпте). Опционально; по умолчанию false.
+	InjectAsEnv bool `json:"inject_as_env"`
+	// Description — необязательная подсказка агенту (что это за переменная).
+	Description string `json:"description"`
 }
 
 // List returns all project secret keys (without values).
@@ -55,11 +62,13 @@ func (h *ProjectSecretHandler) List(c *gin.Context) {
 	result := make([]projectSecretResponse, 0, len(secrets))
 	for _, s := range secrets {
 		result = append(result, projectSecretResponse{
-			ID:        s.ID,
-			ProjectID: s.ProjectID,
-			KeyName:   s.KeyName,
-			CreatedAt: s.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			UpdatedAt: s.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ID:          s.ID,
+			ProjectID:   s.ProjectID,
+			KeyName:     s.KeyName,
+			InjectAsEnv: s.InjectAsEnv,
+			Description: s.Description,
+			CreatedAt:   s.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:   s.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}
 	c.JSON(http.StatusOK, result)
@@ -89,9 +98,11 @@ func (h *ProjectSecretHandler) Set(c *gin.Context) {
 	}
 
 	out, err := h.svc.Set(c.Request.Context(), service.SetProjectSecretInput{
-		ProjectID: projectID,
-		KeyName:   req.KeyName,
-		Value:     req.Value,
+		ProjectID:   projectID,
+		KeyName:     req.KeyName,
+		Value:       req.Value,
+		InjectAsEnv: req.InjectAsEnv,
+		Description: req.Description,
 	})
 	if err != nil {
 		writeProjectSecretError(c, err)
@@ -125,7 +136,8 @@ func (h *ProjectSecretHandler) Delete(c *gin.Context) {
 func writeProjectSecretError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrProjectSecretValidation),
-		errors.Is(err, service.ErrProjectSecretInvalidKey):
+		errors.Is(err, service.ErrProjectSecretInvalidKey),
+		errors.Is(err, service.ErrProjectSecretReservedKey):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrProjectSecretNotFound):
 		apierror.JSON(c, http.StatusNotFound, apierror.ErrNotFound, err.Error())

@@ -2789,6 +2789,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projectVariablesValueRequired => 'Value is required';
 
   @override
+  String get projectVariablesInjectLabel => 'Inject into sandbox (env)';
+
+  @override
+  String get projectVariablesInjectHint =>
+      'The value becomes an environment variable in the sandbox, and its name is advertised to the agent in the prompt.';
+
+  @override
+  String get projectVariablesDescriptionLabel => 'Description (optional)';
+
+  @override
+  String get projectVariablesEnvBadge => 'env';
+
+  @override
   String get projectVariablesCancelButton => 'Cancel';
 
   @override

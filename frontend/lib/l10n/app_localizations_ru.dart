@@ -2818,6 +2818,19 @@ class AppLocalizationsRu extends AppLocalizations {
   String get projectVariablesValueRequired => 'Значение обязательно';
 
   @override
+  String get projectVariablesInjectLabel => 'Подставлять в песочницу (env)';
+
+  @override
+  String get projectVariablesInjectHint =>
+      'Значение станет переменной окружения в песочнице, а имя — попадёт в промпт агента как доступная переменная.';
+
+  @override
+  String get projectVariablesDescriptionLabel => 'Описание (опц.)';
+
+  @override
+  String get projectVariablesEnvBadge => 'env';
+
+  @override
   String get projectVariablesCancelButton => 'Отмена';
 
   @override
