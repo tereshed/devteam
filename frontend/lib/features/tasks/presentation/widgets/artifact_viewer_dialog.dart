@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/l10n/require.dart';
 import 'package:frontend/features/tasks/data/orchestration_v2_providers.dart';
 import 'package:frontend/features/tasks/domain/models/artifact_model.dart';
+import 'package:frontend/l10n/app_localizations.dart';
 import 'package:frontend/shared/widgets/diff_viewer.dart';
 
 /// Performance-критичные пороги для рендера full artifact (6.4).
@@ -357,10 +358,193 @@ class _TestResultViewState extends State<_TestResultView> {
         .toList(growable: false);
   }
 
+  // ── схема 082 (acceptance-driven) ────────────────────────────────────────
+  // Цвет статуса/вердикта: passed/verified → зелёный, failed → красный,
+  // blocked/not_verifiable → янтарный (есть-что-доделать), иначе нейтральный.
+  Color _statusColor(BuildContext context, String s) {
+    switch (s.toLowerCase().trim()) {
+      case 'passed':
+      case 'verified':
+        return Colors.green;
+      case 'failed':
+        return Colors.red;
+      case 'blocked':
+      case 'not_verifiable':
+        return Colors.orange;
+      default:
+        return Theme.of(context).colorScheme.onSurfaceVariant;
+    }
+  }
+
+  List<Map<String, dynamic>> _acceptance() {
+    final raw = widget.content['acceptance'];
+    if (raw is! List) {
+      return const [];
+    }
+    return raw.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  // tests: {unit, integration, lint, build} — свободный текст по слоям.
+  List<MapEntry<String, String>> _testsBreakdown() {
+    final raw = widget.content['tests'];
+    if (raw is! Map) {
+      return const [];
+    }
+    final out = <MapEntry<String, String>>[];
+    raw.forEach((k, v) {
+      final val = v?.toString().trim() ?? '';
+      if (val.isNotEmpty) {
+        out.add(MapEntry(k.toString(), val));
+      }
+    });
+    return out;
+  }
+
+  // issues: строки или {comment|message, severity}.
+  List<String> _issues082() {
+    final raw = widget.content['issues'];
+    if (raw is! List) {
+      return const [];
+    }
+    return raw
+        .map((e) {
+          if (e is String) {
+            return e;
+          }
+          if (e is Map) {
+            final msg = e['comment'] ?? e['message'] ?? e['detail'];
+            if (msg is String && msg.isNotEmpty) {
+              final sev = e['severity'];
+              return sev is String && sev.isNotEmpty ? '[$sev] $msg' : msg;
+            }
+          }
+          return e.toString();
+        })
+        .whereType<String>()
+        .toList(growable: false);
+  }
+
+  Widget _build082(
+      BuildContext context, AppLocalizations l10n, String decision) {
+    final scheme = Theme.of(context).colorScheme;
+    final verdictColor = _statusColor(context, decision);
+    final summary = widget.content['summary'] as String? ?? '';
+    final acceptance = _acceptance();
+    final tests = _testsBreakdown();
+    final issues = _issues082();
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          children: [
+            Text('${l10n.artifactViewerTestVerdict}: ',
+                style: Theme.of(context).textTheme.titleSmall),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: verdictColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: verdictColor.withValues(alpha: 0.6)),
+              ),
+              child: Text(decision,
+                  style: TextStyle(
+                      color: verdictColor,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'monospace')),
+            ),
+          ],
+        ),
+        if (summary.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SelectableText(summary),
+        ],
+        if (acceptance.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(l10n.artifactViewerTestAcceptance,
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          for (final ac in acceptance)
+            _AcceptanceTile(
+              criterion: ac['criterion']?.toString() ?? '—',
+              status: ac['status']?.toString() ?? '—',
+              evidence: ac['evidence']?.toString() ?? '',
+              color: _statusColor(context, ac['status']?.toString() ?? ''),
+            ),
+        ],
+        if (tests.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(l10n.artifactViewerTestChecks,
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Table(
+            border:
+                TableBorder.all(color: scheme.outlineVariant, width: 0.5),
+            columnWidths: const {
+              0: IntrinsicColumnWidth(),
+              1: FlexColumnWidth(),
+            },
+            children: [
+              for (final e in tests)
+                TableRow(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(e.key,
+                        style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: SelectableText(e.value),
+                  ),
+                ]),
+            ],
+          ),
+        ],
+        if (issues.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(l10n.artifactViewerReviewIssues,
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Table(
+            border:
+                TableBorder.all(color: scheme.outlineVariant, width: 0.5),
+            columnWidths: const {
+              0: IntrinsicColumnWidth(),
+              1: FlexColumnWidth(),
+            },
+            children: [
+              for (var i = 0; i < issues.length; i++)
+                TableRow(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text('#${i + 1}',
+                        style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: SelectableText(issues[i]),
+                  ),
+                ]),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n =
         requireAppLocalizations(context, where: 'artifact_viewer_dialog');
+    // Схема 082: вердикт в `decision`. Легаси-счётчики (passed/failed/...) в ней
+    // отсутствуют, поэтому показываем acceptance-driven представление.
+    final decision = widget.content['decision'];
+    if (decision is String && decision.trim().isNotEmpty) {
+      return _build082(context, l10n, decision.trim());
+    }
     final passed = _intField('passed');
     final failed = _intField('failed');
     final skipped = _intField('skipped');
@@ -459,6 +643,55 @@ class _StatChip extends StatelessWidget {
                   color: color,
                   fontWeight: FontWeight.w700,
                   fontFamily: 'monospace')),
+        ],
+      ),
+    );
+  }
+}
+
+// Один критерий приёмки (схема 082): статус-чип + критерий + раскрываемое evidence.
+class _AcceptanceTile extends StatelessWidget {
+  const _AcceptanceTile({
+    required this.criterion,
+    required this.status,
+    required this.evidence,
+    required this.color,
+  });
+
+  final String criterion;
+  final String status;
+  final String evidence;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ExpansionTile(
+        leading: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.6)),
+          ),
+          child: Text(status,
+              style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  fontFamily: 'monospace')),
+        ),
+        title: Text(criterion,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          if (evidence.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectableText(evidence,
+                  style: Theme.of(context).textTheme.bodySmall),
+            ),
         ],
       ),
     );

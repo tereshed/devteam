@@ -143,6 +143,53 @@ void main() {
       expect(find.textContaining('expected X got Y'), findsOneWidget);
     });
 
+    // Regression (задача 0f3795f8 / DEV-482): схема 082 несёт decision/acceptance/
+    // tests/issues и НЕ несёт passed/failed/duration. Старый виджет показывал
+    // 0/0/0 + «Все проверки зелёные», скрывая реальный вердикт blocked.
+    testWidgets('test_result (схема 082): показывает вердикт/критерии/проверки',
+        (tester) async {
+      final artifact = _fakeArtifact(
+        kind: 'test_result',
+        content: <String, dynamic>{
+          'decision': 'blocked',
+          'summary': 'AC1 не проверяем без ClickHouse',
+          'acceptance': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'criterion': 'AC1: список событий из mart_request_events',
+              'status': 'not_verifiable',
+              'evidence': 'нет ClickHouse в sandbox',
+            },
+            <String, dynamic>{
+              'criterion': 'AC2: injection-safe параметры',
+              'status': 'verified',
+              'evidence': 'bound placeholders',
+            },
+          ],
+          'tests': <String, dynamic>{
+            'unit': 'PASS 5/5',
+            'build': 'PASS',
+          },
+          'issues': <Map<String, dynamic>>[
+            <String, dynamic>{'comment': 'timezone bug', 'severity': 'minor'},
+          ],
+        },
+      );
+      await tester.pumpWidget(_pumpHarness(artifact: artifact));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      // Вердикт виден, ложное "Все проверки зелёные" — НЕТ.
+      expect(find.text('blocked'), findsOneWidget);
+      expect(find.text('Все проверки зелёные.'), findsNothing);
+      // Критерии приёмки и их статусы.
+      expect(find.textContaining('mart_request_events'), findsOneWidget);
+      expect(find.text('not_verifiable'), findsOneWidget);
+      expect(find.text('verified'), findsOneWidget);
+      // Разбивка проверок по слоям + замечание с severity.
+      expect(find.text('unit'), findsOneWidget);
+      expect(find.textContaining('[minor] timezone bug'), findsOneWidget);
+    });
+
     testWidgets(
         'test_result: failures > threshold пагинируется по '
         '$kArtifactFailuresPageSize, виден "Show next"', (tester) async {

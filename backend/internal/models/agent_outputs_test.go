@@ -152,3 +152,76 @@ func TestParseTestResult_RejectsFailedWithoutFailures(t *testing.T) {
 		t.Error("expected error when failed>0 but failures[] empty")
 	}
 }
+
+// ─── Схема 082 (acceptance-driven) ────────────────────────────────────────────
+
+// TestParseTestResult_Schema082Valid — regression на задачу fc6b2b05/DEV-482:
+// актуальный промпт tester'а (миграция 082) отдаёт decision/acceptance/tests/issues
+// БЕЗ легаси build_passed. Раньше fail-loud-гард валил такой артефакт 3× → needs_human.
+func TestParseTestResult_Schema082Valid(t *testing.T) {
+	// Форма из реального принятого артефакта DEV-481.
+	raw := []byte(`{
+		"decision": "passed",
+		"acceptance": [
+			{"criterion": "GET /request_events admin-only → 200", "status": "verified", "evidence": "integration test green against real PG"}
+		],
+		"tests": {"unit": "PASS", "integration": "PASS", "lint": "clean", "build": "go build ./... exit 0"},
+		"issues": ["Non-blocking: migration lives in self-service repo"],
+		"summary": "all acceptance criteria verified"
+	}`)
+	r, err := ParseTestResult(raw)
+	if err != nil {
+		t.Fatalf("unexpected error for valid 082 payload: %v", err)
+	}
+	if r.Decision != "passed" {
+		t.Errorf("decision expected 'passed', got %q", r.Decision)
+	}
+	if !r.AllPassed() {
+		t.Error("expected AllPassed=true when decision=passed")
+	}
+	if r.Tests == nil || r.Tests.Build == "" {
+		t.Errorf("tests breakdown not parsed: %+v", r.Tests)
+	}
+	if len(r.Acceptance) != 1 || r.Acceptance[0].Status != "verified" {
+		t.Errorf("acceptance not parsed: %+v", r.Acceptance)
+	}
+}
+
+func TestParseTestResult_Schema082VerdictMapping(t *testing.T) {
+	cases := map[string]bool{"passed": true, "failed": false, "blocked": false, "PASSED": true, " passed ": true}
+	for verdict, wantAllPassed := range cases {
+		t.Run(verdict, func(t *testing.T) {
+			raw := []byte(`{"decision": "` + verdict + `", "summary": "x"}`)
+			r, err := ParseTestResult(raw)
+			if err != nil {
+				t.Fatalf("unexpected error for decision %q: %v", verdict, err)
+			}
+			if r.AllPassed() != wantAllPassed {
+				t.Errorf("decision %q: AllPassed=%v, want %v", verdict, r.AllPassed(), wantAllPassed)
+			}
+		})
+	}
+}
+
+func TestParseTestResult_Schema082RejectsEmptyDecision(t *testing.T) {
+	if _, err := ParseTestResult([]byte(`{"decision": ""}`)); err == nil {
+		t.Error("expected error for empty decision")
+	}
+	if _, err := ParseTestResult([]byte(`{"decision": "  "}`)); err == nil {
+		t.Error("expected error for whitespace-only decision")
+	}
+}
+
+func TestParseTestResult_Schema082RejectsUnknownDecision(t *testing.T) {
+	if _, err := ParseTestResult([]byte(`{"decision": "maybe"}`)); err == nil {
+		t.Error("expected error for unknown decision value")
+	}
+}
+
+// TestParseTestResult_RejectsEmptyPayload — fail-loud-гард: пустой объект (ни decision,
+// ни легаси-булевых) — это тихий no-op артефакт, его обязаны отклонить.
+func TestParseTestResult_RejectsEmptyPayload(t *testing.T) {
+	if _, err := ParseTestResult([]byte(`{}`)); err == nil {
+		t.Error("expected error for empty test_result payload")
+	}
+}

@@ -4586,6 +4586,24 @@ abstract class AppLocalizations {
   /// **'Все проверки зелёные.'**
   String get artifactViewerTestNoFailures;
 
+  /// No description provided for @artifactViewerTestVerdict.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вердикт'**
+  String get artifactViewerTestVerdict;
+
+  /// No description provided for @artifactViewerTestAcceptance.
+  ///
+  /// In ru, this message translates to:
+  /// **'Критерии приёмки'**
+  String get artifactViewerTestAcceptance;
+
+  /// No description provided for @artifactViewerTestChecks.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверки'**
+  String get artifactViewerTestChecks;
+
   /// No description provided for @artifactsNoSummary.
   ///
   /// In ru, this message translates to:

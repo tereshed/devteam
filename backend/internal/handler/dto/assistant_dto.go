@@ -31,7 +31,10 @@ type CreateAssistantSessionRequest struct {
 // агент-петли). Источник правды — уникальный partial-индекс
 // `idx_assistant_messages_client_id`.
 type SendAssistantMessageRequest struct {
-	Content         string `json:"content" binding:"required,max=4096" example:"Покажи мои проекты"`
+	// max=32768: ассистент принимает развёрнутые ТЗ/контекст (создание задач по
+	// детальному описанию), 4096 их резал → 400 «Что-то пошло не так». Жёсткий
+	// потолок тела (maxRequestBodySize=1MB в handler) остаётся защитой от abuse.
+	Content         string `json:"content" binding:"required,max=32768" example:"Покажи мои проекты"`
 	ClientMessageID string `json:"client_message_id" example:"3f1b6d4a-2c1e-4b9f-8f1a-1f1c5a9d2b7e"`
 }
 

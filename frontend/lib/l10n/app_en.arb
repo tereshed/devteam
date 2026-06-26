@@ -1274,6 +1274,12 @@
     }
   },
   "artifactViewerTestNoFailures": "All checks green.",
+  "artifactViewerTestVerdict": "Verdict",
+  "@artifactViewerTestVerdict": { "description": "Label for the tester three-way verdict (passed|failed|blocked), schema 082" },
+  "artifactViewerTestAcceptance": "Acceptance criteria",
+  "@artifactViewerTestAcceptance": { "description": "Header for the acceptance-criteria checklist in a test_result artifact, schema 082" },
+  "artifactViewerTestChecks": "Checks",
+  "@artifactViewerTestChecks": { "description": "Header for the per-layer test breakdown (unit/integration/lint/build) in a test_result artifact, schema 082" },
   "artifactsNoSummary": "(no summary)",
   "@artifactsNoSummary": { "description": "Placeholder for artifact card title when both subtask_title and summary are empty (6.4)" },
   "artifactViewerTestUnnamed": "(unnamed)",

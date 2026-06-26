@@ -1590,6 +1590,9 @@
     }
   },
   "artifactViewerTestNoFailures": "Все проверки зелёные.",
+  "artifactViewerTestVerdict": "Вердикт",
+  "artifactViewerTestAcceptance": "Критерии приёмки",
+  "artifactViewerTestChecks": "Проверки",
   "artifactsNoSummary": "(без описания)",
   "artifactViewerTestUnnamed": "(без имени)",
   "artifactViewerFullTitle": "{kind} · полностью",

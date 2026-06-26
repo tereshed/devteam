@@ -2524,6 +2524,15 @@ class AppLocalizationsRu extends AppLocalizations {
   String get artifactViewerTestNoFailures => 'Все проверки зелёные.';
 
   @override
+  String get artifactViewerTestVerdict => 'Вердикт';
+
+  @override
+  String get artifactViewerTestAcceptance => 'Критерии приёмки';
+
+  @override
+  String get artifactViewerTestChecks => 'Проверки';
+
+  @override
   String get artifactsNoSummary => '(без описания)';
 
   @override

@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -59,7 +60,24 @@ func ParseMergerOutput(content []byte) (*MergerOutput, error) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TestResult — содержимое artifact.content для kind='test_result'.
+//
+// Поддерживаются ДВЕ схемы:
+//   - acceptance-driven (миграция 082, актуальная): источник истины — трёхзначный
+//     вердикт Decision (passed|failed|blocked) + Acceptance/Tests/Issues;
+//   - легаси (миграция 040): булевы build_passed/lint_passed/typecheck_passed.
+//
+// Какую отдаёт агент — определяется его промптом; парсер принимает обе.
 type TestResult struct {
+	// --- acceptance-driven (082) ---
+	// Decision непуст ⇒ артефакт в схеме 082; легаси-булевы при этом отсутствуют.
+	Decision   string            `json:"decision,omitempty"`
+	Acceptance []AcceptanceCheck `json:"acceptance,omitempty"`
+	Tests      *TestsBreakdown   `json:"tests,omitempty"`
+	// Issues — свободный список замечаний (строки или объекты), хранится как есть.
+	Issues  json.RawMessage `json:"issues,omitempty"`
+	Summary string          `json:"summary,omitempty"`
+
+	// --- легаси (040) ---
 	Passed          int           `json:"passed"`
 	Failed          int           `json:"failed"`
 	Skipped         int           `json:"skipped"`
@@ -75,6 +93,24 @@ type TestResult struct {
 	RawOutputTruncated string `json:"raw_output_truncated,omitempty"`
 }
 
+// AcceptanceCheck — проверка одного критерия приёмки (схема 082).
+type AcceptanceCheck struct {
+	Criterion string `json:"criterion"`
+	Status    string `json:"status"` // verified|failed|not_verifiable
+	Evidence  string `json:"evidence,omitempty"`
+}
+
+// TestsBreakdown — итог прогона по слоям (схема 082, свободный текст).
+type TestsBreakdown struct {
+	Unit        string `json:"unit,omitempty"`
+	Integration string `json:"integration,omitempty"`
+	Lint        string `json:"lint,omitempty"`
+	Build       string `json:"build,omitempty"`
+}
+
+// validTestDecisions — допустимые значения вердикта в схеме 082.
+var validTestDecisions = map[string]bool{"passed": true, "failed": true, "blocked": true}
+
 // TestFailure — одна упавшая проверка.
 type TestFailure struct {
 	TestName   string `json:"test_name"`
@@ -87,6 +123,9 @@ type TestFailure struct {
 // AllPassed — true, если ни один тест/чек не упал. Удобно для Router'а — он смотрит
 // summary, но code на go-стороне может проверить структурный исход.
 func (r *TestResult) AllPassed() bool {
+	if r.Decision != "" { // схема 082 — истина в вердикте
+		return strings.ToLower(strings.TrimSpace(r.Decision)) == "passed"
+	}
 	return r.Failed == 0 && r.BuildPassed && r.LintPassed && r.TypecheckPassed
 }
 
@@ -97,20 +136,48 @@ var requiredTestResultBoolFields = []string{"build_passed", "lint_passed", "type
 
 // ParseTestResult читает artifact.content в TestResult со строгой валидацией.
 //
-// Контракт (синхронизирован с system_prompt в миграции 040):
-//   - Поля build_passed/lint_passed/typecheck_passed ОБЯЗАНЫ присутствовать в JSON.
-//     Отсутствующий ключ → ошибка (а не молчаливое false), чтобы оператор увидел
-//     несоответствие промпта и не подумал, что "всё упало".
-//   - passed/failed/skipped/duration_ms — могут отсутствовать (default 0); если
-//     указаны — должны быть неотрицательными.
-//   - failed > 0 ОБЯЗАТЕЛЬНО подразумевает непустой failures[] (иначе агент не
-//     детализировал, что считается контрактным нарушением).
+// Принимает обе схемы (выбор — по наличию ключа decision):
+//
+//	Схема 082 (acceptance-driven, актуальный промпт tester'а):
+//	  - decision ОБЯЗАН присутствовать и быть одним из passed|failed|blocked.
+//	    Это источник истины о вердикте; пустой/неизвестный decision → ошибка.
+//	  - acceptance/tests/issues — опциональны (свободная структура).
+//
+//	Схема 040 (легаси, для обратной совместимости со старыми промптами):
+//	  - build_passed/lint_passed/typecheck_passed ОБЯЗАНЫ присутствовать в JSON.
+//	    Отсутствующий ключ → ошибка (а не молчаливое false), чтобы оператор увидел
+//	    несоответствие промпта и не подумал, что "всё упало".
+//	  - passed/failed/skipped/duration_ms — могут отсутствовать (default 0); если
+//	    указаны — должны быть неотрицательными.
+//	  - failed > 0 ОБЯЗАТЕЛЬНО подразумевает непустой failures[].
+//
+// В обоих случаях пустой/бессмысленный payload (без decision и без легаси-булевых)
+// отклоняется — это fail-loud-гард против тихого no-op артефакта.
 func ParseTestResult(content []byte) (*TestResult, error) {
 	// Первый проход — map[string]json.RawMessage для проверки наличия обязательных ключей.
 	var rawMap map[string]json.RawMessage
 	if err := json.Unmarshal(content, &rawMap); err != nil {
 		return nil, fmt.Errorf("parse test result: %w", err)
 	}
+
+	// Схема 082: вердикт в decision. Источник истины актуального промпта tester'а.
+	if _, hasDecision := rawMap["decision"]; hasDecision {
+		var out TestResult
+		if err := json.Unmarshal(content, &out); err != nil {
+			return nil, fmt.Errorf("parse test result: %w", err)
+		}
+		d := strings.ToLower(strings.TrimSpace(out.Decision))
+		if d == "" {
+			return nil, fmt.Errorf("test result: поле decision пустое (ожидается passed|failed|blocked)")
+		}
+		if !validTestDecisions[d] {
+			return nil, fmt.Errorf("test result: неизвестный decision %q (ожидается passed|failed|blocked)", out.Decision)
+		}
+		out.Decision = d // нормализуем регистр для потребителей
+		return &out, nil
+	}
+
+	// Схема 040 (легаси): обязательны явные булевы.
 	for _, key := range requiredTestResultBoolFields {
 		if _, ok := rawMap[key]; !ok {
 			return nil, fmt.Errorf("test result: required field %q missing (must be explicitly true|false)", key)

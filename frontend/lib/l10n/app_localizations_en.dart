@@ -2497,6 +2497,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get artifactViewerTestNoFailures => 'All checks green.';
 
   @override
+  String get artifactViewerTestVerdict => 'Verdict';
+
+  @override
+  String get artifactViewerTestAcceptance => 'Acceptance criteria';
+
+  @override
+  String get artifactViewerTestChecks => 'Checks';
+
+  @override
   String get artifactsNoSummary => '(no summary)';
 
   @override
