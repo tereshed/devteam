@@ -2032,6 +2032,7 @@
   "repoEnvFilesNoRepos": "Сначала добавьте репозиторий в проект (вкладка «Основные»).",
   "repoEnvFilesNotConfigured": "Для этого репозитория env-файл ещё не настроен.",
   "repoEnvFilesConfiguredHidden": "Env-файл настроен. Содержимое скрыто — сохранение перезапишет файл целиком.",
+  "repoEnvFilesUpdatedLabel": "Обновлён:",
   "repoEnvFilesFileNameLabel": "Имя файла",
   "repoEnvFilesFileNameHint": "например, .env",
   "repoEnvFilesTargetDirLabel": "Папка назначения (необязательно)",

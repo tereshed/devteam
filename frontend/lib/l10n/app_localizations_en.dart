@@ -3776,6 +3776,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'An env file is configured. Its content is hidden — saving overwrites the whole file.';
 
   @override
+  String get repoEnvFilesUpdatedLabel => 'Updated:';
+
+  @override
   String get repoEnvFilesFileNameLabel => 'File name';
 
   @override

@@ -1867,6 +1867,7 @@
   "repoEnvFilesNoRepos": "Add a repository to the project first (General tab).",
   "repoEnvFilesNotConfigured": "No env file configured for this repository yet.",
   "repoEnvFilesConfiguredHidden": "An env file is configured. Its content is hidden — saving overwrites the whole file.",
+  "repoEnvFilesUpdatedLabel": "Updated:",
   "repoEnvFilesFileNameLabel": "File name",
   "repoEnvFilesFileNameHint": "e.g. .env",
   "repoEnvFilesTargetDirLabel": "Target folder (optional)",

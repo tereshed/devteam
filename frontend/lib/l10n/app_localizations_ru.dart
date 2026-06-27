@@ -3808,6 +3808,9 @@ class AppLocalizationsRu extends AppLocalizations {
       'Env-файл настроен. Содержимое скрыто — сохранение перезапишет файл целиком.';
 
   @override
+  String get repoEnvFilesUpdatedLabel => 'Обновлён:';
+
+  @override
   String get repoEnvFilesFileNameLabel => 'Имя файла';
 
   @override

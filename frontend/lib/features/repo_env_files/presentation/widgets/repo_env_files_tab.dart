@@ -5,6 +5,7 @@ import 'package:frontend/features/projects/data/project_providers.dart';
 import 'package:frontend/features/projects/domain/models/project_repository_model.dart';
 import 'package:frontend/features/repo_env_files/data/repo_env_file_providers.dart';
 import 'package:frontend/features/repo_env_files/domain/models/repo_env_file_model.dart';
+import 'package:frontend/l10n/app_localizations.dart';
 
 /// Вкладка «Env-файлы» в настройках проекта: «инъекция env-файла» уровня репозитория.
 /// Пользователь выбирает репозиторий и задаёт один файл (содержимое, имя, папку),
@@ -228,6 +229,63 @@ class _RepoEnvFileFormState extends ConsumerState<_RepoEnvFileForm> {
     }
   }
 
+  /// Баннер статуса: настроен ли файл (зелёная галочка + дата последнего сохранения)
+  /// или ещё нет. Даёт явное подтверждение после «Сохранить».
+  Widget _buildStatusBanner(BuildContext context, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final configured = _exists;
+    final bg = configured
+        ? cs.primaryContainer.withValues(alpha: 0.5)
+        : cs.surfaceContainerHighest;
+    final fg = configured ? cs.onPrimaryContainer : cs.onSurfaceVariant;
+
+    final updated = _formatTimestamp(widget.initial?.updatedAt);
+    final message = configured
+        ? (updated.isEmpty
+            ? l10n.repoEnvFilesConfiguredHidden
+            : '${l10n.repoEnvFilesConfiguredHidden} '
+                '${l10n.repoEnvFilesUpdatedLabel} $updated')
+        : l10n.repoEnvFilesNotConfigured;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            configured ? Icons.check_circle : Icons.info_outline,
+            size: 18,
+            color: fg,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(color: fg),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTimestamp(String? iso) {
+    if (iso == null || iso.isEmpty) {
+      return '';
+    }
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) {
+      return '';
+    }
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = requireAppLocalizations(context, where: '_RepoEnvFileForm');
@@ -236,15 +294,8 @@ class _RepoEnvFileFormState extends ConsumerState<_RepoEnvFileForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              _exists
-                  ? l10n.repoEnvFilesConfiguredHidden
-                  : l10n.repoEnvFilesNotConfigured,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
+          _buildStatusBanner(context, l10n),
+          const SizedBox(height: 12),
           TextFormField(
             controller: _fileNameCtrl,
             decoration: InputDecoration(

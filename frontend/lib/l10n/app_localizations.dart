@@ -7010,6 +7010,12 @@ abstract class AppLocalizations {
   /// **'Env-файл настроен. Содержимое скрыто — сохранение перезапишет файл целиком.'**
   String get repoEnvFilesConfiguredHidden;
 
+  /// No description provided for @repoEnvFilesUpdatedLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновлён:'**
+  String get repoEnvFilesUpdatedLabel;
+
   /// No description provided for @repoEnvFilesFileNameLabel.
   ///
   /// In ru, this message translates to:
