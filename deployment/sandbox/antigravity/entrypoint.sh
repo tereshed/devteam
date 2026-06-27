@@ -429,33 +429,49 @@ plan_revised_v2.json
 review_output.json
 EOF
 
-# --- inject env file: «инъекция env-файла» уровня репозитория ---
-# Бэкенд стейджит содержимое в /workspace/.inject_env_file и передаёт имя/папку через env.
-# Пишем файл в рабочую копию репо ПОСЛЕ checkout и добавляем в .git/info/exclude — он нужен
-# агенту/тестам, но НЕ должен попасть в diff/commit/push (защита от утечки секретов).
-PHASE="inject_env_file"
-INJECT_ENV_FILE_STAGE="/workspace/.inject_env_file"
-if [[ -n "${INJECT_ENV_FILE_NAME:-}" && -f "$INJECT_ENV_FILE_STAGE" ]]; then
-  inj_name="$INJECT_ENV_FILE_NAME"
-  inj_dir="${INJECT_ENV_FILE_DIR:-}"
-  if [[ "$inj_name" == *"/"* || "$inj_name" == *".."* || "$inj_dir" == /* || "$inj_dir" == *".."* ]]; then
-    echo "entrypoint: injected env file rejected (unsafe name/dir): name=$inj_name dir=$inj_dir" >&2
-  else
+# --- inject env files: «инъекция env-файлов» уровня репозитория ---
+# Бэкенд стейджит содержимое каждого файла в /workspace/.inject_env/<idx> и передаёт
+# JSON-манифест [{name,dir,idx}] в INJECT_ENV_FILES. Пишем файлы в рабочую копию репо ПОСЛЕ
+# checkout и добавляем в .git/info/exclude — они нужны агенту/тестам, но НЕ должны попасть
+# в diff/commit/push (защита от утечки секретов).
+PHASE="inject_env_files"
+INJECT_ENV_STAGE_DIR="/workspace/.inject_env"
+if [[ -n "${INJECT_ENV_FILES:-}" && -d "$INJECT_ENV_STAGE_DIR" ]]; then
+  # Парсим манифест через node (jq может не быть). Валидируем имя/папку (защита от traversal).
+  INJ_TSV="$(INJECT_ENV_FILES="$INJECT_ENV_FILES" node -e '
+    try {
+      const arr = JSON.parse(process.env.INJECT_ENV_FILES || "[]");
+      if (!Array.isArray(arr)) process.exit(0);
+      for (const e of arr) {
+        if (!e || typeof e.name !== "string" || typeof e.idx !== "number") continue;
+        const name = e.name;
+        const dir = (typeof e.dir === "string") ? e.dir : "";
+        if (name === "" || name.includes("/") || name.includes("..")) continue;
+        if (dir.startsWith("/") || dir.includes("..") || dir.includes("\\")) continue;
+        process.stdout.write(e.idx + "\t" + name + "\t" + dir + "\n");
+      }
+    } catch (err) { process.exit(0); }
+  ' 2>>"$AGENT_LOG")" || INJ_TSV=""
+
+  while IFS=$'\t' read -r inj_idx inj_name inj_dir; do
+    [[ -z "$inj_idx" || -z "$inj_name" ]] && continue
+    inj_src="$INJECT_ENV_STAGE_DIR/$inj_idx"
+    [[ -f "$inj_src" ]] || continue
     inj_target_dir="$REPO_DIR"
     if [[ -n "$inj_dir" ]]; then
       inj_target_dir="$REPO_DIR/$inj_dir"
       mkdir -p "$inj_target_dir"
     fi
-    if cp "$INJECT_ENV_FILE_STAGE" "$inj_target_dir/$inj_name"; then
+    if cp "$inj_src" "$inj_target_dir/$inj_name"; then
       chmod 0600 "$inj_target_dir/$inj_name"
       if [[ -n "$inj_dir" ]]; then inj_rel="$inj_dir/$inj_name"; else inj_rel="$inj_name"; fi
       mkdir -p .git/info
       printf '/%s\n' "$inj_rel" >> .git/info/exclude
       echo "entrypoint: injected env file -> $inj_rel (git-excluded)" >>"$AGENT_LOG"
     else
-      echo "entrypoint: cp injected env file failed" >&2
+      echo "entrypoint: cp injected env file failed for $inj_name" >&2
     fi
-  fi
+  done <<< "$INJ_TSV"
 fi
 
 # --- skills (Sprint 22) ---

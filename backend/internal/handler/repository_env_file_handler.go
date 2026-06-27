@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// RepositoryEnvFileHandler — REST для «инъекции env-файла» уровня репозитория проекта.
-// Один файл на репозиторий: GET (с содержимым для редактирования), PUT (upsert), DELETE.
+// RepositoryEnvFileHandler — REST для «инъекции env-файлов» уровня репозитория проекта.
+// Коллекция: на один репозиторий может быть несколько файлов.
 type RepositoryEnvFileHandler struct {
 	svc *service.RepositoryEnvFileService
 }
@@ -20,63 +20,100 @@ func NewRepositoryEnvFileHandler(svc *service.RepositoryEnvFileService) *Reposit
 	return &RepositoryEnvFileHandler{svc: svc}
 }
 
-type setRepoEnvFileRequest struct {
+type repoEnvFileRequest struct {
 	FileName  string `json:"file_name" binding:"required"`
 	TargetDir string `json:"target_dir"`
 	Content   string `json:"content" binding:"required"`
 }
 
-// Get returns the repository env file (with decrypted content for editing).
-// @Summary Get repository env file
+// List returns all env files of a repository (metadata only, no content).
+// @Summary List repository env files
 // @Tags repository-env-files
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Project UUID"
 // @Param repoId path string true "Repository UUID"
-// @Success 200 {object} service.RepoEnvFileView
-// @Success 204 "no env file configured"
-// @Router /projects/{id}/repositories/{repoId}/env-file [get]
-func (h *RepositoryEnvFileHandler) Get(c *gin.Context) {
+// @Success 200 {array} service.RepoEnvFileView
+// @Router /projects/{id}/repositories/{repoId}/env-files [get]
+func (h *RepositoryEnvFileHandler) List(c *gin.Context) {
 	projectID, repoID, ok := parseProjectAndRepoID(c)
 	if !ok {
 		return
 	}
-	view, err := h.svc.Get(c.Request.Context(), projectID, repoID)
+	views, err := h.svc.List(c.Request.Context(), projectID, repoID)
 	if err != nil {
 		writeRepoEnvFileError(c, err)
 		return
 	}
-	if view == nil {
-		c.Status(http.StatusNoContent)
-		return
-	}
-	c.JSON(http.StatusOK, view)
+	c.JSON(http.StatusOK, views)
 }
 
-// Set creates or updates the repository env file.
-// @Summary Set repository env file
+// Create adds a new env file to a repository.
+// @Summary Create repository env file
 // @Tags repository-env-files
 // @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param id path string true "Project UUID"
 // @Param repoId path string true "Repository UUID"
-// @Param body body setRepoEnvFileRequest true "file_name + target_dir + content"
-// @Success 200 {object} service.RepoEnvFileView
-// @Router /projects/{id}/repositories/{repoId}/env-file [put]
-func (h *RepositoryEnvFileHandler) Set(c *gin.Context) {
+// @Param body body repoEnvFileRequest true "file_name + target_dir + content"
+// @Success 201 {object} service.RepoEnvFileView
+// @Router /projects/{id}/repositories/{repoId}/env-files [post]
+func (h *RepositoryEnvFileHandler) Create(c *gin.Context) {
 	projectID, repoID, ok := parseProjectAndRepoID(c)
 	if !ok {
 		return
 	}
-	var req setRepoEnvFileRequest
+	var req repoEnvFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 		return
 	}
-	view, err := h.svc.Set(c.Request.Context(), service.SetRepoEnvFileInput{
+	view, err := h.svc.Create(c.Request.Context(), service.CreateRepoEnvFileInput{
 		ProjectID: projectID,
 		RepoID:    repoID,
+		FileName:  req.FileName,
+		TargetDir: req.TargetDir,
+		Content:   req.Content,
+	})
+	if err != nil {
+		writeRepoEnvFileError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, view)
+}
+
+// Update replaces an existing env file (full overwrite).
+// @Summary Update repository env file
+// @Tags repository-env-files
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Project UUID"
+// @Param repoId path string true "Repository UUID"
+// @Param fileId path string true "Env file UUID"
+// @Param body body repoEnvFileRequest true "file_name + target_dir + content"
+// @Success 200 {object} service.RepoEnvFileView
+// @Router /projects/{id}/repositories/{repoId}/env-files/{fileId} [put]
+func (h *RepositoryEnvFileHandler) Update(c *gin.Context) {
+	projectID, repoID, ok := parseProjectAndRepoID(c)
+	if !ok {
+		return
+	}
+	fileID, err := uuid.Parse(c.Param("fileId"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid file id")
+		return
+	}
+	var req repoEnvFileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
+		return
+	}
+	view, err := h.svc.Update(c.Request.Context(), service.UpdateRepoEnvFileInput{
+		ProjectID: projectID,
+		RepoID:    repoID,
+		FileID:    fileID,
 		FileName:  req.FileName,
 		TargetDir: req.TargetDir,
 		Content:   req.Content,
@@ -88,20 +125,26 @@ func (h *RepositoryEnvFileHandler) Set(c *gin.Context) {
 	c.JSON(http.StatusOK, view)
 }
 
-// Delete removes the repository env file.
+// Delete removes an env file.
 // @Summary Delete repository env file
 // @Tags repository-env-files
 // @Security BearerAuth
 // @Param id path string true "Project UUID"
 // @Param repoId path string true "Repository UUID"
+// @Param fileId path string true "Env file UUID"
 // @Success 204
-// @Router /projects/{id}/repositories/{repoId}/env-file [delete]
+// @Router /projects/{id}/repositories/{repoId}/env-files/{fileId} [delete]
 func (h *RepositoryEnvFileHandler) Delete(c *gin.Context) {
 	projectID, repoID, ok := parseProjectAndRepoID(c)
 	if !ok {
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), projectID, repoID); err != nil {
+	fileID, err := uuid.Parse(c.Param("fileId"))
+	if err != nil {
+		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, "invalid file id")
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), projectID, repoID, fileID); err != nil {
 		writeRepoEnvFileError(c, err)
 		return
 	}
@@ -124,7 +167,8 @@ func parseProjectAndRepoID(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
 
 func writeRepoEnvFileError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, service.ErrRepoEnvFileValidation):
+	case errors.Is(err, service.ErrRepoEnvFileValidation),
+		errors.Is(err, service.ErrRepoEnvFileDuplicate):
 		apierror.JSON(c, http.StatusBadRequest, apierror.ErrBadRequest, err.Error())
 	case errors.Is(err, service.ErrRepoEnvFileRepoMismatch):
 		apierror.JSON(c, http.StatusNotFound, apierror.ErrNotFound, "repository not found in project")

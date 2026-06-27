@@ -3,7 +3,7 @@ import 'package:frontend/core/api/dio_repository_error_map.dart';
 import 'package:frontend/features/repo_env_files/domain/models/repo_env_file_model.dart';
 import 'package:frontend/features/team/domain/agent_config_exceptions.dart';
 
-/// REST-клиент «инъекции env-файла» уровня репозитория (один файл на репо).
+/// REST-клиент «инъекции env-файлов» уровня репозитория (несколько файлов на репо).
 class RepoEnvFileRepository {
   RepoEnvFileRepository({required Dio dio}) : _dio = dio;
   final Dio _dio;
@@ -21,27 +21,28 @@ class RepoEnvFileRepository {
     );
   }
 
-  /// Возвращает env-файл репозитория или null, если он не настроен (204 No Content).
-  Future<RepoEnvFileModel?> get(
+  String _base(String projectId, String repoId) =>
+      '/projects/$projectId/repositories/$repoId/env-files';
+
+  Future<List<RepoEnvFileModel>> list(
     String projectId,
     String repoId, {
     CancelToken? cancelToken,
   }) async {
     try {
-      final resp = await _dio.get<Map<String, dynamic>>(
-        '/projects/$projectId/repositories/$repoId/env-file',
+      final resp = await _dio.get<List<dynamic>>(
+        _base(projectId, repoId),
         cancelToken: cancelToken,
       );
-      if (resp.statusCode == 204 || resp.data == null) {
-        return null;
-      }
-      return RepoEnvFileModel.fromJson(resp.data!);
+      return (resp.data ?? [])
+          .map((e) => RepoEnvFileModel.fromJson(e as Map<String, dynamic>))
+          .toList();
     } on DioException catch (e) {
       throw _mapError(e);
     }
   }
 
-  Future<RepoEnvFileModel> set(
+  Future<RepoEnvFileModel> create(
     String projectId,
     String repoId, {
     required String fileName,
@@ -50,8 +51,33 @@ class RepoEnvFileRepository {
     CancelToken? cancelToken,
   }) async {
     try {
+      final resp = await _dio.post<Map<String, dynamic>>(
+        _base(projectId, repoId),
+        data: {
+          'file_name': fileName,
+          'target_dir': targetDir,
+          'content': content,
+        },
+        cancelToken: cancelToken,
+      );
+      return RepoEnvFileModel.fromJson(resp.data!);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  Future<RepoEnvFileModel> update(
+    String projectId,
+    String repoId,
+    String fileId, {
+    required String fileName,
+    required String content,
+    String targetDir = '',
+    CancelToken? cancelToken,
+  }) async {
+    try {
       final resp = await _dio.put<Map<String, dynamic>>(
-        '/projects/$projectId/repositories/$repoId/env-file',
+        '${_base(projectId, repoId)}/$fileId',
         data: {
           'file_name': fileName,
           'target_dir': targetDir,
@@ -67,12 +93,13 @@ class RepoEnvFileRepository {
 
   Future<void> delete(
     String projectId,
-    String repoId, {
+    String repoId,
+    String fileId, {
     CancelToken? cancelToken,
   }) async {
     try {
       await _dio.delete(
-        '/projects/$projectId/repositories/$repoId/env-file',
+        '${_base(projectId, repoId)}/$fileId',
         cancelToken: cancelToken,
       );
     } on DioException catch (e) {

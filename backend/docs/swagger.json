@@ -6318,7 +6318,7 @@
                 }
             }
         },
-        "/projects/{id}/repositories/{repoId}/env-file": {
+        "/projects/{id}/repositories/{repoId}/env-files": {
             "get": {
                 "security": [
                     {
@@ -6331,7 +6331,7 @@
                 "tags": [
                     "repository-env-files"
                 ],
-                "summary": "Get repository env file",
+                "summary": "List repository env files",
                 "parameters": [
                     {
                         "type": "string",
@@ -6352,15 +6352,15 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/service.RepoEnvFileView"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/service.RepoEnvFileView"
+                            }
                         }
-                    },
-                    "204": {
-                        "description": "no env file configured"
                     }
                 }
             },
-            "put": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6375,7 +6375,7 @@
                 "tags": [
                     "repository-env-files"
                 ],
-                "summary": "Set repository env file",
+                "summary": "Create repository env file",
                 "parameters": [
                     {
                         "type": "string",
@@ -6397,7 +6397,66 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.setRepoEnvFileRequest"
+                            "$ref": "#/definitions/handler.repoEnvFileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/service.RepoEnvFileView"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/repositories/{repoId}/env-files/{fileId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "repository-env-files"
+                ],
+                "summary": "Update repository env file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Repository UUID",
+                        "name": "repoId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Env file UUID",
+                        "name": "fileId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "file_name + target_dir + content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.repoEnvFileRequest"
                         }
                     }
                 ],
@@ -6432,6 +6491,13 @@
                         "type": "string",
                         "description": "Repository UUID",
                         "name": "repoId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Env file UUID",
+                        "name": "fileId",
                         "in": "path",
                         "required": true
                     }
@@ -13299,6 +13365,24 @@
                 }
             }
         },
+        "handler.repoEnvFileRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "file_name"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "target_dir": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.setProjectSecretRequest": {
             "type": "object",
             "required": [
@@ -13318,24 +13402,6 @@
                     "type": "string"
                 },
                 "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.setRepoEnvFileRequest": {
-            "type": "object",
-            "required": [
-                "content",
-                "file_name"
-            ],
-            "properties": {
-                "content": {
-                    "type": "string"
-                },
-                "file_name": {
-                    "type": "string"
-                },
-                "target_dir": {
                     "type": "string"
                 }
             }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
@@ -17,12 +18,13 @@ var (
 	ErrRepoEnvFileValidation = errors.New("repository env file validation failed")
 	// ErrRepoEnvFileRepoMismatch — repoID не принадлежит указанному проекту (или не существует).
 	ErrRepoEnvFileRepoMismatch = errors.New("repository does not belong to project")
+	// ErrRepoEnvFileDuplicate — в репозитории уже есть файл с таким путём (target_dir + file_name).
+	ErrRepoEnvFileDuplicate = errors.New("repository env file with this path already exists")
 )
 
-// RepositoryEnvFileService управляет «инъекцией env-файла» уровня репозитория:
-// шифрует содержимое (AES-256-GCM, как project_secrets), валидирует имя/папку и
-// проверяет принадлежность репозитория проекту. Контент возвращается дешифрованным
-// только авторизованному владельцу проекта (для редактирования в UI).
+// RepositoryEnvFileService управляет «инъекцией env-файлов» уровня репозитория. На один
+// репозиторий допускается НЕСКОЛЬКО файлов (уникальность по target_dir+file_name).
+// Содержимое шифруется AES-256-GCM и write-only — наружу не возвращается.
 type RepositoryEnvFileService struct {
 	repo     repository.RepositoryEnvFileRepository
 	repoRepo repository.ProjectRepoRepository
@@ -44,8 +46,7 @@ func NewRepositoryEnvFileService(
 	}
 }
 
-// RepoEnvFileView — представление env-файла для API. Содержимое НЕ возвращается
-// (write-only, как у project_secrets): редактирование = полная перезапись файла.
+// RepoEnvFileView — метаданные env-файла для API (без содержимого, write-only).
 type RepoEnvFileView struct {
 	ID                  uuid.UUID `json:"id"`
 	ProjectRepositoryID uuid.UUID `json:"project_repository_id"`
@@ -55,9 +56,18 @@ type RepoEnvFileView struct {
 	UpdatedAt           string    `json:"updated_at"`
 }
 
-type SetRepoEnvFileInput struct {
+type CreateRepoEnvFileInput struct {
 	ProjectID uuid.UUID
 	RepoID    uuid.UUID
+	FileName  string
+	TargetDir string
+	Content   string
+}
+
+type UpdateRepoEnvFileInput struct {
+	ProjectID uuid.UUID
+	RepoID    uuid.UUID
+	FileID    uuid.UUID
 	FileName  string
 	TargetDir string
 	Content   string
@@ -77,54 +87,38 @@ func (s *RepositoryEnvFileService) assertRepoInProject(ctx context.Context, proj
 	return nil
 }
 
-// Get возвращает метаданные env-файла репозитория (имя/папка/тайминги), БЕЗ содержимого
-// (write-only). nil, nil — файл не настроен.
-func (s *RepositoryEnvFileService) Get(ctx context.Context, projectID, repoID uuid.UUID) (*RepoEnvFileView, error) {
+// List возвращает метаданные всех env-файлов репозитория (без содержимого).
+func (s *RepositoryEnvFileService) List(ctx context.Context, projectID, repoID uuid.UUID) ([]RepoEnvFileView, error) {
 	if err := s.assertRepoInProject(ctx, projectID, repoID); err != nil {
 		return nil, err
 	}
-	f, err := s.repo.GetByRepo(ctx, repoID)
+	files, err := s.repo.ListByRepo(ctx, repoID)
 	if err != nil {
-		if errors.Is(err, repository.ErrRepositoryEnvFileNotFound) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return s.toView(f), nil
+	out := make([]RepoEnvFileView, 0, len(files))
+	for i := range files {
+		out = append(out, *s.toView(&files[i]))
+	}
+	return out, nil
 }
 
-// Set создаёт или обновляет env-файл репозитория (один на репо).
-func (s *RepositoryEnvFileService) Set(ctx context.Context, in SetRepoEnvFileInput) (*RepoEnvFileView, error) {
+// Create добавляет новый env-файл в репозиторий.
+func (s *RepositoryEnvFileService) Create(ctx context.Context, in CreateRepoEnvFileInput) (*RepoEnvFileView, error) {
 	if in.ProjectID == uuid.Nil || in.RepoID == uuid.Nil {
 		return nil, fmt.Errorf("%w: project_id and repo_id are required", ErrRepoEnvFileValidation)
 	}
 	if err := s.assertRepoInProject(ctx, in.ProjectID, in.RepoID); err != nil {
 		return nil, err
 	}
-	if in.Content == "" {
-		return nil, fmt.Errorf("%w: content must be non-empty", ErrRepoEnvFileValidation)
+	if err := s.validatePayload(in.FileName, in.TargetDir, in.Content); err != nil {
+		return nil, err
 	}
-	if err := sandbox.ValidateInjectedEnvFile(in.FileName, in.TargetDir); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrRepoEnvFileValidation, err)
+	if err := s.assertUniquePath(ctx, in.RepoID, in.FileName, in.TargetDir, uuid.Nil); err != nil {
+		return nil, err
 	}
 
-	s.logger.Info("repository env file set",
-		slog.String("repo_id", in.RepoID.String()),
-		slog.String("project_id", in.ProjectID.String()),
-		slog.String("file_name", in.FileName),
-		slog.String("target_dir", in.TargetDir),
-		slog.Int("content_len", len(in.Content)),
-	)
-
-	// Стабильный ID: при обновлении переиспользуем существующий (encrypt привязан к ID).
-	existing, err := s.repo.GetByRepo(ctx, in.RepoID)
-	if err != nil && !errors.Is(err, repository.ErrRepositoryEnvFileNotFound) {
-		return nil, fmt.Errorf("check existing repository env file: %w", err)
-	}
 	id := uuid.New()
-	if existing != nil {
-		id = existing.ID
-	}
 	blob, encErr := s.secrets.Encrypt(id, in.Content)
 	if encErr != nil {
 		return nil, encErr
@@ -136,18 +130,70 @@ func (s *RepositoryEnvFileService) Set(ctx context.Context, in SetRepoEnvFileInp
 		TargetDir:           in.TargetDir,
 		EncryptedContent:    blob,
 	}
-	if upErr := s.repo.Upsert(ctx, f); upErr != nil {
-		return nil, fmt.Errorf("persist repository env file: %w", upErr)
+	s.logCreate(in)
+	if err := s.repo.Create(ctx, f); err != nil {
+		return nil, fmt.Errorf("persist repository env file: %w", err)
 	}
 	return s.toView(f), nil
 }
 
-// Delete удаляет env-файл репозитория.
-func (s *RepositoryEnvFileService) Delete(ctx context.Context, projectID, repoID uuid.UUID) error {
+// Update заменяет содержимое/имя/папку существующего env-файла (полная перезапись).
+func (s *RepositoryEnvFileService) Update(ctx context.Context, in UpdateRepoEnvFileInput) (*RepoEnvFileView, error) {
+	if in.ProjectID == uuid.Nil || in.RepoID == uuid.Nil || in.FileID == uuid.Nil {
+		return nil, fmt.Errorf("%w: project_id, repo_id and file_id are required", ErrRepoEnvFileValidation)
+	}
+	if err := s.assertRepoInProject(ctx, in.ProjectID, in.RepoID); err != nil {
+		return nil, err
+	}
+	existing, err := s.repo.GetByID(ctx, in.FileID)
+	if err != nil {
+		if errors.Is(err, repository.ErrRepositoryEnvFileNotFound) {
+			return nil, ErrRepoEnvFileNotFound
+		}
+		return nil, err
+	}
+	if existing.ProjectRepositoryID != in.RepoID {
+		return nil, ErrRepoEnvFileNotFound
+	}
+	if err := s.validatePayload(in.FileName, in.TargetDir, in.Content); err != nil {
+		return nil, err
+	}
+	if err := s.assertUniquePath(ctx, in.RepoID, in.FileName, in.TargetDir, in.FileID); err != nil {
+		return nil, err
+	}
+
+	blob, encErr := s.secrets.Encrypt(existing.ID, in.Content)
+	if encErr != nil {
+		return nil, encErr
+	}
+	existing.FileName = in.FileName
+	existing.TargetDir = in.TargetDir
+	existing.EncryptedContent = blob
+	if err := s.repo.Update(ctx, existing); err != nil {
+		if errors.Is(err, repository.ErrRepositoryEnvFileNotFound) {
+			return nil, ErrRepoEnvFileNotFound
+		}
+		return nil, fmt.Errorf("update repository env file: %w", err)
+	}
+	return s.toView(existing), nil
+}
+
+// Delete удаляет env-файл репозитория по его id.
+func (s *RepositoryEnvFileService) Delete(ctx context.Context, projectID, repoID, fileID uuid.UUID) error {
 	if err := s.assertRepoInProject(ctx, projectID, repoID); err != nil {
 		return err
 	}
-	if err := s.repo.DeleteByRepo(ctx, repoID); err != nil {
+	existing, err := s.repo.GetByID(ctx, fileID)
+	if err != nil {
+		if errors.Is(err, repository.ErrRepositoryEnvFileNotFound) {
+			return ErrRepoEnvFileNotFound
+		}
+		return err
+	}
+	if existing.ProjectRepositoryID != repoID {
+		return ErrRepoEnvFileNotFound
+	}
+	if err := s.repo.Delete(ctx, fileID); err != nil {
 		if errors.Is(err, repository.ErrRepositoryEnvFileNotFound) {
 			return ErrRepoEnvFileNotFound
 		}
@@ -156,25 +202,66 @@ func (s *RepositoryEnvFileService) Delete(ctx context.Context, projectID, repoID
 	return nil
 }
 
-// GetInjectedFileForRepo возвращает дешифрованную спеку для инъекции в sandbox
-// (ContextBuilder). nil, nil — файл не настроен. Без проверки проекта — внутренний путь.
-func (s *RepositoryEnvFileService) GetInjectedFileForRepo(ctx context.Context, repoID uuid.UUID) (*sandbox.InjectedEnvFileSpec, error) {
-	f, err := s.repo.GetByRepo(ctx, repoID)
+// GetInjectedFilesForRepo возвращает дешифрованные спеки ВСЕХ env-файлов репо для
+// инъекции в sandbox (ContextBuilder). Пустой срез — файлов нет. Внутренний путь.
+func (s *RepositoryEnvFileService) GetInjectedFilesForRepo(ctx context.Context, repoID uuid.UUID) ([]sandbox.InjectedEnvFileSpec, error) {
+	files, err := s.repo.ListByRepoWithContent(ctx, repoID)
 	if err != nil {
-		if errors.Is(err, repository.ErrRepositoryEnvFileNotFound) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	plain, decErr := s.secrets.Decrypt(f.ID, f.EncryptedContent)
-	if decErr != nil {
-		return nil, fmt.Errorf("decrypt repository env file %s: %w", f.ID, decErr)
+	out := make([]sandbox.InjectedEnvFileSpec, 0, len(files))
+	for i := range files {
+		f := &files[i]
+		plain, decErr := s.secrets.Decrypt(f.ID, f.EncryptedContent)
+		if decErr != nil {
+			return nil, fmt.Errorf("decrypt repository env file %s: %w", f.ID, decErr)
+		}
+		out = append(out, sandbox.InjectedEnvFileSpec{
+			FileName:  f.FileName,
+			TargetDir: f.TargetDir,
+			Content:   plain,
+		})
 	}
-	return &sandbox.InjectedEnvFileSpec{
-		FileName:  f.FileName,
-		TargetDir: f.TargetDir,
-		Content:   plain,
-	}, nil
+	return out, nil
+}
+
+func (s *RepositoryEnvFileService) validatePayload(fileName, targetDir, content string) error {
+	if content == "" {
+		return fmt.Errorf("%w: content must be non-empty", ErrRepoEnvFileValidation)
+	}
+	if err := sandbox.ValidateInjectedEnvFile(fileName, targetDir); err != nil {
+		return fmt.Errorf("%w: %v", ErrRepoEnvFileValidation, err)
+	}
+	return nil
+}
+
+// assertUniquePath не допускает двух файлов с одинаковым путём (target_dir+file_name) в
+// одном репо. excludeID — id обновляемой записи (Nil при создании). DB-constraint —
+// бэкстоп, но дружелюбную ошибку отдаём на уровне сервиса.
+func (s *RepositoryEnvFileService) assertUniquePath(ctx context.Context, repoID uuid.UUID, fileName, targetDir string, excludeID uuid.UUID) error {
+	files, err := s.repo.ListByRepo(ctx, repoID)
+	if err != nil {
+		return err
+	}
+	for i := range files {
+		if files[i].ID == excludeID {
+			continue
+		}
+		if strings.EqualFold(files[i].FileName, fileName) && files[i].TargetDir == targetDir {
+			return fmt.Errorf("%w: %s/%s", ErrRepoEnvFileDuplicate, targetDir, fileName)
+		}
+	}
+	return nil
+}
+
+func (s *RepositoryEnvFileService) logCreate(in CreateRepoEnvFileInput) {
+	s.logger.Info("repository env file created",
+		slog.String("repo_id", in.RepoID.String()),
+		slog.String("project_id", in.ProjectID.String()),
+		slog.String("file_name", in.FileName),
+		slog.String("target_dir", in.TargetDir),
+		slog.Int("content_len", len(in.Content)),
+	)
 }
 
 func (s *RepositoryEnvFileService) toView(f *models.RepositoryEnvFile) *RepoEnvFileView {

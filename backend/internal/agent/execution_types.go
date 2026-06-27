@@ -95,11 +95,11 @@ type ExecutionInput struct {
 	// маскируются в логах полностью. Значения — секреты.
 	ProjectEnv map[string]string
 
-	// InjectedEnvFile — «инъекция env-файла» уровня репозитория (опционально): содержимое,
-	// имя файла и относительная папка. ContextBuilder заполняет по целевому репо задачи;
-	// runner стейджит контент в контейнер, entrypoint пишет файл в рабочую копию репо
-	// после checkout и исключает его из git. nil — инъекции нет.
-	InjectedEnvFile *sandbox.InjectedEnvFileSpec
+	// InjectedEnvFiles — «инъекция env-файлов» уровня репозитория (опционально, несколько):
+	// каждый — содержимое+имя+папка. ContextBuilder заполняет по целевому репо задачи;
+	// runner стейджит контент в контейнер, entrypoint пишет файлы в рабочую копию репо
+	// после checkout и исключает их из git. Пусто — инъекций нет.
+	InjectedEnvFiles []sandbox.InjectedEnvFileSpec
 
 	// StructuredContext — сырой JSON доп. контекста роли.
 	// Семантика: nil или len==0 трактуется как "{}" при парсинге (см. NormalizeJSONForParse).
@@ -176,13 +176,20 @@ func (in ExecutionInput) String() string {
 	writeMaskedEnvKeys(&b, in.EnvSecrets)
 	b.WriteString(" ProjectEnv:")
 	writeMaskedEnvKeys(&b, in.ProjectEnv)
-	b.WriteString(" InjectedEnvFile:")
-	if in.InjectedEnvFile != nil {
-		// Имя/папка не секретны; содержимое — секрет (только длина).
-		fmt.Fprintf(&b, "{file:%q dir:%q content:<%d bytes>}",
-			in.InjectedEnvFile.FileName, in.InjectedEnvFile.TargetDir, len(in.InjectedEnvFile.Content))
+	b.WriteString(" InjectedEnvFiles:")
+	if len(in.InjectedEnvFiles) == 0 {
+		b.WriteString("[]")
 	} else {
-		b.WriteString("nil")
+		b.WriteByte('[')
+		for i := range in.InjectedEnvFiles {
+			if i > 0 {
+				b.WriteByte(' ')
+			}
+			// Имя/папка не секретны; содержимое — секрет (только длина).
+			fmt.Fprintf(&b, "{file:%q dir:%q content:<%d bytes>}",
+				in.InjectedEnvFiles[i].FileName, in.InjectedEnvFiles[i].TargetDir, len(in.InjectedEnvFiles[i].Content))
+		}
+		b.WriteByte(']')
 	}
 	b.WriteByte('}')
 	return b.String()

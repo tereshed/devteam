@@ -13,7 +13,7 @@ import (
 // используйте opts.LogSafe() или fmt.Sprintf("%s", opts) при наличии fmt.Stringer.
 func (o SandboxOptions) LogSafe() string {
 	return fmt.Sprintf(
-		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s ProjectEnv:%s Timeout:%v StopGracePeriod:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d} Services:%s InjectedEnvFile:%s}",
+		"SandboxOptions{TaskID:%q ProjectID:%q Backend:%q Image:%q RepoURL:%q Branch:%q Instruction:%s Context:%s EnvVars:%s ProjectEnv:%s Timeout:%v StopGracePeriod:%v DisableNetwork:%v ResourceLimit:{NanoCPUs:%d MemoryMB:%d DiskMB:%d PIDsLimit:%d} Services:%s InjectedEnvFiles:%s}",
 		o.TaskID,
 		o.ProjectID,
 		o.Backend,
@@ -32,17 +32,26 @@ func (o SandboxOptions) LogSafe() string {
 		o.ResourceLimit.DiskMB,
 		o.ResourceLimit.PIDsLimit,
 		servicesLogSafe(o.Services),
-		injectedEnvFileLogSafe(o.InjectedEnvFile),
+		injectedEnvFilesLogSafe(o.InjectedEnvFiles),
 	)
 }
 
-// injectedEnvFileLogSafe — представление «инъекции env-файла» для логов: имя/папка цели
-// (не секрет) + длина содержимого (содержимое — секрет, не печатаем).
-func injectedEnvFileLogSafe(spec *InjectedEnvFileSpec) string {
-	if spec == nil {
-		return "nil"
+// injectedEnvFilesLogSafe — представление «инъекции env-файлов» для логов: для каждого
+// имя/папка цели (не секрет) + длина содержимого (содержимое — секрет, не печатаем).
+func injectedEnvFilesLogSafe(specs []InjectedEnvFileSpec) string {
+	if len(specs) == 0 {
+		return "[]"
 	}
-	return fmt.Sprintf("{file:%q dir:%q content:%s}", spec.FileName, spec.TargetDir, byteLenDesc(spec.Content))
+	var b strings.Builder
+	b.WriteByte('[')
+	for i := range specs {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "{file:%q dir:%q content:%s}", specs[i].FileName, specs[i].TargetDir, byteLenDesc(specs[i].Content))
+	}
+	b.WriteByte(']')
+	return b.String()
 }
 
 // servicesLogSafe — представление сервис-сайдкаров для логов: alias/image/port +

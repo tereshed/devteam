@@ -52,10 +52,10 @@ type ProjectEnvSecretReader interface {
 	ListAdvertised(ctx context.Context, projectID uuid.UUID) ([]AdvertisedProjectVar, error)
 }
 
-// RepoEnvFileReader — «инъекция env-файла» уровня репозитория: дешифрованная спека для
-// целевого репо задачи. Реализуется *RepositoryEnvFileService; узкий интерфейс.
+// RepoEnvFileReader — «инъекция env-файлов» уровня репозитория: дешифрованные спеки всех
+// файлов целевого репо задачи. Реализуется *RepositoryEnvFileService; узкий интерфейс.
 type RepoEnvFileReader interface {
-	GetInjectedFileForRepo(ctx context.Context, repoID uuid.UUID) (*sandbox.InjectedEnvFileSpec, error)
+	GetInjectedFilesForRepo(ctx context.Context, repoID uuid.UUID) ([]sandbox.InjectedEnvFileSpec, error)
 }
 
 // previousStepMessagesLimit — сколько последних agent-сообщений из task_messages
@@ -175,13 +175,13 @@ func (b *contextBuilder) injectRepoEnvFile(ctx context.Context, input *agent.Exe
 	if repoID == uuid.Nil {
 		return
 	}
-	spec, err := b.repoEnvFiles.GetInjectedFileForRepo(ctx, repoID)
+	specs, err := b.repoEnvFiles.GetInjectedFilesForRepo(ctx, repoID)
 	if err != nil {
-		slog.Warn("ContextBuilder: failed to load repo env file", "repo_id", repoID, "error", err)
+		slog.Warn("ContextBuilder: failed to load repo env files", "repo_id", repoID, "error", err)
 		return
 	}
-	if spec != nil && spec.FileName != "" {
-		input.InjectedEnvFile = spec
+	if len(specs) > 0 {
+		input.InjectedEnvFiles = specs
 	}
 }
 

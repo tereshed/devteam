@@ -3804,8 +3804,20 @@ class AppLocalizationsRu extends AppLocalizations {
       'Для этого репозитория env-файл ещё не настроен.';
 
   @override
+  String get repoEnvFilesEmpty => 'Для этого репозитория ещё нет env-файлов.';
+
+  @override
+  String get repoEnvFilesAddButton => 'Добавить файл';
+
+  @override
+  String get repoEnvFilesCreateTitle => 'Новый env-файл';
+
+  @override
+  String get repoEnvFilesEditTitle => 'Редактировать env-файл';
+
+  @override
   String get repoEnvFilesConfiguredHidden =>
-      'Env-файл настроен. Содержимое скрыто — сохранение перезапишет файл целиком.';
+      'Содержимое скрыто — сохранение перезапишет файл целиком.';
 
   @override
   String get repoEnvFilesUpdatedLabel => 'Обновлён:';

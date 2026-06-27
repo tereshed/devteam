@@ -3772,8 +3772,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'No env file configured for this repository yet.';
 
   @override
+  String get repoEnvFilesEmpty => 'No env files for this repository yet.';
+
+  @override
+  String get repoEnvFilesAddButton => 'Add file';
+
+  @override
+  String get repoEnvFilesCreateTitle => 'New env file';
+
+  @override
+  String get repoEnvFilesEditTitle => 'Edit env file';
+
+  @override
   String get repoEnvFilesConfiguredHidden =>
-      'An env file is configured. Its content is hidden — saving overwrites the whole file.';
+      'The content is hidden — saving overwrites the whole file.';
 
   @override
   String get repoEnvFilesUpdatedLabel => 'Updated:';

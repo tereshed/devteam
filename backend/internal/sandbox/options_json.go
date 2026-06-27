@@ -3,22 +3,22 @@ package sandbox
 import "encoding/json"
 
 type sandboxOptionsWire struct {
-	TaskID          string            `json:"task_id"`
-	ProjectID       string            `json:"project_id"`
-	Backend         CodeBackendType   `json:"backend"`
-	Image           string            `json:"image"`
-	RepoURL         string            `json:"repo_url"`
-	Branch          string            `json:"branch"`
-	Instruction     string            `json:"instruction"`
-	Context         string            `json:"context"`
-	EnvVars         map[string]string `json:"env_vars,omitempty"`
-	ProjectEnv      map[string]string `json:"project_env,omitempty"`
-	Timeout         string            `json:"timeout"`
-	StopGracePeriod string            `json:"stop_grace_period"`
-	DisableNetwork  bool              `json:"disable_network"`
-	ResourceLimit   ResourceLimit     `json:"resource_limit"`
-	Services        []serviceSpecWire `json:"services,omitempty"`
-	InjectedEnvFile *injectedEnvWire  `json:"injected_env_file,omitempty"`
+	TaskID           string            `json:"task_id"`
+	ProjectID        string            `json:"project_id"`
+	Backend          CodeBackendType   `json:"backend"`
+	Image            string            `json:"image"`
+	RepoURL          string            `json:"repo_url"`
+	Branch           string            `json:"branch"`
+	Instruction      string            `json:"instruction"`
+	Context          string            `json:"context"`
+	EnvVars          map[string]string `json:"env_vars,omitempty"`
+	ProjectEnv       map[string]string `json:"project_env,omitempty"`
+	Timeout          string            `json:"timeout"`
+	StopGracePeriod  string            `json:"stop_grace_period"`
+	DisableNetwork   bool              `json:"disable_network"`
+	ResourceLimit    ResourceLimit     `json:"resource_limit"`
+	Services         []serviceSpecWire `json:"services,omitempty"`
+	InjectedEnvFiles []injectedEnvWire `json:"injected_env_files,omitempty"`
 }
 
 // injectedEnvWire — представление InjectedEnvFileSpec для логов/JSON: имя/папка цели
@@ -29,15 +29,19 @@ type injectedEnvWire struct {
 	Content   string `json:"content"`
 }
 
-func maskInjectedEnvFileForWire(spec *InjectedEnvFileSpec) *injectedEnvWire {
-	if spec == nil {
+func maskInjectedEnvFilesForWire(specs []InjectedEnvFileSpec) []injectedEnvWire {
+	if len(specs) == 0 {
 		return nil
 	}
-	return &injectedEnvWire{
-		FileName:  spec.FileName,
-		TargetDir: spec.TargetDir,
-		Content:   byteLenDesc(spec.Content),
+	out := make([]injectedEnvWire, 0, len(specs))
+	for i := range specs {
+		out = append(out, injectedEnvWire{
+			FileName:  specs[i].FileName,
+			TargetDir: specs[i].TargetDir,
+			Content:   byteLenDesc(specs[i].Content),
+		})
 	}
+	return out
 }
 
 // serviceSpecWire — представление ServiceSpec для логов/JSON: env с маскированными
@@ -71,22 +75,22 @@ func maskServicesForWire(services []ServiceSpec) []serviceSpecWire {
 // Instruction/Context только как длина (строка вида "<N bytes>").
 func (o SandboxOptions) MarshalJSON() ([]byte, error) {
 	w := sandboxOptionsWire{
-		TaskID:          o.TaskID,
-		ProjectID:       o.ProjectID,
-		Backend:         o.Backend,
-		Image:           o.Image,
-		RepoURL:         maskRepoURL(o.RepoURL),
-		Branch:          o.Branch,
-		Instruction:     byteLenDesc(o.Instruction),
-		Context:         byteLenDesc(o.Context),
-		EnvVars:         maskEnvVarsMapForJSON(o.EnvVars),
-		ProjectEnv:      maskAllValuesForJSON(o.ProjectEnv),
-		Timeout:         o.Timeout.String(),
-		StopGracePeriod: o.StopGracePeriod.String(),
-		DisableNetwork:  o.DisableNetwork,
-		ResourceLimit:   o.ResourceLimit,
-		Services:        maskServicesForWire(o.Services),
-		InjectedEnvFile: maskInjectedEnvFileForWire(o.InjectedEnvFile),
+		TaskID:           o.TaskID,
+		ProjectID:        o.ProjectID,
+		Backend:          o.Backend,
+		Image:            o.Image,
+		RepoURL:          maskRepoURL(o.RepoURL),
+		Branch:           o.Branch,
+		Instruction:      byteLenDesc(o.Instruction),
+		Context:          byteLenDesc(o.Context),
+		EnvVars:          maskEnvVarsMapForJSON(o.EnvVars),
+		ProjectEnv:       maskAllValuesForJSON(o.ProjectEnv),
+		Timeout:          o.Timeout.String(),
+		StopGracePeriod:  o.StopGracePeriod.String(),
+		DisableNetwork:   o.DisableNetwork,
+		ResourceLimit:    o.ResourceLimit,
+		Services:         maskServicesForWire(o.Services),
+		InjectedEnvFiles: maskInjectedEnvFilesForWire(o.InjectedEnvFiles),
 	}
 	return json.Marshal(w)
 }

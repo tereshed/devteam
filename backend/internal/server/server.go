@@ -399,11 +399,12 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			projects.PUT("/:id/repositories/:repoId", deps.ProjectHandler.UpdateRepository)
 			projects.DELETE("/:id/repositories/:repoId", deps.ProjectHandler.RemoveRepository)
 
-			// «Инъекция env-файла» уровня репозитория (один файл на репо).
+			// «Инъекция env-файлов» уровня репозитория (несколько файлов на репо).
 			if deps.RepositoryEnvFileHandler != nil {
-				projects.GET("/:id/repositories/:repoId/env-file", deps.RepositoryEnvFileHandler.Get)
-				projects.PUT("/:id/repositories/:repoId/env-file", deps.RepositoryEnvFileHandler.Set)
-				projects.DELETE("/:id/repositories/:repoId/env-file", deps.RepositoryEnvFileHandler.Delete)
+				projects.GET("/:id/repositories/:repoId/env-files", deps.RepositoryEnvFileHandler.List)
+				projects.POST("/:id/repositories/:repoId/env-files", deps.RepositoryEnvFileHandler.Create)
+				projects.PUT("/:id/repositories/:repoId/env-files/:fileId", deps.RepositoryEnvFileHandler.Update)
+				projects.DELETE("/:id/repositories/:repoId/env-files/:fileId", deps.RepositoryEnvFileHandler.Delete)
 			}
 
 			projects.GET("/:id", deps.ProjectHandler.GetByID)

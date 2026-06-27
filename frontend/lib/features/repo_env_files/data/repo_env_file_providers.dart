@@ -12,15 +12,15 @@ RepoEnvFileRepository repoEnvFileRepository(Ref ref) {
   return RepoEnvFileRepository(dio: dio);
 }
 
-/// env-файл конкретного репозитория проекта (null — не настроен).
+/// Список env-файлов конкретного репозитория проекта (метаданные, без содержимого).
 @riverpod
-Future<RepoEnvFileModel?> repoEnvFile(
+Future<List<RepoEnvFileModel>> repoEnvFiles(
   Ref ref,
   String projectId,
   String repoId,
 ) async {
   final repo = ref.watch(repoEnvFileRepositoryProvider);
   final cancelToken = CancelToken();
-  ref.onDispose(() => cancelToken.cancel('repoEnvFile($projectId,$repoId) disposed'));
-  return repo.get(projectId, repoId, cancelToken: cancelToken);
+  ref.onDispose(() => cancelToken.cancel('repoEnvFiles($projectId,$repoId) disposed'));
+  return repo.list(projectId, repoId, cancelToken: cancelToken);
 }

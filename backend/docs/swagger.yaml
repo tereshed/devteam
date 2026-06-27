@@ -2158,6 +2158,18 @@ definitions:
       updated_at:
         type: string
     type: object
+  handler.repoEnvFileRequest:
+    properties:
+      content:
+        type: string
+      file_name:
+        type: string
+      target_dir:
+        type: string
+    required:
+    - content
+    - file_name
+    type: object
   handler.setProjectSecretRequest:
     properties:
       description:
@@ -2175,18 +2187,6 @@ definitions:
     required:
     - key_name
     - value
-    type: object
-  handler.setRepoEnvFileRequest:
-    properties:
-      content:
-        type: string
-      file_name:
-        type: string
-      target_dir:
-        type: string
-    required:
-    - content
-    - file_name
     type: object
   handler.setSecretRequest:
     properties:
@@ -7078,27 +7078,7 @@ paths:
       summary: Обновление репозитория проекта
       tags:
       - projects
-  /projects/{id}/repositories/{repoId}/env-file:
-    delete:
-      parameters:
-      - description: Project UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Repository UUID
-        in: path
-        name: repoId
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-      security:
-      - BearerAuth: []
-      summary: Delete repository env file
-      tags:
-      - repository-env-files
+  /projects/{id}/repositories/{repoId}/env-files:
     get:
       parameters:
       - description: Project UUID
@@ -7117,15 +7097,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/service.RepoEnvFileView'
-        "204":
-          description: no env file configured
+            items:
+              $ref: '#/definitions/service.RepoEnvFileView'
+            type: array
       security:
       - BearerAuth: []
-      summary: Get repository env file
+      summary: List repository env files
       tags:
       - repository-env-files
-    put:
+    post:
       consumes:
       - application/json
       parameters:
@@ -7144,7 +7124,70 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/handler.setRepoEnvFileRequest'
+          $ref: '#/definitions/handler.repoEnvFileRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/service.RepoEnvFileView'
+      security:
+      - BearerAuth: []
+      summary: Create repository env file
+      tags:
+      - repository-env-files
+  /projects/{id}/repositories/{repoId}/env-files/{fileId}:
+    delete:
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Repository UUID
+        in: path
+        name: repoId
+        required: true
+        type: string
+      - description: Env file UUID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Delete repository env file
+      tags:
+      - repository-env-files
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Repository UUID
+        in: path
+        name: repoId
+        required: true
+        type: string
+      - description: Env file UUID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      - description: file_name + target_dir + content
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.repoEnvFileRequest'
       produces:
       - application/json
       responses:
@@ -7154,7 +7197,7 @@ paths:
             $ref: '#/definitions/service.RepoEnvFileView'
       security:
       - BearerAuth: []
-      summary: Set repository env file
+      summary: Update repository env file
       tags:
       - repository-env-files
   /projects/{id}/sandbox-services:

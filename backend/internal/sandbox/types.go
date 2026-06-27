@@ -45,12 +45,11 @@ const (
 	// EnvGitTokenUser — username для инъекции GIT_TOKEN в HTTPS-URL (clone/push).
 	// Пусто/не задан → "x-access-token" (GitHub). GitLab требует "oauth2" для OAuth2-токенов.
 	EnvGitTokenUser = "GIT_TOKEN_USER"
-	// EnvInjectEnvFileName / EnvInjectEnvFileDir — метаданные «инъекции env-файла» уровня
-	// репозитория. Содержимое стейджится отдельно в InjectedEnvFileStagePath (большой
-	// payload не через ENV). Если EnvInjectEnvFileName задан — entrypoint после checkout
-	// пишет staged-контент в <repo>/<dir>/<name> и исключает файл из git.
-	EnvInjectEnvFileName = "INJECT_ENV_FILE_NAME"
-	EnvInjectEnvFileDir  = "INJECT_ENV_FILE_DIR"
+	// EnvInjectEnvFiles — JSON-манифест «инъекции env-файлов» уровня репозитория:
+	// [{"name","dir","idx"}]. Содержимое каждого файла стейджится отдельно в
+	// InjectedEnvFilesStageDir/<idx> (большой payload не через ENV). Если задан — entrypoint
+	// после checkout пишет каждый staged-контент в <repo>/<dir>/<name> и исключает из git.
+	EnvInjectEnvFiles = "INJECT_ENV_FILES"
 )
 
 // Фиксированные пути артефактов внутри контейнера (не из env — защита от path injection).
@@ -67,11 +66,11 @@ const (
 	FullDiffPath    = "/workspace/full.diff"
 	ChangesPath     = "/workspace/changes.txt"
 	StatusJSONPath  = "/workspace/status.json"
-	// InjectedEnvFileStagePath — staged-содержимое «инъекции env-файла» (см.
-	// InjectedEnvFileSpec). Runner кладёт сюда Content через CopyToContainer; entrypoint
-	// копирует его в рабочую копию репо после checkout. Фиксированный путь — защита от
-	// path injection (имя/папка цели валидируются и приходят отдельно в env).
-	InjectedEnvFileStagePath = "/workspace/.inject_env_file"
+	// InjectedEnvFilesStageDir — каталог staged-содержимого «инъекции env-файлов»: runner
+	// кладёт сюда по файлу на инъекцию (`<idx>`) через CopyToContainer; entrypoint копирует
+	// их в рабочую копию репо после checkout по JSON-манифесту EnvInjectEnvFiles. Фиксированный
+	// путь — защита от path injection (имена/папки цели валидируются и приходят в манифесте).
+	InjectedEnvFilesStageDir = "/workspace/.inject_env"
 )
 
 // LogEntryMaxLineBytes — верхняя граница длины LogEntry.Line в байтах; длиннее нельзя одной записью
@@ -175,12 +174,12 @@ type SandboxOptions struct {
 	// для интеграционных тестов с БД). Пусто → прежнее поведение. Требует DisableNetwork=false.
 	Services []ServiceSpec
 
-	// InjectedEnvFile — «инъекция env-файла» уровня репозитория (опционально). nil →
-	// ничего не инжектится. Content стейджится в контейнер через CopyToContainer (как
-	// prompt.txt), FileName/TargetDir идут метаданными в env; entrypoint пишет файл в
-	// рабочую копию репо после checkout и исключает его из git (.git/info/exclude).
-	// Content — секрет: маскируется в логах/JSON.
-	InjectedEnvFile *InjectedEnvFileSpec
+	// InjectedEnvFiles — «инъекция env-файлов» уровня репозитория (опционально, может быть
+	// несколько). Пусто → ничего не инжектится. Содержимое каждого стейджится в контейнер
+	// через CopyToContainer, имя/папка/idx идут JSON-манифестом в env (EnvInjectEnvFiles);
+	// entrypoint пишет файлы в рабочую копию репо после checkout и исключает их из git
+	// (.git/info/exclude). Content — секрет: маскируется в логах/JSON.
+	InjectedEnvFiles []InjectedEnvFileSpec
 }
 
 // SiblingRepoSpec — соседний репозиторий проекта для read-only клонирования в sandbox.
@@ -190,16 +189,26 @@ type SiblingRepoSpec struct {
 	Branch  string `json:"branch"`
 }
 
-// InjectedEnvFileSpec — «инъекция env-файла» уровня репозитория: содержимое (секрет),
-// имя файла и относительная папка внутри репо (пусто = корень). Runner стейджит Content
-// в InjectedEnvFileStagePath (через CopyToContainer, как prompt.txt — большой payload не
-// через ENV), а FileName/TargetDir передаёт метаданными в env. Entrypoint после checkout
-// пишет файл в рабочую копию репо и добавляет его в .git/info/exclude (НЕ коммитится).
-// FileName/TargetDir обязаны пройти ValidateInjectedEnvFile до RunTask.
+// InjectedEnvFileSpec — одна «инъекция env-файла» уровня репозитория: содержимое
+// (секрет), имя файла и относительная папка внутри репо (пусто = корень). На репозиторий
+// может быть НЕСКОЛЬКО таких файлов (SandboxOptions.InjectedEnvFiles). Runner стейджит
+// Content каждого файла в InjectedEnvFilesStageDir/<idx> (через CopyToContainer — большой
+// payload не через ENV), а имя/папку/индекс передаёт JSON-манифестом в env
+// (EnvInjectEnvFiles). Entrypoint после checkout пишет каждый файл в рабочую копию репо
+// и добавляет в .git/info/exclude (НЕ коммитится). FileName/TargetDir обязаны пройти
+// ValidateInjectedEnvFile до RunTask.
 type InjectedEnvFileSpec struct {
 	FileName  string
 	TargetDir string
 	Content   string
+}
+
+// injectedEnvFileManifestEntry — запись JSON-манифеста EnvInjectEnvFiles (без содержимого:
+// оно стейджится отдельным файлом по idx). idx — индекс staged-файла в InjectedEnvFilesStageDir.
+type injectedEnvFileManifestEntry struct {
+	Name string `json:"name"`
+	Dir  string `json:"dir"`
+	Idx  int    `json:"idx"`
 }
 
 // AgentSettingsBundle — то, что копируется в контейнер при RunTask (Sprint 15.22).
@@ -275,9 +284,11 @@ func (o SandboxOptions) Clone() SandboxOptions {
 	} else {
 		res.Services = nil
 	}
-	if o.InjectedEnvFile != nil {
-		cp := *o.InjectedEnvFile
-		res.InjectedEnvFile = &cp
+	if o.InjectedEnvFiles != nil {
+		res.InjectedEnvFiles = make([]InjectedEnvFileSpec, len(o.InjectedEnvFiles))
+		copy(res.InjectedEnvFiles, o.InjectedEnvFiles)
+	} else {
+		res.InjectedEnvFiles = nil
 	}
 	return res
 }

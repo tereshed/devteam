@@ -7004,10 +7004,34 @@ abstract class AppLocalizations {
   /// **'Для этого репозитория env-файл ещё не настроен.'**
   String get repoEnvFilesNotConfigured;
 
+  /// No description provided for @repoEnvFilesEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Для этого репозитория ещё нет env-файлов.'**
+  String get repoEnvFilesEmpty;
+
+  /// No description provided for @repoEnvFilesAddButton.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить файл'**
+  String get repoEnvFilesAddButton;
+
+  /// No description provided for @repoEnvFilesCreateTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый env-файл'**
+  String get repoEnvFilesCreateTitle;
+
+  /// No description provided for @repoEnvFilesEditTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Редактировать env-файл'**
+  String get repoEnvFilesEditTitle;
+
   /// No description provided for @repoEnvFilesConfiguredHidden.
   ///
   /// In ru, this message translates to:
-  /// **'Env-файл настроен. Содержимое скрыто — сохранение перезапишет файл целиком.'**
+  /// **'Содержимое скрыто — сохранение перезапишет файл целиком.'**
   String get repoEnvFilesConfiguredHidden;
 
   /// No description provided for @repoEnvFilesUpdatedLabel.
