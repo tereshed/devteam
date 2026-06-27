@@ -164,6 +164,27 @@ class _AssistantMcpFormDialogState extends State<AssistantMcpFormDialog> {
                     ),
                   ),
                 ),
+                // Литеральный пример синтаксиса ссылки на секрет. Держим в коде (raw-строка):
+                // в .arb фигурные скобки ${...} ломают ICU-парсер gen-l10n.
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: SelectableText(
+                      // raw-строка: $ и {} остаются литералами, без интерполяции Dart.
+                      r'Authorization: Bearer ${secret:SECRET_NAME}',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

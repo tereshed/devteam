@@ -253,6 +253,9 @@ class _BodyState extends ConsumerState<_Body>
               _JsonTab(
                 controller: _mcpJSON,
                 helperText: l10n.agentSandboxSettingsMCPHelper,
+                // raw-строка: $ и {} литералы (в .arb их класть нельзя — ломают ICU).
+                exampleSnippet:
+                    r'"headers": {"Authorization": "Bearer ${secret:SECRET_NAME}"}',
               ),
               _JsonTab(
                 controller: _skillsJSON,
@@ -355,25 +358,57 @@ class _ProviderTab extends ConsumerWidget {
 
 /// Универсальная JSON-вкладка для MCP-серверов и Skills.
 class _JsonTab extends StatelessWidget {
-  const _JsonTab({required this.controller, required this.helperText});
+  const _JsonTab({
+    required this.controller,
+    required this.helperText,
+    this.exampleSnippet,
+  });
 
   final TextEditingController controller;
   final String helperText;
 
+  /// Опциональный литеральный пример (моноширинный, копируемый) — показывается над
+  /// полем. Держим в коде (raw-строка): в .arb фигурные скобки ${...} ломают ICU gen-l10n.
+  final String? exampleSnippet;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: TextField(
-        controller: controller,
-        maxLines: null,
-        expands: true,
-        textAlignVertical: TextAlignVertical.top,
-        decoration: InputDecoration(
-          alignLabelWithHint: true,
-          helperText: helperText,
-          border: const OutlineInputBorder(),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (exampleSnippet != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: SelectableText(
+                exampleSnippet!,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          Expanded(
+            child: TextField(
+              controller: controller,
+              maxLines: null,
+              expands: true,
+              textAlignVertical: TextAlignVertical.top,
+              decoration: InputDecoration(
+                alignLabelWithHint: true,
+                helperText: helperText,
+                helperMaxLines: 4,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

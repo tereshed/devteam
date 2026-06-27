@@ -2093,7 +2093,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentSandboxSettingsMCPHelper =>
-      'JSON array of MCP servers. Inline server fields: name, type (sse/http/stdio), url, headers. In a header value you can reference a project variable via the secret:NAME prefix — it is injected at runtime and never written to the file.';
+      'JSON array of MCP servers. Inline server fields: name, type (sse/http/stdio), url, headers. In a header value you can reference a project secret (syntax shown in the example above): it is injected at runtime and never written to the file. Define secrets in the Project variables tab.';
 
   @override
   String get agentSandboxSettingsSkillsHelper =>
@@ -3882,7 +3882,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get assistantMcpHeadersHint =>
-      'One header per line, e.g. \"Authorization: Bearer YOUR_TOKEN\". You can reference a project variable instead of a literal value; secrets are resolved server-side (Project variables tab).';
+      'One header per line. To avoid storing a secret in plain text, reference a project secret (created in the Project variables tab) — it is resolved server-side at runtime. Reference syntax:';
 
   @override
   String get assistantMcpRequireConfirmationLabel => 'Ask for confirmation';

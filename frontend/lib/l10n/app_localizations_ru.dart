@@ -2119,7 +2119,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentSandboxSettingsMCPHelper =>
-      'JSON-массив MCP-серверов. Поля инлайн-сервера: name, type (sse/http/stdio), url, headers. В значении заголовка можно сослаться на переменную проекта через префикс secret:NAME — она подставляется в рантайме и не пишется в файл.';
+      'JSON-массив MCP-серверов. Поля инлайн-сервера: name, type (sse/http/stdio), url, headers. В значении заголовка можно сослаться на секрет проекта (синтаксис — в примере выше): он подставляется в рантайме и не пишется в файл. Секреты задаются во вкладке «Переменные».';
 
   @override
   String get agentSandboxSettingsSkillsHelper =>
@@ -3915,7 +3915,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get assistantMcpHeadersHint =>
-      'По заголовку в строке, напр. «Authorization: Bearer ВАШ_ТОКЕН». Вместо значения можно сослаться на переменную проекта — секреты резолвятся на сервере (вкладка «Переменные»).';
+      'По заголовку в строке. Чтобы не вписывать секрет в открытую, сошлитесь на секрет проекта (создаётся во вкладке «Переменные») — он подставится на сервере в рантайме. Синтаксис ссылки:';
 
   @override
   String get assistantMcpRequireConfirmationLabel => 'Спрашивать подтверждение';

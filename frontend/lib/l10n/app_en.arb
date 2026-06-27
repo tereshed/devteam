@@ -1085,7 +1085,7 @@
   "agentSandboxSettingsAttachServicesLabel": "Attach project test services",
   "agentSandboxSettingsAttachServicesHelper": "Bring up the project's ephemeral test services (e.g. PostgreSQL) for this agent's sandbox runs. Typically enabled for the tester.",
   "agentSandboxSettingsCodeBackendLabel": "Code backend",
-  "agentSandboxSettingsMCPHelper": "JSON array of MCP servers. Inline server fields: name, type (sse/http/stdio), url, headers. In a header value you can reference a project variable via the secret:NAME prefix — it is injected at runtime and never written to the file.",
+  "agentSandboxSettingsMCPHelper": "JSON array of MCP servers. Inline server fields: name, type (sse/http/stdio), url, headers. In a header value you can reference a project secret (syntax shown in the example above): it is injected at runtime and never written to the file. Define secrets in the Project variables tab.",
   "@agentSandboxSettingsMCPHelper": {
     "description": "Helper text for MCP servers tab. JSON example removed to avoid ARB ICU lexer interpreting braces as placeholders (Sprint 15.C2)."
   },
@@ -1901,7 +1901,7 @@
   "assistantMcpTransportLabel": "Transport",
   "assistantMcpUrlLabel": "URL",
   "assistantMcpHeadersLabel": "Headers (one per line: Name: value)",
-  "assistantMcpHeadersHint": "One header per line, e.g. \"Authorization: Bearer YOUR_TOKEN\". You can reference a project variable instead of a literal value; secrets are resolved server-side (Project variables tab).",
+  "assistantMcpHeadersHint": "One header per line. To avoid storing a secret in plain text, reference a project secret (created in the Project variables tab) — it is resolved server-side at runtime. Reference syntax:",
   "assistantMcpRequireConfirmationLabel": "Ask for confirmation",
   "assistantMcpEnabledLabel": "Enabled",
   "assistantMcpSave": "Save",
