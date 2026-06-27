@@ -76,6 +76,55 @@ class _SandboxLogsViewerState extends ConsumerState<SandboxLogsViewer> {
     });
   }
 
+  // Рендер одной строки-шага Claude Code (источник — префикс CCSTEP).
+  // body: "tool <name>: ..." | "-> <result>" | "text: ..." — кодируем тип цветом+иконкой.
+  Widget _buildAgentStepRow(String body) {
+    Color color;
+    IconData icon;
+    var text = body;
+    if (body.startsWith('tool ')) {
+      color = Colors.amberAccent.shade100;
+      icon = Icons.terminal;
+      text = body.substring(5);
+    } else if (body.startsWith('-> ')) {
+      color = Colors.greenAccent.shade100;
+      icon = Icons.subdirectory_arrow_right;
+      text = body.substring(3);
+    } else {
+      color = Colors.cyanAccent.shade100;
+      icon = Icons.chat_bubble_outline;
+      if (body.startsWith('text: ')) {
+        text = body.substring(6);
+      }
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Container(
+        padding: const EdgeInsets.only(left: 6),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: color.withValues(alpha: 0.6), width: 2),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 1, right: 6),
+              child: Icon(icon, size: 12, color: color),
+            ),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: color),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _copyLogsToClipboard(BuildContext context, String logsText, AppLocalizations l10n) async {
     await Clipboard.setData(ClipboardData(text: logsText));
     if (!context.mounted) return;
@@ -162,6 +211,13 @@ class _SandboxLogsViewerState extends ConsumerState<SandboxLogsViewer> {
                       }
 
                       final logEvent = filteredLogs[index];
+
+                      // Шаги Claude Code (префикс CCSTEP из entrypoint sandbox) — рендерим
+                      // отдельным стилем, отличая работу агента от сырого вывода контейнера.
+                      if (logEvent.line.startsWith('CCSTEP ')) {
+                        return _buildAgentStepRow(logEvent.line.substring(7));
+                      }
+
                       final isStderr = logEvent.stream == 'stderr';
 
                       return Padding(

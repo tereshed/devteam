@@ -516,6 +516,53 @@ case "${CLAUDE_CODE_PERMISSION_MODE:-}" in
     ;;
 esac
 
+# --- live transcript: стримим шаги Claude Code в stdout контейнера (→ ws.SandboxLogAdapter
+# → WS → UI). claude и парсинг результата НЕ трогаем: транскрипт сессии (jsonl) пишется
+# самим Claude Code независимо от -p, мы лишь конденсируем каждое событие в одну короткую
+# строку с префиксом CCSTEP (фронт рендерит её как шаг агента; секреты маскируются адаптером).
+# Отключается через DEVTEAM_STREAM_TRANSCRIPT=0.
+CC_STREAM_PID=""
+if [[ "${DEVTEAM_STREAM_TRANSCRIPT:-1}" != "0" ]] && command -v node >/dev/null 2>&1; then
+  (
+    # best-effort: глобальный `set -euo pipefail` (стр. 38) убил бы subshell на первой же
+    # итерации (ls по ещё-несуществующему glob фейлит под errexit+pipefail). Стрим логов
+    # не должен влиять на исход прогона — отключаем строгие режимы локально.
+    set +e +o pipefail +u
+    cc_dir="$HOME/.claude/projects"
+    cc_file=""
+    cc_i=0
+    while [[ "$cc_i" -lt 120 ]]; do
+      cc_file="$(ls -t "$cc_dir"/*/*.jsonl 2>/dev/null | head -1)"
+      [[ -n "$cc_file" ]] && break
+      cc_i=$((cc_i + 1))
+      sleep 0.5
+    done
+    [[ -z "$cc_file" ]] && exit 0
+    tail -n +1 -F "$cc_file" 2>/dev/null | node -e '
+const rl = require("readline").createInterface({ input: process.stdin });
+rl.on("line", (l) => {
+  l = l.trim(); if (!l) return;
+  let o; try { o = JSON.parse(l); } catch (e) { return; }
+  const m = o.message || {};
+  let c = m.content;
+  if (typeof c === "string") c = [{ type: "text", text: c }];
+  if (!Array.isArray(c)) return;
+  for (const it of c) {
+    let s = "";
+    if (it.type === "text") { const t = (it.text || "").trim(); if (!t) continue; s = "text: " + t; }
+    else if (it.type === "tool_use") { const i = it.input || {}; const v = i.command || i.file_path || i.pattern || JSON.stringify(i); s = "tool " + (it.name || "") + ": " + v; }
+    else if (it.type === "tool_result") { let r = it.content; if (Array.isArray(r)) r = r.map((x) => (x && x.text) || "").join(" "); s = "-> " + String(r); }
+    else continue;
+    s = s.replace(/\s+/g, " ");
+    if (s.length > 600) s = s.slice(0, 600) + "…";
+    process.stdout.write("CCSTEP " + s + "\n");
+  }
+});
+'
+  ) &
+  CC_STREAM_PID=$!
+fi
+
 (
   cd "$REPO_DIR"
   {
@@ -534,6 +581,13 @@ set +e
 wait "$CLAUDE_PID"
 AGENT_EXIT_CODE=$?
 set -e
+
+# Транскрипт-стример больше не нужен — останавливаем (best-effort; контейнер всё равно
+# скоро завершится). Дочерние tail/node реапятся docker-init при остановке контейнера.
+if [[ -n "${CC_STREAM_PID:-}" ]]; then
+  kill "$CC_STREAM_PID" 2>/dev/null || true
+  pkill -P "$CC_STREAM_PID" 2>/dev/null || true
+fi
 
 if [[ "${CANCELLED:-0}" -eq 1 ]]; then
   LAST_EXIT_CODE=130
