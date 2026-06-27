@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/devteam/backend/internal/llm/agentloop"
@@ -91,6 +92,68 @@ func TestOpenProjectMCPTools_OverHTTP(t *testing.T) {
 	}
 	if res.Text != "loop-wired" {
 		t.Errorf("handler result text = %q, want loop-wired", res.Text)
+	}
+}
+
+// newFlakyHTTPMCPServer оборачивает реальный MCP-сервер так, что первые failFirst
+// входящих HTTP-запросов обрываются (соединение закрывается → клиент видит EOF),
+// а дальше идёт нормальный MCP. Имитирует разовый дроп SSE/стрима балансировщиком.
+func newFlakyHTTPMCPServer(t *testing.T, failFirst int) *httptest.Server {
+	t.Helper()
+	srv := mcp.NewServer(&mcp.Implementation{Name: "svc-flaky", Version: "1.0.0"}, nil)
+	mcp.AddTool(srv, &mcp.Tool{Name: "echo", Description: "echo back"},
+		func(_ context.Context, _ *mcp.CallToolRequest, in mcpEchoIn) (*mcp.CallToolResult, any, error) {
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: in.Message}}}, nil, nil
+		})
+	real := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
+
+	var mu sync.Mutex
+	n := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		n++
+		cur := n
+		mu.Unlock()
+		if cur <= failFirst {
+			// Рвём соединение на полуслове — клиентский transport получит EOF/reset.
+			if hj, ok := w.(http.Hijacker); ok {
+				if conn, _, err := hj.Hijack(); err == nil {
+					_ = conn.Close()
+					return
+				}
+			}
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		real.ServeHTTP(w, r)
+	}))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// TestOpenProjectMCPTools_RecoversAfterTransientDrop — ретрай: первый запрос рвётся
+// (как разовый EOF на tools/list у облачного балансировщика), вторая попытка проходит
+// → сервер НЕ выпадает из каталога, инструмент доступен.
+func TestOpenProjectMCPTools_RecoversAfterTransientDrop(t *testing.T) {
+	ts := newFlakyHTTPMCPServer(t, 1) // уронить только самый первый HTTP-запрос
+
+	repo := &fakeAssistantMCPRepo{enabled: []models.AssistantMCPServer{{
+		Name:      "flaky",
+		Transport: models.MCPTransportHTTP,
+		URL:       ts.URL,
+		Headers:   datatypes.JSON([]byte("{}")),
+		IsEnabled: true,
+	}}}
+	svc := newAssistantSvcWithMCP(repo)
+
+	tools, closeFn := svc.openProjectMCPTools(context.Background(), &models.Project{ID: uuid.New()})
+	defer closeFn()
+
+	if len(tools) != 1 {
+		t.Fatalf("expected server to recover after transient drop (1 tool), got %d", len(tools))
+	}
+	if tools[0].Name != "mcp__flaky__echo" {
+		t.Errorf("tool name = %q, want mcp__flaky__echo", tools[0].Name)
 	}
 }
 

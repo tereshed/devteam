@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -16,6 +17,12 @@ const (
 	assistantMCPConnectTimeout = 15 * time.Second
 	// assistantMCPCallTimeout — потолок на один CallTool (защита от зависшего сервера в петле).
 	assistantMCPCallTimeout = 60 * time.Second
+	// assistantMCPConnectAttempts — сколько раз пробуем connect+tools/list одного сервера.
+	// Remote SSE через облачные балансировщики разово рвёт long-lived стрим (EOF между
+	// initialize и tools/list) — один такой обрыв иначе выкидывал бы сервер на весь прогон.
+	assistantMCPConnectAttempts = 3
+	// assistantMCPConnectBackoff — базовая пауза между попытками (линейно растёт).
+	assistantMCPConnectBackoff = 400 * time.Millisecond
 )
 
 // openProjectMCPTools подключается ко всем ВКЛЮЧЁННЫМ MCP-серверам проекта и
@@ -49,21 +56,8 @@ func (s *assistantService) openProjectMCPTools(ctx context.Context, project *mod
 		seen     = map[string]bool{}
 	)
 	for _, rs := range resolved {
-		sess, ok := s.openOneMCPServer(ctx, rs)
+		sess, descs, ok := s.connectAndListWithRetry(ctx, rs)
 		if !ok {
-			continue
-		}
-		descs, err := func() ([]mcpclient.ToolDescriptor, error) {
-			listCtx, cancel := context.WithTimeout(ctx, assistantMCPConnectTimeout)
-			defer cancel()
-			return sess.ListToolDescriptors(listCtx)
-		}()
-		if err != nil {
-			s.deps.Logger.WarnContext(ctx, "assistant: mcp list tools failed (skipping server)",
-				slog.String("server", rs.Config.Name),
-				slog.String("error", err.Error()),
-			)
-			_ = sess.Close()
 			continue
 		}
 		sessions = append(sessions, sess)
@@ -92,19 +86,71 @@ func (s *assistantService) openProjectMCPTools(ctx context.Context, project *mod
 	return tools, closeFn
 }
 
-// openOneMCPServer открывает одну сессию с bounded-таймаутом; (nil,false) при ошибке.
-func (s *assistantService) openOneMCPServer(ctx context.Context, rs ResolvedMCPServer) (*mcpclient.Session, bool) {
+// connectAndListWithRetry подключается к серверу и читает tools/list как ЕДИНУЮ
+// операцию с несколькими попытками: после обрыва SSE-стрима сессия мертва, поэтому
+// при ошибке tools/list мы закрываем её и переоткрываем заново. При успехе возвращает
+// ЖИВУЮ сессию (вызывающий закроет через closeFn) + дескрипторы.
+//
+// Ретраятся только транзиентные ошибки (EOF/reset/refused — обычно мгновенные).
+// На context.DeadlineExceeded (сервер завис на потолке assistantMCPConnectTimeout) или
+// отмену внешнего ctx ретрай прекращается — нет смысла множить 15s-таймауты и тормозить
+// ответ ассистента на реально недоступном сервере.
+func (s *assistantService) connectAndListWithRetry(ctx context.Context, rs ResolvedMCPServer) (*mcpclient.Session, []mcpclient.ToolDescriptor, bool) {
+	var lastErr error
+	for attempt := 1; attempt <= assistantMCPConnectAttempts; attempt++ {
+		sess, descs, err := s.connectAndListOnce(ctx, rs)
+		if err == nil {
+			if attempt > 1 {
+				s.deps.Logger.InfoContext(ctx, "assistant: mcp connect recovered after retry",
+					slog.String("server", rs.Config.Name), slog.Int("attempt", attempt))
+			}
+			return sess, descs, true
+		}
+		lastErr = err
+		// Зависший сервер (таймаут) или отменённый прогон — ретрай бесполезен.
+		if errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+			break
+		}
+		if attempt < assistantMCPConnectAttempts {
+			select {
+			case <-ctx.Done():
+				lastErr = ctx.Err()
+			case <-time.After(time.Duration(attempt) * assistantMCPConnectBackoff):
+				continue
+			}
+			break
+		}
+	}
+	s.deps.Logger.WarnContext(ctx, "assistant: mcp connect/list failed (skipping server)",
+		slog.String("server", rs.Config.Name),
+		slog.Int("attempts", assistantMCPConnectAttempts),
+		slog.String("error", errString(lastErr)),
+	)
+	return nil, nil, false
+}
+
+// connectAndListOnce — одна попытка connect+tools/list под общим bounded-таймаутом.
+// При ошибке tools/list сессия закрывается (она уже непригодна).
+func (s *assistantService) connectAndListOnce(ctx context.Context, rs ResolvedMCPServer) (*mcpclient.Session, []mcpclient.ToolDescriptor, error) {
 	connectCtx, cancel := context.WithTimeout(ctx, assistantMCPConnectTimeout)
 	defer cancel()
 	sess, err := mcpclient.Open(connectCtx, rs.Config)
 	if err != nil {
-		s.deps.Logger.WarnContext(ctx, "assistant: mcp connect failed (skipping server)",
-			slog.String("server", rs.Config.Name),
-			slog.String("error", err.Error()),
-		)
-		return nil, false
+		return nil, nil, err
 	}
-	return sess, true
+	descs, err := sess.ListToolDescriptors(connectCtx)
+	if err != nil {
+		_ = sess.Close()
+		return nil, nil, err
+	}
+	return sess, descs, nil
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // mcpToolToAgentloop оборачивает дескриптор MCP-инструмента в agentloop.Tool: Handler
