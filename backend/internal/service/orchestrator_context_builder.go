@@ -13,6 +13,7 @@ import (
 	"github.com/devteam/backend/internal/indexer"
 	"github.com/devteam/backend/internal/models"
 	"github.com/devteam/backend/internal/repository"
+	"github.com/devteam/backend/internal/sandbox"
 	"github.com/google/uuid"
 )
 
@@ -51,6 +52,12 @@ type ProjectEnvSecretReader interface {
 	ListAdvertised(ctx context.Context, projectID uuid.UUID) ([]AdvertisedProjectVar, error)
 }
 
+// RepoEnvFileReader — «инъекция env-файла» уровня репозитория: дешифрованная спека для
+// целевого репо задачи. Реализуется *RepositoryEnvFileService; узкий интерфейс.
+type RepoEnvFileReader interface {
+	GetInjectedFileForRepo(ctx context.Context, repoID uuid.UUID) (*sandbox.InjectedEnvFileSpec, error)
+}
+
 // previousStepMessagesLimit — сколько последних agent-сообщений из task_messages
 // показывать следующему агенту pipeline (developer→reviewer и т.п.). Слишком много
 // раздуют prompt и токен-бюджет; слишком мало — reviewer/tester не увидят diff.
@@ -78,6 +85,8 @@ type contextBuilder struct {
 	// projectSecrets (опц.) — «переменные проекта» с inject_as_env=true для инъекции в
 	// env песочницы и упоминания в промпте; nil — переменные проекта не подставляются.
 	projectSecrets ProjectEnvSecretReader
+	// repoEnvFiles (опц.) — «инъекция env-файла» уровня репозитория; nil — не инжектится.
+	repoEnvFiles RepoEnvFileReader
 }
 
 // WithEnhancerOverridesOption — подключает чтение проектных оверрайдов промптов
@@ -96,6 +105,12 @@ func WithGitTokenRefresherOption(r GitTokenRefresher) ContextBuilderOption {
 // льются в env песочницы, имена+описания подставляются в промпт агента.
 func WithProjectSecretsOption(r ProjectEnvSecretReader) ContextBuilderOption {
 	return func(b *contextBuilder) { b.projectSecrets = r }
+}
+
+// WithRepoEnvFileOption — подключает «инъекцию env-файла» уровня репозитория: для
+// целевого репо задачи файл пишется в рабочую копию репо перед запуском агента.
+func WithRepoEnvFileOption(r RepoEnvFileReader) ContextBuilderOption {
+	return func(b *contextBuilder) { b.repoEnvFiles = r }
 }
 
 // SetContextBuilderTokenRefresher — post-construction внедрение рефрешера (gitIntegrationSvc
@@ -147,6 +162,46 @@ func (b *contextBuilder) injectProjectEnv(ctx context.Context, input *agent.Exec
 			input.PromptSystem = block
 		}
 	}
+}
+
+// injectRepoEnvFile подставляет «инъекцию env-файла» уровня репозитория в input.InjectedEnvFile.
+// Репозиторий выбирается так же, как git-источник: целевой repo подзадачи (targetRepo),
+// иначе первичный репозиторий проекта. Best-effort: ошибки логируются, задача не падает.
+func (b *contextBuilder) injectRepoEnvFile(ctx context.Context, input *agent.ExecutionInput, project *models.Project, targetRepo *models.ProjectRepository) {
+	if b.repoEnvFiles == nil {
+		return
+	}
+	repoID := resolveEnvFileRepoID(project, targetRepo)
+	if repoID == uuid.Nil {
+		return
+	}
+	spec, err := b.repoEnvFiles.GetInjectedFileForRepo(ctx, repoID)
+	if err != nil {
+		slog.Warn("ContextBuilder: failed to load repo env file", "repo_id", repoID, "error", err)
+		return
+	}
+	if spec != nil && spec.FileName != "" {
+		input.InjectedEnvFile = spec
+	}
+}
+
+// resolveEnvFileRepoID — целевой repo подзадачи, иначе первичный репозиторий проекта,
+// иначе uuid.Nil (env-файл не настроить не на что).
+func resolveEnvFileRepoID(project *models.Project, targetRepo *models.ProjectRepository) uuid.UUID {
+	if targetRepo != nil && targetRepo.ID != uuid.Nil {
+		return targetRepo.ID
+	}
+	if project != nil {
+		for i := range project.Repositories {
+			if project.Repositories[i].IsPrimary {
+				return project.Repositories[i].ID
+			}
+		}
+		if len(project.Repositories) == 1 {
+			return project.Repositories[0].ID
+		}
+	}
+	return uuid.Nil
 }
 
 // buildProjectEnvPromptBlock собирает текстовый блок «доступные переменные окружения»
@@ -460,6 +515,10 @@ func (b *contextBuilder) Build(ctx context.Context, task *models.Task, assignedA
 		// «Переменные проекта» (inject_as_env): значения → ProjectEnv (отдельный канал,
 		// мягкая валидация), имена+описания → промпт-блок «доступные переменные».
 		b.injectProjectEnv(ctx, input, project)
+
+		// «Инъекция env-файла» уровня репозитория: содержимое+имя+папка для целевого репо
+		// задачи. Entrypoint напишет файл в рабочую копию репо и исключит из git.
+		b.injectRepoEnvFile(ctx, input, project, targetRepo)
 	}
 
 	// Git информация: мульти-репо — из целевого репо подзадачи, иначе из полей проекта.

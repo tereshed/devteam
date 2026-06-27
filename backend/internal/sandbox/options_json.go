@@ -18,6 +18,26 @@ type sandboxOptionsWire struct {
 	DisableNetwork  bool              `json:"disable_network"`
 	ResourceLimit   ResourceLimit     `json:"resource_limit"`
 	Services        []serviceSpecWire `json:"services,omitempty"`
+	InjectedEnvFile *injectedEnvWire  `json:"injected_env_file,omitempty"`
+}
+
+// injectedEnvWire — представление InjectedEnvFileSpec для логов/JSON: имя/папка цели
+// (не секрет) + длина содержимого (содержимое — секрет).
+type injectedEnvWire struct {
+	FileName  string `json:"file_name"`
+	TargetDir string `json:"target_dir,omitempty"`
+	Content   string `json:"content"`
+}
+
+func maskInjectedEnvFileForWire(spec *InjectedEnvFileSpec) *injectedEnvWire {
+	if spec == nil {
+		return nil
+	}
+	return &injectedEnvWire{
+		FileName:  spec.FileName,
+		TargetDir: spec.TargetDir,
+		Content:   byteLenDesc(spec.Content),
+	}
 }
 
 // serviceSpecWire — представление ServiceSpec для логов/JSON: env с маскированными
@@ -66,6 +86,7 @@ func (o SandboxOptions) MarshalJSON() ([]byte, error) {
 		DisableNetwork:  o.DisableNetwork,
 		ResourceLimit:   o.ResourceLimit,
 		Services:        maskServicesForWire(o.Services),
+		InjectedEnvFile: maskInjectedEnvFileForWire(o.InjectedEnvFile),
 	}
 	return json.Marshal(w)
 }

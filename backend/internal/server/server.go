@@ -96,6 +96,9 @@ type Dependencies struct {
 	ProjectSecretHandler *handler.ProjectSecretHandler
 	UserSecretHandler    *handler.UserSecretHandler
 
+	// «Инъекция env-файла» уровня репозитория (опционально, nil → ручки не регистрируются).
+	RepositoryEnvFileHandler *handler.RepositoryEnvFileHandler
+
 	// Phase 5 §5.6.1 — admin CRUD для реестра MCP-серверов.
 	MCPServerRegistryHandler *handler.MCPServerRegistryHandler
 }
@@ -395,6 +398,13 @@ func (s *Server) setupRoutes(deps Dependencies) {
 			projects.POST("/:id/repositories", deps.ProjectHandler.AddRepository)
 			projects.PUT("/:id/repositories/:repoId", deps.ProjectHandler.UpdateRepository)
 			projects.DELETE("/:id/repositories/:repoId", deps.ProjectHandler.RemoveRepository)
+
+			// «Инъекция env-файла» уровня репозитория (один файл на репо).
+			if deps.RepositoryEnvFileHandler != nil {
+				projects.GET("/:id/repositories/:repoId/env-file", deps.RepositoryEnvFileHandler.Get)
+				projects.PUT("/:id/repositories/:repoId/env-file", deps.RepositoryEnvFileHandler.Set)
+				projects.DELETE("/:id/repositories/:repoId/env-file", deps.RepositoryEnvFileHandler.Delete)
+			}
 
 			projects.GET("/:id", deps.ProjectHandler.GetByID)
 			projects.PUT("/:id", deps.ProjectHandler.Update)

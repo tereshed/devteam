@@ -95,6 +95,12 @@ type ExecutionInput struct {
 	// маскируются в логах полностью. Значения — секреты.
 	ProjectEnv map[string]string
 
+	// InjectedEnvFile — «инъекция env-файла» уровня репозитория (опционально): содержимое,
+	// имя файла и относительная папка. ContextBuilder заполняет по целевому репо задачи;
+	// runner стейджит контент в контейнер, entrypoint пишет файл в рабочую копию репо
+	// после checkout и исключает его из git. nil — инъекции нет.
+	InjectedEnvFile *sandbox.InjectedEnvFileSpec
+
 	// StructuredContext — сырой JSON доп. контекста роли.
 	// Семантика: nil или len==0 трактуется как "{}" при парсинге (см. NormalizeJSONForParse).
 	StructuredContext json.RawMessage
@@ -170,6 +176,14 @@ func (in ExecutionInput) String() string {
 	writeMaskedEnvKeys(&b, in.EnvSecrets)
 	b.WriteString(" ProjectEnv:")
 	writeMaskedEnvKeys(&b, in.ProjectEnv)
+	b.WriteString(" InjectedEnvFile:")
+	if in.InjectedEnvFile != nil {
+		// Имя/папка не секретны; содержимое — секрет (только длина).
+		fmt.Fprintf(&b, "{file:%q dir:%q content:<%d bytes>}",
+			in.InjectedEnvFile.FileName, in.InjectedEnvFile.TargetDir, len(in.InjectedEnvFile.Content))
+	} else {
+		b.WriteString("nil")
+	}
 	b.WriteByte('}')
 	return b.String()
 }

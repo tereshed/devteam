@@ -45,6 +45,12 @@ const (
 	// EnvGitTokenUser — username для инъекции GIT_TOKEN в HTTPS-URL (clone/push).
 	// Пусто/не задан → "x-access-token" (GitHub). GitLab требует "oauth2" для OAuth2-токенов.
 	EnvGitTokenUser = "GIT_TOKEN_USER"
+	// EnvInjectEnvFileName / EnvInjectEnvFileDir — метаданные «инъекции env-файла» уровня
+	// репозитория. Содержимое стейджится отдельно в InjectedEnvFileStagePath (большой
+	// payload не через ENV). Если EnvInjectEnvFileName задан — entrypoint после checkout
+	// пишет staged-контент в <repo>/<dir>/<name> и исключает файл из git.
+	EnvInjectEnvFileName = "INJECT_ENV_FILE_NAME"
+	EnvInjectEnvFileDir  = "INJECT_ENV_FILE_DIR"
 )
 
 // Фиксированные пути артефактов внутри контейнера (не из env — защита от path injection).
@@ -61,6 +67,11 @@ const (
 	FullDiffPath    = "/workspace/full.diff"
 	ChangesPath     = "/workspace/changes.txt"
 	StatusJSONPath  = "/workspace/status.json"
+	// InjectedEnvFileStagePath — staged-содержимое «инъекции env-файла» (см.
+	// InjectedEnvFileSpec). Runner кладёт сюда Content через CopyToContainer; entrypoint
+	// копирует его в рабочую копию репо после checkout. Фиксированный путь — защита от
+	// path injection (имя/папка цели валидируются и приходят отдельно в env).
+	InjectedEnvFileStagePath = "/workspace/.inject_env_file"
 )
 
 // LogEntryMaxLineBytes — верхняя граница длины LogEntry.Line в байтах; длиннее нельзя одной записью
@@ -163,6 +174,13 @@ type SandboxOptions struct {
 	// контейнеру на сервис в той же per-run bridge-сети с alias-DNS (например postgres
 	// для интеграционных тестов с БД). Пусто → прежнее поведение. Требует DisableNetwork=false.
 	Services []ServiceSpec
+
+	// InjectedEnvFile — «инъекция env-файла» уровня репозитория (опционально). nil →
+	// ничего не инжектится. Content стейджится в контейнер через CopyToContainer (как
+	// prompt.txt), FileName/TargetDir идут метаданными в env; entrypoint пишет файл в
+	// рабочую копию репо после checkout и исключает его из git (.git/info/exclude).
+	// Content — секрет: маскируется в логах/JSON.
+	InjectedEnvFile *InjectedEnvFileSpec
 }
 
 // SiblingRepoSpec — соседний репозиторий проекта для read-only клонирования в sandbox.
@@ -170,6 +188,18 @@ type SiblingRepoSpec struct {
 	Slug    string `json:"slug"`
 	RepoURL string `json:"url"`
 	Branch  string `json:"branch"`
+}
+
+// InjectedEnvFileSpec — «инъекция env-файла» уровня репозитория: содержимое (секрет),
+// имя файла и относительная папка внутри репо (пусто = корень). Runner стейджит Content
+// в InjectedEnvFileStagePath (через CopyToContainer, как prompt.txt — большой payload не
+// через ENV), а FileName/TargetDir передаёт метаданными в env. Entrypoint после checkout
+// пишет файл в рабочую копию репо и добавляет его в .git/info/exclude (НЕ коммитится).
+// FileName/TargetDir обязаны пройти ValidateInjectedEnvFile до RunTask.
+type InjectedEnvFileSpec struct {
+	FileName  string
+	TargetDir string
+	Content   string
 }
 
 // AgentSettingsBundle — то, что копируется в контейнер при RunTask (Sprint 15.22).
@@ -244,6 +274,10 @@ func (o SandboxOptions) Clone() SandboxOptions {
 		}
 	} else {
 		res.Services = nil
+	}
+	if o.InjectedEnvFile != nil {
+		cp := *o.InjectedEnvFile
+		res.InjectedEnvFile = &cp
 	}
 	return res
 }

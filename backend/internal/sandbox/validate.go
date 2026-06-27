@@ -207,6 +207,47 @@ func ValidateProjectEnvKeys(env map[string]string) error {
 	return nil
 }
 
+// ValidateInjectedEnvFile проверяет имя файла и относительную папку для «инъекции
+// env-файла» уровня репозитория ДО передачи в sandbox-entrypoint. Защита от записи
+// вне рабочей копии репо (path traversal / абсолютные пути) и от инъекции спецсимволов.
+//
+//   - fileName: непустое, без '/', без '\', без "..", не "." и не "..", без NUL/переводов строк.
+//   - targetDir: опционально; относительный, без ведущего '/', без сегментов "..",
+//     без '\' и без NUL/переводов строк.
+func ValidateInjectedEnvFile(fileName, targetDir string) error {
+	if fileName == "" {
+		return fmt.Errorf("injected env file: file_name is required: %w", ErrInvalidEnvKeys)
+	}
+	if len(fileName) > 255 {
+		return fmt.Errorf("injected env file: file_name too long: %w", ErrInvalidEnvKeys)
+	}
+	if strings.ContainsAny(fileName, "/\\\x00\n\r") {
+		return fmt.Errorf("injected env file: file_name contains forbidden characters: %w", ErrInvalidEnvKeys)
+	}
+	// Запрещаем "." и любое вхождение ".." (совпадает с defense-in-depth в entrypoint;
+	// легитимные имена env-файлов "..": не содержат).
+	if fileName == "." || strings.Contains(fileName, "..") {
+		return fmt.Errorf("injected env file: file_name %q is not allowed: %w", fileName, ErrInvalidEnvKeys)
+	}
+
+	if targetDir == "" {
+		return nil
+	}
+	if len(targetDir) > 512 {
+		return fmt.Errorf("injected env file: target_dir too long: %w", ErrInvalidEnvKeys)
+	}
+	if strings.ContainsAny(targetDir, "\\\x00\n\r") {
+		return fmt.Errorf("injected env file: target_dir contains forbidden characters: %w", ErrInvalidEnvKeys)
+	}
+	if strings.HasPrefix(targetDir, "/") {
+		return fmt.Errorf("injected env file: target_dir must be relative (no leading '/'): %w", ErrInvalidEnvKeys)
+	}
+	if strings.Contains(targetDir, "..") {
+		return fmt.Errorf("injected env file: target_dir must not contain '..': %w", ErrInvalidEnvKeys)
+	}
+	return nil
+}
+
 // isSafeEnvKeyToken — только ASCII [A-Za-z_][A-Za-z0-9_]* (без =, пробелов, unicode).
 func isSafeEnvKeyToken(k string) bool {
 	for i := 0; i < len(k); i++ {

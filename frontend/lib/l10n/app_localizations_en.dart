@@ -3751,6 +3751,78 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed: the target changed after the proposal was created — refresh the list and verify manually';
 
   @override
+  String get repoEnvFilesTabTitle => 'Env files';
+
+  @override
+  String get repoEnvFilesHeading => 'Repository env file injection';
+
+  @override
+  String get repoEnvFilesDescription =>
+      'Inject a file (e.g. .env) into a repository\'s working copy before the agent runs. The file is available to the agent and tests but is excluded from git (never committed or pushed). The content is stored encrypted.';
+
+  @override
+  String get repoEnvFilesSelectRepo => 'Repository';
+
+  @override
+  String get repoEnvFilesNoRepos =>
+      'Add a repository to the project first (General tab).';
+
+  @override
+  String get repoEnvFilesNotConfigured =>
+      'No env file configured for this repository yet.';
+
+  @override
+  String get repoEnvFilesConfiguredHidden =>
+      'An env file is configured. Its content is hidden — saving overwrites the whole file.';
+
+  @override
+  String get repoEnvFilesFileNameLabel => 'File name';
+
+  @override
+  String get repoEnvFilesFileNameHint => 'e.g. .env';
+
+  @override
+  String get repoEnvFilesTargetDirLabel => 'Target folder (optional)';
+
+  @override
+  String get repoEnvFilesTargetDirHint =>
+      'Relative path inside the repo; empty = root';
+
+  @override
+  String get repoEnvFilesContentLabel => 'File content';
+
+  @override
+  String get repoEnvFilesContentHint => 'KEY=value\nANOTHER=value';
+
+  @override
+  String get repoEnvFilesSave => 'Save';
+
+  @override
+  String get repoEnvFilesDelete => 'Delete';
+
+  @override
+  String get repoEnvFilesDeleteConfirm =>
+      'Delete the env file for this repository?';
+
+  @override
+  String get repoEnvFilesSaved => 'Env file saved';
+
+  @override
+  String get repoEnvFilesDeleted => 'Env file deleted';
+
+  @override
+  String get repoEnvFilesLoadError => 'Failed to load the env file.';
+
+  @override
+  String get repoEnvFilesSaveError => 'Failed to save the env file.';
+
+  @override
+  String get repoEnvFilesValidationFileNameRequired => 'File name is required';
+
+  @override
+  String get repoEnvFilesValidationContentRequired => 'Content is required';
+
+  @override
   String get assistantMcpTabTitle => 'MCP servers';
 
   @override

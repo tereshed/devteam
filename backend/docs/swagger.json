@@ -6318,6 +6318,131 @@
                 }
             }
         },
+        "/projects/{id}/repositories/{repoId}/env-file": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "repository-env-files"
+                ],
+                "summary": "Get repository env file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Repository UUID",
+                        "name": "repoId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.RepoEnvFileView"
+                        }
+                    },
+                    "204": {
+                        "description": "no env file configured"
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "repository-env-files"
+                ],
+                "summary": "Set repository env file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Repository UUID",
+                        "name": "repoId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "file_name + target_dir + content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.setRepoEnvFileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.RepoEnvFileView"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "repository-env-files"
+                ],
+                "summary": "Delete repository env file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Repository UUID",
+                        "name": "repoId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/projects/{id}/sandbox-services": {
             "get": {
                 "security": [
@@ -12093,8 +12218,9 @@
                     "example": "3f1b6d4a-2c1e-4b9f-8f1a-1f1c5a9d2b7e"
                 },
                 "content": {
+                    "description": "max=32768: ассистент принимает развёрнутые ТЗ/контекст (создание задач по\nдетальному описанию), 4096 их резал → 400 «Что-то пошло не так». Жёсткий\nпотолок тела (maxRequestBodySize=1MB в handler) остаётся защитой от abuse.",
                     "type": "string",
-                    "maxLength": 4096,
+                    "maxLength": 32768,
                     "example": "Покажи мои проекты"
                 }
             }
@@ -13192,6 +13318,24 @@
                     "type": "string"
                 },
                 "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.setRepoEnvFileRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "file_name"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "target_dir": {
                     "type": "string"
                 }
             }
@@ -14374,6 +14518,29 @@
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.RepoEnvFileView": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "project_repository_id": {
+                    "type": "string"
+                },
+                "target_dir": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }

@@ -164,6 +164,9 @@ func (e *SandboxAgentExecutor) Execute(ctx context.Context, in ExecutionInput) (
 		// Sprint 22: эфемерные сервис-сайдкары (postgres для тестов с БД). Спека уже
 		// собрана AgentWorker'ом; структурная валидация и allowlist образов — в RunTask.
 		Services: in.Services,
+		// «Инъекция env-файла» уровня репозитория (опционально, nil → нет инъекции).
+		// Имя/папка уже прошли ValidateInjectedEnvFile в сервисе при сохранении.
+		InjectedEnvFile: in.InjectedEnvFile,
 	}
 
 	// 4. Запуск задачи

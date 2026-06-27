@@ -315,6 +315,35 @@ plan_revised_v2.json
 review_output.json
 EOF
 
+# --- inject env file: «инъекция env-файла» уровня репозитория ---
+# Бэкенд стейджит содержимое в /workspace/.inject_env_file и передаёт имя/папку через env.
+# Пишем файл в рабочую копию репо ПОСЛЕ checkout и добавляем в .git/info/exclude — он нужен
+# агенту/тестам, но НЕ должен попасть в diff/commit/push (защита от утечки секретов).
+PHASE="inject_env_file"
+INJECT_ENV_FILE_STAGE="/workspace/.inject_env_file"
+if [[ -n "${INJECT_ENV_FILE_NAME:-}" && -f "$INJECT_ENV_FILE_STAGE" ]]; then
+  inj_name="$INJECT_ENV_FILE_NAME"
+  inj_dir="${INJECT_ENV_FILE_DIR:-}"
+  if [[ "$inj_name" == *"/"* || "$inj_name" == *".."* || "$inj_dir" == /* || "$inj_dir" == *".."* ]]; then
+    echo "entrypoint: injected env file rejected (unsafe name/dir): name=$inj_name dir=$inj_dir" >&2
+  else
+    inj_target_dir="$REPO_DIR"
+    if [[ -n "$inj_dir" ]]; then
+      inj_target_dir="$REPO_DIR/$inj_dir"
+      mkdir -p "$inj_target_dir"
+    fi
+    if cp "$INJECT_ENV_FILE_STAGE" "$inj_target_dir/$inj_name"; then
+      chmod 0600 "$inj_target_dir/$inj_name"
+      if [[ -n "$inj_dir" ]]; then inj_rel="$inj_dir/$inj_name"; else inj_rel="$inj_name"; fi
+      mkdir -p .git/info
+      printf '/%s\n' "$inj_rel" >> .git/info/exclude
+      echo "entrypoint: injected env file -> $inj_rel (git-excluded)" >>"$AGENT_LOG"
+    else
+      echo "entrypoint: cp injected env file failed" >&2
+    fi
+  fi
+fi
+
 
 # --- prepare_hermes_dotdir (Sprint 16.C) ---
 # Раннер копирует ~/.hermes/{config.yaml,mcp.json,skills/*} через CopyToContainer

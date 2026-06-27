@@ -246,6 +246,15 @@ func mergeSandboxEnv(opts SandboxOptions) []string {
 			out = append(out, EnvSiblingRepos+"="+string(blob))
 		}
 	}
+	// «Инъекция env-файла» уровня репозитория: имя/папка цели метаданными (содержимое —
+	// отдельным CopyToContainer в InjectedEnvFileStagePath). Имя/папка уже прошли
+	// ValidateInjectedEnvFile; пишутся последними как системные пары (минуя ValidateEnvKeys).
+	if opts.InjectedEnvFile != nil && opts.InjectedEnvFile.FileName != "" {
+		out = append(out, EnvInjectEnvFileName+"="+opts.InjectedEnvFile.FileName)
+		if opts.InjectedEnvFile.TargetDir != "" {
+			out = append(out, EnvInjectEnvFileDir+"="+opts.InjectedEnvFile.TargetDir)
+		}
+	}
 	// Sprint 22: connection-vars эфемерных сервис-сайдкаров (POSTGRES_*/DATABASE_URL/
 	// SERVICE_READY_TIMEOUT первого сервиса). Дописываются последними → высший приоритет
 	// (минуя ValidateEnvKeys — генерит runner, как REPO_URL/BRANCH_NAME).
@@ -431,6 +440,43 @@ func buildPromptContextTar(instruction, contextText string, settings *AgentSetti
 				}
 			}
 		}
+	}()
+	return pr, nil
+}
+
+// buildInjectedEnvFileTar упаковывает staged-содержимое «инъекции env-файла» в tar для
+// CopyToContainer (dst=/workspace). Файл кладётся в InjectedEnvFileStagePath с правами
+// 0600 и владельцем sandbox (uid/gid 1001). Возвращает (nil, nil), если инъекция не задана.
+// Имя/папка цели в tar НЕ участвуют — они передаются метаданными в env (entrypoint решает,
+// куда положить); сюда попадает только содержимое.
+func buildInjectedEnvFileTar(spec *InjectedEnvFileSpec) (io.ReadCloser, error) {
+	if spec == nil || spec.FileName == "" {
+		return nil, nil
+	}
+	// Имя записи в tar относительно /workspace (dst CopyToContainer).
+	const stageRel = ".inject_env_file"
+	content := []byte(spec.Content)
+	pr, pw := io.Pipe()
+	go func() {
+		var err error
+		tw := tar.NewWriter(pw)
+		defer func() {
+			_ = tw.Close()
+			_ = pw.CloseWithError(err)
+		}()
+		hdr := &tar.Header{
+			Name:     stageRel,
+			Mode:     0o600,
+			Uid:      1001,
+			Gid:      1001,
+			ModTime:  time.Now(),
+			Typeflag: tar.TypeReg,
+			Size:     int64(len(content)),
+		}
+		if err = tw.WriteHeader(hdr); err != nil {
+			return
+		}
+		_, err = tw.Write(content)
 	}()
 	return pr, nil
 }
@@ -1082,6 +1128,19 @@ func (r *DockerSandboxRunner) RunTask(ctx context.Context, opts SandboxOptions) 
 		if cpErr := r.cli.CopyToContainer(ctx, containerID, "/", skillsRC, containertypes.CopyToContainerOptions{}); cpErr != nil {
 			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "copy_skills_failed")
 			return nil, fmt.Errorf("copy skills to container: %w", errors.Join(ErrSandboxDocker, cpErr))
+		}
+	}
+
+	// «Инъекция env-файла» уровня репозитория: содержимое стейджим в /workspace
+	// (entrypoint после checkout положит его в рабочую копию репо и исключит из git).
+	if injRC, ierr := buildInjectedEnvFileTar(opts.InjectedEnvFile); ierr != nil {
+		r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "inject_env_tar_build")
+		return nil, fmt.Errorf("build injected env file tar: %w", ierr)
+	} else if injRC != nil {
+		defer injRC.Close()
+		if cpErr := r.cli.CopyToContainer(ctx, containerID, WorkspacePath, injRC, containertypes.CopyToContainerOptions{}); cpErr != nil {
+			r.removeContainerForceLogged(ctx, opts.TaskID, containerID, "copy_inject_env_failed")
+			return nil, fmt.Errorf("copy injected env file to container: %w", errors.Join(ErrSandboxDocker, cpErr))
 		}
 	}
 

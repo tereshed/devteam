@@ -16,6 +16,7 @@ import 'package:frontend/features/projects/presentation/widgets/project_settings
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_field_row.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_tech_stack_section.dart';
 import 'package:frontend/features/projects/presentation/widgets/project_settings_vector_section.dart';
+import 'package:frontend/features/repo_env_files/presentation/widgets/repo_env_files_tab.dart';
 import 'package:frontend/features/sandbox_services/presentation/widgets/sandbox_services_tab.dart';
 import 'package:frontend/features/scout/presentation/widgets/scout_settings_tab.dart';
 import 'package:frontend/features/settings/presentation/widgets/assistant_prompt_editor.dart';
@@ -425,7 +426,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
           ),
         Expanded(
           child: DefaultTabController(
-            length: 8,
+            length: 9,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -440,6 +441,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                     Tab(text: AppLocalizations.of(context)!.scoutTabTitle),
                     Tab(text: AppLocalizations.of(context)!.sandboxServicesTabTitle),
                     Tab(text: AppLocalizations.of(context)!.assistantMcpTabTitle),
+                    Tab(text: AppLocalizations.of(context)!.repoEnvFilesTabTitle),
                   ],
                 ),
                 Expanded(
@@ -589,6 +591,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                       ScoutSettingsTab(projectId: widget.projectId),
                       SandboxServicesTab(projectId: widget.projectId),
                       AssistantMcpTab(projectId: widget.projectId),
+                      RepoEnvFilesTab(projectId: widget.projectId),
                     ],
                   ),
                 ),

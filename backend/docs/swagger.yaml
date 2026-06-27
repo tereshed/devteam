@@ -1408,8 +1408,12 @@ definitions:
         example: 3f1b6d4a-2c1e-4b9f-8f1a-1f1c5a9d2b7e
         type: string
       content:
+        description: |-
+          max=32768: ассистент принимает развёрнутые ТЗ/контекст (создание задач по
+          детальному описанию), 4096 их резал → 400 «Что-то пошло не так». Жёсткий
+          потолок тела (maxRequestBodySize=1MB в handler) остаётся защитой от abuse.
         example: Покажи мои проекты
-        maxLength: 4096
+        maxLength: 32768
         type: string
     required:
     - content
@@ -2171,6 +2175,18 @@ definitions:
     required:
     - key_name
     - value
+    type: object
+  handler.setRepoEnvFileRequest:
+    properties:
+      content:
+        type: string
+      file_name:
+        type: string
+      target_dir:
+        type: string
+    required:
+    - content
+    - file_name
     type: object
   handler.setSecretRequest:
     properties:
@@ -3042,6 +3058,21 @@ definitions:
       html_url:
         type: string
       name:
+        type: string
+    type: object
+  service.RepoEnvFileView:
+    properties:
+      created_at:
+        type: string
+      file_name:
+        type: string
+      id:
+        type: string
+      project_repository_id:
+        type: string
+      target_dir:
+        type: string
+      updated_at:
         type: string
     type: object
   service.SetProjectSecretOutput:
@@ -7047,6 +7078,85 @@ paths:
       summary: Обновление репозитория проекта
       tags:
       - projects
+  /projects/{id}/repositories/{repoId}/env-file:
+    delete:
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Repository UUID
+        in: path
+        name: repoId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Delete repository env file
+      tags:
+      - repository-env-files
+    get:
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Repository UUID
+        in: path
+        name: repoId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.RepoEnvFileView'
+        "204":
+          description: no env file configured
+      security:
+      - BearerAuth: []
+      summary: Get repository env file
+      tags:
+      - repository-env-files
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Project UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Repository UUID
+        in: path
+        name: repoId
+        required: true
+        type: string
+      - description: file_name + target_dir + content
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.setRepoEnvFileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.RepoEnvFileView'
+      security:
+      - BearerAuth: []
+      summary: Set repository env file
+      tags:
+      - repository-env-files
   /projects/{id}/sandbox-services:
     get:
       description: Список эфемерных сервис-сайдкаров (например postgres для интеграционных

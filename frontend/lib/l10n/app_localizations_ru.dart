@@ -3783,6 +3783,78 @@ class AppLocalizationsRu extends AppLocalizations {
       'Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную';
 
   @override
+  String get repoEnvFilesTabTitle => 'Env-файлы';
+
+  @override
+  String get repoEnvFilesHeading => 'Инъекция env-файла репозитория';
+
+  @override
+  String get repoEnvFilesDescription =>
+      'Инъектируйте файл (например, .env) в рабочую копию репозитория перед запуском агента. Файл доступен агенту и тестам, но исключается из git (не коммитится и не пушится). Содержимое хранится в зашифрованном виде.';
+
+  @override
+  String get repoEnvFilesSelectRepo => 'Репозиторий';
+
+  @override
+  String get repoEnvFilesNoRepos =>
+      'Сначала добавьте репозиторий в проект (вкладка «Основные»).';
+
+  @override
+  String get repoEnvFilesNotConfigured =>
+      'Для этого репозитория env-файл ещё не настроен.';
+
+  @override
+  String get repoEnvFilesConfiguredHidden =>
+      'Env-файл настроен. Содержимое скрыто — сохранение перезапишет файл целиком.';
+
+  @override
+  String get repoEnvFilesFileNameLabel => 'Имя файла';
+
+  @override
+  String get repoEnvFilesFileNameHint => 'например, .env';
+
+  @override
+  String get repoEnvFilesTargetDirLabel => 'Папка назначения (необязательно)';
+
+  @override
+  String get repoEnvFilesTargetDirHint =>
+      'Относительный путь внутри репо; пусто — корень';
+
+  @override
+  String get repoEnvFilesContentLabel => 'Содержимое файла';
+
+  @override
+  String get repoEnvFilesContentHint => 'KEY=значение\nANOTHER=значение';
+
+  @override
+  String get repoEnvFilesSave => 'Сохранить';
+
+  @override
+  String get repoEnvFilesDelete => 'Удалить';
+
+  @override
+  String get repoEnvFilesDeleteConfirm =>
+      'Удалить env-файл для этого репозитория?';
+
+  @override
+  String get repoEnvFilesSaved => 'Env-файл сохранён';
+
+  @override
+  String get repoEnvFilesDeleted => 'Env-файл удалён';
+
+  @override
+  String get repoEnvFilesLoadError => 'Не удалось загрузить env-файл.';
+
+  @override
+  String get repoEnvFilesSaveError => 'Не удалось сохранить env-файл.';
+
+  @override
+  String get repoEnvFilesValidationFileNameRequired => 'Укажите имя файла';
+
+  @override
+  String get repoEnvFilesValidationContentRequired => 'Укажите содержимое';
+
+  @override
   String get assistantMcpTabTitle => 'MCP-серверы';
 
   @override

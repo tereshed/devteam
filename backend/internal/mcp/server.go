@@ -59,6 +59,9 @@ type Dependencies struct {
 	// Phase 5 — MCP-инструменты для project/user секретов (опционально).
 	ProjectSecretSvc *service.ProjectSecretService
 	UserSecretSvc    *service.UserSecretService
+
+	// «Инъекция env-файла» уровня репозитория (опционально, nil → tools не регистрируются).
+	RepositoryEnvFileSvc *service.RepositoryEnvFileService
 }
 
 // NewMCPServer создает MCP-сервер с зарегистрированными инструментами
@@ -116,6 +119,9 @@ func NewMCPServer(deps Dependencies) *mcp.Server {
 
 	// Phase 5 — project/user secret tools (опционально).
 	RegisterSecretTools(server, deps.ProjectSecretSvc, deps.UserSecretSvc)
+
+	// «Инъекция env-файла» уровня репозитория (опционально).
+	RegisterRepoEnvFileTools(server, deps.RepositoryEnvFileSvc)
 
 	return server
 }

@@ -6968,6 +6968,138 @@ abstract class AppLocalizations {
   /// **'Не получилось: значение менялось после формирования предложения — обновите список и проверьте вручную'**
   String get enhancerChangeConflictSnack;
 
+  /// No description provided for @repoEnvFilesTabTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Env-файлы'**
+  String get repoEnvFilesTabTitle;
+
+  /// No description provided for @repoEnvFilesHeading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Инъекция env-файла репозитория'**
+  String get repoEnvFilesHeading;
+
+  /// No description provided for @repoEnvFilesDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Инъектируйте файл (например, .env) в рабочую копию репозитория перед запуском агента. Файл доступен агенту и тестам, но исключается из git (не коммитится и не пушится). Содержимое хранится в зашифрованном виде.'**
+  String get repoEnvFilesDescription;
+
+  /// No description provided for @repoEnvFilesSelectRepo.
+  ///
+  /// In ru, this message translates to:
+  /// **'Репозиторий'**
+  String get repoEnvFilesSelectRepo;
+
+  /// No description provided for @repoEnvFilesNoRepos.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала добавьте репозиторий в проект (вкладка «Основные»).'**
+  String get repoEnvFilesNoRepos;
+
+  /// No description provided for @repoEnvFilesNotConfigured.
+  ///
+  /// In ru, this message translates to:
+  /// **'Для этого репозитория env-файл ещё не настроен.'**
+  String get repoEnvFilesNotConfigured;
+
+  /// No description provided for @repoEnvFilesConfiguredHidden.
+  ///
+  /// In ru, this message translates to:
+  /// **'Env-файл настроен. Содержимое скрыто — сохранение перезапишет файл целиком.'**
+  String get repoEnvFilesConfiguredHidden;
+
+  /// No description provided for @repoEnvFilesFileNameLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя файла'**
+  String get repoEnvFilesFileNameLabel;
+
+  /// No description provided for @repoEnvFilesFileNameHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'например, .env'**
+  String get repoEnvFilesFileNameHint;
+
+  /// No description provided for @repoEnvFilesTargetDirLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Папка назначения (необязательно)'**
+  String get repoEnvFilesTargetDirLabel;
+
+  /// No description provided for @repoEnvFilesTargetDirHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Относительный путь внутри репо; пусто — корень'**
+  String get repoEnvFilesTargetDirHint;
+
+  /// No description provided for @repoEnvFilesContentLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Содержимое файла'**
+  String get repoEnvFilesContentLabel;
+
+  /// No description provided for @repoEnvFilesContentHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'KEY=значение\nANOTHER=значение'**
+  String get repoEnvFilesContentHint;
+
+  /// No description provided for @repoEnvFilesSave.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get repoEnvFilesSave;
+
+  /// No description provided for @repoEnvFilesDelete.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get repoEnvFilesDelete;
+
+  /// No description provided for @repoEnvFilesDeleteConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить env-файл для этого репозитория?'**
+  String get repoEnvFilesDeleteConfirm;
+
+  /// No description provided for @repoEnvFilesSaved.
+  ///
+  /// In ru, this message translates to:
+  /// **'Env-файл сохранён'**
+  String get repoEnvFilesSaved;
+
+  /// No description provided for @repoEnvFilesDeleted.
+  ///
+  /// In ru, this message translates to:
+  /// **'Env-файл удалён'**
+  String get repoEnvFilesDeleted;
+
+  /// No description provided for @repoEnvFilesLoadError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить env-файл.'**
+  String get repoEnvFilesLoadError;
+
+  /// No description provided for @repoEnvFilesSaveError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить env-файл.'**
+  String get repoEnvFilesSaveError;
+
+  /// No description provided for @repoEnvFilesValidationFileNameRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите имя файла'**
+  String get repoEnvFilesValidationFileNameRequired;
+
+  /// No description provided for @repoEnvFilesValidationContentRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите содержимое'**
+  String get repoEnvFilesValidationContentRequired;
+
   /// No description provided for @assistantMcpTabTitle.
   ///
   /// In ru, this message translates to:

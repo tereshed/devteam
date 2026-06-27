@@ -177,6 +177,9 @@ func Run(role Role) {
 	userSecretRepo := repository.NewUserSecretRepository(db)
 	projectSecretSvc := service.NewProjectSecretService(projectSecretRepo, secretSvc, v2Logger)
 	userSecretSvc := service.NewUserSecretService(userSecretRepo, secretSvc, v2Logger)
+	// «Инъекция env-файла» уровня репозитория.
+	repoEnvFileRepo := repository.NewRepositoryEnvFileRepository(db)
+	repoEnvFileSvc := service.NewRepositoryEnvFileService(repoEnvFileRepo, projectRepoRepo, secretSvc, v2Logger)
 	mcpRegistryRepo := repository.NewMCPServerRegistryRepository(db)
 	mcpRegistrySvc := service.NewMCPServerRegistryService(mcpRegistryRepo)
 
@@ -483,6 +486,8 @@ func Run(role Role) {
 		service.WithEnhancerOverridesOption(enhancerRepo),
 		// «Переменные проекта» (inject_as_env): значения → env песочницы, имена → промпт.
 		service.WithProjectSecretsOption(projectSecretSvc),
+		// «Инъекция env-файла» уровня репозитория: файл пишется в рабочую копию репо.
+		service.WithRepoEnvFileOption(repoEnvFileSvc),
 	)
 
 	llmProviderRepo := repository.NewLLMProviderRepository(db)
@@ -1019,6 +1024,9 @@ func Run(role Role) {
 		UserSecretHandler:        handler.NewUserSecretHandler(userSecretSvc),
 		MCPServerRegistryHandler: handler.NewMCPServerRegistryHandler(mcpRegistrySvc),
 
+		// «Инъекция env-файла» уровня репозитория.
+		RepositoryEnvFileHandler: handler.NewRepositoryEnvFileHandler(repoEnvFileSvc),
+
 		// Sprint 17 / Orchestration v2 — read-only API + manual unstick (POST /worktrees/:id/release).
 		// taskService нужен ListWorktrees'у для task-ownership check'а (см. Sprint 17 / 6.2).
 		// v2WorktreeMgr опционален — без него ReleaseWorktree отвечает 503 (см. 6.3).
@@ -1089,6 +1097,9 @@ func Run(role Role) {
 			// Phase 5 — project/user secret MCP tools.
 			ProjectSecretSvc: projectSecretSvc,
 			UserSecretSvc:    userSecretSvc,
+
+			// «Инъекция env-файла» уровня репозитория.
+			RepositoryEnvFileSvc: repoEnvFileSvc,
 		})
 
 		mcpHandler := mcpserver.NewHTTPHandler(mcpSrv, apiKeyService)
